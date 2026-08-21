@@ -29,33 +29,62 @@ export interface TemplateItemPlacement {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
+  parentId?: string; // Index reference to parent item in the same template
 }
 
+// ============================================================
+// 30 Equipment IDs — 5 batches
+// ============================================================
+
 export type EquipmentId =
+  // Batch 1 — Camera & Support
   | 'camera'
-  | 'tripod'
+  | 'phone-gimbal'
+  | 'ring-light'
+  | 'camera-slider'
+  | 'webcam'
+  | 'drone'
+  // Batch 2 — Lighting
   | 'led-light'
   | 'softbox'
+  | 'fresnel'
+  | 'rgb-tube'
+  | 'desk-lamp'
+  | 'beauty-dish'
+  // Batch 3 — Audio
   | 'microphone'
-  | 'backdrop'
+  | 'lavalier'
+  | 'audio-recorder'
+  | 'studio-monitor'
+  | 'podcast-mic'
+  | 'acoustic-panel'
+  // Batch 4 — Furniture & Props
+  | 'tripod'
   | 'content-table'
   | 'chair'
+  | 'sofa'
   | 'product-stand'
+  | 'backdrop'
+  | 'shelf-props'
+  // Batch 5 — Power & Accessories
   | 'power-station'
   | 'generator'
-  | 'shelf-props';
+  | 'power-strip'
+  | 'green-screen'
+  | 'teleprompter';
 
 export interface EquipmentDefinition {
   id: EquipmentId;
   name: string;
   icon: string;
   category: 'camera' | 'lighting' | 'audio' | 'furniture' | 'power' | 'props';
-  dimensions: { width: number; depth: number; height: number }; // metres
+  dimensions: { width: number; depth: number; height: number };
   watts: number;
   defaultPriceGHS: number;
   defaultPriceNGN: number;
-  color: number; // Three.js hex color
+  color: number;
   description: string;
+  surfaceHeight?: number; // If set, objects can be placed on top at this Y offset
 }
 
 export interface PlacedObject {
@@ -65,6 +94,7 @@ export interface PlacedObject {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
+  parentId?: string; // If set, object is placed on top of this parent object
   customPriceGHS?: number;
   customPriceNGN?: number;
 }
@@ -90,28 +120,27 @@ export interface ProjectInfo {
   supplierContact: string;
 }
 
+export interface WindowPlacement {
+  id: string;
+  wall: 'back' | 'left';
+  xOffset: number; // -1 to 1, position along wall
+  width: number;
+  height: number;
+  heightOffset: number; // Y position from floor
+}
+
 export interface PlannerState {
-  // Room
   roomWidth: number;
   roomDepth: number;
   roomHeight: number;
-
-  // Template & view
   templateId: CreatorTemplateId;
   viewMode: ViewMode;
-
-  // Objects
   placedObjects: PlacedObject[];
   selectedObjectId: string | null;
   placingEquipmentId: EquipmentId | null;
-
-  // Currency & budget
   currency: Currency;
-
-  // Project info
   projectInfo: ProjectInfo;
-
-  // UI state
+  windows: WindowPlacement[];
   showBudgetPanel: boolean;
   showProjectInfo: boolean;
   showWarnings: boolean;
@@ -119,7 +148,6 @@ export interface PlannerState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
-  // Actions
   setRoomDimensions: (width: number, depth: number) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -134,6 +162,9 @@ export interface PlannerState {
   clearAll: () => void;
   setProjectInfo: (info: Partial<ProjectInfo>) => void;
   setCustomPrice: (id: string, currency: Currency, price: number) => void;
+  addWindow: (wall: 'back' | 'left') => void;
+  removeWindow: (id: string) => void;
+  updateWindow: (id: string, updates: Partial<WindowPlacement>) => void;
   toggleBudgetPanel: () => void;
   toggleProjectInfo: () => void;
   toggleWarnings: () => void;
@@ -144,4 +175,5 @@ export interface PlannerState {
   getPowerTotal: () => number;
   getBudgetTotal: () => number;
   getWarnings: () => SpacingWarning[];
+  getObjectY: (obj: PlacedObject) => number;
 }

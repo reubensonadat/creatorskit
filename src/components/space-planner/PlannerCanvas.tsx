@@ -3,6 +3,11 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { usePlannerStore } from './store';
 import { createEquipmentModel, EQUIPMENT_CATALOG } from './equipment';
 import type { PlacedObject, ViewMode } from './types';
@@ -14,15 +19,17 @@ import type { PlacedObject, ViewMode } from './types';
 // ============================================================
 
 // Scene colors
-const BG_COLOR = 0xf5f1ea;
-const FLOOR_COLOR = 0xe8dcc4;
-const WALL_COLOR = 0xf5f1ea;
-const BASEBOARD_COLOR = 0x2a2826;
-const ACCENT_COLOR = 0xc75d3f;
-const GRID_COLOR_A = 'rgba(31, 58, 95, 0.04)';
-const GRID_COLOR_B = 'rgba(31, 58, 95, 0.07)';
+const BG_COLOR = 0xf0f0f0;
+const FLOOR_COLOR = 0xe5e5e5;
+const WALL_COLOR = 0xffffff;
+const BASEBOARD_COLOR = 0x222222;
+const ACCENT_COLOR = 0x000000;
+const GRID_COLOR_A = 'rgba(0, 0, 0, 0.04)';
+const GRID_COLOR_B = 'rgba(0, 0, 0, 0.08)';
+const WINDOW_FRAME_COLOR = 0x333333;
+const WINDOW_GLASS_COLOR = 0xadd8e6;
 
-const SELECTION_OUTLINE_COLOR = 0xc75d3f;
+const SELECTION_OUTLINE_COLOR = 0x000000;
 const GHOST_OPACITY = 0.45;
 
 export default function PlannerCanvas() {
@@ -39,6 +46,7 @@ export default function PlannerCanvas() {
   const ghostRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
   const cameraAnimRef = useRef<{ cancel: () => void } | null>(null);
+  const composerRef = useRef<EffectComposer | null>(null);
 
   // Raycasting state
   const raycasterRef = useRef(new THREE.Raycaster());
@@ -56,18 +64,21 @@ export default function PlannerCanvas() {
   const placingEquipmentId = usePlannerStore((s) => s.placingEquipmentId);
   const viewMode = usePlannerStore((s) => s.viewMode);
   const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
+  const windows = usePlannerStore((s) => s.windows);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
   const updateObjectPosition = usePlannerStore((s) => s.updateObjectPosition);
   const setSelectedObject = usePlannerStore((s) => s.setSelectedObject);
   const setPlacingEquipment = usePlannerStore((s) => s.setPlacingEquipment);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
+  const getObjectY = usePlannerStore((s) => s.getObjectY);
 
   // ============ Room building ============
   const buildRoom = useCallback((
     scene: THREE.Scene,
     roomGroup: THREE.Group,
     w: number, d: number, h: number,
+    wins: typeof windows,
   ) => {
     // Clear old
     roomGroup.clear();
@@ -75,7 +86,12 @@ export default function PlannerCanvas() {
     // Floor
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(w, d),
-      new THREE.MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.88 })
+      new THREE.MeshStandardMaterial({ 
+        color: FLOOR_COLOR, 
+        roughness: 0.35, 
+        metalness: 0.05,
+        envMapIntensity: 0.5,
+      })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -84,14 +100,14 @@ export default function PlannerCanvas() {
     floorRef.current = floor;
 
     // Floor grid lines
-    const gridMat = new THREE.LineBasicMaterial({ color: 0xb8a88a, transparent: true, opacity: 0.15 });
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x999999, transparent: true, opacity: 0.15 });
     for (let i = -d / 2; i <= d / 2; i += 0.4) {
       const pts = [new THREE.Vector3(-w / 2, 0.002, i), new THREE.Vector3(w / 2, 0.002, i)];
       roomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
     }
 
     // Walls
-    const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.95 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.85, metalness: 0.02 });
     const wallBack = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), wallMat);
     wallBack.position.set(0, h / 2, -d / 2);
     wallBack.receiveShadow = true;
@@ -111,15 +127,73 @@ export default function PlannerCanvas() {
     baseLeft.position.set(-w / 2 + 0.07, 0.04, 0);
     roomGroup.add(baseLeft);
 
+    // Render windows from store
+    const frameMat = new THREE.MeshStandardMaterial({ color: WINDOW_FRAME_COLOR, roughness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({ 
+      color: WINDOW_GLASS_COLOR, 
+      transparent: true, 
+      opacity: 0.3,
+      roughness: 0.1,
+      metalness: 0.1,
+    });
+
+    wins.forEach((win) => {
+      if (win.wall === 'back') {
+        const xPos = win.xOffset * (w / 2 - 0.5);
+        // Glass
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
+        glass.position.set(xPos, win.heightOffset, -d / 2 + 0.07);
+        roomGroup.add(glass);
+        // Frame
+        const ft = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
+        ft.position.set(xPos, win.heightOffset + win.height / 2 + 0.03, -d / 2 + 0.08);
+        roomGroup.add(ft);
+        const fb = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
+        fb.position.set(xPos, win.heightOffset - win.height / 2 - 0.03, -d / 2 + 0.08);
+        roomGroup.add(fb);
+        const fl = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
+        fl.position.set(xPos - win.width / 2 - 0.03, win.heightOffset, -d / 2 + 0.08);
+        roomGroup.add(fl);
+        const fr = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
+        fr.position.set(xPos + win.width / 2 + 0.03, win.heightOffset, -d / 2 + 0.08);
+        roomGroup.add(fr);
+        // Cross bars
+        const ch = new THREE.Mesh(new THREE.BoxGeometry(win.width, 0.03, 0.02), frameMat);
+        ch.position.set(xPos, win.heightOffset, -d / 2 + 0.09);
+        roomGroup.add(ch);
+        const cv = new THREE.Mesh(new THREE.BoxGeometry(0.03, win.height, 0.02), frameMat);
+        cv.position.set(xPos, win.heightOffset, -d / 2 + 0.09);
+        roomGroup.add(cv);
+      } else if (win.wall === 'left') {
+        const zPos = win.xOffset * (d / 2 - 0.5);
+        // Glass
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
+        glass.rotation.y = Math.PI / 2;
+        glass.position.set(-w / 2 + 0.07, win.heightOffset, zPos);
+        roomGroup.add(glass);
+        // Frame
+        const ft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
+        ft.position.set(-w / 2 + 0.08, win.heightOffset + win.height / 2 + 0.03, zPos);
+        roomGroup.add(ft);
+        const fb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
+        fb.position.set(-w / 2 + 0.08, win.heightOffset - win.height / 2 - 0.03, zPos);
+        roomGroup.add(fb);
+        const ff = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
+        ff.position.set(-w / 2 + 0.08, win.heightOffset, zPos - win.width / 2 - 0.03);
+        roomGroup.add(ff);
+        const fbb = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
+        fbb.position.set(-w / 2 + 0.08, win.heightOffset, zPos + win.width / 2 + 0.03);
+        roomGroup.add(fbb);
+      }
+    });
+
     // Wall dimension labels (small markers)
     const labelMat = new THREE.MeshBasicMaterial({ color: ACCENT_COLOR, transparent: true, opacity: 0.6 });
-    // Width markers
     [-w / 2, w / 2].forEach(x => {
       const marker = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.1), labelMat);
       marker.position.set(x, 0.01, d / 2 - 0.15);
       roomGroup.add(marker);
     });
-    // Depth markers
     [-d / 2, d / 2].forEach(z => {
       const marker = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), labelMat);
       marker.position.set(w / 2 - 0.15, 0.01, z);
@@ -154,6 +228,20 @@ export default function PlannerCanvas() {
       if (!mesh) {
         mesh = createEquipmentModel(obj.equipmentId);
         mesh.userData.placedId = obj.id;
+        // Tiny mesh parts create noisy shadow speckles; disable their shadow casting.
+        mesh.traverse((c) => {
+          if (!(c instanceof THREE.Mesh)) return;
+          c.geometry.computeBoundingBox();
+          const box = c.geometry.boundingBox;
+          if (!box) return;
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim < 0.03) {
+            c.castShadow = false;
+            c.receiveShadow = false;
+          }
+        });
         scene.add(mesh);
         objectMeshesRef.current.set(obj.id, mesh);
 
@@ -169,10 +257,10 @@ export default function PlannerCanvas() {
         animateIn();
       }
 
-      mesh.position.set(obj.x, 0, obj.z);
+      mesh.position.set(obj.x, getObjectY(obj), obj.z);
       mesh.rotation.y = obj.rotationY;
     });
-  }, [placedObjects]);
+  }, [placedObjects, getObjectY]);
 
   // ============ Selection outline ============
   const updateSelection = useCallback(() => {
@@ -362,6 +450,18 @@ export default function PlannerCanvas() {
     return obj as THREE.Group | null;
   }, []);
 
+  const getSurfaceIntersection = useCallback((clientX: number, clientY: number): { parentId: string; y: number } | null => {
+    const objGroup = getObjectIntersection(clientX, clientY);
+    if (!objGroup) return null;
+    const placedId = objGroup.userData.placedId as string;
+    const storeObj = placedObjects.find((o) => o.id === placedId);
+    if (!storeObj) return null;
+    const def = EQUIPMENT_CATALOG[storeObj.equipmentId];
+    if (!def.surfaceHeight) return null;
+    const parentY = getObjectY(storeObj);
+    return { parentId: placedId, y: parentY + def.surfaceHeight };
+  }, [placedObjects, getObjectIntersection, getObjectY]);
+
   // ============ Main initialization ============
   useEffect(() => {
     const container = containerRef.current;
@@ -370,7 +470,7 @@ export default function PlannerCanvas() {
     // Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(BG_COLOR);
-    scene.fog = new THREE.Fog(BG_COLOR, 15, 35);
+    scene.fog = new THREE.Fog(BG_COLOR, 18, 42);
     sceneRef.current = scene;
 
     // Camera
@@ -379,16 +479,29 @@ export default function PlannerCanvas() {
     cameraRef.current = camera;
 
     // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.22;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // Post-processing
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(container.clientWidth, container.clientHeight),
+      0.04, 0.2, 0.96
+    );
+    composer.addPass(bloomPass);
+    const fxaaPass = new ShaderPass(FXAAShader);
+    fxaaPass.uniforms['resolution'].value.set(1 / container.clientWidth, 1 / container.clientHeight);
+    composer.addPass(fxaaPass);
+    composerRef.current = composer;
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -402,10 +515,10 @@ export default function PlannerCanvas() {
     controlsRef.current = controls;
 
     // Lighting
-    const ambient = new THREE.AmbientLight(0xfff5e8, 0.55);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
     scene.add(ambient);
 
-    const sun = new THREE.DirectionalLight(0xfff0d5, 1.0);
+    const sun = new THREE.DirectionalLight(0xffffff, 0.95);
     sun.position.set(5, 10, 4);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
@@ -417,26 +530,31 @@ export default function PlannerCanvas() {
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = 40;
     sun.shadow.bias = -0.0005;
-    sun.shadow.radius = 4;
+    sun.shadow.radius = 2;
     scene.add(sun);
 
-    const hemi = new THREE.HemisphereLight(0xfff5e8, 0xc4b394, 0.35);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xe5e5e5, 0.6);
     scene.add(hemi);
 
-    const fill = new THREE.DirectionalLight(0xc4b394, 0.3);
+    const fill = new THREE.DirectionalLight(0xe5e5e5, 0.55);
     fill.position.set(-4, 3, -2);
     scene.add(fill);
+
+    // Window light simulation
+    const windowLight = new THREE.PointLight(0xffffff, 0.32, 8);
+    windowLight.position.set(0, roomHeight * 0.6, -roomDepth / 2 + 1);
+    scene.add(windowLight);
 
     // Room group
     const roomGroup = new THREE.Group();
     scene.add(roomGroup);
     roomGroupRef.current = roomGroup;
-    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight);
+    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight, windows);
 
     // Animation loop
     const tick = () => {
       controls.update();
-      renderer.render(scene, camera);
+      composer.render();
       animFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -449,6 +567,8 @@ export default function PlannerCanvas() {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      composer.setSize(w, h);
+      fxaaPass.uniforms['resolution'].value.set(1 / w, 1 / h);
     });
     resizeObserver.observe(container);
 
@@ -457,6 +577,7 @@ export default function PlannerCanvas() {
       cancelAnimationFrame(animFrameRef.current);
       resizeObserver.disconnect();
       controls.dispose();
+      composer.dispose();
       renderer.dispose();
       scene.traverse((c) => {
         if (c instanceof THREE.Mesh) {
@@ -475,8 +596,8 @@ export default function PlannerCanvas() {
     const scene = sceneRef.current;
     const roomGroup = roomGroupRef.current;
     if (!scene || !roomGroup) return;
-    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight);
-  }, [roomWidth, roomDepth, roomHeight, buildRoom]);
+    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight, windows);
+  }, [roomWidth, roomDepth, roomHeight, windows, buildRoom]);
 
   // ============ Sync placed objects ============
   useEffect(() => {
@@ -537,15 +658,30 @@ export default function PlannerCanvas() {
     const onMouseMove = (e: MouseEvent) => {
       // Ghost tracking
       if (placingEquipmentId && ghostRef.current) {
-        const hit = getFloorIntersection(e.clientX, e.clientY);
-        if (hit) {
+        // Check if hovering over a surface first
+        const surface = getSurfaceIntersection(e.clientX, e.clientY);
+        if (surface) {
           const hw = roomWidth / 2 - 0.3;
           const hd = roomDepth / 2 - 0.3;
-          ghostRef.current.position.set(
-            Math.max(-hw, Math.min(hw, hit.point.x)),
-            0,
-            Math.max(-hd, Math.min(hd, hit.point.z))
-          );
+          const hit = getFloorIntersection(e.clientX, e.clientY);
+          if (hit) {
+            ghostRef.current.position.set(
+              Math.max(-hw, Math.min(hw, hit.point.x)),
+              surface.y,
+              Math.max(-hd, Math.min(hd, hit.point.z))
+            );
+          }
+        } else {
+          const hit = getFloorIntersection(e.clientX, e.clientY);
+          if (hit) {
+            const hw = roomWidth / 2 - 0.3;
+            const hd = roomDepth / 2 - 0.3;
+            ghostRef.current.position.set(
+              Math.max(-hw, Math.min(hw, hit.point.x)),
+              0,
+              Math.max(-hd, Math.min(hd, hit.point.z))
+            );
+          }
         }
         return;
       }
@@ -558,6 +694,22 @@ export default function PlannerCanvas() {
           const hd = roomDepth / 2 - 0.2;
           const nx = Math.max(-hw, Math.min(hw, hit.point.x + dragOffsetRef.current.x));
           const nz = Math.max(-hd, Math.min(hd, hit.point.z + dragOffsetRef.current.z));
+          const store = usePlannerStore.getState();
+          const oldObj = store.placedObjects.find((o) => o.id === dragTargetRef.current);
+          if (oldObj) {
+            const dx = nx - oldObj.x;
+            const dz = nz - oldObj.z;
+            // Move all children recursively
+            const moveChildren = (parentId: string, ddx: number, ddz: number) => {
+              store.placedObjects.forEach((child) => {
+                if (child.parentId === parentId) {
+                  store.updateObjectPosition(child.id, child.x + ddx, child.z + ddz);
+                  moveChildren(child.id, ddx, ddz);
+                }
+              });
+            };
+            moveChildren(dragTargetRef.current, dx, dz);
+          }
           updateObjectPosition(dragTargetRef.current, nx, nz);
         }
       }
@@ -568,13 +720,26 @@ export default function PlannerCanvas() {
 
       // Placing mode
       if (placingEquipmentId) {
-        const hit = getFloorIntersection(e.clientX, e.clientY);
-        if (hit) {
-          const hw = roomWidth / 2 - 0.3;
-          const hd = roomDepth / 2 - 0.3;
-          const x = Math.max(-hw, Math.min(hw, hit.point.x));
-          const z = Math.max(-hd, Math.min(hd, hit.point.z));
-          placeObject(placingEquipmentId, x, z);
+        // Check if hovering over a surface
+        const surface = getSurfaceIntersection(e.clientX, e.clientY);
+        if (surface) {
+          const hit = getFloorIntersection(e.clientX, e.clientY);
+          if (hit) {
+            const hw = roomWidth / 2 - 0.3;
+            const hd = roomDepth / 2 - 0.3;
+            const x = Math.max(-hw, Math.min(hw, hit.point.x));
+            const z = Math.max(-hd, Math.min(hd, hit.point.z));
+            placeObject(placingEquipmentId, x, z, 0, false, surface.parentId);
+          }
+        } else {
+          const hit = getFloorIntersection(e.clientX, e.clientY);
+          if (hit) {
+            const hw = roomWidth / 2 - 0.3;
+            const hd = roomDepth / 2 - 0.3;
+            const x = Math.max(-hw, Math.min(hw, hit.point.x));
+            const z = Math.max(-hd, Math.min(hd, hit.point.z));
+            placeObject(placingEquipmentId, x, z);
+          }
         }
         return;
       }
@@ -619,7 +784,7 @@ export default function PlannerCanvas() {
       container.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [placingEquipmentId, placedObjects, roomWidth, roomDepth, getFloorIntersection, getObjectIntersection, placeObject, updateObjectPosition, setSelectedObject]);
+  }, [placingEquipmentId, placedObjects, roomWidth, roomDepth, getFloorIntersection, getObjectIntersection, getSurfaceIntersection, placeObject, updateObjectPosition, setSelectedObject]);
 
   // ============ Keyboard shortcuts ============
   useEffect(() => {

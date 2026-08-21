@@ -26,9 +26,6 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const isToolPage = tools.some((t) => pathname === t.href);
-
-  // Close the menu on outside click, Escape, or browser back/forward
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
@@ -52,10 +49,8 @@ export default function Navbar() {
   return (
     <header
       style={{
-        background: "rgba(255, 255, 255, 0.8)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderBottom: "1px solid var(--bg-border)",
+        background: "#ffffff",
+        borderBottom: "2px solid #000000",
         position: "sticky",
         top: 0,
         zIndex: 50,
@@ -66,7 +61,7 @@ export default function Navbar() {
           maxWidth: 1200,
           margin: "0 auto",
           padding: "0 24px",
-          height: 60,
+          height: 52,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -89,36 +84,17 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 32,
-              height: 32,
-              borderRadius: 6,
+              width: 28,
+              height: 28,
               overflow: "hidden",
-              border: "1px solid var(--bg-border)",
-              background: "#ffffff",
+              border: "2px solid #000",
+              background: "#fff",
             }}
           >
-            <img
-              src="/logo.png"
-              alt="CK Logo"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
+            <img src="/logo.png" alt="CK" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
-          <span
-            style={{
-              fontWeight: 800,
-              fontSize: "1.05rem",
-              letterSpacing: "-0.03em",
-              color: "var(--text-primary)",
-            }}
-          >
-            Creator<span style={{ color: "var(--accent)" }}>Kit</span>
-            <span style={{ color: "var(--text-hint)", fontWeight: 400 }}>
-              .win
-            </span>
+          <span style={{ fontWeight: 900, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#000", fontFamily: "monospace" }}>
+            CK<span style={{ color: "#888" }}>.win</span>
           </span>
         </Link>
 
@@ -126,92 +102,49 @@ export default function Navbar() {
         <div ref={rootRef} style={{ position: "relative" }}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            aria-haspopup="true"
-            aria-expanded={menuOpen}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "7px 14px",
-              borderRadius: "var(--radius-sm)",
-              fontSize: "0.85rem",
-              fontWeight: 700,
+              padding: "6px 12px",
+              fontSize: "0.75rem",
+              fontWeight: 900,
               cursor: "pointer",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-              transition: "background 0.15s, color 0.15s",
-              background: menuOpen || isToolPage ? "var(--accent-glow)" : "transparent",
-              color: isToolPage ? "var(--accent)" : "var(--text-primary)",
-              border: isToolPage ? "1px solid var(--accent)" : "1px solid transparent",
+              background: menuOpen ? "#000" : "transparent",
+              color: menuOpen ? "#fff" : "#666",
+              border: "2px solid #000",
+              fontFamily: "monospace",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              transition: "all 0.15s",
             }}
-            onMouseEnter={(e) => {
-              if (!menuOpen) {
-                (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!menuOpen) {
-                (e.currentTarget as HTMLElement).style.background = "transparent";
-              }
-            }}
+            onMouseEnter={(e) => { if (!menuOpen) { e.currentTarget.style.background = "#000"; e.currentTarget.style.color = "#fff"; } }}
+            onMouseLeave={(e) => { if (!menuOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#666"; } }}
           >
-            <LayoutGrid size={16} />
+            <LayoutGrid size={14} />
             Tools
-            <ChevronDown
-              size={14}
-              style={{
-                transition: "transform 0.2s ease",
-                transform: menuOpen ? "rotate(180deg)" : "none",
-                color: menuOpen ? "var(--accent)" : "inherit",
-              }}
-            />
+            <ChevronDown size={12} style={{ transform: menuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
           </button>
 
           {menuOpen && (
             <div
               style={{
                 position: "absolute",
-                top: "calc(100% + 10px)",
-                left: 0,
+                top: "calc(100% + 8px)",
+                right: 0,
                 zIndex: 60,
-                minWidth: 300,
+                minWidth: 320,
                 maxHeight: "min(70vh, 640px)",
                 overflowY: "auto",
-                background: "#ffffff",
-                border: "3px solid #000000",
-                borderTop: "3px solid var(--accent)",
-                boxShadow: "6px 6px 0 #000000",
-                padding: 10,
+                background: "#fff",
+                border: "2px solid #000",
+                boxShadow: "4px 4px 0 #000",
+                padding: 8,
               }}
             >
-              <div
-                style={{
-                  fontSize: "0.62rem",
-                  fontWeight: 900,
-                  color: "var(--text-hint)",
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase",
-                  fontFamily: "monospace",
-                  padding: "6px 10px 8px",
-                  borderBottom: "1px solid rgba(0,0,0,0.12)",
-                  marginBottom: 6,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ color: "var(--accent)" }}>All tools</span>
-                <span
-                  style={{
-                    background: "var(--accent)",
-                    color: "#ffffff",
-                    fontSize: "0.62rem",
-                    fontWeight: 900,
-                    fontFamily: "monospace",
-                    padding: "1px 8px",
-                    borderRadius: 3,
-                  }}
-                >
+              <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#888", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", padding: "8px 12px", borderBottom: "1px solid #eee", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>All tools</span>
+                <span style={{ background: "#000", color: "#fff", fontSize: "0.6rem", fontWeight: 900, fontFamily: "monospace", padding: "1px 6px" }}>
                   {tools.length}
                 </span>
               </div>
@@ -227,36 +160,17 @@ export default function Navbar() {
                       alignItems: "center",
                       justifyContent: "space-between",
                       gap: 12,
-                      padding: "9px 10px",
-                      borderRadius: "var(--radius-sm)",
+                      padding: "8px 12px",
                       textDecoration: "none",
-                      transition: "background 0.12s, color 0.12s",
-                      background: isActive ? "var(--accent)" : "transparent",
-                      color: isActive ? "#ffffff" : "var(--text-primary)",
+                      transition: "background 0.12s",
+                      background: isActive ? "#000" : "transparent",
+                      color: isActive ? "#fff" : "#000",
                     }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) {
-                        (e.currentTarget as HTMLElement).style.background = "var(--accent)";
-                        (e.currentTarget as HTMLElement).style.color = "#ffffff";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) {
-                        (e.currentTarget as HTMLElement).style.background = "transparent";
-                        (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
-                      }
-                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f5f5f5"; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ fontSize: "0.88rem", fontWeight: 700 }}>{tool.label}</span>
-                    <span
-                      style={{
-                        fontSize: "0.58rem",
-                        fontWeight: 900,
-                        fontFamily: "monospace",
-                        letterSpacing: "0.06em",
-                        color: isActive ? "rgba(255,255,255,0.8)" : "var(--text-hint)",
-                      }}
-                    >
+                    <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{tool.label}</span>
+                    <span style={{ fontSize: "0.55rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: isActive ? "#999" : "#aaa" }}>
                       {tool.hint}
                     </span>
                   </Link>
@@ -269,8 +183,21 @@ export default function Navbar() {
         {/* CTA */}
         <Link
           href="/#tools"
-          className="brutalist-button brutalist-button-primary"
-          style={{ fontSize: "0.78rem", padding: "6px 14px", flexShrink: 0 }}
+          style={{
+            fontSize: "0.72rem",
+            padding: "6px 14px",
+            background: "#000",
+            color: "#fff",
+            border: "2px solid #000",
+            fontWeight: 900,
+            textDecoration: "none",
+            fontFamily: "monospace",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#333"; e.currentTarget.style.borderColor = "#333"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "#000"; e.currentTarget.style.borderColor = "#000"; }}
         >
           All Tools
         </Link>

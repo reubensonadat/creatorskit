@@ -1032,45 +1032,83 @@ export default function TeleprompterPage() {
     >
       <div className="grid-bg" style={{ opacity: isPlaying ? 0.02 : 1, transition: "opacity 0.5s ease" }} />
 
-      {/* Top Header Navigation */}
+      {/* Floating Nav Bar */}
       {!isFullscreen && (
         <div
           style={{
-            padding: "20px 32px",
-            borderBottom: "4px solid #000000",
+            position: "fixed",
+            top: 12,
+            left: 12,
+            zIndex: 100,
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            position: "relative",
-            zIndex: 10,
-            background: "#ffffff",
+            gap: 8,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Link href="/" className="brutalist-button" style={{ padding: "8px 16px" }}>
-              <ChevronLeft size={16} style={{ marginRight: 4 }} /> Dashboard
-            </Link>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h1 style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)", lineHeight: 1, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-                  Studio Teleprompter
-                </h1>
-                <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "2px 8px", border: "2px solid #000", background: "#fff", color: "#000", fontFamily: "monospace" }}>
-                  Speech Lab
-                </span>
-              </div>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-hint)", marginTop: 4 }}>
-                Record directly inside the browser using the Web Camera recorder (great for iPhone).
-              </p>
-            </div>
+          <Link
+            href="/"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              background: "rgba(255,255,255,0.95)",
+              border: "2px solid #000",
+              boxShadow: "3px 3px 0 #000",
+              color: "#000",
+              fontFamily: "monospace",
+              fontSize: "11px",
+              fontWeight: 700,
+              textDecoration: "none",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#000";
+              e.currentTarget.style.color = "#fff";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.95)";
+              e.currentTarget.style.color = "#000";
+            }}
+          >
+            <ChevronLeft size={14} />
+            Dashboard
+          </Link>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 12px",
+            background: "rgba(255,255,255,0.95)",
+            border: "2px solid #000",
+            boxShadow: "3px 3px 0 #000",
+            fontFamily: "monospace",
+            fontSize: "11px",
+            fontWeight: 700,
+            color: "#000",
+          }}>
+            Teleprompter
           </div>
           <button
-            className="brutalist-button"
             onClick={() => setShowSettings((s) => !s)}
-            style={{ padding: "8px 16px" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              background: showSettings ? "#000" : "rgba(255,255,255,0.95)",
+              border: "2px solid #000",
+              boxShadow: "3px 3px 0 #000",
+              fontFamily: "monospace",
+              fontSize: "11px",
+              fontWeight: 700,
+              color: showSettings ? "#fff" : "#000",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
           >
-            <SlidersHorizontal size={16} style={{ marginRight: 4 }} /> Configure Settings
+            <SlidersHorizontal size={14} /> Settings
           </button>
         </div>
       )}

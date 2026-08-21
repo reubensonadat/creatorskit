@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PlacedObject, CreatorTemplateId, ViewMode, Currency, ProjectInfo, SpacingWarning, WarningType, EquipmentId } from './types';
+import type { PlacedObject, CreatorTemplateId, ViewMode, Currency, ProjectInfo, SpacingWarning, WarningType, EquipmentId, WindowPlacement } from './types';
 import { EQUIPMENT_CATALOG } from './equipment';
 import { CREATOR_TEMPLATES } from './templates';
 
@@ -50,6 +50,7 @@ interface StoreState {
   setCurrency: (c: Currency) => void;
   setPlacingEquipment: (id: EquipmentId | null) => void;
   placeObject: (equipmentId: EquipmentId, x: number, z: number, rotationY?: number, isMainCamera?: boolean) => string;
+  replacePlacedObjects: (objects: PlacedObject[]) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
   updateObjectRotation: (id: string, rotationY: number) => void;
   setSelectedObject: (id: string | null) => void;
@@ -68,6 +69,7 @@ interface StoreState {
   getPowerTotal: () => number;
   getBudgetTotal: () => number;
   getWarnings: () => SpacingWarning[];
+  getObjectY: (obj: PlacedObject) => number;
 }
 
 export const usePlannerStore = create<StoreState>((set, get) => ({
@@ -90,6 +92,10 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     notes: '',
     supplierContact: '',
   },
+
+  windows: [
+    { id: 'win-default-1', wall: 'back', xOffset: 0, width: 1.2, height: 1.0, heightOffset: 1.5 },
+  ],
 
   showBudgetPanel: false,
   showProjectInfo: false,
@@ -114,7 +120,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     selectedObjectId: null,
   }),
 
-  placeObject: (equipmentId, x, z, rotationY = 0, isMainCamera = false) => {
+  placeObject: (equipmentId, x, z, rotationY = 0, isMainCamera = false, parentId?: string) => {
     const id = uid();
     const obj: PlacedObject = {
       id,
@@ -123,12 +129,19 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
       z,
       rotationY,
       isMainCamera,
+      parentId,
     };
     set((s) => ({
       placedObjects: [...s.placedObjects, obj],
     }));
     return id;
   },
+
+  replacePlacedObjects: (objects) => set({
+    placedObjects: objects,
+    selectedObjectId: null,
+    placingEquipmentId: null,
+  }),
 
   updateObjectPosition: (id, x, z) => set((s) => ({
     placedObjects: s.placedObjects.map((o) =>
@@ -151,10 +164,24 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     })),
   })),
 
-  deleteObject: (id) => set((s) => ({
-    placedObjects: s.placedObjects.filter((o) => o.id !== id),
-    selectedObjectId: s.selectedObjectId === id ? null : s.selectedObjectId,
-  })),
+  deleteObject: (id) => set((s) => {
+    // Find all children recursively
+    const toDelete = new Set<string>();
+    const findChildren = (parentId: string) => {
+      s.placedObjects.forEach((o) => {
+        if (o.parentId === parentId && !toDelete.has(o.id)) {
+          toDelete.add(o.id);
+          findChildren(o.id);
+        }
+      });
+    };
+    toDelete.add(id);
+    findChildren(id);
+    return {
+      placedObjects: s.placedObjects.filter((o) => !toDelete.has(o.id)),
+      selectedObjectId: toDelete.has(s.selectedObjectId ?? '') ? null : s.selectedObjectId,
+    };
+  }),
 
   clearAll: () => set({ placedObjects: [], selectedObjectId: null }),
 
@@ -178,17 +205,48 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
 
+  addWindow: (wall) => set((s) => ({
+    windows: [...s.windows, {
+      id: `win-${Date.now()}`,
+      wall,
+      xOffset: 0,
+      width: 1.0,
+      height: 0.8,
+      heightOffset: 1.4,
+    }],
+  })),
+
+  removeWindow: (id) => set((s) => ({
+    windows: s.windows.filter((w) => w.id !== id),
+  })),
+
+  updateWindow: (id, updates) => set((s) => ({
+    windows: s.windows.map((w) => w.id === id ? { ...w, ...updates } : w),
+  })),
+
   loadTemplate: (templateId) => {
     const tpl = CREATOR_TEMPLATES[templateId];
     if (!tpl) return;
-    const objects: PlacedObject[] = tpl.items.map((item) => ({
-      id: uid(),
-      equipmentId: item.equipmentId,
-      x: item.x,
-      z: item.z,
-      rotationY: item.rotationY,
-      isMainCamera: item.isMainCamera,
-    }));
+    // First pass: create objects without parentId
+    const idMap: Record<number, string> = {};
+    const objects: PlacedObject[] = tpl.items.map((item, idx) => {
+      const id = uid();
+      idMap[idx] = id;
+      return {
+        id,
+        equipmentId: item.equipmentId,
+        x: item.x,
+        z: item.z,
+        rotationY: item.rotationY,
+        isMainCamera: item.isMainCamera,
+      };
+    });
+    // Second pass: resolve parentId references
+    tpl.items.forEach((item, idx) => {
+      if (item.parentId !== undefined) {
+        objects[idx].parentId = idMap[item.parentId];
+      }
+    });
     set({
       templateId,
       roomWidth: tpl.defaultRoom.width,
@@ -313,5 +371,15 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     }
 
     return warnings;
+  },
+
+  getObjectY: (obj) => {
+    if (!obj.parentId) return 0;
+    const state = get();
+    const parent = state.placedObjects.find((o) => o.id === obj.parentId);
+    if (!parent) return 0;
+    const parentDef = EQUIPMENT_CATALOG[parent.equipmentId];
+    const parentY = state.getObjectY(parent);
+    return parentY + (parentDef.surfaceHeight ?? parentDef.dimensions.height);
   },
 }));

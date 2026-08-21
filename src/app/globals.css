@@ -121,32 +121,41 @@
   }
 }
 
+/* Hide all scrollbars globally */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
 /* ============================================= */
 /* Creator Space Planner — Component Styles        */
 /* ============================================= */
 
 :root {
-  --bg: #F5F1EA;
-  --bg-2: #EDE6D8;
-  --surface: #FFFFFF;
-  --surface-2: #FAF6EE;
-  --oat: #D4C5A9;
-  --oat-dark: #B8A88A;
-  --oat-light: #E8DFD0;
-  --charcoal: #2A2826;
-  --charcoal-2: #4A4744;
-  --charcoal-3: #6B6863;
-  --line: #E2D8C5;
-  --line-soft: #EDE6D8;
-  --accent: #C75D3F;
-  --accent-rgb: 199, 93, 63;
-  --accent-2: #B14E33;
-  --accent-soft: rgba(199, 93, 63, 0.12);
-  --accent-glow: rgba(199, 93, 63, 0.4);
-  --blueprint: #1F3A5F;
-  --success: #6B8E4E;
-  --warn: #D49B3B;
-  --danger: #B0432E;
+  --bg: #ffffff;
+  --bg-2: #f4f4f5;
+  --surface: #ffffff;
+  --surface-2: #f9f9f9;
+  --oat: #e5e5e5;
+  --oat-dark: #d4d4d4;
+  --oat-light: #f0f0f0;
+  --charcoal: #000000;
+  --charcoal-2: #333333;
+  --charcoal-3: #888888;
+  --line: #e5e5e5;
+  --line-soft: #f0f0f0;
+  --accent: #000000;
+  --accent-rgb: 0, 0, 0;
+  --accent-2: #333333;
+  --accent-soft: rgba(0, 0, 0, 0.06);
+  --accent-glow: rgba(0, 0, 0, 0.1);
+  --blueprint: #e5e5e5;
+  --success: #22c55e;
+  --warn: #eab308;
+  --danger: #ef4444;
 }
 
 /* App layout */
@@ -252,42 +261,43 @@
   align-items: center;
   gap: 5px;
   padding: 5px 10px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--charcoal);
   background: var(--surface);
   color: var(--charcoal);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 11px;
-  font-weight: 500;
-  border-radius: 6px;
+  font-weight: 700;
+  border-radius: 0;
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.15s;
   white-space: nowrap;
   line-height: 1.2;
 }
 .btn:hover {
-  background: var(--surface-2);
-  border-color: var(--oat-dark);
+  background: var(--charcoal);
+  color: var(--surface);
 }
 .btn.active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
+  background: var(--charcoal);
+  color: var(--surface);
+  border-color: var(--charcoal);
 }
 .btn-primary {
   background: var(--charcoal);
-  color: var(--bg);
+  color: var(--surface);
   border-color: var(--charcoal);
 }
 .btn-primary:hover {
   background: var(--charcoal-2);
+  border-color: var(--charcoal-2);
 }
 .btn-accent {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
+  background: var(--charcoal);
+  color: var(--surface);
+  border-color: var(--charcoal);
 }
 .btn-accent:hover {
-  background: var(--accent-2);
+  background: var(--charcoal-2);
 }
 .btn-icon {
   width: 30px;
@@ -307,44 +317,43 @@
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  border: 2px solid var(--line);
+  border-radius: 0;
   background: var(--surface);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.15s;
 }
 .item-card:hover {
-  border-color: var(--oat-dark);
+  border-color: var(--charcoal);
   background: var(--surface-2);
-  transform: translateX(2px);
 }
 .item-card.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--charcoal);
+  background: var(--charcoal);
+  color: var(--surface);
 }
 .item-icon {
   width: 30px;
   height: 30px;
   background: var(--bg-2);
-  border-radius: 5px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--charcoal-2);
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 .item-card.active .item-icon {
-  background: var(--accent);
-  color: white;
+  background: var(--surface);
+  color: var(--charcoal);
 }
 
 /* Template cards */
 .template-card {
   padding: 10px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 2px solid var(--line);
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.2s;
   background: var(--surface);
@@ -353,7 +362,7 @@
 .template-card:hover {
   border-color: var(--oat-dark);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(42, 40, 38, 0.06);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 .template-card.active {
   border-color: var(--accent);
@@ -385,19 +394,19 @@
 .view-toggle button.active {
   background: var(--surface);
   color: var(--charcoal);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 3px rgba(255,255,255,0.08);
 }
 
 /* HUD floating panels */
 .hud {
   position: absolute;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(24, 24, 27, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px 12px;
-  box-shadow: 0 3px 16px rgba(42, 40, 38, 0.07);
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.3);
   pointer-events: auto;
   z-index: 10;
 }

@@ -1,37 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import ClientLayout from "@/components/ClientLayout";
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "CreatorKit — Tools for Creators who ship",
+  description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
+  keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools"],
+  authors: [{ name: "CreatorKit" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.png",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "CreatorKit — Tools for Creators who ship",
+    description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
+    siteName: "CreatorKit",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "CreatorKit — Tools for Creators who ship",
+    description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
   },
 };
 
@@ -42,11 +30,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
-      >
-        {children}
-        <Toaster />
+      <body className="antialiased bg-background text-foreground" style={{ margin: 0 }}>
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );

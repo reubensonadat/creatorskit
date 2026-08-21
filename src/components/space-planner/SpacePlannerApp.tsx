@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { usePlannerStore } from './store';
 import { CREATOR_TEMPLATES } from './templates';
 import { EQUIPMENT_CATALOG } from './equipment';
@@ -14,9 +16,12 @@ import BudgetPanel from './BudgetPanel';
 import SpacingWarnings from './SpacingWarnings';
 import ProjectInfoPanel from './ProjectInfoPanel';
 import PlannerToolbar from './PlannerToolbar';
+import WindowsPanel from './WindowsPanel';
 import type { Currency, ViewMode } from './types';
 
 export default function SpacePlannerApp() {
+  const hasHydratedRef = useRef(false);
+
   // Store subscriptions
   const viewMode = usePlannerStore((s) => s.viewMode);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
@@ -65,6 +70,9 @@ export default function SpacePlannerApp() {
 
   // Load saved plan on mount
   useEffect(() => {
+    if (hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+
     const saved = loadPlan();
     if (saved) {
       const store = usePlannerStore.getState();
@@ -72,15 +80,30 @@ export default function SpacePlannerApp() {
       store.setCurrency(saved.currency);
       store.setProjectInfo(saved.projectInfo);
       store.setViewMode(saved.viewMode);
-      // Restore placed objects directly
+      store.setTemplateId(saved.templateId);
+
+      // Recover from older duplicated saves by collapsing identical placements.
+      const unique = new Map<string, (typeof saved.placedObjects)[number]>();
       saved.placedObjects.forEach((obj) => {
-        store.placeObject(obj.equipmentId, obj.x, obj.z, obj.rotationY, obj.isMainCamera);
+        const key = [
+          obj.equipmentId,
+          obj.x.toFixed(3),
+          obj.z.toFixed(3),
+          obj.rotationY.toFixed(3),
+          obj.parentId ?? '',
+          obj.isMainCamera ? '1' : '0',
+          obj.customPriceGHS ?? '',
+          obj.customPriceNGN ?? '',
+        ].join('|');
+        if (!unique.has(key)) unique.set(key, obj);
       });
+
+      store.replacePlacedObjects(Array.from(unique.values()));
     } else {
       // Load default template
       loadTemplate('podcast');
     }
-  }, []);
+  }, [loadTemplate, setRoomDimensions]);
 
   // Export handlers
   const handleExportPNG = useCallback(() => {
@@ -111,215 +134,183 @@ export default function SpacePlannerApp() {
   const tplName = CREATOR_TEMPLATES[templateId]?.name || '';
 
   return (
-    <div className="app">
-      {/* TOP BAR */}
-      <header className="topbar">
-        <div className="flex items-center gap-4">
-          {/* Mobile panel toggle */}
-          <button
-            className="btn btn-icon md:hidden"
-            onClick={toggleLeftPanel}
-          >
-            ☰
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center relative overflow-hidden bg-[var(--charcoal)]">
-              <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 30% 30%, rgba(199,93,63,0.5), transparent 60%)' }} />
-              <span className="relative text-sm">🎬</span>
-            </div>
-            <div>
-              <div className="font-display font-bold text-[14px] leading-none">Creator Space Planner</div>
-              <div className="text-[8px] tracking-[0.16em] uppercase mt-0.5 text-[var(--charcoal-3)]">
-                {tplName} Template
-              </div>
-            </div>
-          </div>
-
-          <div className="h-6 w-px bg-[var(--line)] hidden sm:block" />
-          <span className="text-[11px] text-[var(--charcoal-3)] hidden sm:block">
-            {projectInfo.name || 'Untitled Project'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="view-toggle">
-            <button
-              className={viewMode === 'perspective' ? 'active' : ''}
-              onClick={() => setViewMode('perspective')}
-            >
-              🧊 3D
-            </button>
-            <button
-              className={viewMode === 'top' ? 'active' : ''}
-              onClick={() => setViewMode('top')}
-            >
-              📐 Top
-            </button>
-          </div>
-
-          <div className="h-6 w-px bg-[var(--line)] hidden sm:block" />
-
-          {/* Room dimensions */}
-          <div className="hidden md:flex items-center gap-1.5">
-            <input
-              type="number"
-              value={roomWidth}
-              onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
-              className="w-14 px-1.5 py-1 text-[11px] font-mono border border-[var(--line)] rounded bg-white text-center"
-              step="0.5"
-              min="2"
-              max="20"
-            />
-            <span className="text-[11px] text-[var(--charcoal-3)]">×</span>
-            <input
-              type="number"
-              value={roomDepth}
-              onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
-              className="w-14 px-1.5 py-1 text-[11px] font-mono border border-[var(--line)] rounded bg-white text-center"
-              step="0.5"
-              min="2"
-              max="20"
-            />
-            <span className="text-[10px] text-[var(--charcoal-3)]">m</span>
-          </div>
-
-          <div className="h-6 w-px bg-[var(--line)] hidden sm:block" />
-
-          {/* Export buttons */}
-          <button className="btn hidden sm:inline-flex" onClick={handleExportPNG}>
-            📸 PNG
-          </button>
-          <button className="btn btn-primary hidden sm:inline-flex" onClick={handleExportPDF}>
-            📄 PDF
-          </button>
-
-          {/* Mobile right panel toggle */}
-          <button
-            className="btn btn-icon md:hidden"
-            onClick={toggleRightPanel}
-          >
-            ℹ
-          </button>
-        </div>
-      </header>
-
+    <div style={{ background: "#fff", height: "100vh", overflow: "hidden" }}>
       {/* WORKSPACE */}
-      <div className="workspace">
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 300px", height: "100%" }}>
         {/* LEFT PANEL */}
         {leftPanelOpen && (
-          <aside className="panel left-panel">
-            <div className="panel-section">
+          <aside className="panel left-panel" style={{ background: "#fff", borderRight: "2px solid #000", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "8px 10px", borderBottom: "2px solid #000", background: "#f9f9f9" }}>
+              <Link
+                href="/"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "5px 10px",
+                  background: "#000",
+                  color: "#fff",
+                  fontFamily: "monospace",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  cursor: "pointer",
+                  border: "2px solid #000",
+                }}
+              >
+                <ChevronLeft size={12} />
+                Dashboard
+              </Link>
+            </div>
+            <div className="panel-section" style={{ overflow: "hidden" }}>
               <TemplateSelector />
             </div>
-            <div className="panel-section scroll">
+            <div className="panel-section" style={{ overflowY: "auto", flex: 1 }}>
               <div className="panel-title">
-                <span>Equipment</span>
-                <span className="text-[9px] font-normal text-[var(--charcoal-3)]" style={{ textTransform: 'none', letterSpacing: 0 }}>
+                <span style={{ color: "#000" }}>Equipment</span>
+                <span className="text-[9px] font-normal" style={{ color: "#888", textTransform: 'none', letterSpacing: 0 }}>
                   click → place
                 </span>
               </div>
               <EquipmentLibrary />
-            </div>
-            {/* Mobile export buttons */}
-            <div className="panel-section md:hidden">
-              <div className="flex gap-2">
-                <button className="btn flex-1 justify-center" onClick={handleExportPNG}>
-                  📸 PNG
-                </button>
-                <button className="btn btn-primary flex-1 justify-center" onClick={handleExportPDF}>
-                  📄 PDF
-                </button>
-              </div>
+              <WindowsPanel />
             </div>
           </aside>
         )}
 
         {/* CENTER: Canvas */}
-        <section className="canvas-container" ref={canvasContainerRef}>
-          <PlannerCanvas />
+        <section ref={canvasContainerRef} style={{ 
+          position: "relative", 
+          background: "#f0f0f0", 
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}>
+            <PlannerCanvas />
+          </div>
 
           {/* HUD overlays */}
-          <div className="hud hud-tl">
+          <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000" }}>
             <div className="flex items-center gap-3">
               <div>
-                <div className="text-[9px] uppercase tracking-[0.16em] text-[var(--charcoal-3)]">Floor Area</div>
-                <div className="font-display font-bold text-sm mt-0.5">
+                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Floor Area</div>
+                <div className="font-display font-bold text-sm mt-0.5" style={{ color: "#000" }}>
                   {area} m²
                 </div>
               </div>
-              <div className="h-7 w-px bg-[var(--line)]" />
+              <div className="h-7 w-px" style={{ background: "#ddd" }} />
               <div>
-                <div className="text-[9px] uppercase tracking-[0.16em] text-[var(--charcoal-3)]">Dimensions</div>
-                <div className="font-mono text-xs mt-0.5">
+                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Dimensions</div>
+                <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>
                   {roomWidth} × {roomDepth} m
                 </div>
               </div>
-              <div className="h-7 w-px bg-[var(--line)]" />
+              <div className="h-7 w-px" style={{ background: "#ddd" }} />
               <div>
-                <div className="text-[9px] uppercase tracking-[0.16em] text-[var(--charcoal-3)]">Items</div>
-                <div className="font-mono text-xs mt-0.5">{placedObjects.length}</div>
+                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Items</div>
+                <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>{placedObjects.length}</div>
               </div>
             </div>
           </div>
 
-          <div className="hud hud-tr">
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" style={{ boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
-              <span className="text-[var(--charcoal-3)]">Auto-saved</span>
+          <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", gap: 8 }}>
+            {/* View toggle */}
+            <div style={{ display: "flex", border: "2px solid #000" }}>
+              <button
+                onClick={() => setViewMode('perspective')}
+                style={{ 
+                  color: viewMode === 'perspective' ? "#fff" : "#000",
+                  background: viewMode === 'perspective' ? "#000" : "transparent",
+                  padding: "4px 10px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  fontFamily: "monospace",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                🧊 3D
+              </button>
+              <button
+                onClick={() => setViewMode('top')}
+                style={{ 
+                  color: viewMode === 'top' ? "#fff" : "#000",
+                  background: viewMode === 'top' ? "#000" : "transparent",
+                  padding: "4px 10px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  fontFamily: "monospace",
+                  border: "none",
+                  borderLeft: "2px solid #000",
+                  cursor: "pointer",
+                }}
+              >
+                📐 Top
+              </button>
             </div>
-          </div>
 
-          {/* Bottom toolbar (inside canvas HUD) */}
-          <PlannerToolbar />
+            <div className="h-5 w-px" style={{ background: "#ddd" }} />
 
-          {/* Mobile dimension inputs (shown on canvas) */}
-          <div className="hud hud-tl md:hidden" style={{ top: 'auto', bottom: '56px', left: '14px' }}>
-            <div className="flex items-center gap-1.5">
+            {/* Room dimensions */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <input
                 type="number"
                 value={roomWidth}
                 onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
-                className="w-12 px-1 py-0.5 text-[10px] font-mono border border-[var(--line)] rounded bg-white/90 text-center"
+                style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
                 step="0.5"
                 min="2"
                 max="20"
               />
-              <span className="text-[10px] text-[var(--charcoal-3)]">×</span>
+              <span style={{ fontSize: "10px", color: "#888" }}>×</span>
               <input
                 type="number"
                 value={roomDepth}
                 onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
-                className="w-12 px-1 py-0.5 text-[10px] font-mono border border-[var(--line)] rounded bg-white/90 text-center"
+                style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
                 step="0.5"
                 min="2"
                 max="20"
               />
-              <span className="text-[9px] text-[var(--charcoal-3)]">m</span>
+              <span style={{ fontSize: "9px", color: "#888" }}>m</span>
             </div>
+
+            <div className="h-5 w-px" style={{ background: "#ddd" }} />
+
+            {/* Export */}
+            <button onClick={handleExportPNG} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, cursor: "pointer" }}>
+              📸 PNG
+            </button>
+            <button onClick={handleExportPDF} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#000", color: "#fff", borderRadius: 0, cursor: "pointer" }}>
+              📄 PDF
+            </button>
           </div>
+
+          {/* Bottom toolbar */}
+          <PlannerToolbar />
         </section>
 
         {/* RIGHT PANEL */}
         {rightPanelOpen && (
-          <aside className="panel panel-right">
+          <aside className="panel panel-right" style={{ background: "#fff", borderLeft: "2px solid #000", width: 300, minWidth: 260, maxWidth: 340, overflowY: "auto", display: "flex", flexDirection: "column" }}>
             <InspectorPanel />
             <BudgetPanel />
             <SpacingWarnings />
             <ProjectInfoPanel />
 
             {/* Placed items list */}
-            <div className="panel-section scroll">
+            <div className="panel-section" style={{ overflowY: "auto", flex: 1 }}>
               <div className="panel-title">
-                <span>Placed Equipment</span>
-                <span className="font-mono text-[9px] font-semibold text-[var(--charcoal-3)]">
+                <span style={{ color: "#000" }}>Placed Equipment</span>
+                <span className="font-mono text-[9px] font-semibold" style={{ color: "#888" }}>
                   {placedObjects.length}
                 </span>
               </div>
               {placedObjects.length === 0 ? (
-                <div className="text-[11px] text-center py-4 leading-relaxed text-[var(--charcoal-3)]">
-                  No equipment yet.<br />Select from the left panel<br />to start placing.
+                <div className="text-[11px] text-center py-4 leading-relaxed" style={{ color: "#888" }}>
+                  No equipment yet.<br />Select from the library<br />to start placing.
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -328,13 +319,16 @@ export default function SpacePlannerApp() {
                     return (
                       <div
                         key={obj.id}
-                        className="flex items-center gap-2 p-1.5 rounded border border-[var(--line-soft)] bg-[var(--surface-2)] cursor-pointer hover:border-[var(--oat-dark)] transition-colors"
+                        className="flex items-center gap-2 p-1.5 cursor-pointer transition-colors"
+                        style={{ border: "2px solid #eee", background: "#f9f9f9" }}
                         onClick={() => usePlannerStore.getState().setSelectedObject(obj.id)}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = "#000"}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = "#eee"}
                       >
                         <span className="text-sm">{eq.icon}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="text-[11px] font-semibold truncate">{eq.name}</div>
-                          <div className="text-[9px] font-mono text-[var(--charcoal-3)]">
+                          <div className="text-[11px] font-semibold truncate" style={{ color: "#000" }}>{eq.name}</div>
+                          <div className="text-[9px] font-mono" style={{ color: "#888" }}>
                             {obj.isMainCamera ? '★ ' : ''}
                             {obj.x.toFixed(1)}, {obj.z.toFixed(1)}m
                           </div>
