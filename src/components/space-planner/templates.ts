@@ -1,0 +1,130 @@
+import type { CreatorTemplate, CreatorTemplateId } from './types';
+
+// ============================================================
+// 6 Creator Templates
+// Each defines a default room size and equipment placement
+// Coordinates are relative to room center (0,0)
+// ============================================================
+
+export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
+  podcast: {
+    id: 'podcast',
+    name: 'Podcast',
+    icon: '🎙️',
+    description: 'Two-host podcast setup with mics, cameras, and backdrop',
+    defaultRoom: { width: 5, depth: 4 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -1.6, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 1.6, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 1.6, rotationY: Math.PI },
+      { equipmentId: 'microphone', x: -0.8, z: -0.2, rotationY: 0 },
+      { equipmentId: 'microphone', x: 0.8, z: -0.2, rotationY: 0 },
+      { equipmentId: 'chair', x: -0.8, z: 0.3, rotationY: 0 },
+      { equipmentId: 'chair', x: 0.8, z: 0.3, rotationY: 0 },
+      { equipmentId: 'content-table', x: 0, z: -0.6, rotationY: 0 },
+      { equipmentId: 'led-light', x: -1.8, z: 0, rotationY: Math.PI / 2 },
+      { equipmentId: 'led-light', x: 1.8, z: 0, rotationY: -Math.PI / 2 },
+    ],
+  },
+  'product-photography': {
+    id: 'product-photography',
+    name: 'Product Photography',
+    icon: '📷',
+    description: 'Clean product photography setup with softbox lighting',
+    defaultRoom: { width: 4, depth: 3.5 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -1.2, rotationY: 0 },
+      { equipmentId: 'product-stand', x: 0, z: -0.4, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 1.2, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 1.2, rotationY: Math.PI },
+      { equipmentId: 'softbox', x: -1.2, z: 0, rotationY: Math.PI / 3 },
+      { equipmentId: 'softbox', x: 1.2, z: 0, rotationY: -Math.PI / 3 },
+      { equipmentId: 'led-light', x: 0, z: 1.0, rotationY: Math.PI },
+      { equipmentId: 'content-table', x: 1.2, z: -0.8, rotationY: -Math.PI / 4 },
+      { equipmentId: 'shelf-props', x: -1.5, z: -1.2, rotationY: Math.PI / 2 },
+    ],
+  },
+  'fashion-lookbook': {
+    id: 'fashion-lookbook',
+    name: 'Fashion / Lookbook',
+    icon: '👗',
+    description: 'Fashion shoot setup with multiple lighting angles',
+    defaultRoom: { width: 5, depth: 5 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -1.8, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 2.0, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 2.0, rotationY: Math.PI },
+      { equipmentId: 'softbox', x: -1.5, z: 0.5, rotationY: Math.PI / 3 },
+      { equipmentId: 'softbox', x: 1.5, z: 0.5, rotationY: -Math.PI / 3 },
+      { equipmentId: 'led-light', x: -2.0, z: -0.5, rotationY: Math.PI / 2 },
+      { equipmentId: 'led-light', x: 2.0, z: -0.5, rotationY: -Math.PI / 2 },
+      { equipmentId: 'shelf-props', x: -2.0, z: -2.0, rotationY: 0 },
+      { equipmentId: 'content-table', x: 2.0, z: -1.8, rotationY: -Math.PI / 6 },
+      { equipmentId: 'chair', x: -1.0, z: 1.5, rotationY: Math.PI / 4 },
+    ],
+  },
+  livestream: {
+    id: 'livestream',
+    name: 'Livestream',
+    icon: '🔴',
+    description: 'Single-host livestream with ring light and mic',
+    defaultRoom: { width: 3.5, depth: 3 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -1.0, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 0.9, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 0.9, rotationY: Math.PI },
+      { equipmentId: 'led-light', x: 0.5, z: 0.4, rotationY: -Math.PI / 4 },
+      { equipmentId: 'microphone', x: -0.5, z: 0.3, rotationY: 0 },
+      { equipmentId: 'chair', x: 0, z: -0.2, rotationY: 0 },
+      { equipmentId: 'content-table', x: -1.0, z: -0.4, rotationY: Math.PI / 6 },
+      { equipmentId: 'power-station', x: 1.2, z: -1.0, rotationY: 0 },
+    ],
+  },
+  interview: {
+    id: 'interview',
+    name: 'Interview',
+    icon: '🗣️',
+    description: 'Two-person interview with multi-camera angles',
+    defaultRoom: { width: 6, depth: 4.5 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -1.8, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 1.8, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 1.8, rotationY: Math.PI },
+      { equipmentId: 'camera', x: -1.5, z: 1.2, rotationY: Math.PI * 0.75 },
+      { equipmentId: 'tripod', x: -1.5, z: 1.2, rotationY: Math.PI * 0.75 },
+      { equipmentId: 'microphone', x: -0.6, z: -0.1, rotationY: 0 },
+      { equipmentId: 'microphone', x: 0.6, z: -0.1, rotationY: 0 },
+      { equipmentId: 'chair', x: -0.7, z: 0.4, rotationY: 0 },
+      { equipmentId: 'chair', x: 0.7, z: 0.4, rotationY: 0 },
+      { equipmentId: 'content-table', x: 0, z: -0.7, rotationY: 0 },
+      { equipmentId: 'led-light', x: -2.2, z: 0, rotationY: Math.PI / 2 },
+      { equipmentId: 'led-light', x: 2.2, z: 0, rotationY: -Math.PI / 2 },
+    ],
+  },
+  'home-studio': {
+    id: 'home-studio',
+    name: 'Home Studio',
+    icon: '🏠',
+    description: 'Compact bedroom studio with backup power',
+    defaultRoom: { width: 3, depth: 2.5 },
+    items: [
+      { equipmentId: 'backdrop', x: 0, z: -0.8, rotationY: 0 },
+      { equipmentId: 'camera', x: 0, z: 0.8, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'tripod', x: 0, z: 0.8, rotationY: Math.PI },
+      { equipmentId: 'led-light', x: -0.8, z: 0, rotationY: Math.PI / 3 },
+      { equipmentId: 'microphone', x: 0.5, z: 0, rotationY: 0 },
+      { equipmentId: 'chair', x: 0, z: -0.1, rotationY: 0 },
+      { equipmentId: 'shelf-props', x: -1.0, z: -0.8, rotationY: Math.PI / 2 },
+      { equipmentId: 'generator', x: 1.0, z: -1.0, rotationY: 0 },
+    ],
+  },
+};
+
+export const TEMPLATE_IDS: CreatorTemplateId[] = [
+  'podcast',
+  'product-photography',
+  'fashion-lookbook',
+  'livestream',
+  'interview',
+  'home-studio',
+];

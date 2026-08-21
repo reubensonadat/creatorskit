@@ -1,0 +1,20 @@
+﻿  );
+}
+
+const FONTS = [
+  { family: "'Playfair Display', serif", weight: "900" },
+  { family: "'Times New Roman', serif", weight: "700" },
+  { family: "Georgia, serif", weight: "700" },
+];
+
+const ASPECTS = [
+  { id: "9:16" as const, label: "9:16", w: 1080, h: 1920 },
+  { id: "1:1" as const, label: "1:1", w: 1080, h: 1080 },
+  { id: "16:9" as const, label: "16:9", w: 1920, h: 1080 },
+] as const;
+
+const EXAMPLES = [
+  "creator kit",
+  "DIGITAL",
+  "matte poster",
+];
