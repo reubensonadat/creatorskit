@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { usePlannerStore } from './store';
-import { CREATOR_TEMPLATES } from './templates';
-import { EQUIPMENT_CATALOG } from './equipment';
+import { COMPREHENSIVE_TEMPLATES, COMPREHENSIVE_TEMPLATE_IDS } from './templates';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG, ALL_EQUIPMENT_IDS } from './gear-library';
 import { savePlan, loadPlan, clearSavedPlan, hasSavedPlan } from '@/lib/space-planner/storage';
 import { exportPNG, exportPDF } from '@/lib/space-planner/export';
 import PlannerCanvas from './PlannerCanvas';
@@ -21,6 +21,7 @@ import type { Currency, ViewMode } from './types';
 
 export default function SpacePlannerApp() {
   const hasHydratedRef = useRef(false);
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates'>('equipment');
 
   // Store subscriptions
   const viewMode = usePlannerStore((s) => s.viewMode);
@@ -38,13 +39,16 @@ export default function SpacePlannerApp() {
   const rightPanelOpen = usePlannerStore((s) => s.rightPanelOpen);
   const toggleRightPanel = usePlannerStore((s) => s.toggleRightPanel);
   const clearAll = usePlannerStore((s) => s.clearAll);
+  const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
+  const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Power and budget (computed from placedObjects to avoid infinite loop)
-  const powerTotal = placedObjects.reduce((sum, o) => sum + EQUIPMENT_CATALOG[o.equipmentId].watts, 0);
+  const powerTotal = placedObjects.reduce((sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0), 0);
   const budgetTotal = placedObjects.reduce((sum, o) => {
-    const def = EQUIPMENT_CATALOG[o.equipmentId];
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
+    if (!def) return sum;
     if (currency === 'GHS') return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
     return sum + (o.customPriceNGN ?? def.defaultPriceNGN);
   }, 0);
@@ -101,7 +105,7 @@ export default function SpacePlannerApp() {
       store.replacePlacedObjects(Array.from(unique.values()));
     } else {
       // Load default template
-      loadTemplate('podcast');
+      loadTemplate('bedroom-studio');
     }
   }, [loadTemplate, setRoomDimensions]);
 
@@ -131,23 +135,24 @@ export default function SpacePlannerApp() {
   }, [projectInfo, placedObjects, roomWidth, roomDepth, currency, powerTotal, budgetTotal]);
 
   const area = (roomWidth * roomDepth).toFixed(1);
-  const tplName = CREATOR_TEMPLATES[templateId]?.name || '';
+  const tplName = COMPREHENSIVE_TEMPLATES[templateId]?.name || '';
 
   return (
     <div style={{ background: "#fff", height: "100vh", overflow: "hidden" }}>
       {/* WORKSPACE */}
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 300px", height: "100%" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "270px 1fr 300px", height: "100%" }}>
         {/* LEFT PANEL */}
         {leftPanelOpen && (
           <aside className="panel left-panel" style={{ background: "#fff", borderRight: "2px solid #000", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "8px 10px", borderBottom: "2px solid #000", background: "#f9f9f9" }}>
+            {/* Top Bar with Dashboard link */}
+            <div style={{ padding: "8px 10px", borderBottom: "2px solid #000", background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <Link
                 href="/"
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
-                  padding: "5px 10px",
+                  padding: "4px 8px",
                   background: "#000",
                   color: "#fff",
                   fontFamily: "monospace",
@@ -161,20 +166,96 @@ export default function SpacePlannerApp() {
                 <ChevronLeft size={12} />
                 Dashboard
               </Link>
+              <span className="text-[10px] font-mono font-bold text-stone-500 truncate max-w-[140px]">
+                {tplName || '3D Studio'}
+              </span>
             </div>
-            <div className="panel-section" style={{ overflow: "hidden" }}>
-              <TemplateSelector />
+
+            {/* Segmented Mode Switcher */}
+            <div style={{ display: "flex", borderBottom: "2px solid #000", background: "#f0f0f0" }}>
+              <button
+                onClick={() => setLeftSidebarTab('equipment')}
+                style={{
+                  flex: 1,
+                  padding: "7px 6px",
+                  fontFamily: "monospace",
+                  fontSize: "10.5px",
+                  fontWeight: 700,
+                  background: leftSidebarTab === 'equipment' ? "#fff" : "#ebebeb",
+                  color: leftSidebarTab === 'equipment' ? "#000" : "#777",
+                  border: "none",
+                  borderRight: "1.5px solid #000",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
+              >
+                📦 Gear Catalog
+                <span className="text-[9px] bg-stone-200 text-stone-800 px-1 py-0.2 rounded font-mono">{ALL_EQUIPMENT_IDS.length}</span>
+              </button>
+              <button
+                onClick={() => setLeftSidebarTab('templates')}
+                style={{
+                  flex: 1,
+                  padding: "7px 6px",
+                  fontFamily: "monospace",
+                  fontSize: "10.5px",
+                  fontWeight: 700,
+                  background: leftSidebarTab === 'templates' ? "#fff" : "#ebebeb",
+                  color: leftSidebarTab === 'templates' ? "#000" : "#777",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
+              >
+                📐 Studio Presets
+                <span className="text-[9px] bg-stone-200 text-stone-800 px-1 py-0.2 rounded font-mono">{COMPREHENSIVE_TEMPLATE_IDS.length}</span>
+              </button>
             </div>
-            <div className="panel-section" style={{ overflowY: "auto", flex: 1 }}>
-              <div className="panel-title">
-                <span style={{ color: "#000" }}>Equipment</span>
-                <span className="text-[9px] font-normal" style={{ color: "#888", textTransform: 'none', letterSpacing: 0 }}>
-                  click → place
-                </span>
+
+            {/* TAB CONTENT: Gear Library (Default & Primary) */}
+            {leftSidebarTab === 'equipment' && (
+              <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
+                {/* Quick Preset Banner */}
+                <div className="flex items-center justify-between p-2 mb-3 bg-stone-50 dark:bg-stone-800/80 rounded-lg border border-stone-200 dark:border-stone-700 text-[11px]">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span>{COMPREHENSIVE_TEMPLATES[templateId]?.icon || '📐'}</span>
+                    <span className="font-semibold truncate text-stone-800 dark:text-stone-200">
+                      {COMPREHENSIVE_TEMPLATES[templateId]?.name || 'Studio Layout'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setLeftSidebarTab('templates')}
+                    className="text-[10px] text-amber-600 dark:text-amber-400 font-bold font-mono hover:underline whitespace-nowrap ml-1"
+                  >
+                    Change →
+                  </button>
+                </div>
+
+                <div className="panel-title mb-2">
+                  <span style={{ color: "#000" }}>Equipment</span>
+                  <span className="text-[9px] font-normal" style={{ color: "#888", textTransform: 'none', letterSpacing: 0 }}>
+                    click to place in 3D
+                  </span>
+                </div>
+                <EquipmentLibrary />
+                <div className="mt-4 pt-3 border-t border-stone-200 dark:border-stone-700">
+                  <WindowsPanel />
+                </div>
               </div>
-              <EquipmentLibrary />
-              <WindowsPanel />
-            </div>
+            )}
+
+            {/* TAB CONTENT: Studio Presets (Full Browser) */}
+            {leftSidebarTab === 'templates' && (
+              <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
+                <TemplateSelector onSelectTemplate={() => setLeftSidebarTab('equipment')} />
+              </div>
+            )}
           </aside>
         )}
 
@@ -290,6 +371,78 @@ export default function SpacePlannerApp() {
 
           {/* Bottom toolbar */}
           <PlannerToolbar />
+
+          {/* Director Camera Viewfinder HUD overlay */}
+          {showCameraPreview && (
+            <div className="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between p-4 bg-black/35 backdrop-blur-[1px]">
+              {/* Top Bar */}
+              <div className="flex items-center justify-between pointer-events-auto">
+                <div className="flex items-center gap-2 bg-black/80 text-white px-3 py-1.5 border border-white/20 font-mono text-[11px]">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                  <span className="font-bold text-red-500">REC</span>
+                  <span className="text-white/80">00:14:28:12</span>
+                  <span className="text-white/40">|</span>
+                  <span className="text-emerald-400 font-bold">4K 60FPS</span>
+                  <span className="text-white/70">ProRes 422HQ</span>
+                </div>
+
+                <button
+                  onClick={toggleCameraPreview}
+                  className="bg-black/90 hover:bg-black text-white px-3 py-1.5 border border-white/30 font-mono text-[11px] font-bold cursor-pointer transition-colors shadow-lg"
+                >
+                  ✕ Close Viewfinder
+                </button>
+              </div>
+
+              {/* Center Framing Guides */}
+              <div className="relative flex-1 flex items-center justify-center my-2">
+                {/* 16:9 Border Guideline */}
+                <div className="relative w-full max-w-4xl aspect-video border border-white/40 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] flex flex-col justify-between p-3">
+                  {/* Rule of Thirds Grid */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20" />
+                    <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20" />
+                    <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20" />
+                    <div className="absolute top-2/3 left-0 right-0 h-px bg-white/20" />
+                  </div>
+
+                  {/* Corner Crosshairs */}
+                  <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-white" />
+                  <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-white" />
+                  <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-white" />
+                  <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-white" />
+
+                  {/* Center Autofocus Reticle */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 border-2 border-emerald-400/80 flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                  </div>
+
+                  {/* Audio Level Meters */}
+                  <div className="absolute left-4 bottom-4 flex gap-1 items-end h-12 bg-black/60 p-1 border border-white/20">
+                    <div className="w-1.5 h-8 bg-gradient-to-t from-emerald-500 via-amber-400 to-red-500" />
+                    <div className="w-1.5 h-9 bg-gradient-to-t from-emerald-500 via-amber-400 to-red-500" />
+                    <span className="text-[8px] font-mono text-white/80 self-center ml-1">L/R CH</span>
+                  </div>
+
+                  {/* Lens info in frame */}
+                  <div className="absolute right-4 bottom-4 font-mono text-[10px] text-white/90 bg-black/60 px-2 py-1 border border-white/20">
+                    DSLR 50mm Prime • f/2.8 • AF-C Target Tracked
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Telemetry Bar */}
+              <div className="flex items-center justify-center">
+                <div className="flex items-center gap-4 bg-black/85 text-white px-4 py-1.5 border border-white/20 font-mono text-[10px]">
+                  <span><b className="text-white/60">SHUTTER:</b> 1/125s</span>
+                  <span><b className="text-white/60">APERTURE:</b> f/2.8</span>
+                  <span><b className="text-white/60">ISO:</b> 800</span>
+                  <span><b className="text-white/60">WB:</b> 5600K</span>
+                  <span><b className="text-white/60">BATTERY:</b> 98% 🔋</span>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* RIGHT PANEL */}
@@ -315,7 +468,8 @@ export default function SpacePlannerApp() {
               ) : (
                 <div className="space-y-1">
                   {placedObjects.map((obj) => {
-                    const eq = EQUIPMENT_CATALOG[obj.equipmentId];
+                    const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+                    if (!eq) return null;
                     return (
                       <div
                         key={obj.id}

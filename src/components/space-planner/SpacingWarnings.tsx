@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { usePlannerStore } from './store';
-import { EQUIPMENT_CATALOG } from './equipment';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { SpacingWarning } from './types';
 
 const SEVERITY_STYLES = {
@@ -23,7 +23,7 @@ function computeWarnings(
 
   // Equipment too close to wall
   placedObjects.forEach((o) => {
-    const def = EQUIPMENT_CATALOG[o.equipmentId as keyof typeof EQUIPMENT_CATALOG];
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     if (!def) return;
     const halfW = def.dimensions.width / 2;
     const halfD = def.dimensions.depth / 2;
@@ -73,7 +73,7 @@ function computeWarnings(
 
   // Power load
   const totalWatts = placedObjects.reduce((sum, o) => {
-    const def = EQUIPMENT_CATALOG[o.equipmentId as keyof typeof EQUIPMENT_CATALOG];
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     return sum + (def?.watts || 0);
   }, 0);
   if (totalWatts > 0) {
@@ -99,7 +99,7 @@ function computeWarnings(
   if (placedObjects.length > 3) {
     const roomArea = roomWidth * roomDepth;
     const objectFootprint = placedObjects.reduce((sum, o) => {
-      const d = EQUIPMENT_CATALOG[o.equipmentId as keyof typeof EQUIPMENT_CATALOG]?.dimensions;
+      const d = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.dimensions;
       return sum + (d ? d.width * d.depth : 0);
     }, 0);
     const usedRatio = objectFootprint / roomArea;

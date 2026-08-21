@@ -7,17 +7,33 @@ export type Currency = 'GHS' | 'NGN';
 export type ViewMode = 'perspective' | 'top';
 
 export type CreatorTemplateId =
+  | 'bedroom-studio'
   | 'podcast'
   | 'product-photography'
-  | 'fashion-lookbook'
-  | 'livestream'
+  | 'tech-review'
+  | 'streaming-battlestation'
   | 'interview'
+  | 'fashion-lookbook'
+  | 'green-screen-vfx'
+  | 'culinary-kitchen'
+  | 'music-vocal-booth'
+  | 'fitness-dance'
+  | 'craft-flatlay'
+  | 'asmr-sound'
+  | 'executive-webinar'
+  | 'live-dj-booth'
+  | 'makeup-beauty-vanity'
+  | 'unboxing-3cam'
+  | 'voiceover-booth'
+  | 'mobile-vlog-station'
+  | 'gaming-dual-host'
   | 'home-studio';
 
 export interface CreatorTemplate {
   id: CreatorTemplateId;
   name: string;
   icon: string;
+  category?: string;
   description: string;
   defaultRoom: { width: number; depth: number };
   items: TemplateItemPlacement[];
@@ -29,11 +45,11 @@ export interface TemplateItemPlacement {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
-  parentId?: string; // Index reference to parent item in the same template
+  parentId?: number; // Index reference to parent item in the same template
 }
 
 // ============================================================
-// 30 Equipment IDs — 5 batches
+// 42 Equipment IDs — Comprehensive studio catalog
 // ============================================================
 
 export type EquipmentId =
@@ -44,6 +60,9 @@ export type EquipmentId =
   | 'camera-slider'
   | 'webcam'
   | 'drone'
+  | 'overhead-rig'
+  | 'floor-monitor'
+  | 'multi-cam-switcher'
   // Batch 2 — Lighting
   | 'led-light'
   | 'softbox'
@@ -51,6 +70,9 @@ export type EquipmentId =
   | 'rgb-tube'
   | 'desk-lamp'
   | 'beauty-dish'
+  | 'barndoor-light'
+  | 'beauty-mirror'
+  | 'c-stand-flag'
   // Batch 3 — Audio
   | 'microphone'
   | 'lavalier'
@@ -58,6 +80,9 @@ export type EquipmentId =
   | 'studio-monitor'
   | 'podcast-mic'
   | 'acoustic-panel'
+  | 'binaural-mic'
+  | 'vocal-booth-screen'
+  | 'shotgun-mic'
   // Batch 4 — Furniture & Props
   | 'tripod'
   | 'content-table'
@@ -66,6 +91,9 @@ export type EquipmentId =
   | 'product-stand'
   | 'backdrop'
   | 'shelf-props'
+  | 'keyboard-synth'
+  | 'dj-deck'
+  | 'fog-machine'
   // Batch 5 — Power & Accessories
   | 'power-station'
   | 'generator'
@@ -95,6 +123,7 @@ export interface PlacedObject {
   rotationY: number;
   isMainCamera?: boolean;
   parentId?: string; // If set, object is placed on top of this parent object
+  elevationY?: number; // Custom Y elevation offset (if any)
   customPriceGHS?: number;
   customPriceNGN?: number;
 }

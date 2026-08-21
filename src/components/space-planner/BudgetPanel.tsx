@@ -1,7 +1,7 @@
 'use client';
 
 import { usePlannerStore } from './store';
-import { EQUIPMENT_CATALOG } from './equipment';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { Currency } from './types';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = { GHS: 'GH₵', NGN: '₦' };
@@ -14,9 +14,10 @@ export default function BudgetPanel() {
   const showBudgetPanel = usePlannerStore((s) => s.showBudgetPanel);
   const toggleBudgetPanel = usePlannerStore((s) => s.toggleBudgetPanel);
 
-  const powerTotal = placedObjects.reduce((sum, o) => sum + EQUIPMENT_CATALOG[o.equipmentId].watts, 0);
+  const powerTotal = placedObjects.reduce((sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0), 0);
   const budgetTotal = placedObjects.reduce((sum, o) => {
-    const def = EQUIPMENT_CATALOG[o.equipmentId];
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
+    if (!def) return sum;
     if (currency === 'GHS') return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
     return sum + (o.customPriceNGN ?? def.defaultPriceNGN);
   }, 0);
@@ -31,8 +32,10 @@ export default function BudgetPanel() {
   });
 
   const getPrice = (obj: typeof placedObjects[0]) => {
-    if (currency === 'GHS') return obj.customPriceGHS ?? EQUIPMENT_CATALOG[obj.equipmentId].defaultPriceGHS;
-    return obj.customPriceNGN ?? EQUIPMENT_CATALOG[obj.equipmentId].defaultPriceNGN;
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+    if (!def) return 0;
+    if (currency === 'GHS') return obj.customPriceGHS ?? def.defaultPriceGHS;
+    return obj.customPriceNGN ?? def.defaultPriceNGN;
   };
 
   return (
@@ -112,7 +115,8 @@ export default function BudgetPanel() {
               ) : (
                 <div className="space-y-3">
                   {Array.from(grouped.entries()).map(([eqId, items]) => {
-                    const eq = EQUIPMENT_CATALOG[eqId as keyof typeof EQUIPMENT_CATALOG];
+                    const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[eqId];
+                    if (!eq) return null;
                     return (
                       <div key={eqId} className="border-b border-[var(--line-soft)] pb-3">
                         <div className="flex items-center gap-2.5 mb-2">

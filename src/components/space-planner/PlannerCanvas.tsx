@@ -10,6 +10,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { usePlannerStore } from './store';
 import { createEquipmentModel, EQUIPMENT_CATALOG } from './equipment';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { PlacedObject, ViewMode } from './types';
 
 // ============================================================
@@ -19,18 +20,78 @@ import type { PlacedObject, ViewMode } from './types';
 // ============================================================
 
 // Scene colors
-const BG_COLOR = 0xf0f0f0;
-const FLOOR_COLOR = 0xe5e5e5;
-const WALL_COLOR = 0xffffff;
-const BASEBOARD_COLOR = 0x222222;
-const ACCENT_COLOR = 0x000000;
-const GRID_COLOR_A = 'rgba(0, 0, 0, 0.04)';
-const GRID_COLOR_B = 'rgba(0, 0, 0, 0.08)';
-const WINDOW_FRAME_COLOR = 0x333333;
-const WINDOW_GLASS_COLOR = 0xadd8e6;
+const BG_COLOR = 0xf2f0eb;
+const WALL_COLOR = 0xf5f3ee;
+const BASEBOARD_COLOR = 0x2a2825;
+const ACCENT_COLOR = 0x1a1a1a;
+const WINDOW_FRAME_COLOR = 0x222222;
+const WINDOW_GLASS_COLOR = 0xb0d4ea;
 
 const SELECTION_OUTLINE_COLOR = 0x000000;
 const GHOST_OPACITY = 0.45;
+const GRID_COLOR_A = 'rgba(0, 0, 0, 0.04)';
+const GRID_COLOR_B = 'rgba(0, 0, 0, 0.08)';
+
+// Procedural high-resolution White Oak Hardwood Parquet floor texture generator
+let cachedFloorTexture: THREE.CanvasTexture | null = null;
+function getStudioFloorTexture(): THREE.CanvasTexture {
+  if (cachedFloorTexture) return cachedFloorTexture;
+  if (typeof document === 'undefined') return new THREE.CanvasTexture(document.createElement('canvas'));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d')!;
+
+  // Base warm Scandinavian oak tone
+  ctx.fillStyle = '#dfd7cc';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  const numRows = 16;
+  const plankH = 1024 / numRows;
+  const plankW = 256;
+
+  for (let r = 0; r < numRows; r++) {
+    const y = r * plankH;
+    const offset = (r % 3) * 85;
+    for (let x = -plankW + offset; x < 1024 + plankW; x += plankW) {
+      // Natural plank lightness and tone variation
+      const seed = Math.sin(r * 12.3 + x * 0.05);
+      const lightness = 82 + seed * 5 - (r % 2) * 2;
+      ctx.fillStyle = `hsl(38, 22%, ${lightness}%)`;
+      ctx.fillRect(x, y, plankW - 2, plankH - 2);
+
+      // Fine organic woodgrain striations
+      ctx.strokeStyle = `hsla(35, 24%, ${lightness - 8}%, 0.4)`;
+      ctx.lineWidth = 1;
+      for (let g = 6; g < plankH - 4; g += 7) {
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y + g);
+        ctx.bezierCurveTo(
+          x + plankW * 0.35,
+          y + g + Math.sin(x + g) * 1.5,
+          x + plankW * 0.7,
+          y + g - Math.cos(x + g) * 1.5,
+          x + plankW - 4,
+          y + g
+        );
+        ctx.stroke();
+      }
+
+      // Plank micro-bevel seams
+      ctx.strokeStyle = '#c4b7a4';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, plankW - 1, plankH - 1);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  cachedFloorTexture = tex;
+  return tex;
+}
 
 export default function PlannerCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,14 +144,18 @@ export default function PlannerCanvas() {
     // Clear old
     roomGroup.clear();
 
-    // Floor
+    // High-fidelity Floor with Wood Parquet Texture
+    const floorTexture = getStudioFloorTexture().clone();
+    floorTexture.repeat.set(w * 1.2, d * 1.2);
+    floorTexture.needsUpdate = true;
+
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(w, d),
       new THREE.MeshStandardMaterial({ 
-        color: FLOOR_COLOR, 
-        roughness: 0.35, 
+        map: floorTexture,
+        roughness: 0.42, 
         metalness: 0.05,
-        envMapIntensity: 0.5,
+        envMapIntensity: 0.6,
       })
     );
     floor.rotation.x = -Math.PI / 2;
@@ -99,15 +164,19 @@ export default function PlannerCanvas() {
     roomGroup.add(floor);
     floorRef.current = floor;
 
-    // Floor grid lines
-    const gridMat = new THREE.LineBasicMaterial({ color: 0x999999, transparent: true, opacity: 0.15 });
-    for (let i = -d / 2; i <= d / 2; i += 0.4) {
+    // Floor precision measurement grid lines (subtle studio guides)
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x6e6559, transparent: true, opacity: 0.18 });
+    for (let i = -d / 2; i <= d / 2; i += 0.5) {
       const pts = [new THREE.Vector3(-w / 2, 0.002, i), new THREE.Vector3(w / 2, 0.002, i)];
       roomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
     }
+    for (let j = -w / 2; j <= w / 2; j += 0.5) {
+      const pts = [new THREE.Vector3(j, 0.002, -d / 2), new THREE.Vector3(j, 0.002, d / 2)];
+      roomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+    }
 
-    // Walls
-    const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.85, metalness: 0.02 });
+    // Walls with warm matte plaster finish
+    const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.9, metalness: 0.01 });
     const wallBack = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), wallMat);
     wallBack.position.set(0, h / 2, -d / 2);
     wallBack.receiveShadow = true;
@@ -118,14 +187,25 @@ export default function PlannerCanvas() {
     wallLeft.receiveShadow = true;
     roomGroup.add(wallLeft);
 
-    // Baseboards
-    const baseMat = new THREE.MeshStandardMaterial({ color: BASEBOARD_COLOR, roughness: 0.7 });
-    const baseBack = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, 0.02), baseMat);
-    baseBack.position.set(0, 0.04, -d / 2 + 0.07);
+    // Modern Architectural Multi-profile Baseboards
+    const baseMat = new THREE.MeshStandardMaterial({ color: BASEBOARD_COLOR, roughness: 0.5, metalness: 0.1 });
+    const baseTrimMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.6 });
+
+    // Back wall baseboard
+    const baseBack = new THREE.Mesh(new THREE.BoxGeometry(w, 0.09, 0.024), baseMat);
+    baseBack.position.set(0, 0.045, -d / 2 + 0.072);
     roomGroup.add(baseBack);
-    const baseLeft = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, d), baseMat);
-    baseLeft.position.set(-w / 2 + 0.07, 0.04, 0);
+    const baseBackCap = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.028), baseTrimMat);
+    baseBackCap.position.set(0, 0.095, -d / 2 + 0.074);
+    roomGroup.add(baseBackCap);
+
+    // Left wall baseboard
+    const baseLeft = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.09, d), baseMat);
+    baseLeft.position.set(-w / 2 + 0.072, 0.045, 0);
     roomGroup.add(baseLeft);
+    const baseLeftCap = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.014, d), baseTrimMat);
+    baseLeftCap.position.set(-w / 2 + 0.074, 0.095, 0);
+    roomGroup.add(baseLeftCap);
 
     // Render windows from store
     const frameMat = new THREE.MeshStandardMaterial({ color: WINDOW_FRAME_COLOR, roughness: 0.5 });
@@ -307,56 +387,142 @@ export default function PlannerCanvas() {
     if (cameraFrameRef.current) {
       scene.remove(cameraFrameRef.current);
       cameraFrameRef.current.traverse((c) => {
-        if (c instanceof THREE.Mesh) {
+        if (c instanceof THREE.Mesh || c instanceof THREE.Line) {
           c.geometry?.dispose();
-          (c.material as THREE.Material)?.dispose();
+          if (c.material instanceof THREE.Material) c.material.dispose();
         }
       });
       cameraFrameRef.current = null;
     }
 
-    const mainCam = placedObjects.find((o) => o.isMainCamera && o.equipmentId === 'camera');
+    const mainCam =
+      placedObjects.find((o) => o.isMainCamera && o.equipmentId === 'camera') ||
+      placedObjects.find((o) => o.equipmentId === 'camera');
     if (!mainCam) return;
 
     const g = new THREE.Group();
-    const mesh = objectMeshesRef.current.get(mainCam.id);
-    if (mesh) {
-      g.position.copy(mesh.position);
-      g.position.y = 0.12; // camera height
-      g.rotation.y = mainCam.rotationY;
-    } else {
-      g.position.set(mainCam.x, 0.12, mainCam.z);
-      g.rotation.y = mainCam.rotationY;
-    }
+    const camBaseY = getObjectY(mainCam);
+    g.position.set(mainCam.x, camBaseY, mainCam.z);
+    g.rotation.y = mainCam.rotationY;
 
-    // FOV cone lines
-    const fovAngle = 0.5; // ~50 degree half-angle
-    const coneLength = 3.0;
-    const coneWidth = Math.tan(fovAngle) * coneLength;
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xc75d3f, transparent: true, opacity: 0.6 });
-    const left = new THREE.Vector3(0, 0, coneLength);
-    left.x = -coneWidth;
-    const right = new THREE.Vector3(0, 0, coneLength);
-    right.x = coneWidth;
-    const top = new THREE.Vector3(0, coneWidth * 0.6, coneLength);
-    const bottom = new THREE.Vector3(0, -coneWidth * 0.6, coneLength);
+    // Optical Lens center atop the tripod fluid head (y = 1.25m, forward z = 0.14m)
+    const lensY = 1.25;
+    const lensZ = 0.14;
+    const apex = new THREE.Vector3(0, lensY, lensZ);
 
-    [left, right, top, bottom].forEach((pt) => {
-      const pts = [new THREE.Vector3(0, 0, 0), pt];
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      g.add(new THREE.Line(geo, lineMat));
+    // 16:9 Aspect Ratio Frustum Geometry
+    const dNear = 1.0;
+    const wNear = 0.45;
+    const hNear = wNear * (9 / 16); // ~0.253
+    const nTL = new THREE.Vector3(-wNear, lensY + hNear, lensZ + dNear);
+    const nTR = new THREE.Vector3(wNear, lensY + hNear, lensZ + dNear);
+    const nBR = new THREE.Vector3(wNear, lensY - hNear, lensZ + dNear);
+    const nBL = new THREE.Vector3(-wNear, lensY - hNear, lensZ + dNear);
+
+    const dFar = 2.6;
+    const wFar = 1.15;
+    const hFar = wFar * (9 / 16); // ~0.647
+    const fTL = new THREE.Vector3(-wFar, lensY + hFar, lensZ + dFar);
+    const fTR = new THREE.Vector3(wFar, lensY + hFar, lensZ + dFar);
+    const fBR = new THREE.Vector3(wFar, lensY - hFar, lensZ + dFar);
+    const fBL = new THREE.Vector3(-wFar, lensY - hFar, lensZ + dFar);
+
+    const coralColor = 0xc75d3f;
+    const frustumMat = new THREE.LineBasicMaterial({ color: coralColor, transparent: true, opacity: 0.85 });
+    const subtleMat = new THREE.LineBasicMaterial({ color: 0xdb7b60, transparent: true, opacity: 0.45 });
+    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.6 });
+
+    // 1. Four 3D Sightlines from Lens Apex
+    [fTL, fTR, fBR, fBL].forEach((corner) => {
+      const geo = new THREE.BufferGeometry().setFromPoints([apex, corner]);
+      g.add(new THREE.Line(geo, frustumMat));
     });
 
-    // Frame rectangle at end
-    const framePts = [left, new THREE.Vector3(coneWidth, 0, coneLength), right, new THREE.Vector3(-coneWidth, 0, coneLength), left];
-    g.add(new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(framePts),
-      lineMat
-    ));
+    // 2. Far 16:9 Framing Rectangle
+    const farRectGeo = new THREE.BufferGeometry().setFromPoints([fTL, fTR, fBR, fBL, fTL]);
+    g.add(new THREE.Line(farRectGeo, frustumMat));
+
+    // 3. Near Framing Rectangle
+    const nearRectGeo = new THREE.BufferGeometry().setFromPoints([nTL, nTR, nBR, nBL, nTL]);
+    g.add(new THREE.Line(nearRectGeo, subtleMat));
+
+    // 4. Optical Center Sightline & Center Crosshair at Far Plane
+    const centerFar = new THREE.Vector3(0, lensY, lensZ + dFar);
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([apex, centerFar]), subtleMat));
+
+    // Rule of thirds grid on far frame
+    const thirdX1 = -wFar / 3;
+    const thirdX2 = wFar / 3;
+    const thirdY1 = lensY - hFar / 3;
+    const thirdY2 = lensY + hFar / 3;
+    g.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(thirdX1, lensY + hFar, lensZ + dFar),
+          new THREE.Vector3(thirdX1, lensY - hFar, lensZ + dFar),
+        ]),
+        subtleMat
+      )
+    );
+    g.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(thirdX2, lensY + hFar, lensZ + dFar),
+          new THREE.Vector3(thirdX2, lensY - hFar, lensZ + dFar),
+        ]),
+        subtleMat
+      )
+    );
+    g.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-wFar, thirdY1, lensZ + dFar),
+          new THREE.Vector3(wFar, thirdY1, lensZ + dFar),
+        ]),
+        subtleMat
+      )
+    );
+    g.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-wFar, thirdY2, lensZ + dFar),
+          new THREE.Vector3(wFar, thirdY2, lensZ + dFar),
+        ]),
+        subtleMat
+      )
+    );
+
+    // 5. Vertical Drop-lines to Floor (connecting 3D frustum to physical room floor)
+    const gBL = new THREE.Vector3(fBL.x, 0.005, fBL.z);
+    const gBR = new THREE.Vector3(fBR.x, 0.005, fBR.z);
+    const gnBL = new THREE.Vector3(nBL.x, 0.005, nBL.z);
+    const gnBR = new THREE.Vector3(nBR.x, 0.005, nBR.z);
+    [
+      [fBL, gBL],
+      [fBR, gBR],
+      [nBL, gnBL],
+      [nBR, gnBR],
+    ].forEach(([topPt, btmPt]) => {
+      const dropGeo = new THREE.BufferGeometry().setFromPoints([topPt, btmPt]);
+      g.add(new THREE.Line(dropGeo, subtleMat));
+    });
+
+    // 6. Ground Field-of-View Coverage Footprint on Floor
+    const groundPts = [gnBL, gnBR, gBR, gBL, gnBL];
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(groundPts), floorMat));
+
+    // 7. Creator / Host Standing Spot indicator on floor
+    const hostSpot = new THREE.Mesh(
+      new THREE.RingGeometry(0.2, 0.23, 24),
+      new THREE.MeshBasicMaterial({ color: 0xc75d3f, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+    );
+    hostSpot.position.set(0, 0.006, lensZ + 2.0);
+    hostSpot.rotation.x = Math.PI / 2;
+    g.add(hostSpot);
 
     scene.add(g);
     cameraFrameRef.current = g;
-  }, [placedObjects]);
+  }, [placedObjects, getObjectY]);
 
   // ============ View transition ============
   const transitionView = useCallback((mode: ViewMode) => {
@@ -456,8 +622,8 @@ export default function PlannerCanvas() {
     const placedId = objGroup.userData.placedId as string;
     const storeObj = placedObjects.find((o) => o.id === placedId);
     if (!storeObj) return null;
-    const def = EQUIPMENT_CATALOG[storeObj.equipmentId];
-    if (!def.surfaceHeight) return null;
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[storeObj.equipmentId] ?? EQUIPMENT_CATALOG[storeObj.equipmentId as any];
+    if (!def?.surfaceHeight) return null;
     const parentY = getObjectY(storeObj);
     return { parentId: placedId, y: parentY + def.surfaceHeight };
   }, [placedObjects, getObjectIntersection, getObjectY]);
@@ -514,35 +680,37 @@ export default function PlannerCanvas() {
     controls.target.set(0, 0.5, 0);
     controlsRef.current = controls;
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+    // High-fidelity Studio Lighting
+    const ambient = new THREE.AmbientLight(0xfff8ee, 0.72);
     scene.add(ambient);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 0.95);
-    sun.position.set(5, 10, 4);
+    const sun = new THREE.DirectionalLight(0xfffaf0, 1.15);
+    sun.position.set(4.5, 9.5, 3.5);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
     sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.left = -12;
-    sun.shadow.camera.right = 12;
-    sun.shadow.camera.top = 12;
-    sun.shadow.camera.bottom = -12;
+    sun.shadow.camera.left = -10;
+    sun.shadow.camera.right = 10;
+    sun.shadow.camera.top = 10;
+    sun.shadow.camera.bottom = -10;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 40;
-    sun.shadow.bias = -0.0005;
-    sun.shadow.radius = 2;
+    sun.shadow.camera.far = 35;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.radius = 2.5;
     scene.add(sun);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xe5e5e5, 0.6);
+    // Warm ground bounce from hardwood floor
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xd2c4b0, 0.65);
     scene.add(hemi);
 
-    const fill = new THREE.DirectionalLight(0xe5e5e5, 0.55);
-    fill.position.set(-4, 3, -2);
+    // Soft sky/window fill
+    const fill = new THREE.DirectionalLight(0xeaf2ff, 0.52);
+    fill.position.set(-4, 4, -2.5);
     scene.add(fill);
 
     // Window light simulation
-    const windowLight = new THREE.PointLight(0xffffff, 0.32, 8);
-    windowLight.position.set(0, roomHeight * 0.6, -roomDepth / 2 + 1);
+    const windowLight = new THREE.PointLight(0xfffaed, 0.35, 10);
+    windowLight.position.set(0, roomHeight * 0.65, -roomDepth / 2 + 1);
     scene.add(windowLight);
 
     // Room group
@@ -699,6 +867,31 @@ export default function PlannerCanvas() {
           if (oldObj) {
             const dx = nx - oldObj.x;
             const dz = nz - oldObj.z;
+
+            // Check if dragged object is hovering over any table/shelf/stand
+            const draggedDef = COMPREHENSIVE_EQUIPMENT_CATALOG[oldObj.equipmentId] ?? EQUIPMENT_CATALOG[oldObj.equipmentId as any];
+            if (draggedDef && !draggedDef.surfaceHeight) {
+              const tableObj = store.placedObjects.find((t) => {
+                if (t.id === oldObj.id) return false;
+                const tDef = COMPREHENSIVE_EQUIPMENT_CATALOG[t.equipmentId] ?? EQUIPMENT_CATALOG[t.equipmentId as any];
+                if (!tDef?.surfaceHeight) return false;
+                const halfW = tDef.dimensions.width / 2 + 0.05;
+                const halfD = tDef.dimensions.depth / 2 + 0.05;
+                return (
+                  nx >= t.x - halfW &&
+                  nx <= t.x + halfW &&
+                  nz >= t.z - halfD &&
+                  nz <= t.z + halfD
+                );
+              });
+
+              if (tableObj && oldObj.parentId !== tableObj.id) {
+                store.setObjectParent(oldObj.id, tableObj.id);
+              } else if (!tableObj && oldObj.parentId) {
+                store.setObjectParent(oldObj.id, undefined);
+              }
+            }
+
             // Move all children recursively
             const moveChildren = (parentId: string, ddx: number, ddz: number) => {
               store.placedObjects.forEach((child) => {

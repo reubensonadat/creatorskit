@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased bg-background text-foreground" style={{ margin: 0 }}>
+      <body className="antialiased bg-background text-foreground" style={{ margin: 0 }} suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { PlacedObject, CreatorTemplateId, ViewMode, Currency, ProjectInfo, SpacingWarning, WarningType, EquipmentId, WindowPlacement } from './types';
-import { EQUIPMENT_CATALOG } from './equipment';
-import { CREATOR_TEMPLATES } from './templates';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
+import { COMPREHENSIVE_TEMPLATES } from './templates';
 
 // Generate unique ID
 let idCounter = 0;
@@ -55,6 +55,8 @@ interface StoreState {
   updateObjectRotation: (id: string, rotationY: number) => void;
   setSelectedObject: (id: string | null) => void;
   setMainCamera: (id: string) => void;
+  setObjectParent: (id: string, parentId?: string) => void;
+  setObjectElevation: (id: string, elevationY?: number) => void;
   deleteObject: (id: string) => void;
   clearAll: () => void;
   setProjectInfo: (info: Partial<ProjectInfo>) => void;
@@ -77,7 +79,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   roomDepth: 4,
   roomHeight: 3.0,
 
-  templateId: 'podcast',
+  templateId: 'bedroom-studio',
   viewMode: 'perspective',
 
   placedObjects: [],
@@ -164,6 +166,18 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     })),
   })),
 
+  setObjectParent: (id, parentId) => set((s) => ({
+    placedObjects: s.placedObjects.map((o) =>
+      o.id === id ? { ...o, parentId } : o
+    ),
+  })),
+
+  setObjectElevation: (id, elevationY) => set((s) => ({
+    placedObjects: s.placedObjects.map((o) =>
+      o.id === id ? { ...o, elevationY } : o
+    ),
+  })),
+
   deleteObject: (id) => set((s) => {
     // Find all children recursively
     const toDelete = new Set<string>();
@@ -225,7 +239,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   })),
 
   loadTemplate: (templateId) => {
-    const tpl = CREATOR_TEMPLATES[templateId];
+    const tpl = COMPREHENSIVE_TEMPLATES[templateId];
     if (!tpl) return;
     // First pass: create objects without parentId
     const idMap: Record<number, string> = {};
@@ -259,14 +273,15 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   getPowerTotal: () => {
     return get().placedObjects.reduce((sum, o) => {
-      return sum + EQUIPMENT_CATALOG[o.equipmentId].watts;
+      return sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0);
     }, 0);
   },
 
   getBudgetTotal: () => {
     const state = get();
     return state.placedObjects.reduce((sum, o) => {
-      const def = EQUIPMENT_CATALOG[o.equipmentId];
+      const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
+      if (!def) return sum;
       if (state.currency === 'GHS') {
         return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
       }
@@ -284,7 +299,8 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
     // Equipment too close to wall
     objs.forEach((o) => {
-      const def = EQUIPMENT_CATALOG[o.equipmentId];
+      const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
+      if (!def) return;
       const halfW = def.dimensions.width / 2;
       const halfD = def.dimensions.depth / 2;
       if (Math.abs(o.x) + halfW > hw - wallThreshold ||
@@ -357,7 +373,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     if (objs.length > 3) {
       const roomArea = state.roomWidth * state.roomDepth;
       const objectFootprint = objs.reduce((sum, o) => {
-        const d = EQUIPMENT_CATALOG[o.equipmentId].dimensions;
+        const d = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.dimensions ?? { width: 0.5, depth: 0.5 };
         return sum + d.width * d.depth;
       }, 0);
       const usedRatio = objectFootprint / roomArea;
@@ -374,12 +390,16 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   },
 
   getObjectY: (obj) => {
-    if (!obj.parentId) return 0;
-    const state = get();
-    const parent = state.placedObjects.find((o) => o.id === obj.parentId);
-    if (!parent) return 0;
-    const parentDef = EQUIPMENT_CATALOG[parent.equipmentId];
-    const parentY = state.getObjectY(parent);
-    return parentY + (parentDef.surfaceHeight ?? parentDef.dimensions.height);
+    let baseY = 0;
+    if (obj.parentId) {
+      const state = get();
+      const parent = state.placedObjects.find((o) => o.id === obj.parentId);
+      if (parent) {
+        const parentDef = COMPREHENSIVE_EQUIPMENT_CATALOG[parent.equipmentId];
+        const parentY = state.getObjectY(parent);
+        baseY = parentY + (parentDef?.surfaceHeight ?? parentDef?.dimensions.height ?? 0.74);
+      }
+    }
+    return baseY + (obj.elevationY ?? 0);
   },
 }));

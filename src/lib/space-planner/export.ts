@@ -1,5 +1,5 @@
 import type { PlacedObject, Currency, ProjectInfo } from '@/components/space-planner/types';
-import { EQUIPMENT_CATALOG } from '@/components/space-planner/equipment';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from '@/components/space-planner/gear-library';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = { GHS: 'GH\u20b5', NGN: '\u20a6' };
 
@@ -90,7 +90,7 @@ export async function exportPDF(
   // Group by type
   const grouped = new Map<string, number>();
   placedObjects.forEach((o) => {
-    const name = EQUIPMENT_CATALOG[o.equipmentId].name;
+    const name = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.name || o.equipmentId;
     grouped.set(name, (grouped.get(name) || 0) + 1);
   });
 
