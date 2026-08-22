@@ -10,7 +10,7 @@ import {
   Pause,
   Scissors,
   Sliders,
-  Sparkles,
+  PlayCircle,
   RotateCcw,
   Zap,
   Volume2,
@@ -827,7 +827,7 @@ export default function SilenceTrimmerPage() {
             {/* 1-Click Interactive Demo Samples Grid */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <Sparkles size={14} />
+                <PlayCircle size={14} />
                 <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555' }}>
                   Don't have a file ready? Try a 1-Click Interactive Studio Sample:
                 </span>

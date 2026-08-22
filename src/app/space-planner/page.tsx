@@ -25,8 +25,7 @@ function SmallScreenWarning() {
           href="/"
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold font-mono bg-black text-white border-2 border-black hover:bg-white hover:text-black transition-colors"
         >
-          <ChevronLeft size={14} />
-          Back to Dashboard
+          ‹ HOME
         </Link>
       </div>
     </div>

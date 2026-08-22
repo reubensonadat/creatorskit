@@ -1,27 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, ShieldCheck, CheckCircle2, RotateCcw } from 'lucide-react';
 
-const TARGET_URL = 'https://textbehindimage.com/';
+function RedirectInterstitialContent() {
+  const searchParams = useSearchParams();
+  const targetUrl = searchParams.get('url') || 'https://fileconv.online/remove-bg';
+  const toolName = searchParams.get('name') || 'Creator Engine Feature';
+  const toolDesc = searchParams.get('desc') || 'Preparing your dedicated creative workflow session.';
 
-export default function TextBehindBridgePage() {
   const [alreadyRedirected, setAlreadyRedirected] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
-    const storageKey = `ck_redirected_${encodeURIComponent(TARGET_URL)}`;
+    // Check if user already redirected to this URL in current session (e.g. they hit browser BACK)
+    const storageKey = `ck_redirected_${encodeURIComponent(targetUrl)}`;
     const hasRedirected = typeof window !== 'undefined' && sessionStorage.getItem(storageKey) === 'true';
 
     if (hasRedirected) {
       setAlreadyRedirected(true);
-      setSecondsLeft(null);
+      setSecondsLeft(null); // Do not auto-redirect in a loop
     } else {
       setAlreadyRedirected(false);
       setSecondsLeft(5);
     }
-  }, []);
+  }, [targetUrl]);
 
   useEffect(() => {
     if (secondsLeft === null) return;
@@ -30,16 +35,17 @@ export default function TextBehindBridgePage() {
       const timer = setTimeout(() => setSecondsLeft((s) => (s !== null ? s - 1 : null)), 1000);
       return () => clearTimeout(timer);
     } else if (secondsLeft === 0) {
-      const storageKey = `ck_redirected_${encodeURIComponent(TARGET_URL)}`;
+      // Mark as redirected so hitting browser Back doesn't auto-redirect in an infinite loop
+      const storageKey = `ck_redirected_${encodeURIComponent(targetUrl)}`;
       sessionStorage.setItem(storageKey, 'true');
-      window.location.href = TARGET_URL;
+      window.location.href = targetUrl;
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, targetUrl]);
 
   const handleManualProceed = () => {
-    const storageKey = `ck_redirected_${encodeURIComponent(TARGET_URL)}`;
+    const storageKey = `ck_redirected_${encodeURIComponent(targetUrl)}`;
     sessionStorage.setItem(storageKey, 'true');
-    window.location.href = TARGET_URL;
+    window.location.href = targetUrl;
   };
 
   const handleRestartTimer = () => {
@@ -180,12 +186,12 @@ export default function TextBehindBridgePage() {
 
           <div>
             <h2 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.02em', margin: '0 0 8px' }}>
-              {alreadyRedirected ? 'Text Behind Image Studio Ready' : 'Launching Text Behind Image Studio'}
+              {alreadyRedirected ? `${toolName} Ready` : `Launching ${toolName}`}
             </h2>
             <p style={{ fontSize: '0.92rem', color: '#555', maxWidth: 460, margin: '0 auto', lineHeight: 1.5, fontWeight: 500 }}>
               {alreadyRedirected
                 ? 'Your session is prepared. Click below whenever you are ready to continue to the tool.'
-                : 'Preparing high-definition 3D depth typography and automated subject layering session.'}
+                : toolDesc}
             </p>
           </div>
 
@@ -303,5 +309,13 @@ export default function TextBehindBridgePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RedirectPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center font-mono">Preparing redirect...</div>}>
+      <RedirectInterstitialContent />
+    </Suspense>
   );
 }

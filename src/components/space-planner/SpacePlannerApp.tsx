@@ -44,16 +44,26 @@ export default function SpacePlannerApp() {
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
-  // Power and budget (computed from placedObjects to avoid infinite loop)
+  const CURRENCY_SYMBOLS: Record<Currency, string> = {
+    USD: '$',
+    EUR: '€',
+    GBP: '£',
+    GHS: 'GH₵',
+    NGN: '₦',
+  };
+  const sym = CURRENCY_SYMBOLS[currency] || '$';
+
+  // Power and budget
   const powerTotal = placedObjects.reduce((sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0), 0);
   const budgetTotal = placedObjects.reduce((sum, o) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     if (!def) return sum;
+    if (currency === 'USD') return sum + (o.customPriceUSD ?? def.defaultPriceUSD ?? Math.round(def.defaultPriceGHS / 15));
+    if (currency === 'EUR') return sum + (o.customPriceEUR ?? def.defaultPriceEUR ?? Math.round(def.defaultPriceGHS / 16));
+    if (currency === 'GBP') return sum + (o.customPriceGBP ?? def.defaultPriceGBP ?? Math.round(def.defaultPriceGHS / 19));
     if (currency === 'GHS') return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
     return sum + (o.customPriceNGN ?? def.defaultPriceNGN);
   }, 0);
-  const CURRENCY_SYMBOLS: Record<Currency, string> = { GHS: 'GH\u20b5', NGN: '\u20a6' };
-  const sym = CURRENCY_SYMBOLS[currency];
 
   // Auto-save on changes
   useEffect(() => {
@@ -144,7 +154,7 @@ export default function SpacePlannerApp() {
         {/* LEFT PANEL */}
         {leftPanelOpen && (
           <aside className="panel left-panel" style={{ background: "#fff", borderRight: "2px solid #000", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            {/* Top Bar with Dashboard link */}
+            {/* Top Bar with Home link */}
             <div style={{ padding: "8px 10px", borderBottom: "2px solid #000", background: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <Link
                 href="/"
@@ -152,19 +162,18 @@ export default function SpacePlannerApp() {
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
-                  padding: "4px 8px",
+                  padding: "4px 10px",
                   background: "#000",
                   color: "#fff",
                   fontFamily: "monospace",
-                  fontSize: "10px",
-                  fontWeight: 700,
+                  fontSize: "11px",
+                  fontWeight: 900,
                   textDecoration: "none",
                   cursor: "pointer",
                   border: "2px solid #000",
                 }}
               >
-                <ChevronLeft size={12} />
-                Dashboard
+                ‹ HOME
               </Link>
               <span className="text-[10px] font-mono font-bold text-stone-500 truncate max-w-[140px]">
                 {tplName || '3D Studio'}
@@ -177,44 +186,50 @@ export default function SpacePlannerApp() {
                 onClick={() => setLeftSidebarTab('equipment')}
                 style={{
                   flex: 1,
-                  padding: "7px 6px",
+                  padding: "8px 4px",
                   fontFamily: "monospace",
-                  fontSize: "10.5px",
-                  fontWeight: 700,
-                  background: leftSidebarTab === 'equipment' ? "#fff" : "#ebebeb",
-                  color: leftSidebarTab === 'equipment' ? "#000" : "#777",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  background: leftSidebarTab === 'equipment' ? "#fff" : "#f4f4f5",
+                  color: leftSidebarTab === 'equipment' ? "#000" : "#666",
                   border: "none",
-                  borderRight: "1.5px solid #000",
+                  borderRight: "2px solid #000",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 5,
+                  gap: 4,
+                  whiteSpace: "nowrap",
                 }}
               >
-                📦 Gear Catalog
-                <span className="text-[9px] bg-stone-200 text-stone-800 px-1 py-0.2 rounded font-mono">{ALL_EQUIPMENT_IDS.length}</span>
+                <span>📦 Gear</span>
+                <span style={{ fontSize: "9px", background: "#FFDD00", color: "#000", border: "1px solid #000", padding: "0 4px", borderRadius: 2, fontWeight: 900 }}>
+                  {ALL_EQUIPMENT_IDS.length}
+                </span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('templates')}
                 style={{
                   flex: 1,
-                  padding: "7px 6px",
+                  padding: "8px 4px",
                   fontFamily: "monospace",
-                  fontSize: "10.5px",
-                  fontWeight: 700,
-                  background: leftSidebarTab === 'templates' ? "#fff" : "#ebebeb",
-                  color: leftSidebarTab === 'templates' ? "#000" : "#777",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  background: leftSidebarTab === 'templates' ? "#fff" : "#f4f4f5",
+                  color: leftSidebarTab === 'templates' ? "#000" : "#666",
                   border: "none",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 5,
+                  gap: 4,
+                  whiteSpace: "nowrap",
                 }}
               >
-                📐 Studio Presets
-                <span className="text-[9px] bg-stone-200 text-stone-800 px-1 py-0.2 rounded font-mono">{COMPREHENSIVE_TEMPLATE_IDS.length}</span>
+                <span>📐 Presets</span>
+                <span style={{ fontSize: "9px", background: "#FFDD00", color: "#000", border: "1px solid #000", padding: "0 4px", borderRadius: 2, fontWeight: 900 }}>
+                  {COMPREHENSIVE_TEMPLATE_IDS.length}
+                </span>
               </button>
             </div>
 
@@ -222,18 +237,42 @@ export default function SpacePlannerApp() {
             {leftSidebarTab === 'equipment' && (
               <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
                 {/* Quick Preset Banner */}
-                <div className="flex items-center justify-between p-2 mb-3 bg-stone-50 dark:bg-stone-800/80 rounded-lg border border-stone-200 dark:border-stone-700 text-[11px]">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span>{COMPREHENSIVE_TEMPLATES[templateId]?.icon || '📐'}</span>
-                    <span className="font-semibold truncate text-stone-800 dark:text-stone-200">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 10px",
+                    marginBottom: 12,
+                    background: "#ffffff",
+                    border: "2px solid #000000",
+                    boxShadow: "2px 2px 0 #000000",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: "14px" }}>{COMPREHENSIVE_TEMPLATES[templateId]?.icon || '📐'}</span>
+                    <span style={{ fontSize: "11px", fontWeight: 900, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {COMPREHENSIVE_TEMPLATES[templateId]?.name || 'Studio Layout'}
                     </span>
                   </div>
                   <button
                     onClick={() => setLeftSidebarTab('templates')}
-                    className="text-[10px] text-amber-600 dark:text-amber-400 font-bold font-mono hover:underline whitespace-nowrap ml-1"
+                    style={{
+                      background: "#FFDD00",
+                      border: "1.5px solid #000",
+                      padding: "3px 8px",
+                      fontSize: "9.5px",
+                      fontFamily: "monospace",
+                      fontWeight: 900,
+                      color: "#000",
+                      cursor: "pointer",
+                      boxShadow: "1px 1px 0 #000",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
                   >
-                    Change →
+                    CHANGE
                   </button>
                 </div>
 

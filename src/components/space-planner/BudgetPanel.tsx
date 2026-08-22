@@ -4,7 +4,13 @@ import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { Currency } from './types';
 
-const CURRENCY_SYMBOLS: Record<Currency, string> = { GHS: 'GH₵', NGN: '₦' };
+const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  GHS: 'GH₵',
+  NGN: '₦',
+};
 
 export default function BudgetPanel() {
   const placedObjects = usePlannerStore((s) => s.placedObjects);
@@ -14,14 +20,19 @@ export default function BudgetPanel() {
   const showBudgetPanel = usePlannerStore((s) => s.showBudgetPanel);
   const toggleBudgetPanel = usePlannerStore((s) => s.toggleBudgetPanel);
 
+  const getPrice = (obj: typeof placedObjects[0]) => {
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+    if (!def) return 0;
+    if (currency === 'USD') return obj.customPriceUSD ?? def.defaultPriceUSD ?? Math.round(def.defaultPriceGHS / 15);
+    if (currency === 'EUR') return obj.customPriceEUR ?? def.defaultPriceEUR ?? Math.round(def.defaultPriceGHS / 16);
+    if (currency === 'GBP') return obj.customPriceGBP ?? def.defaultPriceGBP ?? Math.round(def.defaultPriceGHS / 19);
+    if (currency === 'GHS') return obj.customPriceGHS ?? def.defaultPriceGHS;
+    return obj.customPriceNGN ?? def.defaultPriceNGN;
+  };
+
   const powerTotal = placedObjects.reduce((sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0), 0);
-  const budgetTotal = placedObjects.reduce((sum, o) => {
-    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
-    if (!def) return sum;
-    if (currency === 'GHS') return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
-    return sum + (o.customPriceNGN ?? def.defaultPriceNGN);
-  }, 0);
-  const sym = CURRENCY_SYMBOLS[currency];
+  const budgetTotal = placedObjects.reduce((sum, o) => sum + getPrice(o), 0);
+  const sym = CURRENCY_SYMBOLS[currency] || '$';
 
   // Group items by type
   const grouped = new Map<string, typeof placedObjects>();
@@ -30,13 +41,6 @@ export default function BudgetPanel() {
     existing.push(o);
     grouped.set(o.equipmentId, existing);
   });
-
-  const getPrice = (obj: typeof placedObjects[0]) => {
-    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
-    if (!def) return 0;
-    if (currency === 'GHS') return obj.customPriceGHS ?? def.defaultPriceGHS;
-    return obj.customPriceNGN ?? def.defaultPriceNGN;
-  };
 
   return (
     <>
@@ -47,14 +51,14 @@ export default function BudgetPanel() {
         </div>
 
         {/* Currency toggle */}
-        <div className="flex gap-1 mb-3">
-          {(['GHS', 'NGN'] as Currency[]).map((c) => (
+        <div className="grid grid-cols-5 gap-1 mb-3">
+          {(['USD', 'EUR', 'GBP', 'GHS', 'NGN'] as Currency[]).map((c) => (
             <button
               key={c}
               onClick={() => setCurrency(c)}
-              className={`btn flex-1 justify-center text-[11px] ${currency === c ? 'active' : ''}`}
+              className={`btn justify-center text-[10px] px-1 py-1 font-mono ${currency === c ? 'active bg-black text-white' : 'bg-white'}`}
             >
-              {CURRENCY_SYMBOLS[c]} {c}
+              {CURRENCY_SYMBOLS[c]}
             </button>
           ))}
         </div>

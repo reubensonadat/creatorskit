@@ -13,6 +13,11 @@ export default function InspectorPanel() {
   const setObjectElevation = usePlannerStore((s) => s.setObjectElevation);
   const getObjectY = usePlannerStore((s) => s.getObjectY);
 
+  const updateObjectLens = usePlannerStore((s) => s.updateObjectLens);
+  const updateObjectLight = usePlannerStore((s) => s.updateObjectLight);
+  const setViewMode = usePlannerStore((s) => s.setViewMode);
+  const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
+
   const obj = placedObjects.find((o) => o.id === selectedObjectId);
   if (!obj) {
     return (
@@ -36,6 +41,26 @@ export default function InspectorPanel() {
   );
   const parentObj = obj.parentId ? placedObjects.find((o) => o.id === obj.parentId) : null;
   const parentDef = parentObj ? COMPREHENSIVE_EQUIPMENT_CATALOG[parentObj.equipmentId] : null;
+
+  const isCamera = eq.category === 'camera' || obj.equipmentId.startsWith('cam') || obj.equipmentId === 'camera';
+  const isLight = eq.category === 'lighting' || obj.equipmentId.includes('light') || obj.equipmentId.includes('softbox') || obj.equipmentId.includes('fresnel') || obj.equipmentId.includes('tube') || obj.equipmentId.includes('lamp');
+
+  const light = obj.lightSettings || {
+    intensity: 80,
+    colorTempKelvin: 5600,
+    colorHex: '#FFFFFF',
+    beamAngle: 60,
+  };
+
+  const currentLens = obj.lensPreset || '24mm';
+
+  const KELVIN_PRESETS = [
+    { k: 2700, label: 'Warm 2700K', desc: 'Candle / Amber' },
+    { k: 3200, label: 'Tungsten 3200K', desc: 'Warm Halogen' },
+    { k: 4500, label: 'Studio 4500K', desc: 'Neutral Balance' },
+    { k: 5600, label: 'Daylight 5600K', desc: 'Cinema Standard' },
+    { k: 6500, label: 'Cool Sky 6500K', desc: 'Overcast Day' },
+  ];
 
   return (
     <div className="panel-section">
@@ -63,6 +88,123 @@ export default function InspectorPanel() {
           <div className="text-[11px] font-mono font-bold">{currentY.toFixed(2)}m</div>
         </div>
       </div>
+
+      {/* Camera Specific Controls */}
+      {isCamera && (
+        <div className="mb-3 p-2 bg-[#fff8eb] border border-[#f5d08a]">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-bold text-[#8a5d00] font-mono uppercase">📷 Lens Focal Length</span>
+            <span className="text-[9px] font-mono px-1 bg-[#f0c050] text-black font-black">{currentLens}</span>
+          </div>
+
+          <div className="grid grid-cols-5 gap-1 mb-2">
+            {(['16mm', '24mm', '35mm', '50mm', '85mm'] as const).map((lens) => (
+              <button
+                key={lens}
+                onClick={() => updateObjectLens(obj.id, lens)}
+                className={`btn justify-center text-[9px] py-0.5 px-0 font-mono ${currentLens === lens ? 'bg-black text-white' : 'bg-white'}`}
+              >
+                {lens}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1">
+            <button
+              className={`btn flex-1 justify-center text-[10px] py-1 ${
+                obj.isMainCamera ? 'bg-[#000] text-white' : 'bg-white border-black'
+              }`}
+              onClick={() => {
+                setMainCamera(obj.id);
+                toggleCameraPreview();
+              }}
+            >
+              {obj.isMainCamera ? '★ Active Main Cam' : 'Set as Main Cam'}
+            </button>
+            <button
+              className="btn flex-1 justify-center text-[10px] py-1 bg-white border-black font-bold"
+              onClick={() => {
+                setMainCamera(obj.id);
+                setViewMode('camera-pov');
+              }}
+            >
+              Director POV ➔
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Studio Lighting Controls */}
+      {isLight && (
+        <div className="mb-3 p-2 bg-[#f0f8ff] border border-[#b8dcff]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-[#004a8f] font-mono uppercase">💡 Studio Lighting Engine</span>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-[#004a8f] text-white font-bold">{light.intensity}%</span>
+          </div>
+
+          {/* Dimmer Slider */}
+          <div className="mb-2">
+            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
+              <span>Dimmer / Output</span>
+              <span>{light.intensity}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={light.intensity}
+              onChange={(e) => updateObjectLight(obj.id, { intensity: parseInt(e.target.value, 10) })}
+              className="w-full accent-black cursor-pointer"
+            />
+          </div>
+
+          {/* Kelvin Temperature */}
+          <div className="mb-2">
+            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
+              <span>Color Temperature</span>
+              <span className="font-bold">{light.colorTempKelvin ?? 5600}K</span>
+            </div>
+            <input
+              type="range"
+              min={2700}
+              max={6500}
+              step={100}
+              value={light.colorTempKelvin ?? 5600}
+              onChange={(e) => updateObjectLight(obj.id, { colorTempKelvin: parseInt(e.target.value, 10) })}
+              className="w-full cursor-pointer"
+              style={{
+                background: 'linear-gradient(to right, #ffb154, #ffe4ce, #ffffff, #d3e8ff)',
+                height: 6,
+                borderRadius: 3,
+              }}
+            />
+            <div className="grid grid-cols-3 gap-1 mt-1">
+              {KELVIN_PRESETS.slice(1, 4).map((kp) => (
+                <button
+                  key={kp.k}
+                  onClick={() => updateObjectLight(obj.id, { colorTempKelvin: kp.k })}
+                  className={`btn justify-center text-[8px] py-0.5 px-1 font-mono ${light.colorTempKelvin === kp.k ? 'bg-black text-white' : 'bg-white'}`}
+                >
+                  {kp.k}K
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* RGB Accent Color (for tubes / mood lights) */}
+          {(obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb')) && (
+            <div className="flex items-center justify-between pt-1 border-t border-[#d0e4f7]">
+              <span className="text-[9px] font-mono text-[#555]">RGB Gel Color</span>
+              <input
+                type="color"
+                value={light.colorHex || '#FF0055'}
+                onChange={(e) => updateObjectLight(obj.id, { colorHex: e.target.value })}
+                className="w-8 h-6 border border-black cursor-pointer p-0"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Surface / Table Stacking */}
       {!eq.surfaceHeight && (
@@ -136,26 +278,6 @@ export default function InspectorPanel() {
           Current: {((((obj.rotationY * 180) / Math.PI) % 360) + 360) % 360}°
         </div>
       </div>
-
-      {/* Main camera toggle */}
-      {obj.equipmentId === 'camera' && (
-        <div className="mb-3 p-2 bg-[#fff5f2] border border-[#f5c6bb]">
-          <div className="text-[10px] font-semibold text-[#c75d3f] mb-1">
-            📷 DSLR 4K Camera View
-          </div>
-          <div className="text-[9px] text-[#666] mb-2 leading-tight">
-            16:9 View Frustum projects from lens atop tripod (1.25m height) with floor coverage guide.
-          </div>
-          <button
-            className={`btn w-full justify-center text-[10px] py-1 ${
-              obj.isMainCamera ? 'bg-[#000] text-white' : 'bg-white border-black'
-            }`}
-            onClick={() => setMainCamera(obj.id)}
-          >
-            {obj.isMainCamera ? '★ Active Main Camera' : 'Set as Main Camera'}
-          </button>
-        </div>
-      )}
 
       {/* Delete */}
       <button

@@ -125,6 +125,7 @@ export default function PlannerCanvas() {
   const placingEquipmentId = usePlannerStore((s) => s.placingEquipmentId);
   const viewMode = usePlannerStore((s) => s.viewMode);
   const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
+  const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const windows = usePlannerStore((s) => s.windows);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
@@ -133,6 +134,75 @@ export default function PlannerCanvas() {
   const setPlacingEquipment = usePlannerStore((s) => s.setPlacingEquipment);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
   const getObjectY = usePlannerStore((s) => s.getObjectY);
+
+  // Register Multi-Angle Studio Snapshot Capture Hook for PDF / Blueprint Export
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ = () => {
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      if (!renderer || !scene || !camera) return null;
+
+      const origPos = camera.position.clone();
+      const origRot = camera.rotation.clone();
+      const origFov = camera.fov;
+      const origTarget = controlsRef.current?.target.clone() || new THREE.Vector3(0, 0.5, 0);
+
+      // Temporarily hide outer walls so they never obstruct, clip, or block the interior studio view
+      const wasRoomVisible = roomGroupRef.current?.visible ?? true;
+      if (roomGroupRef.current) {
+        roomGroupRef.current.visible = false;
+      }
+
+      const angles: Record<string, string> = {};
+      const maxDim = Math.max(roomWidth, roomDepth);
+
+      const capture = (x: number, y: number, z: number, tx: number, ty: number, tz: number, fov: number, key: string) => {
+        camera.fov = fov;
+        camera.position.set(x, y, z);
+        camera.lookAt(tx, ty, tz);
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
+        angles[key] = renderer.domElement.toDataURL('image/jpeg', 0.95);
+      };
+
+      // 1. Hero 3D Perspective (Unobstructed Isometric Overview)
+      capture(roomWidth * 0.9, maxDim * 0.95, roomDepth * 0.95, 0, 0.6, 0, 44, 'hero3D');
+
+      // 2. Front Eye-Level Angle (Looking at stage/desk)
+      capture(0, 1.45, roomDepth * 0.85, 0, 0.9, 0, 48, 'front');
+
+      // 3. Left 45-deg Angle
+      capture(-roomWidth * 0.85, 1.5, roomDepth * 0.85, 0, 0.85, 0, 48, 'left45');
+
+      // 4. Right 45-deg Angle
+      capture(roomWidth * 0.85, 1.5, roomDepth * 0.85, 0, 0.85, 0, 48, 'right45');
+
+      // 5. Top-Down 3D Orthographic View (Actual 3D models viewed directly from above)
+      capture(0, maxDim * 1.35, 0.0001, 0, 0, 0, 42, 'top3D');
+
+      // Restore camera & room walls visibility
+      camera.fov = origFov;
+      camera.position.copy(origPos);
+      camera.rotation.copy(origRot);
+      camera.updateProjectionMatrix();
+      if (roomGroupRef.current) {
+        roomGroupRef.current.visible = wasRoomVisible;
+      }
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(origTarget);
+        controlsRef.current.update();
+      }
+      renderer.render(scene, camera);
+
+      return angles;
+    };
+
+    return () => {
+      delete (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__;
+    };
+  }, [roomWidth, roomDepth, roomHeight]);
 
   // ============ Room building ============
   const buildRoom = useCallback((
@@ -532,20 +602,42 @@ export default function PlannerCanvas() {
 
     const maxDim = Math.max(roomWidth, roomDepth);
 
-    const views: Record<ViewMode, { pos: THREE.Vector3; target: THREE.Vector3; fov: number }> = {
-      perspective: {
-        pos: new THREE.Vector3(maxDim * 0.8, maxDim * 0.65, maxDim * 0.9),
-        target: new THREE.Vector3(0, 0.5, 0),
-        fov: 40,
-      },
-      top: {
-        pos: new THREE.Vector3(0, maxDim * 1.8, 0.01),
-        target: new THREE.Vector3(0, 0, 0),
-        fov: 34,
-      },
-    };
+    // Calculate camera target depending on mode
+    let targetPos = new THREE.Vector3(maxDim * 0.8, maxDim * 0.65, maxDim * 0.9);
+    let targetCenter = new THREE.Vector3(0, 0.5, 0);
+    let targetFov = 40;
 
-    const target = views[mode];
+    if (mode === 'top') {
+      targetPos = new THREE.Vector3(0, maxDim * 1.8, 0.01);
+      targetCenter = new THREE.Vector3(0, 0, 0);
+      targetFov = 34;
+    } else if (mode === 'camera-pov') {
+      const activeCam =
+        placedObjects.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
+        placedObjects.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+
+      if (activeCam) {
+        const camY = getObjectY(activeCam) + 1.25;
+        targetPos = new THREE.Vector3(activeCam.x, camY, activeCam.z);
+        const forwardX = Math.sin(activeCam.rotationY);
+        const forwardZ = Math.cos(activeCam.rotationY);
+        targetCenter = new THREE.Vector3(activeCam.x + forwardX * 3.5, camY, activeCam.z + forwardZ * 3.5);
+
+        const lensMap: Record<string, number> = {
+          '16mm': 84,
+          '24mm': 65,
+          '35mm': 50,
+          '50mm': 39,
+          '85mm': 24,
+        };
+        targetFov = lensMap[activeCam.lensPreset || '24mm'] || 65;
+      }
+    } else if (mode === 'walkthrough') {
+      targetPos = new THREE.Vector3(0, 1.65, roomDepth * 0.38);
+      targetCenter = new THREE.Vector3(0, 1.4, 0);
+      targetFov = 52;
+    }
+
     const startPos = camera.position.clone();
     const startTarget = controls.target.clone();
     const startFov = camera.fov;
@@ -556,9 +648,9 @@ export default function PlannerCanvas() {
     const tick = () => {
       const t = Math.min(1, (performance.now() - startTime) / duration);
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      camera.position.lerpVectors(startPos, target.pos, eased);
-      controls.target.lerpVectors(startTarget, target.target, eased);
-      camera.fov = startFov + (target.fov - startFov) * eased;
+      camera.position.lerpVectors(startPos, targetPos, eased);
+      controls.target.lerpVectors(startTarget, targetCenter, eased);
+      camera.fov = startFov + (targetFov - startFov) * eased;
       camera.updateProjectionMatrix();
       controls.update();
       if (t < 1) {
@@ -571,7 +663,7 @@ export default function PlannerCanvas() {
     };
     if (cameraAnimRef.current) cameraAnimRef.current.cancel();
     tick();
-  }, [roomWidth, roomDepth]);
+  }, [roomWidth, roomDepth, placedObjects, getObjectY]);
 
   // ============ Mouse intersection helper ============
   const getFloorIntersection = useCallback((clientX: number, clientY: number) => {
@@ -786,6 +878,79 @@ export default function PlannerCanvas() {
   useEffect(() => {
     transitionView(viewMode);
   }, [viewMode, transitionView]);
+
+  // ============ Lux & Lighting Coverage Heatmap Floor Texture ============
+  useEffect(() => {
+    const floor = floorRef.current;
+    if (!floor || !(floor.material instanceof THREE.MeshStandardMaterial)) return;
+
+    if (showLuxHeatmap) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d')!;
+
+      // Base cool ambient shadow background
+      ctx.fillStyle = '#081224';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Grid guides
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= 512; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 512);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= 512; y += 32) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(512, y);
+        ctx.stroke();
+      }
+
+      ctx.globalCompositeOperation = 'screen';
+      const lights = placedObjects.filter(
+        (o) =>
+          o.equipmentId.includes('light') ||
+          o.equipmentId.includes('softbox') ||
+          o.equipmentId.includes('fresnel') ||
+          o.equipmentId.includes('tube') ||
+          o.equipmentId.includes('lamp')
+      );
+
+      lights.forEach((light) => {
+        const cx = ((light.x + roomWidth / 2) / roomWidth) * 512;
+        const cy = ((light.z + roomDepth / 2) / roomDepth) * 512;
+        const intensity = (light.lightSettings?.intensity ?? 80) / 100;
+        const radius = 140 * Math.max(0.5, intensity);
+
+        const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, radius);
+        grad.addColorStop(0, `rgba(255, 50, 50, ${0.95 * intensity})`);
+        grad.addColorStop(0.35, `rgba(255, 220, 0, ${0.85 * intensity})`);
+        grad.addColorStop(0.7, `rgba(0, 230, 100, ${0.55 * intensity})`);
+        grad.addColorStop(1, 'rgba(0, 50, 150, 0)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.globalCompositeOperation = 'source-over';
+      const heatmapTex = new THREE.CanvasTexture(canvas);
+      heatmapTex.colorSpace = THREE.SRGBColorSpace;
+      floor.material.map = heatmapTex;
+      floor.material.needsUpdate = true;
+    } else {
+      const normalTex = getStudioFloorTexture().clone();
+      normalTex.repeat.set(roomWidth * 1.2, roomDepth * 1.2);
+      normalTex.needsUpdate = true;
+      floor.material.map = normalTex;
+      floor.material.needsUpdate = true;
+    }
+  }, [showLuxHeatmap, placedObjects, roomWidth, roomDepth]);
 
   // ============ Ghost preview ============
   useEffect(() => {

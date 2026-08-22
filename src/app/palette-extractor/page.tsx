@@ -126,24 +126,19 @@ export default function PaletteExtractorPage() {
     <div style={{ position: "relative", minHeight: "100vh" }}>
       <div className="grid-bg" />
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "56px 24px 96px", position: "relative", zIndex: 1 }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
-          <Link href="/" className="brutalist-button" style={{ padding: "8px 16px" }}>
-            <ChevronLeft size={16} style={{ marginRight: 4 }} /> Dashboard
-          </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em" }}>
-                Palette Extractor
-              </h1>
-              <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "2px 8px", border: "2px solid #000", background: "#fff", color: "#000", fontFamily: "monospace" }}>
-                From Image
-              </span>
-            </div>
-            <p style={{ fontSize: "0.82rem", color: "var(--text-hint)", marginTop: 2 }}>
-              Drop any image and get its dominant colors as click-to-copy hex codes or a ready-to-paste CSS palette. Runs 100% in your browser.
-            </p>
+        {/* Top Title Section */}
+        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+              PALETTE EXTRACTOR
+            </span>
+            <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+              DOMINANT COLOR QUANTIZATION · HEX CODES · CSS PALETTES
+            </span>
           </div>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
+            Palette Extractor
+          </h1>
         </div>
 
         {/* Upload */}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Volume2,
   VolumeX,
@@ -15,7 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Sparkles,
+  Timer,
   Layers,
   FileSpreadsheet,
   FileText,
@@ -106,12 +107,18 @@ export default function ProductionSyncSlatePage() {
   const [syncToneType, setSyncToneType] = useState<'1khz' | '2pop' | '400hz' | 'pink'>('1khz');
 
   // Timecode Engine State
-  const [timecodeMode, setTimecodeMode] = useState<'TOD' | 'FREE_RUN'>('TOD');
+  const [timecodeMode, setTimecodeMode] = useState<'TOD' | 'PERSONAL'>('TOD');
   const [isRunning, setIsRunning] = useState(true);
   const [timecodeStr, setTimecodeStr] = useState('00:00:00:00');
   const [subframeMs, setSubframeMs] = useState('000');
-  const freeRunStartRef = useRef<number>(Date.now());
-  const freeRunElapsedRef = useRef<number>(0);
+
+  // Personal Custom Start Timecode State
+  const [personalHours, setPersonalHours] = useState('01');
+  const [personalMinutes, setPersonalMinutes] = useState('00');
+  const [personalSeconds, setPersonalSeconds] = useState('00');
+  const [personalFrames, setPersonalFrames] = useState('00');
+  const personalStartTimestampRef = useRef<number>(Date.now());
+  const personalElapsedMsRef = useRef<number>(0);
 
   // Clapper Interaction State
   const [isClapping, setIsClapping] = useState(false);
@@ -423,6 +430,7 @@ export default function ProductionSyncSlatePage() {
 
     const updateTimecode = () => {
       if (!isRunning) {
+        animId = requestAnimationFrame(updateTimecode);
         return; // Freeze timecode completely on pause
       }
 
@@ -440,16 +448,24 @@ export default function ProductionSyncSlatePage() {
         setTimecodeStr(`${hours}:${minutes}:${seconds}:${frames}`);
         setSubframeMs(String(ms).padStart(3, '0'));
       } else {
-        const elapsed = Date.now() - freeRunStartRef.current + freeRunElapsedRef.current;
-        const totalSeconds = Math.floor(elapsed / 1000);
-        const ms = elapsed % 1000;
+        const elapsed = Date.now() - personalStartTimestampRef.current + personalElapsedMsRef.current;
+        const baseSeconds =
+          parseInt(personalHours || '0', 10) * 3600 +
+          parseInt(personalMinutes || '0', 10) * 60 +
+          parseInt(personalSeconds || '0', 10) +
+          parseInt(personalFrames || '0', 10) / fps;
 
-        const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-        const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-        const seconds = String(totalSeconds % 60).padStart(2, '0');
-        const frames = String(Math.floor((ms / 1000) * fps)).padStart(2, '0');
+        const currentTotalSec = baseSeconds + elapsed / 1000;
+        const totalSecInt = Math.floor(currentTotalSec);
+        const fractionSec = currentTotalSec - totalSecInt;
 
-        setTimecodeStr(`${hours}:${minutes}:${seconds}:${frames}`);
+        const h = String(Math.floor((totalSecInt / 3600) % 24)).padStart(2, '0');
+        const m = String(Math.floor((totalSecInt % 3600) / 60)).padStart(2, '0');
+        const s = String(totalSecInt % 60).padStart(2, '0');
+        const f = String(Math.floor(fractionSec * fps)).padStart(2, '0');
+        const ms = Math.floor(fractionSec * 1000);
+
+        setTimecodeStr(`${h}:${m}:${s}:${f}`);
         setSubframeMs(String(ms).padStart(3, '0'));
       }
 
@@ -458,7 +474,21 @@ export default function ProductionSyncSlatePage() {
 
     animId = requestAnimationFrame(updateTimecode);
     return () => cancelAnimationFrame(animId);
-  }, [timecodeMode, isRunning, fps]);
+  }, [timecodeMode, isRunning, fps, personalHours, personalMinutes, personalSeconds, personalFrames]);
+
+  const handleResetPersonalTimecode = () => {
+    personalStartTimestampRef.current = Date.now();
+    personalElapsedMsRef.current = 0;
+  };
+
+  const handleSetPresetPersonalTime = (h: string, m: string, s: string, f: string) => {
+    setPersonalHours(h);
+    setPersonalMinutes(m);
+    setPersonalSeconds(s);
+    setPersonalFrames(f);
+    personalStartTimestampRef.current = Date.now();
+    personalElapsedMsRef.current = 0;
+  };
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -577,37 +607,37 @@ export default function ProductionSyncSlatePage() {
 
       {/* Top Header Section */}
       {!isFullscreen && (
-        <div style={{ maxWidth: 1380, margin: '0 auto 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span
-                  style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 900,
-                    letterSpacing: '0.12em',
-                    fontFamily: 'monospace',
-                    textTransform: 'uppercase',
-                    background: '#FFE500',
-                    color: '#000',
-                    padding: '3px 8px',
-                    border: '2px solid #000',
-                    borderRadius: 4,
-                  }}
-                >
-                  HOLLYWOOD PRODUCTION SLATE
-                </span>
-                <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 800, color: isNight ? '#a1a1aa' : '#666' }}>
-                  A/V OPTICAL SYNC · 18% GRAY CALIBRATION · NLE TIMELINE LOGS
-                </span>
-              </div>
-              <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.03em', color: isNight ? '#fff' : '#000', margin: 0, textTransform: 'uppercase' }}>
-                Multi-Cam Production Slate
-              </h1>
+        <div style={{ maxWidth: 1380, margin: '0 auto 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Row 1: Badges & Title */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 900,
+                  letterSpacing: '0.12em',
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase',
+                  background: '#FFE500',
+                  color: '#000',
+                  padding: '3px 8px',
+                  border: '2px solid #000',
+                  borderRadius: 4,
+                }}
+              >
+                HOLLYWOOD PRODUCTION SLATE
+              </span>
+              <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 800, color: isNight ? '#a1a1aa' : '#666' }}>
+                A/V OPTICAL SYNC · 18% GRAY CALIBRATION · NLE TIMELINE LOGS
+              </span>
             </div>
+            <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.03em', color: isNight ? '#fff' : '#000', margin: 0, textTransform: 'uppercase' }}>
+              Multi-Cam Production Slate
+            </h1>
+          </div>
 
-            {/* Quick Actions & Calibration Presets */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Row 2: Quick Actions & Calibration Presets (Dedicated Row Directly Underneath) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {/* Pause / Resume Timecode Button */}
               <button
                 onClick={() => setIsRunning(!isRunning)}
@@ -712,7 +742,6 @@ export default function ProductionSyncSlatePage() {
               </button>
             </div>
           </div>
-        </div>
       )}
 
       {/* Main Workspace Grid */}
@@ -916,32 +945,190 @@ export default function ProductionSyncSlatePage() {
                 padding: '16px 20px',
                 borderRadius: 4,
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                flexDirection: 'column',
+                gap: 12,
                 color: '#fff',
               }}
             >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.72rem', fontFamily: 'monospace', color: '#888', fontWeight: 800, marginBottom: 4 }}>
-                  <span>{timecodeMode === 'TOD' ? 'TIME OF DAY (TOD) MASTER' : 'FREE RUN TIMECODE'}</span>
-                  <span>·</span>
+              {/* Top Controls Row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid #1f1f23', paddingBottom: 10 }}>
+                {/* Timecode Mode Switcher */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => setTimecodeMode('TOD')}
+                    style={{
+                      padding: '4px 9px',
+                      borderRadius: 4,
+                      background: timecodeMode === 'TOD' ? '#FFE500' : '#141417',
+                      color: timecodeMode === 'TOD' ? '#000000' : '#888888',
+                      border: '1px solid ' + (timecodeMode === 'TOD' ? '#FFE500' : '#27272a'),
+                      fontFamily: 'monospace',
+                      fontSize: '0.64rem',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Clock size={12} />
+                    TIME OF DAY (TOD)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setTimecodeMode('PERSONAL');
+                      handleResetPersonalTimecode();
+                    }}
+                    style={{
+                      padding: '4px 9px',
+                      borderRadius: 4,
+                      background: timecodeMode === 'PERSONAL' ? '#FFE500' : '#141417',
+                      color: timecodeMode === 'PERSONAL' ? '#000000' : '#888888',
+                      border: '1px solid ' + (timecodeMode === 'PERSONAL' ? '#FFE500' : '#27272a'),
+                      fontFamily: 'monospace',
+                      fontSize: '0.64rem',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Timer size={12} />
+                    PERSONAL / CUSTOM TIME
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.66rem', fontFamily: 'monospace', color: '#888', fontWeight: 800 }}>
                   <span style={{ color: '#FFE500' }}>{fps} FPS</span>
                   <span>·</span>
                   <span>SUB-FRAME: {subframeMs} MS</span>
                 </div>
+              </div>
 
+              {/* Personal Start Config Bar (Visible when in Personal Mode) */}
+              {timecodeMode === 'PERSONAL' && (
                 <div
                   style={{
-                    fontSize: isFullscreen ? '4.8rem' : '3.6rem',
-                    fontWeight: 900,
-                    fontFamily: 'monospace',
-                    letterSpacing: '0.04em',
-                    color: isClapping ? '#FFE500' : '#ffffff',
-                    lineHeight: 1,
+                    background: '#141417',
+                    border: '1px solid #27272a',
+                    borderRadius: 4,
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 8,
                   }}
                 >
-                  {timecodeStr}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#FFE500', fontWeight: 900 }}>
+                      START TIME:
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'monospace', fontSize: '0.72rem', color: '#fff' }}>
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={personalHours}
+                        onChange={(e) => {
+                          setPersonalHours(e.target.value);
+                          handleResetPersonalTimecode();
+                        }}
+                        style={{ width: 28, background: '#000', border: '1px solid #3f3f46', color: '#FFE500', textAlign: 'center', borderRadius: 2, padding: '2px 0', fontWeight: 900 }}
+                      />
+                      <span>:</span>
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={personalMinutes}
+                        onChange={(e) => {
+                          setPersonalMinutes(e.target.value);
+                          handleResetPersonalTimecode();
+                        }}
+                        style={{ width: 28, background: '#000', border: '1px solid #3f3f46', color: '#FFE500', textAlign: 'center', borderRadius: 2, padding: '2px 0', fontWeight: 900 }}
+                      />
+                      <span>:</span>
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={personalSeconds}
+                        onChange={(e) => {
+                          setPersonalSeconds(e.target.value);
+                          handleResetPersonalTimecode();
+                        }}
+                        style={{ width: 28, background: '#000', border: '1px solid #3f3f46', color: '#FFE500', textAlign: 'center', borderRadius: 2, padding: '2px 0', fontWeight: 900 }}
+                      />
+                      <span>:</span>
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={personalFrames}
+                        onChange={(e) => {
+                          setPersonalFrames(e.target.value);
+                          handleResetPersonalTimecode();
+                        }}
+                        style={{ width: 28, background: '#000', border: '1px solid #3f3f46', color: '#FFE500', textAlign: 'center', borderRadius: 2, padding: '2px 0', fontWeight: 900 }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      onClick={() => handleSetPresetPersonalTime('00', '00', '00', '00')}
+                      style={{ padding: '3px 7px', background: '#27272a', border: '1px solid #3f3f46', borderRadius: 3, color: '#fff', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      00:00:00:00 (Zero)
+                    </button>
+                    <button
+                      onClick={() => handleSetPresetPersonalTime('01', '00', '00', '00')}
+                      style={{ padding: '3px 7px', background: '#27272a', border: '1px solid #3f3f46', borderRadius: 3, color: '#FFE500', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      01:00:00:00 (Reel 1)
+                    </button>
+                    <button
+                      onClick={() => handleSetPresetPersonalTime('10', '00', '00', '00')}
+                      style={{ padding: '3px 7px', background: '#27272a', border: '1px solid #3f3f46', borderRadius: 3, color: '#fff', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      10:00:00:00 (Reel 10)
+                    </button>
+
+                    <button
+                      onClick={handleResetPersonalTimecode}
+                      style={{ padding: '3px 7px', background: '#FFE500', border: 'none', borderRadius: 3, color: '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                      title="Reset timecode to custom start"
+                    >
+                      <RotateCcw size={10} />
+                      RESET
+                    </button>
+
+                    <button
+                      onClick={() => setIsRunning(!isRunning)}
+                      style={{ padding: '3px 7px', background: isRunning ? '#ef4444' : '#22c55e', border: 'none', borderRadius: 3, color: '#fff', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                    >
+                      {isRunning ? <Pause size={10} /> : <Play size={10} />}
+                      {isRunning ? 'PAUSE' : 'RUN'}
+                    </button>
+                  </div>
                 </div>
+              )}
+
+              {/* Main Digits Display & Rotating Dial */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div
+                    style={{
+                      fontSize: isFullscreen ? '4.8rem' : '3.6rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      letterSpacing: '0.04em',
+                      color: isClapping ? '#FFE500' : '#ffffff',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {timecodeStr}
+                  </div>
 
                 {/* Live Peak VU Meter */}
                 {micMonitorActive && (
@@ -971,6 +1158,7 @@ export default function ProductionSyncSlatePage() {
                 </span>
               </div>
             </div>
+          </div>
 
             {/* SLATE PRODUCTION METADATA GRID */}
             <div style={{ display: 'flex', flexDirection: 'column', border: '2px solid #000', borderRadius: 4, overflow: 'hidden' }}>

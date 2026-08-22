@@ -35,11 +35,15 @@ interface StoreState {
   // Project info
   projectInfo: ProjectInfo;
 
+  // Windows
+  windows: WindowPlacement[];
+
   // UI state
   showBudgetPanel: boolean;
   showProjectInfo: boolean;
   showWarnings: boolean;
   showCameraPreview: boolean;
+  showLuxHeatmap: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
@@ -53,6 +57,8 @@ interface StoreState {
   replacePlacedObjects: (objects: PlacedObject[]) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
   updateObjectRotation: (id: string, rotationY: number) => void;
+  updateObjectLens: (id: string, lens: CameraLensPreset) => void;
+  updateObjectLight: (id: string, settings: Partial<LightSettings>) => void;
   setSelectedObject: (id: string | null) => void;
   setMainCamera: (id: string) => void;
   setObjectParent: (id: string, parentId?: string) => void;
@@ -61,10 +67,14 @@ interface StoreState {
   clearAll: () => void;
   setProjectInfo: (info: Partial<ProjectInfo>) => void;
   setCustomPrice: (id: string, currency: Currency, price: number) => void;
+  addWindow: (wall: 'back' | 'left') => void;
+  removeWindow: (id: string) => void;
+  updateWindow: (id: string, updates: Partial<WindowPlacement>) => void;
   toggleBudgetPanel: () => void;
   toggleProjectInfo: () => void;
   toggleWarnings: () => void;
   toggleCameraPreview: () => void;
+  toggleLuxHeatmap: () => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
   loadTemplate: (templateId: CreatorTemplateId) => void;
@@ -86,7 +96,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   selectedObjectId: null,
   placingEquipmentId: null,
 
-  currency: 'GHS',
+  currency: 'USD',
 
   projectInfo: {
     name: 'My Creator Setup',
@@ -157,6 +167,29 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     ),
   })),
 
+  updateObjectLens: (id, lens) => set((s) => ({
+    placedObjects: s.placedObjects.map((o) =>
+      o.id === id ? { ...o, lensPreset: lens } : o
+    ),
+  })),
+
+  updateObjectLight: (id, settings) => set((s) => ({
+    placedObjects: s.placedObjects.map((o) =>
+      o.id === id
+        ? {
+            ...o,
+            lightSettings: {
+              intensity: o.lightSettings?.intensity ?? 80,
+              colorTempKelvin: o.lightSettings?.colorTempKelvin ?? 5600,
+              colorHex: o.lightSettings?.colorHex ?? '#FFFFFF',
+              beamAngle: o.lightSettings?.beamAngle ?? 60,
+              ...settings,
+            },
+          }
+        : o
+    ),
+  })),
+
   setSelectedObject: (id) => set({ selectedObjectId: id }),
 
   setMainCamera: (id) => set((s) => ({
@@ -206,9 +239,11 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   setCustomPrice: (id, currency, price) => set((s) => ({
     placedObjects: s.placedObjects.map((o) => {
       if (o.id !== id) return o;
-      return currency === 'GHS'
-        ? { ...o, customPriceGHS: price }
-        : { ...o, customPriceNGN: price };
+      if (currency === 'USD') return { ...o, customPriceUSD: price };
+      if (currency === 'EUR') return { ...o, customPriceEUR: price };
+      if (currency === 'GBP') return { ...o, customPriceGBP: price };
+      if (currency === 'GHS') return { ...o, customPriceGHS: price };
+      return { ...o, customPriceNGN: price };
     }),
   })),
 
@@ -216,6 +251,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   toggleProjectInfo: () => set((s) => ({ showProjectInfo: !s.showProjectInfo })),
   toggleWarnings: () => set((s) => ({ showWarnings: !s.showWarnings })),
   toggleCameraPreview: () => set((s) => ({ showCameraPreview: !s.showCameraPreview })),
+  toggleLuxHeatmap: () => set((s) => ({ showLuxHeatmap: !s.showLuxHeatmap })),
   toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
 
@@ -282,6 +318,15 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     return state.placedObjects.reduce((sum, o) => {
       const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
       if (!def) return sum;
+      if (state.currency === 'USD') {
+        return sum + (o.customPriceUSD ?? def.defaultPriceUSD ?? Math.round(def.defaultPriceGHS / 15));
+      }
+      if (state.currency === 'EUR') {
+        return sum + (o.customPriceEUR ?? def.defaultPriceEUR ?? Math.round(def.defaultPriceGHS / 16));
+      }
+      if (state.currency === 'GBP') {
+        return sum + (o.customPriceGBP ?? def.defaultPriceGBP ?? Math.round(def.defaultPriceGHS / 19));
+      }
       if (state.currency === 'GHS') {
         return sum + (o.customPriceGHS ?? def.defaultPriceGHS);
       }

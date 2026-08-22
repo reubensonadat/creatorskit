@@ -809,6 +809,102 @@ function buildPowerItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
 }
 
 // ============================================================
+// 7. HUMAN CREATOR SCALE REFERENCE MANNEQUINS
+// ============================================================
+function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
+  const isSeated = id.includes('seated');
+  const isGuest = id.includes('guest');
+  const skinCol = 0xdfa070;
+  const shirtCol = isGuest ? 0x8b3a4a : 0x223348;
+  const pantsCol = 0x1a2230;
+  const shoeCol = 0x222222;
+
+  if (!isSeated) {
+    // ---- STANDING CREATOR FIGURE (1.75m) ----
+    // Shoes
+    addBox(g, 0.12, 0.08, 0.26, shoeCol, -0.11, 0.04, 0.03, { roughness: 0.8 });
+    addBox(g, 0.12, 0.08, 0.26, shoeCol, 0.11, 0.04, 0.03, { roughness: 0.8 });
+    addBox(g, 0.12, 0.02, 0.27, 0xffffff, -0.11, 0.01, 0.03, { roughness: 0.5 });
+    addBox(g, 0.12, 0.02, 0.27, 0xffffff, 0.11, 0.01, 0.03, { roughness: 0.5 });
+
+    // Legs
+    addCyl(g, 0.07, 0.055, 0.82, pantsCol, -0.11, 0.48, 0, 12, { roughness: 0.7 });
+    addCyl(g, 0.07, 0.055, 0.82, pantsCol, 0.11, 0.48, 0, 12, { roughness: 0.7 });
+
+    // Hips / Pelvis
+    addBox(g, 0.34, 0.16, 0.22, pantsCol, 0, 0.92, 0, { roughness: 0.7 });
+
+    // Torso / Jacket
+    addBox(g, 0.38, 0.48, 0.24, shirtCol, 0, 1.22, 0, { roughness: 0.8 });
+
+    // Arms
+    addCyl(g, 0.055, 0.045, 0.58, shirtCol, -0.23, 1.16, 0, 10, { rz: 0.1, roughness: 0.8 });
+    addCyl(g, 0.055, 0.045, 0.58, shirtCol, 0.23, 1.16, 0, 10, { rz: -0.1, roughness: 0.8 });
+
+    // Hands
+    addBox(g, 0.06, 0.09, 0.06, skinCol, -0.26, 0.84, 0, { roughness: 0.6 });
+    addBox(g, 0.06, 0.09, 0.06, skinCol, 0.26, 0.84, 0, 0, { roughness: 0.6 });
+
+    // Neck
+    addCyl(g, 0.055, 0.06, 0.09, skinCol, 0, 1.48, 0, 12, { roughness: 0.6 });
+
+    // Head
+    const headMat = makeMat(skinCol, 0.6);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 18), headMat);
+    head.scale.set(1, 1.18, 1.05);
+    head.position.set(0, 1.62, 0);
+    head.castShadow = true;
+    g.add(head);
+
+    // Studio Headphones
+    addCyl(g, 0.045, 0.045, 0.04, 0x111111, -0.12, 1.62, 0, 12, { rz: Math.PI / 2, roughness: 0.4 });
+    addCyl(g, 0.045, 0.045, 0.04, 0x111111, 0.12, 1.62, 0, 12, { rz: Math.PI / 2, roughness: 0.4 });
+    const bandMat = makeMat(0x111111, 0.4);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.012, 8, 24, Math.PI), bandMat);
+    band.position.set(0, 1.63, 0);
+    band.rotation.z = -Math.PI / 2;
+    band.rotation.y = Math.PI / 2;
+    g.add(band);
+  } else {
+    // ---- SEATED CREATOR FIGURE ----
+    // Feet
+    addBox(g, 0.12, 0.08, 0.24, shoeCol, -0.12, 0.04, 0.32, { roughness: 0.8 });
+    addBox(g, 0.12, 0.08, 0.24, shoeCol, 0.12, 0.04, 0.32, { roughness: 0.8 });
+
+    // Lower legs (Vertical)
+    addCyl(g, 0.065, 0.055, 0.45, pantsCol, -0.12, 0.24, 0.32, 12, { roughness: 0.7 });
+    addCyl(g, 0.065, 0.055, 0.45, pantsCol, 0.12, 0.24, 0.32, 12, { roughness: 0.7 });
+
+    // Thighs (Horizontal)
+    addCyl(g, 0.07, 0.065, 0.42, pantsCol, -0.12, 0.47, 0.16, 12, { rx: Math.PI / 2, roughness: 0.7 });
+    addCyl(g, 0.07, 0.065, 0.42, pantsCol, 0.12, 0.47, 0.16, 12, { rx: Math.PI / 2, roughness: 0.7 });
+
+    // Pelvis / Seat
+    addBox(g, 0.36, 0.14, 0.26, pantsCol, 0, 0.5, -0.05, { roughness: 0.7 });
+
+    // Torso (Upright)
+    addBox(g, 0.38, 0.46, 0.24, shirtCol, 0, 0.78, -0.05, { roughness: 0.8 });
+
+    // Arms resting forward towards desk
+    addCyl(g, 0.055, 0.045, 0.38, shirtCol, -0.22, 0.75, 0.08, 10, { rx: -0.6, roughness: 0.8 });
+    addCyl(g, 0.055, 0.045, 0.38, shirtCol, 0.22, 0.75, 0.08, 10, { rx: -0.6, roughness: 0.8 });
+
+    // Neck & Head
+    addCyl(g, 0.055, 0.06, 0.09, skinCol, 0, 1.05, -0.05, 12, { roughness: 0.6 });
+    const headMat = makeMat(skinCol, 0.6);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 18), headMat);
+    head.scale.set(1, 1.18, 1.05);
+    head.position.set(0, 1.2, -0.05);
+    head.castShadow = true;
+    g.add(head);
+
+    // Headphones
+    addCyl(g, 0.045, 0.045, 0.04, 0x111111, -0.12, 1.2, -0.05, 12, { rz: Math.PI / 2, roughness: 0.4 });
+    addCyl(g, 0.045, 0.045, 0.04, 0x111111, 0.12, 1.2, -0.05, 12, { rz: Math.PI / 2, roughness: 0.4 });
+  }
+}
+
+// ============================================================
 // MAIN PROCEDURAL MODEL DISPATCHER
 // ============================================================
 export function createDetailedProceduralModel(equipmentId: string): THREE.Group {
@@ -824,7 +920,9 @@ export function createDetailedProceduralModel(equipmentId: string): THREE.Group 
   const cat = def.category;
   const name = (def.name || equipmentId).toLowerCase();
 
-  if (cat === 'camera' || equipmentId.startsWith('cam-') || name.includes('camera') || name.includes('lens') || name.includes('gimbal') || name.includes('slider') || name.includes('prompter') || name.includes('drone') || name.includes('monitor')) {
+  if (equipmentId.startsWith('human-') || name.includes('human') || name.includes('talent') || name.includes('creator figure')) {
+    buildHumanModel(g, def, equipmentId);
+  } else if (cat === 'camera' || equipmentId.startsWith('cam-') || name.includes('camera') || name.includes('lens') || name.includes('gimbal') || name.includes('slider') || name.includes('prompter') || name.includes('drone') || name.includes('monitor')) {
     buildCameraItem(g, def, equipmentId);
   } else if (cat === 'lighting' || equipmentId.startsWith('light-') || name.includes('light') || name.includes('softbox') || name.includes('fresnel') || name.includes('tube') || name.includes('panel') || name.includes('spotlight') || name.includes('flag') || name.includes('scrim') || name.includes('haze') || name.includes('fog')) {
     buildLightingItem(g, def, equipmentId);

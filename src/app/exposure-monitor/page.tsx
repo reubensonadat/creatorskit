@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Camera,
   Video,
@@ -10,7 +11,6 @@ import {
   Eye,
   Activity,
   Layers,
-  Sparkles,
   RefreshCw,
   Maximize2,
   AlertTriangle,
@@ -595,22 +595,22 @@ export default function ExposureMonitorPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 900,
-                  letterSpacing: '0.12em',
-                  fontFamily: 'monospace',
-                  textTransform: 'uppercase',
-                  background: '#FFE500',
-                  color: '#000',
-                  padding: '2px 8px',
-                  border: '1.5px solid #000',
-                  boxShadow: '2px 2px 0 #000',
-                }}
-              >
-                CINEMA SCOPES · LIGHTING LAB
-              </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 900,
+                    letterSpacing: '0.12em',
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    background: '#FFE500',
+                    color: '#000',
+                    padding: '2px 8px',
+                    border: '1.5px solid #000',
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  CINEMA SCOPES · LIGHTING LAB
+                </span>
               <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
                 ARRI/RED FALSE COLOR · LUMA WAVEFORM · SKIN TONE VECTORSCOPE
               </span>

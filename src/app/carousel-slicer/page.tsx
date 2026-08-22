@@ -97,24 +97,19 @@ export default function CarouselSlicerPage() {
       <div className="grid-bg" />
 
       <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
-          <Link href="/" className="brutalist-button" style={{ padding: "8px 16px" }}>
-            <ChevronLeft size={16} style={{ marginRight: 4 }} /> Dashboard
-          </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em" }}>
-                Carousel Slicer
-              </h1>
-              <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "2px 8px", border: "2px solid #000", background: "#fff", color: "#000", fontFamily: "monospace" }}>
-                Splits
-              </span>
-            </div>
-            <p style={{ fontSize: "0.82rem", color: "var(--text-hint)", marginTop: 2 }}>
-              Convert wide landscape grids or panoramas into perfectly sized individual carousel slices.
-            </p>
+        {/* Top Title Section */}
+        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+              SEAMLESS CAROUSEL SLICER
+            </span>
+            <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+              INSTAGRAM & LINKEDIN PANORAMA SPLITTER · ZIP EXPORT
+            </span>
           </div>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
+            Carousel Slicer
+          </h1>
         </div>
 
         {/* Upload Zone */}
@@ -140,31 +135,32 @@ export default function CarouselSlicerPage() {
               padding: "100px 40px",
               textAlign: "center",
               cursor: "pointer",
-              border: `4px dashed ${isDragging ? "var(--accent)" : "#000000"}`,
-              background: isDragging ? "rgba(94, 155, 198, 0.02)" : "#ffffff",
+              border: `4px dashed ${isDragging ? "#FFDD00" : "#000000"}`,
+              background: "#ffffff",
+              boxShadow: "6px 6px 0 #000000",
               transition: "all 0.2s ease",
             }}
           >
             <div
               style={{
-                width: 72,
-                height: 72,
+                width: 64,
+                height: 64,
                 border: "3px solid #000000",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                marginBottom: 24,
-                background: "#ffffff",
+                marginBottom: 20,
+                background: "#FFDD00",
                 boxShadow: "4px 4px 0 #000000",
               }}
             >
-              <Columns size={32} style={{ color: "#000" }} />
+              <Columns size={30} style={{ color: "#000" }} />
             </div>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
               Upload panoramas or banner layouts
             </h3>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", maxWidth: 440, lineHeight: 1.6, fontWeight: 500 }}>
-              Supports wide custom banner files. Ideal ratios: 3:1 or wider. File stays secure in your client memory.
+            <p style={{ fontSize: "0.88rem", color: "#666", maxWidth: 440, lineHeight: 1.6, fontWeight: 500 }}>
+              Supports wide custom banner files. Ideal ratios: 3:1 or wider. 100% processed locally in your browser.
             </p>
             <input
               ref={fileRef}
@@ -181,7 +177,7 @@ export default function CarouselSlicerPage() {
 
         {/* Active layout editor */}
         {preview && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             
             {(isProcessing || isZipping) && (
               <SpeederLoader message={isProcessing ? "Splitting Panorama" : "Generating ZIP Bundle"} />
@@ -190,7 +186,7 @@ export default function CarouselSlicerPage() {
             {/* Main Preview Screen */}
             <div
               style={{
-                border: "4px solid #000000",
+                border: "3px solid #000000",
                 background: "#ffffff",
                 padding: "24px",
                 display: "flex",
@@ -202,7 +198,7 @@ export default function CarouselSlicerPage() {
               <img
                 src={preview}
                 alt="Source panorama"
-                style={{ maxWidth: "100%", maxHeight: "300px", objectFit: "contain", border: "3px solid #000000" }}
+                style={{ maxWidth: "100%", maxHeight: "320px", objectFit: "contain", border: "2px solid #000000" }}
               />
             </div>
 
@@ -210,47 +206,55 @@ export default function CarouselSlicerPage() {
             <div
               className="brutalist-card"
               style={{
-                padding: "24px 32px",
+                padding: "20px 24px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 32,
+                gap: 24,
                 flexWrap: "wrap",
                 background: "#ffffff",
+                border: "3px solid #000",
+                boxShadow: "6px 6px 0 #000",
               }}
             >
-              <div className="slider-row" style={{ flex: 1, minWidth: 260 }}>
-                <label>Number of Slide Segments</label>
-                <div className="slider-content" style={{ boxShadow: "none", border: "3px solid #000" }}>
-                  <div className="slider-wrapper">
-                    <input
-                      type="range"
-                      min={2}
-                      max={10}
-                      step={1}
-                      value={numSlides}
-                      onChange={(e) => {
-                        setNumSlides(Number(e.target.value));
-                        setSlices([]);
-                      }}
-                      className="custom-slider"
-                    />
-                  </div>
-                  <div className="slider-divider" />
-                  <span className="slider-value">{numSlides}</span>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>
+                    Number of Slide Segments
+                  </label>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 900, fontFamily: "monospace", background: "#FFDD00", padding: "1px 8px", border: "1.5px solid #000" }}>
+                    {numSlides} SLIDES
+                  </span>
                 </div>
+                <input
+                  type="range"
+                  min={2}
+                  max={10}
+                  step={1}
+                  value={numSlides}
+                  onChange={(e) => {
+                    setNumSlides(Number(e.target.value));
+                    setSlices([]);
+                  }}
+                  style={{ width: "100%", cursor: "pointer" }}
+                />
               </div>
 
-              <div style={{ display: "flex", gap: 12 }}>
-                <button className="brutalist-button brutalist-button-red" onClick={reset}>
-                  <RefreshCw size={16} style={{ marginRight: 2 }} /> Reset
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  className="brutalist-button"
+                  onClick={reset}
+                  style={{ padding: "10px 16px", fontSize: "0.8rem" }}
+                >
+                  <RefreshCw size={14} style={{ marginRight: 6 }} /> Reset
                 </button>
                 <button
                   className="brutalist-button brutalist-button-primary"
                   onClick={sliceImage}
                   disabled={isProcessing}
+                  style={{ padding: "10px 20px", fontSize: "0.8rem", background: "#22c55e", color: "#fff" }}
                 >
-                  {isProcessing ? "Processing..." : "Generate Slices"}
+                  Generate Slices ➔
                 </button>
               </div>
             </div>

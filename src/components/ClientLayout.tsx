@@ -4,9 +4,9 @@ import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/toaster";
 import Navbar from "@/components/Navbar";
 import ToolLayout from "@/components/ToolLayout";
+import AdBlockDetector from "@/components/AdBlockDetector";
 
 const toolPaths = [
-  "/text-behind",
   "/match-cut",
   "/text-highlighter",
   "/sync-slate",
@@ -18,12 +18,11 @@ const toolPaths = [
   "/palette-extractor",
   "/compressor",
   "/watermark",
-  "/background-replace",
   "/silence-trimmer",
   "/color-gradient",
 ];
 
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/beat-sync"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -32,6 +31,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
+      <AdBlockDetector />
       {isFullscreen ? (
         <>{children}</>
       ) : isTool ? (

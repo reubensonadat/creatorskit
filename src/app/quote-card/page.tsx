@@ -21,8 +21,6 @@ import {
   RiFolder3Line,
   RiCheckLine,
   RiShieldCheckLine,
-  RiUserLine,
-  RiSlidersHorizontalLine,
   RiRefreshLine,
   RiExternalLinkLine,
   RiCloseLine,
@@ -573,9 +571,8 @@ export default function QuoteCardPage() {
               <button
                 key={p.id}
                 onClick={() => setActiveRatio(p)}
-                className={`px-2.5 py-1 text-xs font-mono font-bold transition-colors ${
-                  activeRatio.id === p.id ? 'bg-[#FFE500] text-black border border-black' : 'hover:bg-white text-black'
-                }`}
+                className={`px-2.5 py-1 text-xs font-mono font-bold transition-colors ${activeRatio.id === p.id ? 'bg-[#FFE500] text-black border border-black' : 'hover:bg-white text-black'
+                  }`}
               >
                 {p.id}
               </button>
@@ -634,6 +631,16 @@ export default function QuoteCardPage() {
               </span>
             </button>
           ))}
+          <a
+            href="https://dynamo.castos.com/quote-cards"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1 bg-[#FFFBEB] border-2 border-black text-xs font-mono font-bold hover:bg-[#FFE500] transition-all shadow-[2px_2px_0px_#000] flex items-center gap-1.5 ml-auto text-black"
+            title="Looking for animated podcast waveform quote cards?"
+          >
+            <span>🎙️</span>
+            <span>Castos Podcast Cards ↗</span>
+          </a>
         </div>
       </div>
 
@@ -723,11 +730,10 @@ export default function QuoteCardPage() {
                 <button
                   key={s.id}
                   onClick={() => setActiveSlideIndex(idx)}
-                  className={`flex-shrink-0 w-24 h-28 border-2 transition-all p-1 flex flex-col justify-between text-left ${
-                    activeSlideIndex === idx
+                  className={`flex-shrink-0 w-24 h-28 border-2 transition-all p-1 flex flex-col justify-between text-left ${activeSlideIndex === idx
                       ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000] translate-y-[-2px]'
                       : 'border-gray-400 bg-[#F9F9F7] hover:border-black'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between text-[10px] font-mono font-black">
                     <span>#{idx + 1}</span>
@@ -773,11 +779,10 @@ export default function QuoteCardPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveInspectorTab(tab.id as any)}
-                  className={`py-3 px-1 text-center font-mono text-xs font-black border-r-2 border-black last:border-r-0 transition-colors flex flex-col items-center gap-1 ${
-                    activeInspectorTab === tab.id
+                  className={`py-3 px-1 text-center font-mono text-xs font-black border-r-2 border-black last:border-r-0 transition-colors flex flex-col items-center gap-1 ${activeInspectorTab === tab.id
                       ? 'bg-white text-black shadow-[inset_0_-3px_0px_#FFE500]'
                       : 'hover:bg-[#EFEFEA] text-gray-700'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   <span className="text-[10px] uppercase truncate">{tab.label}</span>
@@ -813,11 +818,10 @@ export default function QuoteCardPage() {
                       <button
                         key={mode.id}
                         onClick={() => updateCurrentSlide({ layoutMode: mode.id as LayoutMode })}
-                        className={`p-2.5 text-left border-2 transition-all font-mono ${
-                          currentSlide.layoutMode === mode.id
+                        className={`p-2.5 text-left border-2 transition-all font-mono ${currentSlide.layoutMode === mode.id
                             ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000]'
                             : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
-                        }`}
+                          }`}
                       >
                         <div className="text-xs font-black">{mode.name}</div>
                         <div className="text-[10px] text-gray-600 mt-0.5 leading-tight">{mode.desc}</div>
@@ -1065,9 +1069,8 @@ export default function QuoteCardPage() {
                     <label className="block text-[10px] font-mono text-gray-600 mb-1">ITALIC SERIF</label>
                     <button
                       onClick={() => updateCurrentSlide({ titleItalic: !currentSlide.titleItalic })}
-                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${
-                        currentSlide.titleItalic ? 'bg-[#FFE500]' : 'bg-white'
-                      }`}
+                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${currentSlide.titleItalic ? 'bg-[#FFE500]' : 'bg-white'
+                        }`}
                     >
                       {currentSlide.titleItalic ? 'ITALIC ON' : 'REGULAR'}
                     </button>
@@ -1077,9 +1080,8 @@ export default function QuoteCardPage() {
                     <label className="block text-[10px] font-mono text-gray-600 mb-1">DOTTED DIVIDER</label>
                     <button
                       onClick={() => updateCurrentSlide({ dottedDivider: !currentSlide.dottedDivider })}
-                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${
-                        currentSlide.dottedDivider ? 'bg-[#FFE500]' : 'bg-white'
-                      }`}
+                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${currentSlide.dottedDivider ? 'bg-[#FFE500]' : 'bg-white'
+                        }`}
                     >
                       {currentSlide.dottedDivider ? 'DIVIDER ON' : 'NONE'}
                     </button>
@@ -1197,11 +1199,10 @@ export default function QuoteCardPage() {
                       <button
                         key={bg.id}
                         onClick={() => updateCurrentSlide({ bgType: bg.id as BackgroundType })}
-                        className={`py-2 px-1 text-center font-mono text-xs font-bold border-2 transition-all ${
-                          currentSlide.bgType === bg.id
+                        className={`py-2 px-1 text-center font-mono text-xs font-bold border-2 transition-all ${currentSlide.bgType === bg.id
                             ? 'border-black bg-[#FFE500] shadow-[2px_2px_0px_#000]'
                             : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
-                        }`}
+                          }`}
                       >
                         {bg.label}
                       </button>
@@ -1368,11 +1369,10 @@ export default function QuoteCardPage() {
                       <button
                         key={s.id}
                         onClick={() => updateCurrentSlide({ swipePromptType: s.id as SwipePromptType })}
-                        className={`p-2.5 text-left border-2 font-mono ${
-                          currentSlide.swipePromptType === s.id
+                        className={`p-2.5 text-left border-2 font-mono ${currentSlide.swipePromptType === s.id
                             ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000]'
                             : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
-                        }`}
+                          }`}
                       >
                         <div className="text-xs font-black">{s.name}</div>
                         <div className="text-[10px] text-gray-600 mt-0.5">{s.desc}</div>
@@ -1509,9 +1509,8 @@ export default function QuoteCardPage() {
                   <button
                     key={cat}
                     onClick={() => setSelectedIconCategory(cat)}
-                    className={`px-2 py-0.5 text-[10px] font-mono uppercase font-bold border border-black ${
-                      selectedIconCategory === cat ? 'bg-black text-white' : 'bg-white text-black hover:bg-[#FFE500]'
-                    }`}
+                    className={`px-2 py-0.5 text-[10px] font-mono uppercase font-bold border border-black ${selectedIconCategory === cat ? 'bg-black text-white' : 'bg-white text-black hover:bg-[#FFE500]'
+                      }`}
                   >
                     {cat}
                   </button>

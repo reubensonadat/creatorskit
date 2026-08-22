@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Upload,
   Eye,
   SlidersHorizontal,
@@ -91,26 +90,7 @@ export interface YouTubeShortItem {
   isCandidate?: boolean;
 }
 
-const ALL_CREATORKIT_TOOLS = [
-  { label: 'Studio Teleprompter', href: '/teleprompter', icon: '🎙️', hint: 'AI SPEECH SYNC' },
-  { label: 'Thumbnail Lab & Split-Tester', href: '/thumbnail-lab', icon: '🔥', hint: 'CTR GRADER' },
-  { label: 'Exposure & False Color', href: '/exposure-monitor', icon: '📊', hint: 'SCOPES & IRE' },
-  { label: 'Text Match CUT', href: '/match-cut', icon: '✂️', hint: 'WORD ANCHOR' },
-  { label: 'Text Behind Image', href: '/text-behind', icon: '🖼️', hint: 'AI LAYERING' },
-  { label: 'Text Highlighter', href: '/text-highlighter', icon: '🖍️', hint: 'ANIMATED SWEEPS' },
-  { label: 'Production Sync Slate', href: '/sync-slate', icon: '🎬', hint: 'SMPTE CLAPPER' },
-  { label: 'Creator Space Planner', href: '/space-planner', icon: '📐', hint: '3D STUDIO' },
-  { label: 'Auto-Captions', href: '/auto-captions', icon: '💬', hint: 'WHISPER AI' },
-  { label: 'Carousel Slicer', href: '/carousel-slicer', icon: '📱', hint: 'MULTI-SLIDES' },
-  { label: 'Quote Card Maker', href: '/quote-card', icon: '📝', hint: 'POST GRAPHICS' },
-  { label: 'Platform Resizer', href: '/resizer', icon: '📐', hint: 'AUTO SIZES' },
-  { label: 'Palette Extractor', href: '/palette-extractor', icon: '🎨', hint: 'COLORS' },
-  { label: 'Image Compressor', href: '/compressor', icon: '⚡', hint: 'WEBP / JPEG' },
-  { label: 'Watermark Batch', href: '/watermark', icon: '🔒', hint: 'BULK ZIP' },
-  { label: 'Background Replace', href: '/background-replace', icon: '✨', hint: 'AI REMOVE' },
-  { label: 'Silence Trimmer', href: '/silence-trimmer', icon: '🔇', hint: 'AUDIO CUT' },
-  { label: 'Color Gradient', href: '/color-gradient', icon: '🌈', hint: 'CSS GRADIENTS' },
-];
+import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 
 // Default 16:9 Long-Form Thumbnail
 const DEFAULT_LONGFORM_THUMBNAIL: ThumbnailCandidate = {
@@ -613,86 +593,27 @@ Tested on YouTube Simulator.`;
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Quick Tools Launcher */}
-          <div ref={toolsDropdownRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowToolsDropdown(!showToolsDropdown)}
-              style={{
-                padding: '3px 7px',
-                fontSize: '0.66rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                background: showToolsDropdown ? '#27272a' : '#18181b',
-                color: '#ffffff',
-                border: '1px solid #3f3f46',
-                fontFamily: 'monospace',
-                cursor: 'pointer',
-              }}
-            >
-              <Layout size={12} />
-              <span style={{ fontWeight: 800 }}>Tools</span>
-              <ChevronDown size={11} />
-            </button>
-
-            {showToolsDropdown && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: 6,
-                  width: 300,
-                  maxHeight: 440,
-                  overflowY: 'auto',
-                  background: '#18181b',
-                  border: '2px solid #3f3f46',
-                  borderRadius: 6,
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
-                  zIndex: 120,
-                  padding: 8,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                }}
-                className="no-scrollbar"
-              >
-                <div style={{ padding: '4px 6px', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#a1a1aa', textTransform: 'uppercase', borderBottom: '1px solid #27272a' }}>
-                  All CreatorKit Tools (18)
-                </div>
-                {ALL_CREATORKIT_TOOLS.map((t) => {
-                  const isCurrent = t.href === '/thumbnail-lab';
-                  return (
-                    <Link
-                      key={t.href}
-                      href={t.href}
-                      onClick={() => setShowToolsDropdown(false)}
-                      style={{
-                        padding: '5px 8px',
-                        border: isCurrent ? '1px solid #FFE500' : '1px solid transparent',
-                        borderRadius: 4,
-                        background: isCurrent ? '#27272a' : '#18181b',
-                        color: isCurrent ? '#FFE500' : '#ffffff',
-                        textDecoration: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.7rem',
-                        fontWeight: isCurrent ? 900 : 700,
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>{t.icon}</span>
-                        <span>{t.label}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <Link
+            href="/"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 10px',
+              background: '#27272a',
+              color: '#ffffff',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              fontWeight: 900,
+              textDecoration: 'none',
+              borderRadius: 3,
+              border: '1px solid #3f3f46',
+            }}
+          >
+            ‹ HOME
+          </Link>
+          {/* Unified Tools Dropdown */}
+          <StudioToolsDropdown currentHref="/thumbnail-lab" theme="dark" />
 
           <span
             style={{

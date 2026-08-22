@@ -7,7 +7,7 @@ import {
   Heart,
   Info,
   ArrowUpDown,
-  Sparkles,
+  Wand2,
   Palette,
   Plus,
   Trash2,
@@ -501,43 +501,39 @@ export default function ColorGradientPage() {
 
       <div style={{ maxWidth: 1200, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
         
-        {/* Navigation Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
-          <Link href="/" className="brutalist-button" style={{ padding: "8px 16px" }}>
-            <ChevronLeft size={16} style={{ marginRight: 4 }} /> Dashboard
-          </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em" }}>
-                COLOR & GRADIENT SUITE
-              </h1>
-              <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "2px 8px", border: "2px solid #000", background: "#fff", color: "#000", fontFamily: "monospace" }}>
-                Active Studio
-              </span>
-            </div>
-            <p style={{ fontSize: "0.82rem", color: "var(--text-hint)", marginTop: 2 }}>
-              Input any custom brand color to instantly generate diverse matching design palettes.
-            </p>
+        {/* Top Title Section */}
+        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+              COLOR & GRADIENT STUDIO
+            </span>
+            <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+              MESH GRADIENTS · HARMONIC PALETTES · CSS CODE EXPORT
+            </span>
           </div>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
+            Color & Gradient Studio
+          </h1>
         </div>
 
         {/* Studio Segment Tabs switcher */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
           <button
             onClick={() => setActiveTab("combinations")}
             className="brutalist-button"
             style={{
               flex: 1,
-              padding: "12px",
-              background: activeTab === "combinations" ? "var(--accent)" : "#ffffff",
-              color: activeTab === "combinations" ? "#ffffff" : "#000000",
-              fontWeight: 800,
-              fontSize: "0.85rem",
+              padding: "10px 16px",
+              background: activeTab === "combinations" ? "#000000" : "#ffffff",
+              color: activeTab === "combinations" ? "#FFE500" : "#000000",
+              fontWeight: 900,
+              fontSize: "0.82rem",
+              fontFamily: "monospace",
               textTransform: "uppercase",
-              boxShadow: activeTab === "combinations" ? "inset 3px 3px 0 rgba(0,0,0,0.2)" : "3px 3px 0 #000",
+              boxShadow: activeTab === "combinations" ? "inset 2px 2px 0 rgba(0,0,0,0.3)" : "3px 3px 0 #000",
             }}
           >
-            <Palette size={18} style={{ display: "inline-block", marginRight: 8, verticalAlign: "text-bottom" }} />
+            <Palette size={16} style={{ display: "inline-block", marginRight: 8, verticalAlign: "middle" }} />
             Combinations Lab
           </button>
           <button
@@ -545,16 +541,17 @@ export default function ColorGradientPage() {
             className="brutalist-button"
             style={{
               flex: 1,
-              padding: "12px",
-              background: activeTab === "mesh" ? "var(--accent)" : "#ffffff",
-              color: activeTab === "mesh" ? "#ffffff" : "#000000",
-              fontWeight: 800,
-              fontSize: "0.85rem",
+              padding: "10px 16px",
+              background: activeTab === "mesh" ? "#000000" : "#ffffff",
+              color: activeTab === "mesh" ? "#FFE500" : "#000000",
+              fontWeight: 900,
+              fontSize: "0.82rem",
+              fontFamily: "monospace",
               textTransform: "uppercase",
-              boxShadow: activeTab === "mesh" ? "inset 3px 3px 0 rgba(0,0,0,0.2)" : "3px 3px 0 #000",
+              boxShadow: activeTab === "mesh" ? "inset 2px 2px 0 rgba(0,0,0,0.3)" : "3px 3px 0 #000",
             }}
           >
-            <Sparkles size={18} style={{ display: "inline-block", marginRight: 8, verticalAlign: "text-bottom" }} />
+            <Paintbrush size={16} style={{ display: "inline-block", marginRight: 8, verticalAlign: "middle" }} />
             Mesh Gradient Designer
           </button>
         </div>
@@ -899,103 +896,96 @@ export default function ColorGradientPage() {
             </div>
 
             {/* Right: Controller board, aligned and fits on screen */}
-            <div className="brutalist-card" style={{ display: "flex", flexDirection: "column", gap: 20, background: "#ffffff" }}>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 900 }}>Mesh Editor</h2>
+            <div className="brutalist-card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "#ffffff", padding: 20, border: "3px solid #000", boxShadow: "6px 6px 0 #000" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 900, textTransform: "uppercase", margin: 0 }}>Mesh Controls</h2>
+                <span style={{ fontSize: "0.68rem", fontWeight: 900, background: "#FFDD00", padding: "2px 8px", border: "1.5px solid #000", fontFamily: "monospace" }}>
+                  {nodes.length} PINS
+                </span>
+              </div>
 
               {/* Slider Controls */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div className="slider-row">
-                  <label>Blur Warp Size</label>
-                  <div className="slider-content" style={{ boxShadow: "none", border: "3px solid #000" }}>
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={30}
-                        max={100}
-                        value={warpSize}
-                        onChange={(e) => setWarpSize(Number(e.target.value))}
-                        className="custom-slider"
-                      />
-                    </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{warpSize}%</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Blur Warp Size</label>
+                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{warpSize}%</span>
                   </div>
+                  <input
+                    type="range"
+                    min={30}
+                    max={100}
+                    value={warpSize}
+                    onChange={(e) => setWarpSize(Number(e.target.value))}
+                    style={{ width: "100%", cursor: "pointer" }}
+                  />
                 </div>
 
-                <div className="slider-row">
-                  <label>Blur Diffusion</label>
-                  <div className="slider-content" style={{ boxShadow: "none", border: "3px solid #000" }}>
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={10}
-                        max={100}
-                        value={warpAmount}
-                        onChange={(e) => setWarpAmount(Number(e.target.value))}
-                        className="custom-slider"
-                      />
-                    </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{warpAmount}px</span>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Blur Diffusion</label>
+                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{warpAmount}px</span>
                   </div>
+                  <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={warpAmount}
+                    onChange={(e) => setWarpAmount(Number(e.target.value))}
+                    style={{ width: "100%", cursor: "pointer" }}
+                  />
                 </div>
 
-                <div className="slider-row">
-                  <label>Noise Overlay</label>
-                  <div className="slider-content" style={{ boxShadow: "none", border: "3px solid #000" }}>
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={0}
-                        max={0.5}
-                        step={0.01}
-                        value={noiseOpacity}
-                        onChange={(e) => setNoiseOpacity(Number(e.target.value))}
-                        className="custom-slider"
-                      />
-                    </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{Math.round(noiseOpacity * 100)}%</span>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Film Grain Noise</label>
+                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{Math.round(noiseOpacity * 100)}%</span>
                   </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    value={noiseOpacity}
+                    onChange={(e) => setNoiseOpacity(Number(e.target.value))}
+                    style={{ width: "100%", cursor: "pointer" }}
+                  />
                 </div>
               </div>
 
-              <hr style={{ borderColor: "#000000", borderStyle: "solid", borderWidth: 1 }} />
+              <div style={{ height: 1, background: "#000", margin: "4px 0" }} />
 
               {/* Colors editor list */}
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <label className="label" style={{ fontFamily: "monospace", fontWeight: 800 }}>Canvas Pins</label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Canvas Color Pins</label>
                   <button
                     onClick={addRandomNode}
+                    className="brutalist-button"
                     style={{
-                      padding: "4px 8px",
-                      border: "2px solid #000",
-                      background: "#fff",
-                      cursor: "pointer",
+                      padding: "3px 8px",
+                      fontSize: "0.68rem",
+                      fontWeight: 900,
                       display: "flex",
                       alignItems: "center",
                       gap: 4,
-                      fontSize: "0.72rem",
-                      fontWeight: 800,
                     }}
                   >
                     <Plus size={12} /> Add Pin
                   </button>
                 </div>
 
-                {/* horizontal wrap pins so it doesn't take too much vertical height */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
                   {nodes.map((node) => (
                     <div
                       key={node.id}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 8,
-                        padding: 4,
+                        gap: 6,
+                        padding: "4px 6px",
                         border: "2px solid #000",
-                        background: "#fdfdfd",
+                        background: "#fff",
                       }}
                     >
                       <input
@@ -1003,25 +993,26 @@ export default function ColorGradientPage() {
                         value={node.color}
                         onChange={(e) => handleNodeColorChange(node.id, e.target.value)}
                         style={{
-                          width: 32,
-                          height: 24,
+                          width: 26,
+                          height: 22,
                           border: "1px solid #000",
                           cursor: "pointer",
                           background: "none",
                           padding: 0,
                         }}
                       />
-                      <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 700 }}>
+                      <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 800 }}>
                         {node.color.toUpperCase()}
                       </span>
                       {nodes.length > 2 && (
                         <button
                           onClick={() => deleteNode(node.id)}
                           style={{
+                            marginLeft: "auto",
                             background: "transparent",
                             border: "none",
                             cursor: "pointer",
-                            color: "#c62828",
+                            color: "#dc2626",
                             padding: 2,
                             display: "flex",
                           }}
@@ -1036,21 +1027,21 @@ export default function ColorGradientPage() {
               </div>
 
               {/* Action buttons */}
-              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                 <button
                   className="brutalist-button"
                   onClick={shuffleMeshColors}
-                  style={{ flex: 1, padding: "8px 0" }}
+                  style={{ flex: 1, padding: "10px 0", fontSize: "0.8rem" }}
                 >
-                  <RefreshCw size={16} style={{ display: "inline-block", marginRight: 4, verticalAlign: "middle" }} />
+                  <RefreshCw size={14} style={{ display: "inline-block", marginRight: 4, verticalAlign: "middle" }} />
                   Shuffle
                 </button>
                 <button
                   className="brutalist-button brutalist-button-primary"
                   onClick={exportMeshGradient}
-                  style={{ flex: 2, padding: "8px 0", gap: 6 }}
+                  style={{ flex: 2, padding: "10px 0", fontSize: "0.8rem", gap: 6 }}
                 >
-                  <Download size={16} />
+                  <Download size={15} />
                   Download PNG
                 </button>
               </div>

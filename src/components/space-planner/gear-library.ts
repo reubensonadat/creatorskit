@@ -30,6 +30,9 @@ function addGearItem(
     category,
     dimensions: { width, depth, height },
     watts,
+    defaultPriceUSD: Math.round(priceGHS / 15),
+    defaultPriceEUR: Math.round(priceGHS / 16),
+    defaultPriceGBP: Math.round(priceGHS / 19),
     defaultPriceGHS: priceGHS,
     defaultPriceNGN: priceNGN,
     color,
@@ -147,7 +150,12 @@ addGearItem('pwr-cable-snake-xlr-16ch', '16-Channel XLR Multi-Cable Stage Snake 
 addGearItem('pwr-step-up-down-transformer', '3000W Heavy Duty Step-Up / Step-Down Voltage Converter', '🔌', 'power', 0.25, 0.2, 0.18, 0, 420, 22000, 0x333333, 'Runs 110V US cinema equipment safely on 220V/240V African grid power');
 addGearItem('pwr-smart-pdu-rack', '8-Outlet IP-Controlled Remote Reboot Rack PDU', '🖧', 'power', 0.48, 0.1, 0.05, 10, 380, 19500, 0x111111, 'Web-accessible power strip to remotely power cycle studio equipment');
 addGearItem('pwr-gaffer-tape-pack-6', 'Pro Grade Residue-Free Matte Black Gaffer Tape (6 Rolls)', '📼', 'power', 0.15, 0.15, 0.25, 0, 95, 4900, 0x111111, 'Essential film set adhesive for securing cables and light marks', { isMountableOnTable: true });
-addGearItem('pwr-apple-box-family', 'Studio Baltic Birch 4-Piece Nesting Apple Box Set', '📦', 'furniture', 0.5, 0.3, 0.2, 0, 180, 9500, 0xb8976a, 'Full, Half, Quarter, and Pancake wooden riser boxes for leveling equipment and talent');
+// ------------------------------------------------------------
+// 7. HUMAN CREATOR SCALE FIGURES & TALENT (3 items)
+// ------------------------------------------------------------
+addGearItem('human-creator-standing', 'Human Creator Figure (Standing - 1.75m / 5\'9")', '🧍', 'props', 0.45, 0.35, 1.75, 0, 0, 0, 0x334466, 'Realistic human scale reference mannequin to check eyeline height, framing, and key light angles');
+addGearItem('human-creator-seated', 'Human Creator Figure (Seated at Desk / Podcaster)', '🪑', 'props', 0.5, 0.55, 1.35, 0, 0, 0, 0x445577, 'Seated talent model for checking camera framing across podcast and desk setups');
+addGearItem('human-guest-standing', 'Host / Interviewee Talent Model (Standing - 1.7m)', '🧍‍♀️', 'props', 0.42, 0.32, 1.7, 0, 0, 0, 0x553344, 'Scale model for 2-person interviews, co-hosts, and depth of field checks');
 
 export const COMPREHENSIVE_EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = gearCatalog;
 export const ALL_EQUIPMENT_IDS: string[] = Object.keys(COMPREHENSIVE_EQUIPMENT_CATALOG);

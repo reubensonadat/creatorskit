@@ -243,24 +243,19 @@ export default function CompressorPage() {
       <div className="grid-bg" />
 
       <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
-          <Link href="/" className="brutalist-button" style={{ padding: "8px 16px" }}>
-            <ChevronLeft size={16} style={{ marginRight: 4 }} /> Dashboard
-          </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em" }}>
-                Image Compressor
-              </h1>
-              <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "2px 8px", border: "2px solid #000", background: "#fff", color: "#000", fontFamily: "monospace" }}>
-                Offline
-              </span>
-            </div>
-            <p style={{ fontSize: "0.82rem", color: "var(--text-hint)", marginTop: 2 }}>
-              Compress JPEG & WebP images in your browser without sacrificing quality. Secure local computing.
-            </p>
+        {/* Top Title Section */}
+        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+              IMAGE COMPRESSOR PRO
+            </span>
+            <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+              CLIENT-SIDE JPEG & WEBP OPTIMIZATION · ZERO UPLOAD
+            </span>
           </div>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
+            Image Compressor Pro
+          </h1>
         </div>
 
         {/* Drop Zone */}
@@ -524,45 +519,54 @@ export default function CompressorPage() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 20,
+                  gap: 16,
+                  padding: 20,
+                  border: "3px solid #000",
+                  boxShadow: "6px 6px 0 #000",
+                  background: "#fff",
                 }}
               >
-                <div className="slider-row">
-                  <label>Compression Level</label>
-                  <div className="slider-content">
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={0.05}
-                        max={1}
-                        step={0.01}
-                        value={quality}
-                        onChange={(e) => handleQualityChange(Number(e.target.value))}
-                        className="custom-slider"
-                      />
-                    </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{Math.round(quality * 100)}%</span>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>
+                      Quality Level
+                    </label>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 900, fontFamily: "monospace", background: "#FFDD00", padding: "1px 8px", border: "1.5px solid #000" }}>
+                      {Math.round(quality * 100)}%
+                    </span>
                   </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={quality}
+                    onChange={(e) => handleQualityChange(Number(e.target.value))}
+                    style={{ width: "100%", cursor: "pointer" }}
+                  />
                 </div>
 
                 <div>
-                  <label className="label" style={{ display: "block", marginBottom: 10, fontFamily: "monospace", fontWeight: 800 }}>Export Format</label>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: "0.75rem", fontFamily: "monospace", fontWeight: 900, textTransform: "uppercase" }}>
+                    Export Format
+                  </label>
+                  <div style={{ display: "flex", border: "2px solid #000", background: "#fff" }}>
                     {(["image/jpeg", "image/webp"] as const).map((fmt) => (
                       <button
                         key={fmt}
                         onClick={() => handleFormatChange(fmt)}
                         style={{
                           flex: 1,
-                          padding: "10px",
-                          border: `2px solid ${format === fmt ? "#000" : "rgba(0,0,0,0.1)"}`,
-                          background: format === fmt ? "var(--accent)" : "#ffffff",
-                          color: format === fmt ? "#ffffff" : "#000000",
+                          padding: "8px",
+                          border: "none",
+                          borderRight: fmt === "image/jpeg" ? "2px solid #000" : "none",
+                          background: format === fmt ? "#000" : "#fff",
+                          color: format === fmt ? "#fff" : "#000",
                           cursor: "pointer",
-                          fontWeight: 800,
-                          fontSize: "0.82rem",
-                          transition: "all 0.15s",
+                          fontWeight: 900,
+                          fontSize: "0.75rem",
+                          fontFamily: "monospace",
+                          textTransform: "uppercase",
                         }}
                       >
                         {fmt === "image/jpeg" ? "JPEG" : "WebP"}

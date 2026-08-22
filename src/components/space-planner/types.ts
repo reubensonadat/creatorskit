@@ -2,9 +2,18 @@
 // Creator Space Planner — Type Definitions
 // ============================================================
 
-export type Currency = 'GHS' | 'NGN';
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'GHS' | 'NGN';
 
-export type ViewMode = 'perspective' | 'top';
+export type ViewMode = 'perspective' | 'top' | 'camera-pov' | 'walkthrough';
+
+export type CameraLensPreset = '16mm' | '24mm' | '35mm' | '50mm' | '85mm';
+
+export interface LightSettings {
+  intensity: number; // 0 to 100%
+  colorTempKelvin?: number; // 2700 to 6500
+  colorHex?: string; // for RGB lights
+  beamAngle?: number; // 15 to 120 degrees
+}
 
 export type CreatorTemplateId =
   | 'bedroom-studio'
@@ -108,6 +117,9 @@ export interface EquipmentDefinition {
   category: 'camera' | 'lighting' | 'audio' | 'furniture' | 'power' | 'props';
   dimensions: { width: number; depth: number; height: number };
   watts: number;
+  defaultPriceUSD?: number;
+  defaultPriceEUR?: number;
+  defaultPriceGBP?: number;
   defaultPriceGHS: number;
   defaultPriceNGN: number;
   color: number;
@@ -122,8 +134,13 @@ export interface PlacedObject {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
+  lensPreset?: CameraLensPreset; // 16mm, 24mm, 35mm, 50mm, 85mm
+  lightSettings?: LightSettings; // intensity, kelvin, color
   parentId?: string; // If set, object is placed on top of this parent object
   elevationY?: number; // Custom Y elevation offset (if any)
+  customPriceUSD?: number;
+  customPriceEUR?: number;
+  customPriceGBP?: number;
   customPriceGHS?: number;
   customPriceNGN?: number;
 }
@@ -174,6 +191,7 @@ export interface PlannerState {
   showProjectInfo: boolean;
   showWarnings: boolean;
   showCameraPreview: boolean;
+  showLuxHeatmap: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
@@ -185,6 +203,8 @@ export interface PlannerState {
   placeObject: (obj: PlacedObject) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
   updateObjectRotation: (id: string, rotationY: number) => void;
+  updateObjectLens: (id: string, lens: CameraLensPreset) => void;
+  updateObjectLight: (id: string, settings: Partial<LightSettings>) => void;
   setSelectedObject: (id: string | null) => void;
   setMainCamera: (id: string) => void;
   deleteObject: (id: string) => void;
@@ -198,6 +218,7 @@ export interface PlannerState {
   toggleProjectInfo: () => void;
   toggleWarnings: () => void;
   toggleCameraPreview: () => void;
+  toggleLuxHeatmap: () => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
   loadTemplate: (templateId: CreatorTemplateId) => void;

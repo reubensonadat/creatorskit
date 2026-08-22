@@ -16,7 +16,7 @@ import {
   VolumeX,
   Crosshair,
   RefreshCw,
-  Sparkles,
+  Zap,
   Shuffle,
   FileText,
   Sliders,
@@ -522,22 +522,6 @@ export default function TextHighlighterPage() {
       <div style={{ maxWidth: 1280, margin: '0 auto 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Link
-              href="/"
-              className="brutalist-button"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                fontSize: '0.72rem',
-                borderRadius: 4,
-                textDecoration: 'none',
-              }}
-            >
-              <ChevronLeft size={13} />
-              Home
-            </Link>
             <span
               style={{
                 fontSize: '0.68rem',
@@ -1110,7 +1094,7 @@ export default function TextHighlighterPage() {
                   textTransform: 'uppercase',
                 }}
               >
-                <Sparkles size={15} />
+                <Zap size={15} />
                 Generate
               </button>
             </div>

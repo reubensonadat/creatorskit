@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Play,
   Pause,
@@ -9,7 +10,7 @@ import {
   Download,
   Volume2,
   VolumeX,
-  Sparkles,
+  Zap,
   Plus,
   Trash2,
   Film,
@@ -1195,7 +1196,7 @@ export default function TextMatchCutStudioPage() {
                 }}
                 title="Generate newspaper articles containing this anchor phrase"
               >
-                <Sparkles size={15} />
+                <Zap size={15} />
                 Generate Cuts
               </button>
             </div>

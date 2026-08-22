@@ -12,7 +12,6 @@ import {
   Maximize2,
   Minimize2,
   Type,
-  Sparkles,
   FileText,
   Mic,
   Camera,
@@ -33,28 +32,8 @@ import {
   ChevronDown,
   Pipette,
 } from 'lucide-react';
+import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
-
-const ALL_CREATORKIT_TOOLS = [
-  { label: 'Studio Teleprompter', href: '/teleprompter', icon: '🎙️', hint: 'AI SPEECH SYNC' },
-  { label: 'Thumbnail Lab & Split-Tester', href: '/thumbnail-lab', icon: '🔥', hint: 'CTR GRADER' },
-  { label: 'Exposure & False Color', href: '/exposure-monitor', icon: '📊', hint: 'SCOPES & IRE' },
-  { label: 'Text Match CUT', href: '/match-cut', icon: '✂️', hint: 'WORD ANCHOR' },
-  { label: 'Text Behind Image', href: '/text-behind', icon: '🖼️', hint: 'AI LAYERING' },
-  { label: 'Text Highlighter', href: '/text-highlighter', icon: '🖍️', hint: 'ANIMATED SWEEPS' },
-  { label: 'Production Sync Slate', href: '/sync-slate', icon: '🎬', hint: 'SMPTE CLAPPER' },
-  { label: 'Creator Space Planner', href: '/space-planner', icon: '📐', hint: '3D STUDIO' },
-  { label: 'Auto-Captions', href: '/auto-captions', icon: '💬', hint: 'WHISPER AI' },
-  { label: 'Carousel Slicer', href: '/carousel-slicer', icon: '📱', hint: 'MULTI-SLIDES' },
-  { label: 'Quote Card Maker', href: '/quote-card', icon: '📝', hint: 'POST GRAPHICS' },
-  { label: 'Platform Resizer', href: '/resizer', icon: '📐', hint: 'AUTO SIZES' },
-  { label: 'Palette Extractor', href: '/palette-extractor', icon: '🎨', hint: 'COLORS' },
-  { label: 'Image Compressor', href: '/compressor', icon: '⚡', hint: 'WEBP / JPEG' },
-  { label: 'Watermark Batch', href: '/watermark', icon: '🔒', hint: 'BULK ZIP' },
-  { label: 'Background Replace', href: '/background-replace', icon: '✨', hint: 'AI REMOVE' },
-  { label: 'Silence Trimmer', href: '/silence-trimmer', icon: '🔇', hint: 'AUDIO CUT' },
-  { label: 'Color Gradient', href: '/color-gradient', icon: '🌈', hint: 'CSS GRADIENTS' },
-];
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | '4:5' | '4:3';
 export type CameraLayoutMode = 'corner-pip' | 'full-bg' | 'off';
@@ -1280,102 +1259,19 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             href="/"
             className="brutalist-button"
             style={{
-              padding: '4px 8px',
-              fontSize: '0.7rem',
-              borderRadius: 4,
+              padding: '6px 14px',
+              fontSize: '0.75rem',
               textDecoration: 'none',
               display: 'flex',
               alignItems: 'center',
               gap: 4,
             }}
           >
-            <ChevronLeft size={13} />
-            Dashboard
+            ‹ HOME
           </Link>
 
-          {/* Quick Tool Switcher Dropdown */}
-          <div ref={toolsDropdownRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowToolsDropdown(!showToolsDropdown)}
-              className="brutalist-button"
-              style={{
-                padding: '4px 8px',
-                fontSize: '0.7rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                background: showToolsDropdown ? '#000' : '#fff',
-                color: showToolsDropdown ? '#FFE500' : '#000',
-              }}
-              title="Navigate to all CreatorKit tools"
-            >
-              <Layout size={13} />
-              <span style={{ fontWeight: 900 }}>Tools</span>
-              <ChevronDown size={12} />
-            </button>
-
-            {/* Dropdown Menu */}
-            {showToolsDropdown && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: 6,
-                  width: 320,
-                  maxHeight: 460,
-                  overflowY: 'auto',
-                  background: '#ffffff',
-                  border: '3px solid #000000',
-                  borderRadius: 4,
-                  boxShadow: '6px 6px 0 #000000',
-                  zIndex: 120,
-                  padding: 8,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                }}
-                className="no-scrollbar"
-              >
-                <div style={{ padding: '4px 6px', fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase', borderBottom: '1.5px solid #eee' }}>
-                  All CreatorKit Tools (18)
-                </div>
-                {ALL_CREATORKIT_TOOLS.map((t) => {
-                  const isCurrent = t.href === '/teleprompter';
-                  return (
-                    <Link
-                      key={t.href}
-                      href={t.href}
-                      onClick={() => setShowToolsDropdown(false)}
-                      style={{
-                        padding: '6px 8px',
-                        border: isCurrent ? '1.5px solid #000' : '1px solid transparent',
-                        borderRadius: 3,
-                        background: isCurrent ? '#FFE500' : '#f4f4f5',
-                        color: '#000',
-                        textDecoration: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.72rem',
-                        fontWeight: isCurrent ? 900 : 700,
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>{t.icon}</span>
-                        <span>{t.label}</span>
-                      </div>
-                      <span style={{ fontSize: '0.55rem', color: isCurrent ? '#000' : '#666', background: isCurrent ? 'rgba(0,0,0,0.1)' : '#eee', padding: '1px 4px', borderRadius: 2 }}>
-                        {t.hint}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          {/* Unified Tools Dropdown */}
+          <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
 
           <span
             style={{
@@ -1392,7 +1288,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
               gap: 4,
             }}
           >
-            <Sparkles size={12} />
+            <Zap size={12} />
             STUDIO PROMPTER
           </span>
 
