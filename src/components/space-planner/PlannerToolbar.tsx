@@ -6,6 +6,9 @@ import { Camera, Compass, Eye, Flame, RotateCcw, RotateCw, Trash2, Home, Grid, F
 export default function PlannerToolbar() {
   const viewMode = usePlannerStore((s) => s.viewMode);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
+  const isOrbitPanning = usePlannerStore((s) => s.isOrbitPanning);
+  const toggleOrbitPanning = usePlannerStore((s) => s.toggleOrbitPanning);
+  const setOrbitPanning = usePlannerStore((s) => s.setOrbitPanning);
   const selectedObjectId = usePlannerStore((s) => s.selectedObjectId);
   const updateObjectRotation = usePlannerStore((s) => s.updateObjectRotation);
   const deleteObject = usePlannerStore((s) => s.deleteObject);
@@ -23,13 +26,30 @@ export default function PlannerToolbar() {
       <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000]">
         {/* View Mode Buttons */}
         <button
-          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 ${
+          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 transition-all ${
             viewMode === 'perspective' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-100'
           }`}
-          title="3D Orbit Perspective (1)"
-          onClick={() => setViewMode('perspective')}
+          title={
+            viewMode === 'perspective'
+              ? isOrbitPanning
+                ? 'Click to pause slow cinematic pan'
+                : 'Click to start slow cinematic pan'
+              : '3D Orbit Perspective (1)'
+          }
+          onClick={() => {
+            if (viewMode !== 'perspective') {
+              setViewMode('perspective');
+              setOrbitPanning(true);
+            } else {
+              toggleOrbitPanning();
+            }
+          }}
         >
-          <Home size={13} /> 3D Orbit
+          <Home size={13} />
+          <span>3D Orbit</span>
+          {viewMode === 'perspective' && isOrbitPanning && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00FF66] animate-pulse" />
+          )}
         </button>
 
         <button

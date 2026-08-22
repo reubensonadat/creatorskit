@@ -114,6 +114,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   showWarnings: false,
   showCameraPreview: false,
   showLuxHeatmap: false,
+  isOrbitPanning: false,
   leftPanelOpen: true,
   rightPanelOpen: true,
 
@@ -253,6 +254,8 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   toggleWarnings: () => set((s) => ({ showWarnings: !s.showWarnings })),
   toggleCameraPreview: () => set((s) => ({ showCameraPreview: !s.showCameraPreview })),
   toggleLuxHeatmap: () => set((s) => ({ showLuxHeatmap: !s.showLuxHeatmap })),
+  toggleOrbitPanning: () => set((s) => ({ isOrbitPanning: !s.isOrbitPanning })),
+  setOrbitPanning: (panning: boolean) => set({ isOrbitPanning: panning }),
   toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
 

@@ -124,6 +124,7 @@ export default function PlannerCanvas() {
   const selectedObjectId = usePlannerStore((s) => s.selectedObjectId);
   const placingEquipmentId = usePlannerStore((s) => s.placingEquipmentId);
   const viewMode = usePlannerStore((s) => s.viewMode);
+  const isOrbitPanning = usePlannerStore((s) => s.isOrbitPanning);
   const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
   const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const windows = usePlannerStore((s) => s.windows);
@@ -134,6 +135,18 @@ export default function PlannerCanvas() {
   const setPlacingEquipment = usePlannerStore((s) => s.setPlacingEquipment);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
   const getObjectY = usePlannerStore((s) => s.getObjectY);
+
+  // Sync auto-rotation / slow cinematic pan with OrbitControls
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    if (viewMode === 'perspective' && isOrbitPanning) {
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.85;
+    } else {
+      controls.autoRotate = false;
+    }
+  }, [viewMode, isOrbitPanning]);
 
   // Register Multi-Angle Studio Snapshot Capture Hook for PDF / Blueprint Export
   useEffect(() => {

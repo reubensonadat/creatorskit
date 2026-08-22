@@ -192,12 +192,15 @@ export interface PlannerState {
   showWarnings: boolean;
   showCameraPreview: boolean;
   showLuxHeatmap: boolean;
+  isOrbitPanning: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
   setRoomDimensions: (width: number, depth: number) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
+  toggleOrbitPanning: () => void;
+  setOrbitPanning: (panning: boolean) => void;
   setCurrency: (currency: Currency) => void;
   setPlacingEquipment: (id: EquipmentId | null) => void;
   placeObject: (obj: PlacedObject) => void;
