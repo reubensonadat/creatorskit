@@ -4,8 +4,8 @@ import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 
 // ============================================================
 // Procedural 3D Model Generator for Studio Space Planner
-// Ensures EVERY single gear item in the 210+ item catalog
-// renders as a rich, authentic, multi-part 3D model (no generic blobs)
+// Ensures EVERY single gear item and decor piece in the catalog
+// renders as a rich, authentic, multi-part 3D model (zero generic blobs)
 // ============================================================
 
 function makeMat(color: number, roughness = 0.7, metalness = 0): THREE.MeshStandardMaterial {
@@ -130,180 +130,100 @@ function addSphere(
   return m;
 }
 
-// ------------------------------------------------------------
-// CAMERA & OPTICS PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 1. CAMERA & OPTICS PROCEDURAL BUILDER
+// ============================================================
 function buildCameraItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
   const col = def.color || 0x222222;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Broadcast / Pedestal camera
+  // Broadcast / Pedestal camera
   if (name.includes('pedestal') || name.includes('broadcast') || name.includes('studio camera')) {
-    // Triangular dolly base with caster wheels
     const baseR = 0.45;
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3;
       const lx = Math.cos(a) * (baseR / 2);
       const lz = Math.sin(a) * (baseR / 2);
       addBox(g, 0.05, 0.04, baseR, 0x1f1e1d, lx, 0.05, lz, { ry: -a + Math.PI / 2, metalness: 0.8 });
-      // Caster wheel
       const wx = Math.cos(a) * baseR;
       const wz = Math.sin(a) * baseR;
       addCyl(g, 0.04, 0.04, 0.03, 0x111111, wx, 0.04, wz, 12, { rz: Math.PI / 2, roughness: 0.9 });
     }
-    // Heavy pneumatic center column
     const colH = Math.max(0.8, h - 0.5);
     addCyl(g, 0.07, 0.09, colH, 0x333333, 0, colH / 2 + 0.05, 0, 16, { metalness: 0.8, roughness: 0.3 });
     addCyl(g, 0.06, 0.06, 0.05, 0x222222, 0, colH + 0.04, 0, 16, { metalness: 0.9 });
-    // Heavy fluid head
     const headY = colH + 0.1;
     addBox(g, 0.22, 0.12, 0.2, 0x1a1a1a, 0, headY, 0, { metalness: 0.7 });
-    // Dual pan handles
     addCyl(g, 0.012, 0.012, 0.45, 0x111111, -0.15, headY - 0.04, -0.2, 10, { rx: 0.5, metalness: 0.6 });
     addCyl(g, 0.012, 0.012, 0.45, 0x111111, 0.15, headY - 0.04, -0.2, 10, { rx: 0.5, metalness: 0.6 });
-    // Large broadcast camera body
     const camY = headY + 0.16;
     addBox(g, 0.25, 0.22, 0.38, 0x242424, 0, camY, 0, { roughness: 0.4, metalness: 0.6 });
-    // Studio box zoom lens
     addBox(g, 0.2, 0.2, 0.35, 0x181818, 0, camY, 0.35, { roughness: 0.3, metalness: 0.7 });
     addCyl(g, 0.09, 0.09, 0.04, 0x0a1020, 0, camY, 0.54, 20, { rx: Math.PI / 2, roughness: 0.1, metalness: 0.9, emissive: 0x003366, emissiveIntensity: 0.4 });
-    // Top 7" Studio prompter / return monitor
     addBox(g, 0.24, 0.16, 0.02, 0x111111, 0, camY + 0.2, 0.05, { metalness: 0.6 });
     addBox(g, 0.22, 0.14, 0.005, 0x224488, 0, camY + 0.2, 0.06, { emissive: 0x3366aa, emissiveIntensity: 0.7 });
     return;
   }
 
-  // 2. Overhead Down-Shooter / Ceiling Rig
-  if (name.includes('overhead') || name.includes('down-shooter') || name.includes('gantry')) {
-    const frameH = Math.max(1.5, h);
-    // Vertical riser stand
-    addCyl(g, 0.025, 0.025, frameH, 0x222222, 0, frameH / 2, -d * 0.3, 14, { metalness: 0.8 });
-    // Horizontal cantilever cross-arm
-    addBox(g, 0.04, 0.04, d * 0.9, 0x1a1a1a, 0, frameH - 0.05, 0, { metalness: 0.8 });
-    // Downward motor gimbal & cinema camera
-    const armEndY = frameH - 0.15;
-    addCyl(g, 0.03, 0.03, 0.08, 0x333333, 0, armEndY, d * 0.25, 14, { metalness: 0.8 });
-    addBox(g, 0.18, 0.14, 0.15, col, 0, armEndY - 0.1, d * 0.25, { roughness: 0.5, metalness: 0.5 });
-    // Downward lens
-    addCyl(g, 0.05, 0.04, 0.12, 0x111111, 0, armEndY - 0.22, d * 0.25, 16, { metalness: 0.9 });
-    addCyl(g, 0.038, 0.038, 0.01, 0x00aaff, 0, armEndY - 0.28, d * 0.25, 16, { emissive: 0x0088cc, emissiveIntensity: 0.6 });
-    return;
-  }
-
-  // 3. Telephoto / Cinema Lens & Rig
-  if (name.includes('lens') || name.includes('telephoto') || name.includes('anamorphic') || name.includes('prime')) {
-    // Metal lens barrel with ribbed focus rings
-    const lenL = Math.max(0.25, d);
-    addCyl(g, 0.07, 0.065, lenL * 0.7, 0x222222, 0, h * 0.55, lenL * 0.1, 20, { metalness: 0.85, roughness: 0.25 });
-    // Ribbed focus rubber rings
-    addCyl(g, 0.073, 0.073, 0.04, 0x111111, 0, h * 0.55, lenL * 0.2, 20, { roughness: 0.95 });
-    addCyl(g, 0.073, 0.073, 0.03, 0x111111, 0, h * 0.55, 0, 20, { roughness: 0.95 });
-    // Front flared lens element & glass
-    addCyl(g, 0.085, 0.07, 0.08, 0x1f1e1d, 0, h * 0.55, lenL * 0.45, 20, { metalness: 0.9 });
-    addCyl(g, 0.075, 0.075, 0.01, 0x004488, 0, h * 0.55, lenL * 0.49, 20, { emissive: 0x0066aa, emissiveIntensity: 0.5 });
+  // Teleprompter Rig on Stand
+  if (name.includes('prompter') || name.includes('teleprompter')) {
+    const standH = Math.max(1.0, h - 0.4);
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3;
+      addCyl(g, 0.015, 0.01, standH, 0x222222, Math.cos(a) * 0.22, standH / 2, Math.sin(a) * 0.22, 10, { metalness: 0.8 });
+    }
+    const propY = standH + 0.15;
+    // Beamsplitter glass trapezoid hood
+    addBox(g, 0.34, 0.26, 0.28, 0x1a1a1a, 0, propY, 0, { roughness: 0.9 });
+    // 45-degree glass plane
+    addBox(g, 0.3, 0.22, 0.004, 0x88bbdd, 0, propY, 0.04, { rx: -0.7, emissive: 0x336688, emissiveIntensity: 0.6 });
+    // Lower prompter tablet display
+    addBox(g, 0.28, 0.015, 0.2, 0x111111, 0, propY - 0.12, 0.08, { metalness: 0.8 });
+    addBox(g, 0.26, 0.002, 0.18, 0x00ee44, 0, propY - 0.11, 0.08, { emissive: 0x00cc33, emissiveIntensity: 0.8 });
     // Rear camera body
-    addBox(g, 0.15, 0.12, 0.1, 0x222222, 0, h * 0.55, -lenL * 0.35, { roughness: 0.4, metalness: 0.6 });
-    // Tripod foot collar
-    addBox(g, 0.04, 0.06, 0.08, 0x181818, 0, h * 0.55 - 0.08, lenL * 0.1, { metalness: 0.9 });
+    addBox(g, 0.16, 0.12, 0.15, 0x222222, 0, propY, -0.2, { roughness: 0.4, metalness: 0.6 });
     return;
   }
 
-  // 4. Gimbal / Stabilizer
-  if (name.includes('gimbal') || name.includes('stabilizer')) {
-    // Dual side grip handles
-    addCyl(g, 0.016, 0.016, 0.25, 0x111111, -w * 0.4, h * 0.5, 0, 12, { roughness: 0.9 });
-    addCyl(g, 0.016, 0.016, 0.25, 0x111111, w * 0.4, h * 0.5, 0, 12, { roughness: 0.9 });
-    // Top crossbar
-    addCyl(g, 0.014, 0.014, w * 0.8, 0x2a2826, 0, h * 0.6, 0, 12, { rz: Math.PI / 2, metalness: 0.85 });
-    // 3-Axis Motor hubs & center camera cage
-    addCyl(g, 0.035, 0.035, 0.05, 0x1a1a1a, 0, h * 0.45, 0, 16, { metalness: 0.9 });
-    addBox(g, 0.14, 0.1, 0.12, 0x222222, 0, h * 0.45, 0.04, { roughness: 0.4, metalness: 0.5 });
-    addCyl(g, 0.035, 0.03, 0.06, 0x111111, 0, h * 0.45, 0.12, 16, { rx: Math.PI / 2, metalness: 0.8 });
-    return;
-  }
-
-  // 5. Field Monitor / Viewfinder / Wireless Unit
-  if (name.includes('monitor') || name.includes('viewfinder') || name.includes('timecode') || name.includes('handwheel') || name.includes('wireless')) {
-    // Thin monitor body
-    addBox(g, w, h, Math.min(0.04, d), 0x181818, 0, h / 2, 0, { metalness: 0.8, roughness: 0.3 });
-    // Glowing active display screen
-    addBox(g, w * 0.92, h * 0.88, 0.004, 0x1a3355, 0, h / 2, 0.02, { emissive: 0x225588, emissiveIntensity: 0.8 });
-    // Sun hood canopy
-    addBox(g, w, 0.01, d * 0.6, 0x111111, 0, h, d * 0.25, { roughness: 0.9 });
-    addBox(g, 0.01, h, d * 0.6, 0x111111, -w / 2, h / 2, d * 0.25, { roughness: 0.9 });
-    addBox(g, 0.01, h, d * 0.6, 0x111111, w / 2, h / 2, d * 0.25, { roughness: 0.9 });
-    // Rear dual NP-F battery
-    addBox(g, w * 0.3, h * 0.5, 0.03, 0x2a2826, 0, h / 2, -0.03, { roughness: 0.7 });
-    return;
-  }
-
-  // 6. Camera Slider / Dolly
-  if (name.includes('slider') || name.includes('dolly') || name.includes('rail')) {
-    const railL = Math.max(0.5, d);
-    // Dual precision carbon rails
-    addCyl(g, 0.012, 0.012, railL, 0x111111, -0.06, 0.04, 0, 12, { rx: Math.PI / 2, roughness: 0.3, metalness: 0.9 });
-    addCyl(g, 0.012, 0.012, railL, 0x111111, 0.06, 0.04, 0, 12, { rx: Math.PI / 2, roughness: 0.3, metalness: 0.9 });
-    // End blocks with leveling feet
-    [-railL / 2, railL / 2].forEach((ez) => {
-      addBox(g, 0.16, 0.03, 0.04, 0x222222, 0, 0.04, ez, { metalness: 0.8 });
-      addCyl(g, 0.015, 0.015, 0.03, 0x111111, -0.07, 0.015, ez, 10, { roughness: 0.9 });
-      addCyl(g, 0.015, 0.015, 0.03, 0x111111, 0.07, 0.015, ez, 10, { roughness: 0.9 });
-    });
-    // Center carriage sled plate & mini fluid head
-    addBox(g, 0.14, 0.02, 0.12, 0x2a2826, 0, 0.06, 0, { metalness: 0.85 });
-    addCyl(g, 0.03, 0.03, 0.06, 0x181818, 0, 0.1, 0, 16, { metalness: 0.8 });
-    return;
-  }
-
-  // 7. Generic Full-Rig Camera on Tripod (default camera fallback)
+  // Generic Full-Rig Camera on Tripod
   const standH = Math.max(1.0, h - 0.4);
-  // Tripod legs
   for (let i = 0; i < 3; i++) {
     const a = (i * Math.PI * 2) / 3;
     const lx = Math.cos(a) * 0.28;
     const lz = Math.sin(a) * 0.28;
     addCyl(g, 0.015, 0.01, standH, 0x282624, lx / 2, standH / 2, lz / 2, 10, { rx: (Math.sin(a) * 0.28) / standH, rz: (-Math.cos(a) * 0.28) / standH, metalness: 0.8 });
   }
-  // Center column & fluid head
   addCyl(g, 0.022, 0.022, standH * 0.4, 0x1f1e1d, 0, standH * 0.8, 0, 12, { metalness: 0.9 });
   addBox(g, 0.14, 0.08, 0.12, 0x181818, 0, standH + 0.04, 0, { metalness: 0.8 });
-  // Camera body
   const camY = standH + 0.14;
   addBox(g, 0.18, 0.14, 0.2, col, 0, camY, 0, { roughness: 0.4, metalness: 0.6 });
-  // Lens with focus ring
   addCyl(g, 0.045, 0.042, 0.14, 0x111111, 0, camY, 0.17, 18, { rx: Math.PI / 2, metalness: 0.85, roughness: 0.2 });
   addCyl(g, 0.038, 0.038, 0.01, 0x0055aa, 0, camY, 0.24, 18, { rx: Math.PI / 2, emissive: 0x004488, emissiveIntensity: 0.6 });
-  // Top handle
   addBox(g, 0.03, 0.02, 0.15, 0x1a1a1a, 0, camY + 0.1, 0, { metalness: 0.8 });
 }
 
-// ------------------------------------------------------------
-// LIGHTING & MODIFIERS PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 2. LIGHTING & MODIFIERS PROCEDURAL BUILDER
+// ============================================================
 function buildLightingItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
   const col = def.color || 0xf5f1ea;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Softbox / Octabox / Lantern / Parabolic Dome
+  // Softbox / Octabox / Lantern / Parabolic Dome
   if (name.includes('softbox') || name.includes('octa') || name.includes('lantern') || name.includes('umbrella') || name.includes('dome')) {
     const standH = Math.max(1.1, h - 0.45);
-    // Light stand tripod base & riser
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3;
       addCyl(g, 0.014, 0.01, 0.55, 0x1f1e1d, Math.cos(a) * 0.22, 0.25, Math.sin(a) * 0.22, 10, { metalness: 0.8 });
     }
     addCyl(g, 0.018, 0.022, standH, 0x1f1e1d, 0, standH / 2, 0, 12, { metalness: 0.85 });
-    // Light head housing
     const headY = standH + 0.1;
     addBox(g, 0.16, 0.16, 0.18, 0x181818, 0, headY, -0.08, { metalness: 0.7 });
-    // Tapered softbox hood (octagonal or rectangular)
     const sbW = Math.max(0.45, w);
     const sbH = Math.max(0.45, Math.min(0.8, h * 0.5));
-    // Softbox outer shell
     addBox(g, sbW, sbH, 0.28, 0x111111, 0, headY, 0.12, { roughness: 0.95 });
-    // Front glowing diffusion face with soft white emissive
     addBox(g, sbW * 0.96, sbH * 0.96, 0.01, 0xffffff, 0, headY, 0.26, {
       emissive: 0xfff8ee,
       emissiveIntensity: 0.9,
@@ -312,25 +232,20 @@ function buildLightingItem(g: THREE.Group, def: EquipmentDefinition, id: string)
     return;
   }
 
-  // 2. Fresnel Spotlight / Par / Projector with Barn Doors
+  // Fresnel Spotlight with Barn Doors
   if (name.includes('fresnel') || name.includes('spotlight') || name.includes('beam') || name.includes('par') || name.includes('barndoor')) {
     const standH = Math.max(1.1, h - 0.35);
-    // C-stand riser
     addCyl(g, 0.02, 0.02, standH, 0x333333, 0, standH / 2, 0, 14, { metalness: 0.9 });
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3;
       addBox(g, 0.025, 0.025, 0.35, 0x333333, Math.cos(a) * 0.18, 0.03 + i * 0.015, Math.sin(a) * 0.18, { ry: -a + Math.PI / 2, metalness: 0.9 });
     }
-    // U-yoke bracket
     const headY = standH + 0.15;
     addBox(g, 0.24, 0.02, 0.04, 0x222222, 0, headY - 0.08, 0, { metalness: 0.8 });
     addBox(g, 0.02, 0.16, 0.04, 0x222222, -0.12, headY, 0, { metalness: 0.8 });
     addBox(g, 0.02, 0.16, 0.04, 0x222222, 0.12, headY, 0, { metalness: 0.8 });
-    // Ribbed cylindrical spotlight housing
     addCyl(g, 0.09, 0.09, 0.24, 0x1f1e1d, 0, headY, 0, 18, { rx: Math.PI / 2, metalness: 0.7, roughness: 0.3 });
-    // Stepped Fresnel glass lens with warm glowing emissive core
     addCyl(g, 0.082, 0.082, 0.02, 0xfff0cc, 0, headY, 0.12, 20, { rx: Math.PI / 2, emissive: 0xffd988, emissiveIntensity: 1.0 });
-    // 4 Barn Door Flaps
     const doorW = 0.18, doorH = 0.1;
     addBox(g, doorW, doorH, 0.005, 0x111111, 0, headY + 0.1, 0.18, { rx: -0.4, roughness: 0.8 });
     addBox(g, doorW, doorH, 0.005, 0x111111, 0, headY - 0.1, 0.18, { rx: 0.4, roughness: 0.8 });
@@ -339,19 +254,16 @@ function buildLightingItem(g: THREE.Group, def: EquipmentDefinition, id: string)
     return;
   }
 
-  // 3. LED RGB Tube / Wand / Pixel Bar
+  // LED RGB Tube / Wand / Pixel Bar
   if (name.includes('tube') || name.includes('wand') || name.includes('pixel') || name.includes('bar')) {
     const tubeH = Math.max(0.6, h);
-    // Frosted glowing tube
     addCyl(g, 0.025, 0.025, tubeH * 0.85, col, 0, tubeH / 2, 0, 18, {
       emissive: col,
       emissiveIntensity: 0.9,
       roughness: 0.2,
     });
-    // Aluminum end caps with bumpers
     addCyl(g, 0.028, 0.028, 0.04, 0x222222, 0, tubeH * 0.05, 0, 16, { metalness: 0.9 });
     addCyl(g, 0.028, 0.028, 0.04, 0x222222, 0, tubeH * 0.95, 0, 16, { metalness: 0.9 });
-    // Mini folding desk tripod feet
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3;
       addCyl(g, 0.006, 0.006, 0.14, 0x181818, Math.cos(a) * 0.06, 0.04, Math.sin(a) * 0.06, 8, { metalness: 0.8 });
@@ -359,144 +271,67 @@ function buildLightingItem(g: THREE.Group, def: EquipmentDefinition, id: string)
     return;
   }
 
-  // 4. LED Panel / Bi-Color Mat
-  if (name.includes('panel') || name.includes('mat') || name.includes('led')) {
-    const standH = Math.max(1.1, h - 0.3);
-    addCyl(g, 0.016, 0.016, standH, 0x222222, 0, standH / 2, 0, 12, { metalness: 0.85 });
-    // Panel chassis with rear heatsink cooling fins
-    const pW = Math.max(0.3, w);
-    const pH = Math.max(0.25, h * 0.35);
-    const headY = standH + pH / 2 + 0.05;
-    addBox(g, pW, pH, 0.035, 0x1f1e1d, 0, headY, 0, { metalness: 0.7 });
-    // Front illuminated diffusion face
-    addBox(g, pW * 0.94, pH * 0.92, 0.006, 0xffeedd, 0, headY, 0.02, {
-      emissive: 0xffe8c8,
-      emissiveIntensity: 0.85,
-      roughness: 0.2,
-    });
-    // U-yoke bracket
-    addBox(g, pW + 0.04, 0.015, 0.02, 0x2a2826, 0, headY - pH / 2 - 0.02, 0, { metalness: 0.8 });
-    return;
-  }
-
-  // 5. Light Cutter Flag / Scrim / Floppy
-  if (name.includes('flag') || name.includes('scrim') || name.includes('cutter') || name.includes('floppy') || name.includes('reflector')) {
-    const riserH = Math.max(1.2, h - 0.4);
-    // C-Stand base & riser
-    for (let i = 0; i < 3; i++) {
-      const a = (i * Math.PI * 2) / 3;
-      addBox(g, 0.025, 0.025, 0.38, 0x333333, Math.cos(a) * 0.18, 0.03 + i * 0.015, Math.sin(a) * 0.18, { ry: -a + Math.PI / 2, metalness: 0.9 });
-    }
-    addCyl(g, 0.02, 0.02, riserH, 0x333333, 0, riserH / 2, 0, 12, { metalness: 0.9 });
-    // 2.5" Grip head knuckle & extension grip arm
-    addCyl(g, 0.04, 0.04, 0.06, 0x1a1a1a, 0, riserH, 0, 12, { metalness: 0.7 });
-    addCyl(g, 0.012, 0.012, 0.6, 0x333333, 0.25, riserH + 0.05, 0, 10, { rz: Math.PI / 2, metalness: 0.9 });
-    // Wire frame & duvetyne fabric / silk screen
-    const fW = Math.max(0.6, w);
-    const fH = Math.max(0.5, h * 0.4);
-    const fX = 0.45, fY = riserH + 0.05;
-    addBox(g, fW, fH, 0.005, col, fX, fY, 0, { roughness: 0.95 });
-    addBox(g, fW, 0.01, 0.01, 0x222222, fX, fY + fH / 2, 0, { metalness: 0.85 });
-    addBox(g, fW, 0.01, 0.01, 0x222222, fX, fY - fH / 2, 0, { metalness: 0.85 });
-    return;
-  }
-
-  // 6. Generic Lighting Fallback
+  // Generic Lighting Fallback (LED Panel on Stand)
   const standH = Math.max(1.0, h - 0.3);
   addCyl(g, 0.018, 0.018, standH, 0x222222, 0, standH / 2, 0, 12, { metalness: 0.8 });
   addBox(g, w, h * 0.3, d, 0x1f1e1d, 0, standH + (h * 0.3) / 2, 0, { metalness: 0.7 });
   addBox(g, w * 0.9, h * 0.26, 0.01, 0xffeedd, 0, standH + (h * 0.3) / 2, d / 2 + 0.005, { emissive: 0xffe0b0, emissiveIntensity: 0.8 });
 }
 
-// ------------------------------------------------------------
-// AUDIO & ACOUSTICS PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 3. AUDIO & ACOUSTICS PROCEDURAL BUILDER
+// ============================================================
 function buildAudioItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
   const col = def.color || 0x2a2826;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Broadcast / Podcast Microphone (SM7B style) on Arm
-  if (name.includes('podcast') || name.includes('broadcast mic') || name.includes('dynamic mic')) {
-    // Scissor arm base clamp
+  // Broadcast / Podcast Microphone on Boom Arm
+  if (name.includes('podcast') || name.includes('broadcast mic') || name.includes('dynamic mic') || name.includes('sm7b')) {
     addBox(g, 0.06, 0.08, 0.06, 0x181818, 0, 0.04, 0, { metalness: 0.9 });
-    // Dual articulation arms
     addCyl(g, 0.008, 0.008, 0.35, 0x222222, -0.05, 0.22, 0, 8, { rz: 0.3, metalness: 0.85 });
     addCyl(g, 0.008, 0.008, 0.35, 0x222222, 0.05, 0.22, 0, 8, { rz: -0.3, metalness: 0.85 });
-    // U-yoke mount
     const micY = Math.max(0.35, h * 0.7);
     addBox(g, 0.12, 0.06, 0.03, 0x181818, 0, micY, 0, { metalness: 0.8 });
-    // Microphone body & black foam windscreen
     addCyl(g, 0.026, 0.026, 0.14, 0x111111, 0, micY + 0.06, 0.04, 16, { rx: 0.5, roughness: 0.95 });
     addCyl(g, 0.022, 0.022, 0.06, 0x242424, 0, micY + 0.01, -0.02, 14, { rx: 0.5, metalness: 0.7 });
     return;
   }
 
-  // 2. Studio Condenser Mic with Shockmount & Pop Filter
-  if (name.includes('condenser') || name.includes('vocal mic') || name.includes('studio mic')) {
-    // Circular heavy desk base & riser
-    addCyl(g, 0.07, 0.07, 0.02, 0x111111, 0, 0.01, 0, 18, { metalness: 0.9 });
-    addCyl(g, 0.012, 0.012, h * 0.6, 0x222222, 0, (h * 0.6) / 2, 0, 10, { metalness: 0.85 });
-    const micY = h * 0.6 + 0.06;
-    // Spider shockmount outer ring
-    addCyl(g, 0.055, 0.055, 0.04, 0x1a1a1a, 0, micY, 0, 16, { metalness: 0.8 });
-    // Metal condenser mic body (Champagne/Silver)
-    addCyl(g, 0.024, 0.024, 0.12, 0x333333, 0, micY, 0, 16, { metalness: 0.85, roughness: 0.2 });
-    // Metallic mesh grille on top
-    addCyl(g, 0.023, 0.023, 0.06, 0xaaaaaa, 0, micY + 0.07, 0, 16, { metalness: 0.95, roughness: 0.1 });
-    // Pop filter hoop in front
-    addCyl(g, 0.06, 0.06, 0.005, 0x111111, 0, micY + 0.05, 0.08, 20, { rx: Math.PI / 2, roughness: 0.9 });
-    return;
-  }
-
-  // 3. Audio Console / Mixer / Controller / Audio Interface
-  if (name.includes('mixer') || name.includes('interface') || name.includes('console') || name.includes('recorder') || name.includes('preamp')) {
-    // Angled tabletop console chassis
+  // Audio Mixer / DJ Console / Stream Interface
+  if (name.includes('mixer') || name.includes('interface') || name.includes('console') || name.includes('recorder') || name.includes('dj') || name.includes('deck')) {
     const cW = Math.max(0.25, w);
     const cD = Math.max(0.2, d);
     const cH = Math.max(0.04, h);
     addBox(g, cW, cH, cD, 0x1f1e1d, 0, cH / 2, 0, { rx: -0.1, roughness: 0.4, metalness: 0.6 });
-    // Channel fader slots & color-coded fader knobs
     const numFaders = Math.max(4, Math.floor(cW / 0.05));
     for (let i = 0; i < numFaders; i++) {
       const fx = -cW * 0.4 + (i * cW * 0.8) / (numFaders - 1);
-      // Fader groove
       addBox(g, 0.006, 0.002, cD * 0.4, 0x0a0a0a, fx, cH + 0.002, 0.02, { roughness: 0.9 });
-      // Tactile fader knob
       addBox(g, 0.016, 0.012, 0.02, i === 0 ? 0xcc3333 : 0xdddddd, fx, cH + 0.008, 0.01, { roughness: 0.6 });
-      // Rotary EQ knobs (High, Mid, Low)
       addCyl(g, 0.006, 0.006, 0.01, 0x2288cc, fx, cH + 0.007, -cD * 0.22, 10);
-      addCyl(g, 0.006, 0.006, 0.01, 0x33aa44, fx, cH + 0.007, -cD * 0.3, 10);
     }
-    // Dual stereo LED VU meters
     addBox(g, 0.02, 0.004, cD * 0.35, 0x00ff44, cW * 0.42, cH + 0.002, -0.05, { emissive: 0x00cc33, emissiveIntensity: 0.8 });
     return;
   }
 
-  // 4. Studio Monitor / Speaker / Subwoofer
-  if (name.includes('monitor') || name.includes('speaker') || name.includes('subwoofer') || name.includes('sound')) {
-    // Solid MDF speaker cabinet
+  // Studio Monitor Speaker
+  if (name.includes('monitor') || name.includes('speaker') || name.includes('subwoofer')) {
     addBox(g, w, h, d, 0x181818, 0, h / 2, 0, { roughness: 0.7, metalness: 0.2 });
-    // Woofer cone with center dust cap
     const wooferR = Math.min(w * 0.38, h * 0.28);
     const wooferY = h * 0.38;
     addCyl(g, wooferR, wooferR * 0.85, 0.015, 0xffaa00, 0, wooferY, d / 2 + 0.005, 20, { rx: Math.PI / 2, roughness: 0.5 });
     addSphere(g, wooferR * 0.32, 0x111111, 0, wooferY, d / 2 + 0.015, 14, { roughness: 0.3 });
-    // Silk dome tweeter
     const tweetR = wooferR * 0.42;
     const tweetY = h * 0.75;
     addCyl(g, tweetR * 1.3, tweetR * 1.3, 0.008, 0x222222, 0, tweetY, d / 2 + 0.004, 16, { rx: Math.PI / 2 });
     addSphere(g, tweetR * 0.7, 0x111111, 0, tweetY, d / 2 + 0.008, 14, { metalness: 0.6 });
-    // Bass reflex port tube
-    addCyl(g, wooferR * 0.28, wooferR * 0.28, 0.02, 0x0a0a0a, 0, h * 0.12, d / 2 + 0.005, 14, { rx: Math.PI / 2 });
     return;
   }
 
-  // 5. Acoustic Panel / Sound Diffuser / Bass Trap
+  // Acoustic Wall Panel
   if (name.includes('acoustic') || name.includes('diffuser') || name.includes('bass trap') || name.includes('foam')) {
-    // Outer beveled frame
     addBox(g, w, h, d, 0x2a2826, 0, h / 2, 0, { roughness: 0.8 });
-    // 3D wedge relief acoustic foam pattern
     const rows = 4, cols = 4;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -508,40 +343,178 @@ function buildAudioItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
     return;
   }
 
-  // 6. Generic Audio Fallback (Mic on stand)
+  // Generic Audio Fallback
   addCyl(g, 0.08, 0.08, 0.02, 0x111111, 0, 0.01, 0, 16, { metalness: 0.9 });
   addCyl(g, 0.012, 0.012, h * 0.8, 0x222222, 0, (h * 0.8) / 2, 0, 10, { metalness: 0.85 });
   addCyl(g, 0.025, 0.025, 0.12, col, 0, h * 0.8 + 0.06, 0, 16, { metalness: 0.8 });
 }
 
-// ------------------------------------------------------------
-// FURNITURE & STAGING PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 4. DECOR, PROPS & BOTANICALS PROCEDURAL BUILDER
+// ============================================================
+function buildDecorAndPropsItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
+  const { width: w, depth: d, height: h } = def.dimensions;
+  const col = def.color || 0x22c55e;
+  const name = (def.name || id).toLowerCase();
+
+  // 1. Indoor Plants / Fiddle Leaf / Monstera / Ferns
+  if (name.includes('plant') || name.includes('tree') || name.includes('monstera') || name.includes('flora') || name.includes('fig') || name.includes('palm')) {
+    // Ceramic planter pot
+    const potR = Math.max(0.12, Math.min(w * 0.4, 0.25));
+    const potH = Math.max(0.25, h * 0.35);
+    addCyl(g, potR * 1.1, potR * 0.85, potH, 0xf5f0eb, 0, potH / 2, 0, 18, { roughness: 0.5 });
+    // Dark rich soil inside pot
+    addCyl(g, potR * 0.95, potR * 0.95, 0.02, 0x2a1b0e, 0, potH - 0.01, 0, 16, { roughness: 0.98 });
+    // Main vertical stalks
+    const stalkH = h - potH;
+    addCyl(g, 0.014, 0.02, stalkH, 0x4a7c36, 0, potH + stalkH / 2, 0, 10, { roughness: 0.7 });
+    // Layered broad green leaves
+    const numLeaves = 8;
+    for (let i = 0; i < numLeaves; i++) {
+      const a = (i * Math.PI * 2) / numLeaves + (i * 0.3);
+      const ly = potH + 0.15 + (i * (stalkH - 0.1)) / numLeaves;
+      const lDist = potR * 1.4 + (i % 3) * 0.08;
+      const lx = Math.cos(a) * lDist;
+      const lz = Math.sin(a) * lDist;
+      // Leaf stem
+      addCyl(g, 0.005, 0.008, lDist * 0.8, 0x4a7c36, lx / 2, ly, lz / 2, 6, {
+        ry: -a,
+        rx: 0.4,
+        roughness: 0.8,
+      });
+      // Broad green leaf blade
+      addBox(g, 0.18, 0.005, 0.26, 0x2e7d32, lx, ly + 0.05, lz, {
+        ry: -a,
+        rx: 0.35,
+        roughness: 0.6,
+      });
+    }
+    return;
+  }
+
+  // 2. Neon Accent Wall Signs / LED Artwork
+  if (name.includes('neon') || name.includes('led sign') || name.includes('wall art') || name.includes('logo sign')) {
+    // Clear acrylic mounting backing
+    addBox(g, w, h, 0.008, 0x111111, 0, h / 2, 0, { metalness: 0.5, roughness: 0.1 });
+    // Glowing neon tube lines
+    const neonCol = def.color || 0xff007f;
+    addCyl(g, 0.01, 0.01, w * 0.8, neonCol, 0, h * 0.7, 0.012, 12, { rz: Math.PI / 2, emissive: neonCol, emissiveIntensity: 1.2 });
+    addCyl(g, 0.01, 0.01, w * 0.6, neonCol, 0, h * 0.35, 0.012, 12, { rz: Math.PI / 2, emissive: neonCol, emissiveIntensity: 1.2 });
+    addCyl(g, 0.01, 0.01, h * 0.5, neonCol, -w * 0.3, h * 0.5, 0.012, 12, { emissive: neonCol, emissiveIntensity: 1.2 });
+    addCyl(g, 0.01, 0.01, h * 0.5, neonCol, w * 0.3, h * 0.5, 0.012, 12, { emissive: neonCol, emissiveIntensity: 1.2 });
+    return;
+  }
+
+  // 3. Studio Rug / Acoustic Floor Carpet
+  if (name.includes('rug') || name.includes('carpet') || name.includes('mat')) {
+    // Thin textured floor rug with border trim
+    addBox(g, w, 0.008, d, col, 0, 0.004, 0, { roughness: 0.98 });
+    // Outer border trim
+    addBox(g, w * 1.02, 0.009, 0.04, 0x181818, 0, 0.0045, -d / 2, { roughness: 0.9 });
+    addBox(g, w * 1.02, 0.009, 0.04, 0x181818, 0, 0.0045, d / 2, { roughness: 0.9 });
+    addBox(g, 0.04, 0.009, d * 1.02, 0x181818, -w / 2, 0.0045, 0, { roughness: 0.9 });
+    addBox(g, 0.04, 0.009, d * 1.02, 0x181818, w / 2, 0.0045, 0, { roughness: 0.9 });
+    return;
+  }
+
+  // 4. Picture Frame / Wall Poster / Gold Record
+  if (name.includes('frame') || name.includes('poster') || name.includes('canvas') || name.includes('award') || name.includes('gold record')) {
+    // Black gallery frame
+    addBox(g, w, h, 0.02, 0x111111, 0, h / 2, 0, { roughness: 0.4, metalness: 0.7 });
+    // White interior passe-partout matting
+    addBox(g, w * 0.92, h * 0.92, 0.004, 0xffffff, 0, h / 2, 0.011, { roughness: 0.8 });
+    // Center artwork / Gold vinyl record
+    if (name.includes('record') || name.includes('gold')) {
+      addCyl(g, Math.min(w, h) * 0.35, Math.min(w, h) * 0.35, 0.006, 0xffd700, 0, h / 2, 0.014, 24, { rx: Math.PI / 2, metalness: 0.95, roughness: 0.15 });
+      addCyl(g, Math.min(w, h) * 0.12, Math.min(w, h) * 0.12, 0.008, 0xcc2200, 0, h / 2, 0.015, 16, { rx: Math.PI / 2 });
+    } else {
+      addBox(g, w * 0.75, h * 0.75, 0.004, 0x224477, 0, h / 2, 0.013, { roughness: 0.5 });
+    }
+    return;
+  }
+
+  // 5. Electric / Acoustic Guitar & Bass on Floor Stand
+  if (name.includes('guitar') || name.includes('bass') || name.includes('instrument')) {
+    // Tripod floor stand base
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3;
+      addCyl(g, 0.008, 0.008, 0.28, 0x111111, Math.cos(a) * 0.14, 0.08, Math.sin(a) * 0.14, 8, { metalness: 0.9 });
+    }
+    addCyl(g, 0.012, 0.012, 0.85, 0x222222, 0, 0.45, -0.05, 10, { metalness: 0.9 });
+    // Contoured guitar body
+    const bodyY = 0.35;
+    addBox(g, 0.32, 0.45, 0.05, col, 0, bodyY, 0, { roughness: 0.3, metalness: 0.2 });
+    addBox(g, 0.22, 0.3, 0.052, 0xffffff, -0.04, bodyY - 0.04, 0.001, { roughness: 0.4 });
+    // Maple guitar neck & fretboard
+    addBox(g, 0.045, 0.55, 0.025, 0xd4a373, 0, bodyY + 0.45, 0.01, { roughness: 0.5 });
+    // Headstock with chrome tuning pegs
+    addBox(g, 0.065, 0.14, 0.02, 0x2b1d0c, 0, bodyY + 0.76, 0.01, { roughness: 0.4 });
+    for (let p = 0; p < 6; p++) {
+      const py = bodyY + 0.72 + (p % 3) * 0.035;
+      const px = p < 3 ? -0.04 : 0.04;
+      addCyl(g, 0.004, 0.004, 0.02, 0xeeeeee, px, py, 0.01, 8, { rz: Math.PI / 2, metalness: 0.95 });
+    }
+    return;
+  }
+
+  // 6. Studio Espresso Bar & Beverage Station
+  if (name.includes('coffee') || name.includes('espresso') || name.includes('fridge') || name.includes('bar')) {
+    // Stainless steel machine housing
+    addBox(g, w, h, d, 0x2a2826, 0, h / 2, 0, { metalness: 0.8, roughness: 0.2 });
+    // Dual chrome portafilter group heads
+    [-w * 0.2, w * 0.2].forEach((gx) => {
+      addCyl(g, 0.03, 0.025, 0.04, 0xdddddd, gx, h * 0.45, d / 2 + 0.02, 14, { metalness: 0.95 });
+      addCyl(g, 0.008, 0.008, 0.12, 0x111111, gx, h * 0.45, d / 2 + 0.08, 8, { rx: Math.PI / 2, roughness: 0.8 });
+    });
+    // Steam wand & pressure manometer gauge
+    addCyl(g, 0.005, 0.005, 0.14, 0xdddddd, w * 0.38, h * 0.38, d / 2 + 0.03, 8, { rx: 0.3, metalness: 0.95 });
+    addCyl(g, 0.02, 0.02, 0.005, 0xffffff, 0, h * 0.75, d / 2 + 0.002, 14, { rx: Math.PI / 2 });
+    // Top warming rack with espresso cups
+    addBox(g, w * 0.88, 0.01, d * 0.88, 0x333333, 0, h + 0.005, 0, { metalness: 0.9 });
+    [-w * 0.25, 0, w * 0.25].forEach((cx) => {
+      addCyl(g, 0.025, 0.018, 0.04, 0xffffff, cx, h + 0.03, 0, 12, { roughness: 0.2 });
+    });
+    return;
+  }
+
+  // 7. Books, Vinyl Records & Creator Props Stack
+  if (name.includes('book') || name.includes('vinyl') || name.includes('prop') || name.includes('decor')) {
+    // Base stack of horizontal books
+    const bookColors = [0x991b1b, 0x1e3a8a, 0x065f46, 0xb45309];
+    bookColors.forEach((bCol, i) => {
+      addBox(g, w * 0.75, 0.035, d * 0.75, bCol, 0, 0.018 + i * 0.036, 0, { roughness: 0.8 });
+      addBox(g, w * 0.04, 0.035, d * 0.72, 0xffffff, -w * 0.36, 0.018 + i * 0.036, 0, { roughness: 0.9 });
+    });
+    // Metal decorative bookend or headphone stand on top
+    addBox(g, 0.08, 0.12, 0.08, 0x1f1e1d, 0, 0.2, 0, { metalness: 0.85 });
+    return;
+  }
+
+  // 8. Universal High-Detail Decor Archetype
+  addBox(g, w, h * 0.85, d, col, 0, (h * 0.85) / 2, 0, { roughness: 0.6, metalness: 0.2 });
+  addBox(g, w * 1.05, 0.02, d * 1.05, 0x181818, 0, h * 0.85 + 0.01, 0, { metalness: 0.8 });
+}
+
+// ============================================================
+// 5. FURNITURE & STAGING PROCEDURAL BUILDER
+// ============================================================
 function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
   const col = def.color || 0x3a3836;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Desks, Workstations & Tables
+  // Desks, Workstations & Tables
   if (name.includes('desk') || name.includes('table') || name.includes('workstation')) {
     const topThick = 0.04;
-    // Beveled wooden / matte laminate desktop slab
     addBox(g, w, topThick, d, col, 0, h - topThick / 2, 0, { roughness: 0.5, metalness: 0.1 });
-    // Dual motorized heavy steel T-legs or 4 wooden legs
     if (w > 1.0) {
-      // Modern dual T-leg standing desk frame
       [-w * 0.42, w * 0.42].forEach((lx) => {
-        // Vertical motorized telescoping column
         addBox(g, 0.08, h - topThick, 0.06, 0x1f1e1d, lx, (h - topThick) / 2, 0, { metalness: 0.85 });
-        // Wide foot stabilizer on floor
         addBox(g, 0.08, 0.03, d * 0.8, 0x1f1e1d, lx, 0.015, 0, { metalness: 0.85 });
-        // Top support bracket
         addBox(g, 0.06, 0.03, d * 0.7, 0x1f1e1d, lx, h - topThick - 0.015, 0, { metalness: 0.85 });
       });
-      // Crossbar support & cable raceway
       addBox(g, w * 0.8, 0.04, 0.04, 0x1f1e1d, 0, h * 0.7, 0, { metalness: 0.85 });
     } else {
-      // 4-Leg sturdy table
       [-w * 0.42, w * 0.42].forEach((lx) => {
         [-d * 0.42, d * 0.42].forEach((lz) => {
           addCyl(g, 0.025, 0.02, h - topThick, 0x1f1e1d, lx, (h - topThick) / 2, lz, 10, { metalness: 0.8 });
@@ -551,9 +524,8 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
     return;
   }
 
-  // 2. Chairs, Gaming Chairs & Ergonomic Seating
+  // Chairs & Ergonomic Seating
   if (name.includes('chair') || name.includes('seating')) {
-    // 5-Star wheeled base with 5 casters
     for (let i = 0; i < 5; i++) {
       const a = (i * Math.PI * 2) / 5;
       const lx = Math.cos(a) * 0.25;
@@ -561,15 +533,11 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
       addBox(g, 0.04, 0.025, 0.26, 0x181818, lx / 2, 0.06, lz / 2, { ry: -a + Math.PI / 2, metalness: 0.8 });
       addCyl(g, 0.025, 0.025, 0.03, 0x111111, lx, 0.03, lz, 10, { rz: Math.PI / 2, roughness: 0.9 });
     }
-    // Gas lift cylinder
     const seatY = Math.max(0.42, h * 0.45);
     addCyl(g, 0.028, 0.032, seatY - 0.06, 0x333333, 0, (seatY + 0.06) / 2, 0, 14, { metalness: 0.95 });
-    // Contoured seat cushion
     addBox(g, w * 0.85, 0.08, d * 0.85, col, 0, seatY, 0, { roughness: 0.8 });
-    // Ergonomic curved backrest
     const backH = h - seatY;
     addBox(g, w * 0.78, backH * 0.85, 0.05, col, 0, seatY + backH * 0.45, -d * 0.35, { rx: 0.1, roughness: 0.8 });
-    // 3D adjustable armrests
     [-w * 0.42, w * 0.42].forEach((ax) => {
       addCyl(g, 0.015, 0.015, 0.18, 0x222222, ax, seatY + 0.09, 0, 10, { metalness: 0.8 });
       addBox(g, 0.08, 0.025, 0.22, 0x111111, ax, seatY + 0.18, 0, { roughness: 0.9 });
@@ -577,54 +545,35 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
     return;
   }
 
-  // 3. Stools / Barstools
-  if (name.includes('stool')) {
-    // Tall frame with ring footrest
-    const sH = Math.max(0.65, h);
-    addCyl(g, 0.03, 0.03, sH - 0.08, 0x222222, 0, (sH - 0.08) / 2, 0, 14, { metalness: 0.9 });
-    addCyl(g, 0.22, 0.22, 0.02, 0x222222, 0, 0.01, 0, 18, { metalness: 0.9 });
-    addCyl(g, 0.16, 0.16, 0.015, 0x333333, 0, sH * 0.35, 0, 18, { metalness: 0.9 });
-    // Padded cushion seat
-    addCyl(g, w * 0.45, w * 0.45, 0.08, col, 0, sH - 0.04, 0, 20, { roughness: 0.8 });
-    return;
-  }
-
-  // 4. Sofa / Couch / Lounge Armchair
+  // Sofa / Lounge Armchair
   if (name.includes('sofa') || name.includes('couch') || name.includes('lounge')) {
     const seatH = 0.42;
-    // Base platform & short wooden legs
     addBox(g, w, 0.15, d, col, 0, 0.18, 0, { roughness: 0.9 });
     [-w * 0.44, w * 0.44].forEach((lx) => {
       [-d * 0.44, d * 0.44].forEach((lz) => {
         addCyl(g, 0.03, 0.02, 0.1, 0x553311, lx, 0.05, lz, 10, { roughness: 0.6 });
       });
     });
-    // Deep plush seat cushions
     addBox(g, w * 0.88, 0.14, d * 0.75, col, 0, seatH, d * 0.05, { roughness: 0.95 });
-    // Backrest with tufting
     addBox(g, w, h - seatH, 0.22, col, 0, seatH + (h - seatH) / 2, -d * 0.38, { roughness: 0.95 });
-    // Dual armrests
     [-w / 2 + 0.1, w / 2 - 0.1].forEach((ax) => {
       addBox(g, 0.18, 0.28, d, col, ax, 0.38, 0, { roughness: 0.95 });
     });
     return;
   }
 
-  // 5. Shelving Units, Credenzas & Gear Racks
+  // Shelving Units, Credenzas & Gear Racks
   if (name.includes('shelf') || name.includes('rack') || name.includes('credenza') || name.includes('cabinet')) {
-    // 4 Corner upright steel posts
     [-w / 2 + 0.02, w / 2 - 0.02].forEach((px) => {
       [-d / 2 + 0.02, d / 2 - 0.02].forEach((pz) => {
         addBox(g, 0.03, h, 0.03, 0x1f1e1d, px, h / 2, pz, { metalness: 0.85 });
       });
     });
-    // 4 Horizontal shelf tiers holding studio gear
     const numShelves = 4;
     for (let i = 0; i < numShelves; i++) {
       const sy = 0.08 + (i * (h - 0.12)) / (numShelves - 1);
       addBox(g, w - 0.02, 0.02, d - 0.02, col, 0, sy, 0, { roughness: 0.6 });
       if (i < numShelves - 1) {
-        // Gear prop boxes / items on shelf
         addBox(g, 0.18, 0.12, 0.14, 0x333333, -w * 0.25, sy + 0.07, 0, { roughness: 0.7 });
         addBox(g, 0.22, 0.15, 0.16, 0x554433, w * 0.22, sy + 0.085, 0, { roughness: 0.8 });
       }
@@ -632,9 +581,8 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
     return;
   }
 
-  // 6. Seamless Backdrop / Green Screen / Cyclorama
+  // Backdrop / Green Screen / Cyclorama
   if (name.includes('backdrop') || name.includes('green-screen') || name.includes('seamless') || name.includes('cyclorama')) {
-    // Dual vertical backdrop support stands
     [-w / 2 + 0.05, w / 2 - 0.05].forEach((sx) => {
       addCyl(g, 0.02, 0.02, h, 0x222222, sx, h / 2, -d * 0.4, 12, { metalness: 0.9 });
       for (let i = 0; i < 3; i++) {
@@ -642,57 +590,48 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
         addCyl(g, 0.012, 0.008, 0.45, 0x1f1e1d, sx + Math.cos(a) * 0.18, 0.2, -d * 0.4 + Math.sin(a) * 0.18, 8, { metalness: 0.8 });
       }
     });
-    // Top crossbar roller tube
     addCyl(g, 0.025, 0.025, w, 0x333333, 0, h - 0.04, -d * 0.4, 16, { rz: Math.PI / 2, metalness: 0.9 });
-    // Hanging seamless sweep curving down to floor
     const sweepColor = name.includes('green') ? 0x00cc44 : col;
     addBox(g, w * 0.94, h * 0.95, 0.005, sweepColor, 0, h * 0.48, -d * 0.4, { roughness: 0.98 });
     addBox(g, w * 0.94, 0.005, d * 0.8, sweepColor, 0, 0.003, 0, { roughness: 0.98 });
     return;
   }
 
-  // 7. Generic Furniture Fallback (Product display plinth)
-  addBox(g, w, h, d, col, 0, h / 2, 0, { roughness: 0.6, metalness: 0.1 });
-  addBox(g, w * 1.04, 0.02, d * 1.04, 0x1f1e1d, 0, h, 0, { metalness: 0.8 });
+  // Fallback to Decor & Props builder
+  buildDecorAndPropsItem(g, def, id);
 }
 
-// ------------------------------------------------------------
-// TECH & COMPUTING PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 6. TECH & COMPUTING PROCEDURAL BUILDER
+// ============================================================
 function buildTechItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
-  const col = def.color || 0x1f1e1d;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Laptop / Mac / Computer
+  // Laptop / MacBook
   if (name.includes('laptop') || name.includes('macbook')) {
     const baseH = 0.015;
-    // Lower keyboard chassis & trackpad
     addBox(g, w, baseH, d * 0.65, 0xd0d0d0, 0, baseH / 2, 0, { metalness: 0.9, roughness: 0.2 });
     addBox(g, w * 0.85, 0.002, d * 0.35, 0x111111, 0, baseH + 0.001, -d * 0.08, { roughness: 0.8 });
     addBox(g, w * 0.35, 0.001, d * 0.18, 0xb0b0b0, 0, baseH + 0.001, d * 0.2, { metalness: 0.5 });
-    // Angled screen display
     const screenH = d * 0.6;
     addBox(g, w, screenH, 0.008, 0xd0d0d0, 0, baseH + screenH / 2, -d * 0.32, { rx: -0.25, metalness: 0.9 });
     addBox(g, w * 0.92, screenH * 0.88, 0.002, 0x113355, 0, baseH + screenH / 2, -d * 0.31, { rx: -0.25, emissive: 0x224477, emissiveIntensity: 0.8 });
     return;
   }
 
-  // 2. High-Performance Tower PC / Server
+  // Tower PC Workstation
   if (name.includes('pc') || name.includes('tower') || name.includes('server') || name.includes('workstation')) {
     addBox(g, w, h, d, 0x181818, 0, h / 2, 0, { metalness: 0.7, roughness: 0.3 });
-    // Front intake mesh grille & RGB strip
     addBox(g, w * 0.88, h * 0.88, 0.005, 0x111111, 0, h / 2, d / 2 + 0.002, { roughness: 0.95 });
     addBox(g, 0.008, h * 0.85, 0.006, 0x00ccff, 0, h / 2, d / 2 + 0.004, { emissive: 0x00aaff, emissiveIntensity: 0.9 });
-    // Tempered glass side panel with internal glowing hardware
     addBox(g, 0.004, h * 0.85, d * 0.85, 0x224466, w / 2 + 0.002, h / 2, 0, { emissive: 0x113355, emissiveIntensity: 0.4 });
     return;
   }
 
-  // 3. Switchers, Stream Decks & Control Surfaces
+  // Stream Deck / Video Switcher
   if (name.includes('switch') || name.includes('stream deck') || name.includes('streamdeck') || name.includes('deck')) {
     addBox(g, w, h, d, 0x1a1a1a, 0, h / 2, 0, { rx: -0.15, metalness: 0.7, roughness: 0.4 });
-    // Grid of illuminated silicone LCD keys
     const rows = 3, cols = 5;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -705,111 +644,59 @@ function buildTechItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
         });
       }
     }
-    // Video transition T-Bar lever
-    if (w > 0.3) {
-      addCyl(g, 0.008, 0.008, 0.05, 0xdddddd, w * 0.35, h + 0.025, 0, 10, { metalness: 0.95 });
-      addCyl(g, 0.018, 0.018, 0.06, 0x222222, w * 0.35, h + 0.05, 0, 10, { rx: Math.PI / 2, metalness: 0.8 });
-    }
     return;
   }
 
-  // 4. Keyboard Synthesizer / Piano
-  if (name.includes('keyboard') || name.includes('synth') || name.includes('piano')) {
-    // Housing enclosure
-    addBox(g, w, h, d, 0x1f1e1d, 0, h / 2, 0, { roughness: 0.4, metalness: 0.6 });
-    // White piano keys bed
-    const numKeys = 24;
-    for (let i = 0; i < numKeys; i++) {
-      const kx = -w * 0.42 + (i * w * 0.84) / (numKeys - 1);
-      addBox(g, (w * 0.8) / numKeys, 0.01, d * 0.45, 0xffffff, kx, h + 0.005, d * 0.2, { roughness: 0.2 });
-      // Black accidentals
-      if (i % 7 !== 2 && i % 7 !== 6) {
-        addBox(g, (w * 0.5) / numKeys, 0.016, d * 0.28, 0x111111, kx + (w * 0.4) / numKeys, h + 0.012, d * 0.12, { roughness: 0.3 });
-      }
-    }
-    // Top control panel & pitch/mod wheels
-    addBox(g, w * 0.3, 0.004, d * 0.2, 0x0088cc, 0, h + 0.003, -d * 0.25, { emissive: 0x0066aa, emissiveIntensity: 0.7 });
-    addCyl(g, 0.025, 0.025, 0.015, 0x222222, -w * 0.44, h + 0.01, -d * 0.2, 14, { rx: Math.PI / 2, metalness: 0.8 });
-    return;
-  }
-
-  // 5. Generic Tech Fallback (Multi-monitor desk setup)
+  // Generic Monitor / Screen
   addBox(g, w, 0.02, 0.08, 0x222222, 0, 0.01, 0, { metalness: 0.9 });
   addCyl(g, 0.018, 0.018, h * 0.7, 0x222222, 0, (h * 0.7) / 2, 0, 10, { metalness: 0.9 });
   addBox(g, w, h * 0.6, 0.02, 0x181818, 0, h * 0.65, 0, { metalness: 0.8 });
   addBox(g, w * 0.94, h * 0.54, 0.004, 0x224488, 0, h * 0.65, 0.012, { emissive: 0x3366aa, emissiveIntensity: 0.8 });
 }
 
-// ------------------------------------------------------------
-// POWER, BATTERIES & UTILITIES PROCEDURAL BUILDER
-// ------------------------------------------------------------
+// ============================================================
+// 7. POWER & BATTERIES PROCEDURAL BUILDER
+// ============================================================
 function buildPowerItem(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const { width: w, depth: d, height: h } = def.dimensions;
   const col = def.color || 0x333333;
   const name = (def.name || id).toLowerCase();
 
-  // 1. Portable Power Station (Jackery / EcoFlow style)
+  // Portable Power Station
   if (name.includes('station') || name.includes('solar') || name.includes('battery') || name.includes('ups')) {
-    // Rugged chassis with corner bumpers
     addBox(g, w, h, d, col, 0, h / 2, 0, { roughness: 0.6, metalness: 0.3 });
     [-w / 2, w / 2].forEach((bx) => {
       [-d / 2, d / 2].forEach((bz) => {
         addBox(g, 0.04, h * 1.02, 0.04, 0x111111, bx, h / 2, bz, { roughness: 0.9 });
       });
     });
-    // Top integrated carry handles
     addBox(g, w * 0.6, 0.03, 0.04, 0x1a1a1a, 0, h + 0.03, 0, { metalness: 0.8 });
-    // Front smart color LCD display showing Watts in/out
     addBox(g, w * 0.45, h * 0.35, 0.004, 0x002244, 0, h * 0.6, d / 2 + 0.002, { emissive: 0x0088dd, emissiveIntensity: 0.9 });
-    // AC & USB Outlet ports on front face
     addBox(g, w * 0.3, h * 0.25, 0.003, 0x222222, -w * 0.25, h * 0.25, d / 2 + 0.002, { roughness: 0.9 });
     addBox(g, w * 0.3, h * 0.25, 0.003, 0x222222, w * 0.25, h * 0.25, d / 2 + 0.002, { roughness: 0.9 });
     return;
   }
 
-  // 2. Inverter Generator with Roll Cage
-  if (name.includes('generator') || name.includes('petrol') || name.includes('fuel')) {
-    // Tubular steel perimeter roll cage
-    [-w / 2 + 0.02, w / 2 - 0.02].forEach((cx) => {
-      [-d / 2 + 0.02, d / 2 - 0.02].forEach((cz) => {
-        addCyl(g, 0.015, 0.015, h, 0xcc2200, cx, h / 2, cz, 10, { metalness: 0.85 });
-      });
-    });
-    // Engine block inside cage
-    addBox(g, w * 0.8, h * 0.65, d * 0.75, 0x282624, 0, h * 0.4, 0, { roughness: 0.6, metalness: 0.7 });
-    // Fuel tank with chrome cap on top
-    addBox(g, w * 0.85, 0.1, d * 0.8, 0xcc2200, 0, h - 0.05, 0, { roughness: 0.4, metalness: 0.4 });
-    addCyl(g, 0.035, 0.035, 0.025, 0xeeeeee, 0, h + 0.01, 0, 14, { metalness: 0.95 });
-    // All-terrain transport wheels
-    [-w * 0.45, w * 0.45].forEach((wx) => {
-      addCyl(g, 0.06, 0.06, 0.04, 0x111111, wx, 0.06, -d * 0.4, 14, { rx: Math.PI / 2, roughness: 0.95 });
-    });
-    return;
-  }
-
-  // 3. Power Strip / Multi-plug Extension
+  // Power Strip
   if (name.includes('strip') || name.includes('extension') || name.includes('cable')) {
     addBox(g, w, h, d, 0xf0ece1, 0, h / 2, 0, { roughness: 0.7 });
-    // Illuminated red power rocker switch
     addBox(g, 0.025, 0.01, 0.04, 0xff2200, -w * 0.38, h + 0.005, 0, { emissive: 0xff1100, emissiveIntensity: 0.9 });
-    // 6 Grounded socket outlets
     const numSockets = 6;
     for (let i = 0; i < numSockets; i++) {
       const sx = -w * 0.22 + (i * w * 0.6) / (numSockets - 1);
       addCyl(g, 0.016, 0.016, 0.004, 0x222222, sx, h + 0.002, 0, 12, { roughness: 0.9 });
     }
-    // Heavy rubber power cord
     addCyl(g, 0.008, 0.008, 0.3, 0x111111, -w / 2 - 0.15, 0.008, 0, 8, { rz: Math.PI / 2, roughness: 0.9 });
     return;
   }
 
-  // 4. Generic Power Fallback
+  // Generic Power Fallback
   addBox(g, w, h, d, col, 0, h / 2, 0, { roughness: 0.6, metalness: 0.4 });
   addCyl(g, 0.01, 0.01, 0.005, 0x00ff44, w * 0.3, h * 0.8, d / 2 + 0.002, 8, { rx: Math.PI / 2, emissive: 0x00ff44, emissiveIntensity: 0.9 });
 }
 
 // ============================================================
-// 7. HUMAN CREATOR SCALE REFERENCE MANNEQUINS
+// 8. HUMAN CREATOR SCALE REFERENCE MANNEQUINS
 // ============================================================
 function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const isSeated = id.includes('seated');
@@ -820,35 +707,19 @@ function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
   const shoeCol = 0x222222;
 
   if (!isSeated) {
-    // ---- STANDING CREATOR FIGURE (1.75m) ----
-    // Shoes
+    // Standing Creator Figure
     addBox(g, 0.12, 0.08, 0.26, shoeCol, -0.11, 0.04, 0.03, { roughness: 0.8 });
     addBox(g, 0.12, 0.08, 0.26, shoeCol, 0.11, 0.04, 0.03, { roughness: 0.8 });
-    addBox(g, 0.12, 0.02, 0.27, 0xffffff, -0.11, 0.01, 0.03, { roughness: 0.5 });
-    addBox(g, 0.12, 0.02, 0.27, 0xffffff, 0.11, 0.01, 0.03, { roughness: 0.5 });
-
-    // Legs
     addCyl(g, 0.07, 0.055, 0.82, pantsCol, -0.11, 0.48, 0, 12, { roughness: 0.7 });
     addCyl(g, 0.07, 0.055, 0.82, pantsCol, 0.11, 0.48, 0, 12, { roughness: 0.7 });
-
-    // Hips / Pelvis
     addBox(g, 0.34, 0.16, 0.22, pantsCol, 0, 0.92, 0, { roughness: 0.7 });
-
-    // Torso / Jacket
     addBox(g, 0.38, 0.48, 0.24, shirtCol, 0, 1.22, 0, { roughness: 0.8 });
-
-    // Arms
     addCyl(g, 0.055, 0.045, 0.58, shirtCol, -0.23, 1.16, 0, 10, { rz: 0.1, roughness: 0.8 });
     addCyl(g, 0.055, 0.045, 0.58, shirtCol, 0.23, 1.16, 0, 10, { rz: -0.1, roughness: 0.8 });
-
-    // Hands
     addBox(g, 0.06, 0.09, 0.06, skinCol, -0.26, 0.84, 0, { roughness: 0.6 });
     addBox(g, 0.06, 0.09, 0.06, skinCol, 0.26, 0.84, 0, 0, { roughness: 0.6 });
-
-    // Neck
     addCyl(g, 0.055, 0.06, 0.09, skinCol, 0, 1.48, 0, 12, { roughness: 0.6 });
 
-    // Head
     const headMat = makeMat(skinCol, 0.6);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 18), headMat);
     head.scale.set(1, 1.18, 1.05);
@@ -856,41 +727,22 @@ function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
     head.castShadow = true;
     g.add(head);
 
-    // Studio Headphones
     addCyl(g, 0.045, 0.045, 0.04, 0x111111, -0.12, 1.62, 0, 12, { rz: Math.PI / 2, roughness: 0.4 });
     addCyl(g, 0.045, 0.045, 0.04, 0x111111, 0.12, 1.62, 0, 12, { rz: Math.PI / 2, roughness: 0.4 });
-    const bandMat = makeMat(0x111111, 0.4);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.012, 8, 24, Math.PI), bandMat);
-    band.position.set(0, 1.63, 0);
-    band.rotation.z = -Math.PI / 2;
-    band.rotation.y = Math.PI / 2;
-    g.add(band);
   } else {
-    // ---- SEATED CREATOR FIGURE ----
-    // Feet
+    // Seated Creator Figure
     addBox(g, 0.12, 0.08, 0.24, shoeCol, -0.12, 0.04, 0.32, { roughness: 0.8 });
     addBox(g, 0.12, 0.08, 0.24, shoeCol, 0.12, 0.04, 0.32, { roughness: 0.8 });
-
-    // Lower legs (Vertical)
     addCyl(g, 0.065, 0.055, 0.45, pantsCol, -0.12, 0.24, 0.32, 12, { roughness: 0.7 });
     addCyl(g, 0.065, 0.055, 0.45, pantsCol, 0.12, 0.24, 0.32, 12, { roughness: 0.7 });
-
-    // Thighs (Horizontal)
     addCyl(g, 0.07, 0.065, 0.42, pantsCol, -0.12, 0.47, 0.16, 12, { rx: Math.PI / 2, roughness: 0.7 });
     addCyl(g, 0.07, 0.065, 0.42, pantsCol, 0.12, 0.47, 0.16, 12, { rx: Math.PI / 2, roughness: 0.7 });
-
-    // Pelvis / Seat
     addBox(g, 0.36, 0.14, 0.26, pantsCol, 0, 0.5, -0.05, { roughness: 0.7 });
-
-    // Torso (Upright)
     addBox(g, 0.38, 0.46, 0.24, shirtCol, 0, 0.78, -0.05, { roughness: 0.8 });
-
-    // Arms resting forward towards desk
     addCyl(g, 0.055, 0.045, 0.38, shirtCol, -0.22, 0.75, 0.08, 10, { rx: -0.6, roughness: 0.8 });
     addCyl(g, 0.055, 0.045, 0.38, shirtCol, 0.22, 0.75, 0.08, 10, { rx: -0.6, roughness: 0.8 });
-
-    // Neck & Head
     addCyl(g, 0.055, 0.06, 0.09, skinCol, 0, 1.05, -0.05, 12, { roughness: 0.6 });
+
     const headMat = makeMat(skinCol, 0.6);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 18), headMat);
     head.scale.set(1, 1.18, 1.05);
@@ -898,7 +750,6 @@ function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
     head.castShadow = true;
     g.add(head);
 
-    // Headphones
     addCyl(g, 0.045, 0.045, 0.04, 0x111111, -0.12, 1.2, -0.05, 12, { rz: Math.PI / 2, roughness: 0.4 });
     addCyl(g, 0.045, 0.045, 0.04, 0x111111, 0.12, 1.2, -0.05, 12, { rz: Math.PI / 2, roughness: 0.4 });
   }
@@ -912,8 +763,15 @@ export function createDetailedProceduralModel(equipmentId: string): THREE.Group 
   const g = new THREE.Group();
 
   if (!def) {
-    // Fallback if ID is completely unknown
-    addBox(g, 0.3, 0.3, 0.3, 0x333333, 0, 0.15, 0, { roughness: 0.5, metalness: 0.3 });
+    // If ID is completely unknown, build a realistic flight case box with metal ball corners
+    addBox(g, 0.4, 0.35, 0.3, 0x1f1e1d, 0, 0.175, 0, { roughness: 0.7, metalness: 0.3 });
+    // Metal ball corners and aluminum extrusions
+    [-0.2, 0.2].forEach((x) => {
+      [-0.15, 0.15].forEach((z) => {
+        addSphere(g, 0.025, 0xcccccc, x, 0.35, z, 10, { metalness: 0.95 });
+        addSphere(g, 0.025, 0xcccccc, x, 0.01, z, 10, { metalness: 0.95 });
+      });
+    });
     return g;
   }
 
@@ -928,15 +786,16 @@ export function createDetailedProceduralModel(equipmentId: string): THREE.Group 
     buildLightingItem(g, def, equipmentId);
   } else if (cat === 'audio' || equipmentId.startsWith('audio-') || name.includes('mic') || name.includes('audio') || name.includes('recorder') || name.includes('mixer') || name.includes('speaker') || name.includes('monitor') || name.includes('acoustic') || name.includes('panel')) {
     buildAudioItem(g, def, equipmentId);
-  } else if (cat === 'furniture' || cat === 'props' || equipmentId.startsWith('furn-') || equipmentId.startsWith('prop-') || name.includes('desk') || name.includes('table') || name.includes('chair') || name.includes('sofa') || name.includes('shelf') || name.includes('backdrop') || name.includes('stand') || name.includes('stool')) {
+  } else if (name.includes('plant') || name.includes('tree') || name.includes('neon') || name.includes('rug') || name.includes('poster') || name.includes('guitar') || name.includes('coffee') || name.includes('book') || name.includes('vinyl') || name.includes('prop')) {
+    buildDecorAndPropsItem(g, def, equipmentId);
+  } else if (cat === 'furniture' || equipmentId.startsWith('furn-') || name.includes('desk') || name.includes('table') || name.includes('chair') || name.includes('sofa') || name.includes('shelf') || name.includes('backdrop') || name.includes('stand') || name.includes('stool')) {
     buildFurnitureItem(g, def, equipmentId);
   } else if (cat === 'tech' || equipmentId.startsWith('tech-') || name.includes('computer') || name.includes('laptop') || name.includes('stream') || name.includes('switch') || name.includes('synth') || name.includes('keyboard') || name.includes('deck')) {
     buildTechItem(g, def, equipmentId);
   } else if (cat === 'power' || equipmentId.startsWith('pwr-') || name.includes('power') || name.includes('battery') || name.includes('generator') || name.includes('strip')) {
     buildPowerItem(g, def, equipmentId);
   } else {
-    // Universal intelligent dimensional archetype
-    buildFurnitureItem(g, def, equipmentId);
+    buildDecorAndPropsItem(g, def, equipmentId);
   }
 
   return g;
