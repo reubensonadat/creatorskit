@@ -463,33 +463,87 @@
   letter-spacing: -0.02em;
 }
 
-/* Responsive */
-@media (max-width: 1100px) {
-  .workspace {
-    grid-template-columns: 200px 1fr 240px;
-  }
+/* ============================================= */
+/* Universal Neo-Brutalist Design System         */
+/* ============================================= */
+
+.brutalist-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 4px;
+  font-family: monospace, system-ui, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000000;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+  user-select: none;
+  text-decoration: none;
+  line-height: 1.2;
 }
 
-@media (max-width: 768px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-  .left-panel {
-    position: fixed;
-    top: 52px;
-    left: 0;
-    bottom: 0;
-    width: 260px;
-    z-index: 40;
-    box-shadow: 4px 0 16px rgba(0,0,0,0.1);
-  }
-  .panel-right {
-    position: fixed;
-    top: 52px;
-    right: 0;
-    bottom: 0;
-    width: 260px;
-    z-index: 40;
-    box-shadow: -4px 0 16px rgba(0,0,0,0.1);
-  }
+.brutalist-button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000000;
+  background: #fcfcfc;
+}
+
+.brutalist-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #000000;
+}
+
+.brutalist-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 2px 2px 0 #000000;
+}
+
+.brutalist-button-primary {
+  background: #FFE500 !important;
+  color: #000000 !important;
+}
+
+.brutalist-button-primary:hover {
+  background: #fde047 !important;
+}
+
+.brutalist-button-dark {
+  background: #09090b !important;
+  color: #ffffff !important;
+  border: 2px solid #000000;
+}
+
+.brutalist-button-dark:hover {
+  background: #18181b !important;
+}
+
+.brutalist-card {
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 #000000;
+}
+
+.brutalist-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #ffffff;
+  color: #000000;
+  border: 1.5px solid #000000;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.68rem;
+  font-weight: 900;
 }

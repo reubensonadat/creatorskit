@@ -972,10 +972,19 @@ export default function SilenceTrimmerPage() {
                       onClick={() => {
                         if (trimmedAudioBuffer) playBuffer(trimmedAudioBuffer, 'trim');
                       }}
-                      className={`brutalist-button ${isPlayingTrimmed ? 'brutalist-button-primary' : ''}`}
-                      style={{ padding: '9px 18px', fontSize: '0.78rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}
+                      className="brutalist-button brutalist-button-primary"
+                      style={{
+                        padding: '10px 20px',
+                        fontSize: '0.82rem',
+                        borderRadius: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        border: '2px solid #000',
+                        boxShadow: '3px 3px 0 #000',
+                      }}
                     >
-                      {isPlayingTrimmed ? <Pause size={16} /> : <Play size={16} />}
+                      {isPlayingTrimmed ? <Pause size={17} /> : <Play size={17} />}
                       {isPlayingTrimmed ? 'Pause Trimmed' : 'Play Trimmed Preview'}
                     </button>
 
@@ -984,9 +993,19 @@ export default function SilenceTrimmerPage() {
                         if (audioBuffer) playBuffer(audioBuffer, 'orig');
                       }}
                       className="brutalist-button"
-                      style={{ padding: '9px 18px', fontSize: '0.78rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}
+                      style={{
+                        padding: '10px 20px',
+                        fontSize: '0.82rem',
+                        borderRadius: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        background: '#ffffff',
+                        border: '2px solid #000',
+                        boxShadow: '3px 3px 0 #000',
+                      }}
                     >
-                      {isPlayingOriginal ? <Pause size={16} /> : <Play size={16} />}
+                      {isPlayingOriginal ? <Pause size={17} /> : <Play size={17} />}
                       Play Original
                     </button>
                   </div>
@@ -1154,28 +1173,52 @@ export default function SilenceTrimmerPage() {
                       URL.revokeObjectURL(url);
                     }}
                     className="brutalist-button brutalist-button-primary"
-                    style={{ padding: '10px 12px', fontSize: '0.78rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      fontSize: '0.82rem',
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                    }}
                   >
-                    <Volume2 size={16} />
+                    <Volume2 size={18} />
                     Download Trimmed WAV Audio
                   </button>
                 )}
 
                 {/* Render Cut Video (If Video) */}
                 {isVideo && (
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {!renderingVideo ? (
                       <button
                         onClick={renderCutVideo}
                         className="brutalist-button"
-                        style={{ width: '100%', padding: '10px 12px', fontSize: '0.78rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          fontSize: '0.82rem',
+                          borderRadius: 4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          background: '#09090b',
+                          color: '#ffffff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                        }}
                       >
-                        <Film size={16} />
+                        <Film size={18} style={{ color: '#FFE500' }} />
                         Render Trimmed Video (.WebM)
                       </button>
                     ) : (
-                      <div style={{ padding: 10, background: '#fef08a', border: '1.5px solid #000', borderRadius: 4, textAlign: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
+                      <div style={{ padding: 12, background: '#fef08a', border: '2px solid #000', borderRadius: 4, textAlign: 'center', boxShadow: '2px 2px 0 #000' }}>
+                        <span style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900 }}>
                           Rendering Jump-Cut Video: {renderProgress}%
                         </span>
                       </div>
@@ -1186,9 +1229,21 @@ export default function SilenceTrimmerPage() {
                         href={renderedCutVideoUrl}
                         download={`${fileName.replace(/\.[^/.]+$/, '')}-cut.webm`}
                         className="brutalist-button brutalist-button-primary"
-                        style={{ marginTop: 8, padding: '8px 12px', fontSize: '0.74rem', borderRadius: 4, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          fontSize: '0.78rem',
+                          borderRadius: 4,
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                        }}
                       >
-                        <Download size={14} />
+                        <Download size={16} />
                         Download Rendered Video (.WebM)
                       </a>
                     )}
@@ -1196,22 +1251,33 @@ export default function SilenceTrimmerPage() {
                 )}
 
                 {/* Pro NLE Timelines Export (EDL / FCPXML / CSV) */}
-                <div style={{ paddingTop: 8, borderTop: '1.5px solid #eee', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>
+                <div style={{ paddingTop: 10, borderTop: '2px solid #000', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
                     LOSSLESS EDITING TIMELINES (PREMIERE / DAVINCI):
                   </span>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <button
                       onClick={() => {
                         const edl = generateEDL(fileName, keptSegments, 30);
                         downloadFile(edl, `${fileName.replace(/\.[^/.]+$/, '')}-cuts.edl`, 'text/plain');
                       }}
                       className="brutalist-button"
-                      style={{ padding: '6px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                      style={{
+                        padding: '8px 10px',
+                        fontSize: '0.72rem',
+                        borderRadius: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        background: '#ffffff',
+                        border: '2px solid #000',
+                        boxShadow: '2px 2px 0 #000',
+                      }}
                       title="Adobe Premiere Pro & DaVinci Resolve EDL"
                     >
-                      <FileCode size={13} />
+                      <FileCode size={15} />
                       Export .EDL
                     </button>
 
@@ -1221,10 +1287,21 @@ export default function SilenceTrimmerPage() {
                         downloadFile(fcpxml, `${fileName.replace(/\.[^/.]+$/, '')}-cuts.fcpxml`, 'application/xml');
                       }}
                       className="brutalist-button"
-                      style={{ padding: '6px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                      style={{
+                        padding: '8px 10px',
+                        fontSize: '0.72rem',
+                        borderRadius: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        background: '#ffffff',
+                        border: '2px solid #000',
+                        boxShadow: '2px 2px 0 #000',
+                      }}
                       title="Final Cut Pro XML"
                     >
-                      <FileCode size={13} />
+                      <FileCode size={15} />
                       Export .FCPXML
                     </button>
                   </div>
@@ -1236,9 +1313,21 @@ export default function SilenceTrimmerPage() {
                       downloadFile(csvHeader + csvRows, `${fileName.replace(/\.[^/.]+$/, '')}-markers.csv`, 'text/csv');
                     }}
                     className="brutalist-button"
-                    style={{ width: '100%', padding: '6px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      fontSize: '0.72rem',
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#ffffff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                    }}
                   >
-                    <FileSpreadsheet size={13} />
+                    <FileSpreadsheet size={15} />
                     Export CSV Cut Marker Sheet
                   </button>
                 </div>
