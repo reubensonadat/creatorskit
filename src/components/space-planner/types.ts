@@ -8,11 +8,15 @@ export type ViewMode = 'perspective' | 'top' | 'camera-pov' | 'walkthrough';
 
 export type CameraLensPreset = '16mm' | '24mm' | '35mm' | '50mm' | '85mm';
 
+export type LightRole = 'key' | 'fill' | 'rim' | 'background' | 'accent';
+
 export interface LightSettings {
   intensity: number; // 0 to 100%
-  colorTempKelvin?: number; // 2700 to 6500
+  colorTempKelvin?: number; // 2000 to 9000
   colorHex?: string; // for RGB lights
   beamAngle?: number; // 15 to 120 degrees
+  pitchAngle?: number; // -45 to 45 degrees tilt
+  role?: LightRole;
 }
 
 export type CreatorTemplateId =
