@@ -1,0 +1,6 @@
+{
+  "name": "3D Space Planner",
+  "description": "Professional 3D studio space planner for creators, filmmakers, and podcasters with optical camera simulation, lighting design, and production blueprint PDF exports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

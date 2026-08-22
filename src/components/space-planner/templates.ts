@@ -8,6 +8,33 @@ import type { CreatorTemplate, CreatorTemplateId } from './types';
 // ============================================================
 
 export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
+  'diy-bedroom-phone': {
+    id: 'diy-bedroom-phone',
+    name: 'DIY Phone Bedroom Rig ($0–$50)',
+    icon: '📱',
+    category: 'Budget & DIY',
+    description: 'Realistic bedroom studio using your smartphone with rear mirror monitor, desk clamp light, wireless lapel mic, bed audio absorption, and window daylight',
+    defaultRoom: { width: 3.4, depth: 3.0 },
+    items: [
+      // Double Bed (Acts as major acoustic absorption for room echo)
+      { equipmentId: 'bed-furniture', x: -1.0, z: -0.5, rotationY: 0 },
+      // Wardrobe / Closet
+      { equipmentId: 'closet-wardrobe', x: 1.1, z: -0.9, rotationY: 0 },
+      // 2: Small Work Desk
+      { equipmentId: 'content-table', x: 0.2, z: 0.15, rotationY: 0 },
+      // Smartphone Mount with Rear Mirror (mounted on desk)
+      { equipmentId: 'phone-tripod-mirror', x: 0.2, z: -0.1, rotationY: 0, parentId: 2, isMainCamera: true, lensPreset: '24mm' },
+      // Clamp DIY Lamp with Parchment Paper Diffuser (mounted on desk)
+      { equipmentId: 'clamp-desk-lamp', x: 0.55, z: -0.05, rotationY: -Math.PI / 4, parentId: 2, lightSettings: { intensity: 80, colorTempKelvin: 4500, beamAngle: 80 } },
+      // Wireless Lapel Mic
+      { equipmentId: 'budget-wireless-lav', x: -0.05, z: 0.05, rotationY: 0, parentId: 2 },
+      // Creator Desk Chair
+      { equipmentId: 'chair', x: 0.2, z: -0.65, rotationY: 0 },
+      // Power strip on floor
+      { equipmentId: 'power-strip', x: 0.8, z: 0.7, rotationY: 0 },
+    ],
+  },
+
   'bedroom-studio': {
     id: 'bedroom-studio',
     name: 'Bedroom Creator Nook',
@@ -19,8 +46,8 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       // 0: Main Wooden Content Desk
       { equipmentId: 'content-table', x: 0, z: -0.7, rotationY: 0 },
       // Table accessories mounted atop desk
-      { equipmentId: 'desk-lamp', x: 0.35, z: -0.7, rotationY: 0, parentId: 0 },
-      { equipmentId: 'webcam', x: 0, z: -0.65, rotationY: Math.PI, parentId: 0 },
+      { equipmentId: 'desk-lamp', x: 0.35, z: -0.7, rotationY: 0, parentId: 0, lightSettings: { intensity: 75, colorTempKelvin: 3200, beamAngle: 80 } },
+      { equipmentId: 'webcam', x: 0, z: -0.65, rotationY: Math.PI, parentId: 0, lensPreset: '24mm' },
       { equipmentId: 'podcast-mic', x: -0.35, z: -0.6, rotationY: 0, parentId: 0 },
       { equipmentId: 'studio-monitor', x: -0.52, z: -0.72, rotationY: 0.15, parentId: 0 },
       { equipmentId: 'studio-monitor', x: 0.52, z: -0.72, rotationY: -0.15, parentId: 0 },
@@ -28,8 +55,8 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       // Ergonomic Chair
       { equipmentId: 'chair', x: 0, z: -0.15, rotationY: 0 },
       // Room Lighting & Camera
-      { equipmentId: 'ring-light', x: 0.65, z: 0.35, rotationY: -Math.PI / 4 },
-      { equipmentId: 'camera', x: 0, z: 0.85, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'ring-light', x: 0.65, z: 0.35, rotationY: -Math.PI / 4, lightSettings: { intensity: 80, colorTempKelvin: 5600, beamAngle: 75 } },
+      { equipmentId: 'camera', x: 0, z: 0.85, rotationY: Math.PI, isMainCamera: true, lensPreset: '35mm' },
       // Acoustic wall treatment & background shelf
       { equipmentId: 'acoustic-panel', x: -0.85, z: -1.35, rotationY: 0 },
       { equipmentId: 'acoustic-panel', x: 0.85, z: -1.35, rotationY: 0 },
@@ -58,15 +85,15 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       { equipmentId: 'podcast-mic', x: 0.38, z: -0.05, rotationY: 0, parentId: 2 },
       { equipmentId: 'audio-recorder', x: 0, z: -0.05, rotationY: 0, parentId: 2 },
       // Key & Fill Softbox Lighting
-      { equipmentId: 'softbox', x: -1.7, z: 0.45, rotationY: Math.PI / 3 },
-      { equipmentId: 'softbox', x: 1.7, z: 0.45, rotationY: -Math.PI / 3 },
+      { equipmentId: 'softbox', x: -1.7, z: 0.45, rotationY: Math.PI / 3, lightSettings: { intensity: 85, colorTempKelvin: 5600, beamAngle: 60 } },
+      { equipmentId: 'softbox', x: 1.7, z: 0.45, rotationY: -Math.PI / 3, lightSettings: { intensity: 50, colorTempKelvin: 4500, beamAngle: 80 } },
       // RGB Tube Rim Light for cinematic silhouette
-      { equipmentId: 'rgb-tube', x: 1.45, z: -1.35, rotationY: -Math.PI / 2 },
+      { equipmentId: 'rgb-tube', x: 1.45, z: -1.35, rotationY: -Math.PI / 2, lightSettings: { intensity: 65, colorHex: '#00D4FF', beamAngle: 120 } },
       // Acoustic Panels
       { equipmentId: 'acoustic-panel', x: -2.35, z: -0.8, rotationY: Math.PI / 2 },
       { equipmentId: 'acoustic-panel', x: 2.35, z: -0.8, rotationY: -Math.PI / 2 },
       // Master Camera with 16:9 view frustum
-      { equipmentId: 'camera', x: 0, z: 1.5, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'camera', x: 0, z: 1.5, rotationY: Math.PI, isMainCamera: true, lensPreset: '35mm' },
       // Backup Power
       { equipmentId: 'power-station', x: -2.0, z: -1.5, rotationY: 0 },
     ],
@@ -82,10 +109,10 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
     items: [
       { equipmentId: 'backdrop', x: 0, z: -1.3, rotationY: 0 },
       { equipmentId: 'product-stand', x: 0, z: -0.4, rotationY: 0 },
-      { equipmentId: 'camera', x: 0, z: 1.1, rotationY: Math.PI, isMainCamera: true },
-      { equipmentId: 'softbox', x: -1.3, z: 0.1, rotationY: Math.PI / 3 },
-      { equipmentId: 'softbox', x: 1.3, z: 0.1, rotationY: -Math.PI / 3 },
-      { equipmentId: 'beauty-dish', x: 0, z: 0.75, rotationY: Math.PI },
+      { equipmentId: 'camera', x: 0, z: 1.1, rotationY: Math.PI, isMainCamera: true, lensPreset: '50mm' },
+      { equipmentId: 'softbox', x: -1.3, z: 0.1, rotationY: Math.PI / 3, lightSettings: { intensity: 90, colorTempKelvin: 5600, beamAngle: 60 } },
+      { equipmentId: 'softbox', x: 1.3, z: 0.1, rotationY: -Math.PI / 3, lightSettings: { intensity: 60, colorTempKelvin: 5600, beamAngle: 60 } },
+      { equipmentId: 'beauty-dish', x: 0, z: 0.75, rotationY: Math.PI, lightSettings: { intensity: 85, colorTempKelvin: 5600, beamAngle: 45 } },
       // 6: Side Prep Table
       { equipmentId: 'content-table', x: 1.35, z: -0.85, rotationY: -Math.PI / 4 },
       { equipmentId: 'power-strip', x: 1.35, z: -0.85, rotationY: 0, parentId: 6 },
@@ -105,7 +132,7 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       // 0: Content Desk
       { equipmentId: 'content-table', x: 0, z: -0.6, rotationY: 0 },
       { equipmentId: 'product-stand', x: 0, z: -0.55, rotationY: 0, parentId: 0 },
-      { equipmentId: 'desk-lamp', x: 0.45, z: -0.65, rotationY: 0, parentId: 0 },
+      { equipmentId: 'desk-lamp', x: 0.45, z: -0.65, rotationY: 0, parentId: 0, lightSettings: { intensity: 70, colorTempKelvin: 3200, beamAngle: 80 } },
       { equipmentId: 'studio-monitor', x: -0.55, z: -0.7, rotationY: 0.15, parentId: 0 },
       { equipmentId: 'studio-monitor', x: 0.55, z: -0.7, rotationY: -0.15, parentId: 0 },
       { equipmentId: 'power-strip', x: -0.45, z: -0.55, rotationY: 0, parentId: 0 },
@@ -113,10 +140,10 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       { equipmentId: 'chair', x: 0, z: -0.05, rotationY: 0 },
       // Cinematic Camera Slider
       { equipmentId: 'camera-slider', x: 0, z: 0.85, rotationY: 0 },
-      { equipmentId: 'camera', x: 0, z: 0.85, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'camera', x: 0, z: 0.85, rotationY: Math.PI, isMainCamera: true, lensPreset: '35mm' },
       // Soft Panel Key & Fill
-      { equipmentId: 'led-light', x: -1.5, z: 0.2, rotationY: Math.PI / 3 },
-      { equipmentId: 'led-light', x: 1.5, z: 0.2, rotationY: -Math.PI / 3 },
+      { equipmentId: 'led-light', x: -1.5, z: 0.2, rotationY: Math.PI / 3, lightSettings: { intensity: 85, colorTempKelvin: 5600, beamAngle: 70 } },
+      { equipmentId: 'led-light', x: 1.5, z: 0.2, rotationY: -Math.PI / 3, lightSettings: { intensity: 50, colorTempKelvin: 4500, beamAngle: 80 } },
       // Acoustic wall panels and bookshelf
       { equipmentId: 'acoustic-panel', x: 0, z: -1.75, rotationY: 0 },
       { equipmentId: 'shelf-props', x: -1.7, z: -1.2, rotationY: Math.PI / 2 },
@@ -134,20 +161,20 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
     items: [
       // 0: Battlestation Desk
       { equipmentId: 'content-table', x: 0, z: -0.7, rotationY: 0 },
-      { equipmentId: 'webcam', x: 0, z: -0.7, rotationY: Math.PI, parentId: 0 },
+      { equipmentId: 'webcam', x: 0, z: -0.7, rotationY: Math.PI, parentId: 0, lensPreset: '24mm' },
       { equipmentId: 'studio-monitor', x: -0.52, z: -0.75, rotationY: 0.2, parentId: 0 },
       { equipmentId: 'studio-monitor', x: 0.52, z: -0.75, rotationY: -0.2, parentId: 0 },
       { equipmentId: 'microphone', x: -0.3, z: -0.58, rotationY: 0, parentId: 0 },
-      { equipmentId: 'desk-lamp', x: 0.45, z: -0.7, rotationY: 0, parentId: 0 },
+      { equipmentId: 'desk-lamp', x: 0.45, z: -0.7, rotationY: 0, parentId: 0, lightSettings: { intensity: 65, colorTempKelvin: 3200, beamAngle: 80 } },
       { equipmentId: 'power-strip', x: 0.45, z: -0.55, rotationY: 0, parentId: 0 },
       // Ergonomic Gaming Chair
       { equipmentId: 'chair', x: 0, z: -0.15, rotationY: 0 },
       // Dual Neon RGB Tubes
-      { equipmentId: 'rgb-tube', x: -1.3, z: -1.0, rotationY: Math.PI / 4 },
-      { equipmentId: 'rgb-tube', x: 1.3, z: -1.0, rotationY: -Math.PI / 4 },
+      { equipmentId: 'rgb-tube', x: -1.3, z: -1.0, rotationY: Math.PI / 4, lightSettings: { intensity: 75, colorHex: '#9D00FF', beamAngle: 120 } },
+      { equipmentId: 'rgb-tube', x: 1.3, z: -1.0, rotationY: -Math.PI / 4, lightSettings: { intensity: 75, colorHex: '#00E5FF', beamAngle: 120 } },
       // Key Ring Light & DSLR
-      { equipmentId: 'ring-light', x: 0.55, z: 0.35, rotationY: -Math.PI / 4 },
-      { equipmentId: 'camera', x: 0, z: 0.8, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'ring-light', x: 0.55, z: 0.35, rotationY: -Math.PI / 4, lightSettings: { intensity: 80, colorTempKelvin: 5600, beamAngle: 75 } },
+      { equipmentId: 'camera', x: 0, z: 0.8, rotationY: Math.PI, isMainCamera: true, lensPreset: '24mm' },
       { equipmentId: 'acoustic-panel', x: 0, z: -1.45, rotationY: 0 },
       { equipmentId: 'power-station', x: -1.4, z: 0.8, rotationY: 0 },
     ],
@@ -172,13 +199,13 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
       { equipmentId: 'lavalier', x: 0.2, z: 0.1, rotationY: 0, parentId: 3 },
       // Master A-Cam with Teleprompter
       { equipmentId: 'teleprompter', x: 0, z: 1.8, rotationY: Math.PI },
-      { equipmentId: 'camera', x: 0, z: 1.8, rotationY: Math.PI, isMainCamera: true },
+      { equipmentId: 'camera', x: 0, z: 1.8, rotationY: Math.PI, isMainCamera: true, lensPreset: '50mm' },
       // Secondary B-Cam Angle
-      { equipmentId: 'camera', x: -1.6, z: 1.3, rotationY: Math.PI * 0.75 },
+      { equipmentId: 'camera', x: -1.6, z: 1.3, rotationY: Math.PI * 0.75, lensPreset: '85mm' },
       // 3-Point Lighting (Fresnel key, Softbox fill, RGB hair light)
-      { equipmentId: 'fresnel', x: -2.0, z: 0.3, rotationY: Math.PI / 3 },
-      { equipmentId: 'softbox', x: 2.0, z: 0.3, rotationY: -Math.PI / 3 },
-      { equipmentId: 'rgb-tube', x: 1.2, z: -1.4, rotationY: -Math.PI / 2 },
+      { equipmentId: 'fresnel', x: -2.0, z: 0.3, rotationY: Math.PI / 3, lightSettings: { intensity: 90, colorTempKelvin: 5600, beamAngle: 35 } },
+      { equipmentId: 'softbox', x: 2.0, z: 0.3, rotationY: -Math.PI / 3, lightSettings: { intensity: 50, colorTempKelvin: 4500, beamAngle: 75 } },
+      { equipmentId: 'rgb-tube', x: 1.2, z: -1.4, rotationY: -Math.PI / 2, lightSettings: { intensity: 60, colorHex: '#FF9E00', beamAngle: 120 } },
       { equipmentId: 'generator', x: -2.2, z: -1.6, rotationY: 0 },
     ],
   },

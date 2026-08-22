@@ -16,6 +16,7 @@ export interface LightSettings {
 }
 
 export type CreatorTemplateId =
+  | 'diy-bedroom-phone'
   | 'bedroom-studio'
   | 'podcast'
   | 'product-photography'
@@ -54,6 +55,8 @@ export interface TemplateItemPlacement {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
+  lensPreset?: CameraLensPreset;
+  lightSettings?: LightSettings;
   parentId?: number; // Index reference to parent item in the same template
 }
 
@@ -65,6 +68,7 @@ export type EquipmentId =
   // Batch 1 — Camera & Support
   | 'camera'
   | 'phone-gimbal'
+  | 'phone-tripod-mirror'
   | 'ring-light'
   | 'camera-slider'
   | 'webcam'
@@ -78,6 +82,7 @@ export type EquipmentId =
   | 'fresnel'
   | 'rgb-tube'
   | 'desk-lamp'
+  | 'clamp-desk-lamp'
   | 'beauty-dish'
   | 'barndoor-light'
   | 'beauty-mirror'
@@ -85,6 +90,7 @@ export type EquipmentId =
   // Batch 3 — Audio
   | 'microphone'
   | 'lavalier'
+  | 'budget-wireless-lav'
   | 'audio-recorder'
   | 'studio-monitor'
   | 'podcast-mic'
@@ -97,6 +103,8 @@ export type EquipmentId =
   | 'content-table'
   | 'chair'
   | 'sofa'
+  | 'bed-furniture'
+  | 'closet-wardrobe'
   | 'product-stand'
   | 'backdrop'
   | 'shelf-props'
@@ -187,6 +195,7 @@ export interface PlannerState {
   currency: Currency;
   projectInfo: ProjectInfo;
   windows: WindowPlacement[];
+  timeOfDay: 'daylight' | 'golden-hour' | 'overcast' | 'night';
   showBudgetPanel: boolean;
   showProjectInfo: boolean;
   showWarnings: boolean;
@@ -199,6 +208,7 @@ export interface PlannerState {
   setRoomDimensions: (width: number, depth: number) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
+  setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
   toggleOrbitPanning: () => void;
   setOrbitPanning: (panning: boolean) => void;
   setCurrency: (currency: Currency) => void;

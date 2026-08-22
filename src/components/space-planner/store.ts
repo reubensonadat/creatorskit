@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PlacedObject, CreatorTemplateId, ViewMode, Currency, ProjectInfo, SpacingWarning, WarningType, EquipmentId, WindowPlacement } from './types';
+import type { PlacedObject, CreatorTemplateId, ViewMode, Currency, ProjectInfo, SpacingWarning, WarningType, EquipmentId, WindowPlacement, CameraLensPreset, LightSettings } from './types';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import { COMPREHENSIVE_TEMPLATES } from './templates';
 
@@ -35,8 +35,9 @@ interface StoreState {
   // Project info
   projectInfo: ProjectInfo;
 
-  // Windows
+  // Windows & Natural Lighting
   windows: WindowPlacement[];
+  timeOfDay: 'daylight' | 'golden-hour' | 'overcast' | 'night';
 
   // UI state
   showBudgetPanel: boolean;
@@ -51,6 +52,7 @@ interface StoreState {
   setRoomDimensions: (width: number, depth: number) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
+  setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
   setCurrency: (c: Currency) => void;
   setPlacingEquipment: (id: EquipmentId | null) => void;
   placeObject: (equipmentId: EquipmentId, x: number, z: number, rotationY?: number, isMainCamera?: boolean) => string;
@@ -108,6 +110,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   windows: [
     { id: 'win-default-1', wall: 'back', xOffset: 0, width: 1.2, height: 1.0, heightOffset: 1.5 },
   ],
+  timeOfDay: 'daylight',
 
   showBudgetPanel: false,
   showProjectInfo: false,
@@ -126,6 +129,8 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   setTemplateId: (id) => set({ templateId: id }),
 
   setViewMode: (mode) => set({ viewMode: mode }),
+
+  setTimeOfDay: (time) => set({ timeOfDay: time }),
 
   setCurrency: (c) => set({ currency: c }),
 
@@ -293,6 +298,8 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
         z: item.z,
         rotationY: item.rotationY,
         isMainCamera: item.isMainCamera,
+        lensPreset: item.lensPreset,
+        lightSettings: item.lightSettings,
       };
     });
     // Second pass: resolve parentId references

@@ -541,6 +541,7 @@ export function createEquipmentModel(equipmentId: EquipmentId | string): THREE.G
   switch (equipmentId) {
     case 'camera': return createCameraModel();
     case 'phone-gimbal': return createPhoneGimbalModel();
+    case 'phone-tripod-mirror': return createPhoneTripodMirrorModel();
     case 'ring-light': return createRingLightModel();
     case 'camera-slider': return createCameraSliderModel();
     case 'webcam': return createWebcamModel();
@@ -553,12 +554,14 @@ export function createEquipmentModel(equipmentId: EquipmentId | string): THREE.G
     case 'fresnel': return createFresnelModel();
     case 'rgb-tube': return createRgbTubeModel();
     case 'desk-lamp': return createDeskLampModel();
+    case 'clamp-desk-lamp': return createClampDeskLampModel();
     case 'beauty-dish': return createBeautyDishModel();
     case 'barndoor-light': return createBarndoorLightModel();
     case 'beauty-mirror': return createBeautyMirrorModel();
     case 'c-stand-flag': return createCStandFlagModel();
     case 'microphone': return createMicrophoneModel();
     case 'lavalier': return createLavalierModel();
+    case 'budget-wireless-lav': return createBudgetWirelessLavModel();
     case 'audio-recorder': return createAudioRecorderModel();
     case 'studio-monitor': return createStudioMonitorModel();
     case 'podcast-mic': return createPodcastMicModel();
@@ -570,6 +573,8 @@ export function createEquipmentModel(equipmentId: EquipmentId | string): THREE.G
     case 'content-table': return createContentTableModel();
     case 'chair': return createChairModel();
     case 'sofa': return createSofaModel();
+    case 'bed-furniture': return createBedFurnitureModel();
+    case 'closet-wardrobe': return createClosetWardrobeModel();
     case 'product-stand': return createProductStandModel();
     case 'backdrop': return createBackdropModel();
     case 'shelf-props': return createShelfPropsModel();
@@ -2355,6 +2360,166 @@ function createFogMachineModel(): THREE.Group {
 
   // LED Ready Indicator on Rear Panel
   addCyl(g, 0.008, 0.008, 0.005, 0x00ff44, w * 0.32, h * 0.7, -d / 2 - 0.002, 10, { rx: Math.PI / 2, emissive: 0x00ff44, emissiveIntensity: 0.9 });
+
+  return g;
+}
+
+// ------------------------------------------------------------
+// Smartphone on Desk Mini Tripod with Rear Inspection Mirror
+// Allows using high-quality 4K rear cameras while checking framing!
+// ------------------------------------------------------------
+function createPhoneTripodMirrorModel(): THREE.Group {
+  const g = new THREE.Group();
+  const matBlack = 0x18181b, chrome = 0x71717a, phoneBody = 0x09090b, lensCol = 0x0284c7, mirrorGlass = 0xe0f2fe;
+
+  // Mini foldable desktop tripod base (3 legs)
+  const legLen = 0.12;
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI * 2) / 3;
+    const lx = Math.cos(a) * (legLen / 2);
+    const lz = Math.sin(a) * (legLen / 2);
+    addBox(g, 0.012, 0.008, legLen, matBlack, lx, 0.005, lz, { ry: -a + Math.PI / 2, metalness: 0.6 });
+  }
+
+  // Center column riser
+  const poleH = 0.16;
+  addCyl(g, 0.01, 0.01, poleH, chrome, 0, poleH / 2, 0, 12, { metalness: 0.8 });
+
+  // Ball head mount
+  addSphere(g, 0.016, chrome, 0, poleH, 0, 12, { metalness: 0.8 });
+
+  // Smartphone Clamp & Phone body (portrait/landscape mount)
+  const phoneH = 0.15, phoneW = 0.075, phoneD = 0.009;
+  const phoneY = poleH + phoneH / 2 + 0.02;
+  addBox(g, phoneW, phoneH, phoneD, phoneBody, 0, phoneY, 0, { roughness: 0.2, metalness: 0.8 });
+
+  // Triple Rear Camera Island (facing forward towards creator)
+  addBox(g, 0.028, 0.032, 0.003, 0x18181b, -phoneW / 2 + 0.018, phoneY + phoneH / 2 - 0.02, 0.005, { metalness: 0.7 });
+  // 3 lenses
+  addCyl(g, 0.006, 0.006, 0.004, lensCol, -phoneW / 2 + 0.018, phoneY + phoneH / 2 - 0.014, 0.006, 12, { rx: Math.PI / 2, emissive: 0x0284c7, emissiveIntensity: 0.5 });
+  addCyl(g, 0.006, 0.006, 0.004, lensCol, -phoneW / 2 + 0.018, phoneY + phoneH / 2 - 0.026, 0.006, 12, { rx: Math.PI / 2, emissive: 0x0284c7, emissiveIntensity: 0.5 });
+  addCyl(g, 0.006, 0.006, 0.004, lensCol, -phoneW / 2 + 0.028, phoneY + phoneH / 2 - 0.02, 0.006, 12, { rx: Math.PI / 2, emissive: 0x0284c7, emissiveIntensity: 0.5 });
+
+  // Angled Rear Viewfinder Mirror (angled at 45 deg behind the phone so talent can see the screen)
+  const mirrorW = 0.08, mirrorH = 0.06;
+  const mirrorY = phoneY + 0.02;
+  addBox(g, mirrorW, mirrorH, 0.004, mirrorGlass, 0, mirrorY, -0.04, { rx: -0.55, metalness: 0.95, roughness: 0.05 });
+  // Mirror clip bracket
+  addBox(g, 0.008, 0.06, 0.035, matBlack, 0, mirrorY - 0.02, -0.02, { metalness: 0.5 });
+
+  return g;
+}
+
+// ------------------------------------------------------------
+// DIY Desk Clamp Gooseneck Lamp with Parchment Diffuser
+// ------------------------------------------------------------
+function createClampDeskLampModel(): THREE.Group {
+  const g = new THREE.Group();
+  const metal = 0x27272a, silver = 0xa1a1aa, diffuser = 0xfef08a;
+
+  // Heavy C-Clamp base for table edge
+  addBox(g, 0.045, 0.05, 0.04, metal, 0, 0.025, 0, { metalness: 0.7, roughness: 0.4 });
+  // Clamp tightening screw knob underneath
+  addCyl(g, 0.008, 0.008, 0.03, silver, 0, -0.015, 0, 10, { metalness: 0.9 });
+
+  // Flexible metal gooseneck arm (ribbed curve)
+  const armH = 0.28;
+  addCyl(g, 0.009, 0.009, armH, silver, 0.04, armH / 2 + 0.03, 0.04, 12, { rz: -0.2, rx: 0.2, metalness: 0.85 });
+
+  // Lamp Bell Hood / Shade
+  const hoodX = 0.08, hoodY = armH + 0.06, hoodZ = 0.08;
+  addCyl(g, 0.045, 0.025, 0.07, metal, hoodX, hoodY, hoodZ, 16, { rx: 0.6, metalness: 0.6 });
+
+  // Parchment / Baking Paper DIY Diffuser Sheet taped on front
+  addBox(g, 0.09, 0.09, 0.002, diffuser, hoodX + 0.01, hoodY - 0.02, hoodZ + 0.03, {
+    rx: 0.6,
+    emissive: 0xfffbeb,
+    emissiveIntensity: 0.85,
+    roughness: 0.9,
+  });
+
+  return g;
+}
+
+// ------------------------------------------------------------
+// Plug & Play Smartphone Wireless Lapel Microphone & Receiver
+// ------------------------------------------------------------
+function createBudgetWirelessLavModel(): THREE.Group {
+  const g = new THREE.Group();
+  const bk = 0x0f172a, meshCol = 0x334155;
+
+  // Tiny Transmitter Clip with Foam Windscreen
+  addBox(g, 0.022, 0.038, 0.014, bk, -0.02, 0.019, 0, { roughness: 0.4 });
+  // Lapel Spring Clip on back
+  addBox(g, 0.008, 0.03, 0.005, 0x1e293b, -0.02, 0.019, -0.009, { metalness: 0.8 });
+  // Top foam mic capsule
+  addSphere(g, 0.009, meshCol, -0.02, 0.042, 0, 10, { roughness: 0.95 });
+  // Green active pairing status LED
+  addBox(g, 0.003, 0.003, 0.002, 0x22c55e, -0.02, 0.025, 0.008, { emissive: 0x22c55e, emissiveIntensity: 0.9 });
+
+  // Direct Phone Receiver Dongle (Lighting / USB-C)
+  addBox(g, 0.032, 0.014, 0.008, bk, 0.03, 0.007, 0, { roughness: 0.4 });
+  // Metal connector pin
+  addBox(g, 0.008, 0.006, 0.002, 0x94a3b8, 0.03, 0.017, 0, { metalness: 0.9 });
+
+  return g;
+}
+
+// ------------------------------------------------------------
+// Double Bed Furniture (Owned Home Asset & Natural Acoustic Absorption)
+// ------------------------------------------------------------
+function createBedFurnitureModel(): THREE.Group {
+  const g = new THREE.Group();
+  const w = 1.4, d = 2.0, h = 0.55;
+  const wood = 0x473322, mattress = 0xf1f5f9, duvet = 0x334155, pillowCol = 0xffffff;
+
+  // Wooden Bed Frame & 4 corner legs
+  addBox(g, w, 0.12, d, wood, 0, 0.2, 0, { roughness: 0.7 });
+  [-w / 2 + 0.04, w / 2 - 0.04].forEach((lx) => {
+    [-d / 2 + 0.04, d / 2 - 0.04].forEach((lz) => {
+      addBox(g, 0.07, 0.2, 0.07, wood, lx, 0.1, lz, { roughness: 0.7 });
+    });
+  });
+
+  // Tall Wooden Headboard at Z -d/2
+  const headboardH = 0.95;
+  addBox(g, w + 0.04, headboardH, 0.06, wood, 0, headboardH / 2, -d / 2 + 0.03, { roughness: 0.6 });
+
+  // Thick Foam Mattress
+  addBox(g, w - 0.04, 0.22, d - 0.06, mattress, 0, 0.35, 0.01, { roughness: 0.9 });
+
+  // Cozy Duvet / Bedspread (covers 70% of bed)
+  addBox(g, w - 0.02, 0.14, d * 0.7, duvet, 0, 0.42, 0.25, { roughness: 0.85 });
+
+  // 2 Fluffy Pillows against headboard
+  [-0.32, 0.32].forEach((px) => {
+    addBox(g, 0.5, 0.1, 0.35, pillowCol, px, 0.48, -d / 2 + 0.26, { rx: 0.2, roughness: 0.95 });
+  });
+
+  return g;
+}
+
+// ------------------------------------------------------------
+// Bedroom Wardrobe / Closet Cabinet (Owned Home Furniture)
+// ------------------------------------------------------------
+function createClosetWardrobeModel(): THREE.Group {
+  const g = new THREE.Group();
+  const w = 1.0, d = 0.6, h = 1.9;
+  const body = 0x334155, handle = 0xe2e8f0;
+
+  // Main cabinet box
+  addBox(g, w, h, d, body, 0, h / 2, 0, { roughness: 0.6, metalness: 0.1 });
+
+  // Dual closet doors seam
+  addBox(g, 0.004, h - 0.08, d + 0.002, 0x1e293b, 0, h / 2, 0);
+
+  // Modern vertical bar handles
+  [-0.04, 0.04].forEach((hx) => {
+    addCyl(g, 0.008, 0.008, 0.32, handle, hx, h * 0.52, d / 2 + 0.018, 10, { metalness: 0.9 });
+  });
+
+  // Base plinth
+  addBox(g, w, 0.06, d, 0x1e293b, 0, 0.03, 0);
 
   return g;
 }

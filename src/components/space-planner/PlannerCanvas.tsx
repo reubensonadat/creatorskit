@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -104,10 +104,16 @@ export default function PlannerCanvas() {
   const objectMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const selectionOutlineRef = useRef<THREE.LineSegments | null>(null);
   const cameraFrameRef = useRef<THREE.Group | null>(null);
+  const lightingVisualizersRef = useRef<THREE.Group | null>(null);
   const ghostRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
   const cameraAnimRef = useRef<{ cancel: () => void } | null>(null);
   const composerRef = useRef<EffectComposer | null>(null);
+  const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
+  const fillLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const windowLightRef = useRef<THREE.PointLight | null>(null);
 
   // Raycasting state
   const raycasterRef = useRef(new THREE.Raycaster());
@@ -128,6 +134,8 @@ export default function PlannerCanvas() {
   const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
   const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const windows = usePlannerStore((s) => s.windows);
+  const timeOfDay = usePlannerStore((s) => s.timeOfDay);
+  const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
   const updateObjectPosition = usePlannerStore((s) => s.updateObjectPosition);
@@ -479,8 +487,8 @@ export default function PlannerCanvas() {
     }
 
     const mainCam =
-      placedObjects.find((o) => o.isMainCamera && o.equipmentId === 'camera') ||
-      placedObjects.find((o) => o.equipmentId === 'camera');
+      placedObjects.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
+      placedObjects.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
     if (!mainCam) return;
 
     const g = new THREE.Group();
@@ -493,27 +501,37 @@ export default function PlannerCanvas() {
     const lensZ = 0.14;
     const apex = new THREE.Vector3(0, lensY, lensZ);
 
-    // 16:9 Aspect Ratio Frustum Geometry
-    const dNear = 1.0;
-    const wNear = 0.45;
-    const hNear = wNear * (9 / 16); // ~0.253
+    // Lens-calibrated FoV geometry
+    const lensPreset = mainCam.lensPreset || '24mm';
+    const LENS_PARAMS: Record<string, { wFar: number; dFar: number; fovDeg: number }> = {
+      '16mm': { wFar: 2.2, dFar: 2.2, fovDeg: 84 },
+      '24mm': { wFar: 1.5, dFar: 2.5, fovDeg: 65 },
+      '35mm': { wFar: 1.15, dFar: 2.6, fovDeg: 50 },
+      '50mm': { wFar: 0.85, dFar: 2.8, fovDeg: 39 },
+      '85mm': { wFar: 0.52, dFar: 3.0, fovDeg: 24 },
+    };
+    const params = LENS_PARAMS[lensPreset] || LENS_PARAMS['24mm'];
+
+    const dNear = 0.9;
+    const wNear = params.wFar * (dNear / params.dFar);
+    const hNear = wNear * (9 / 16);
     const nTL = new THREE.Vector3(-wNear, lensY + hNear, lensZ + dNear);
     const nTR = new THREE.Vector3(wNear, lensY + hNear, lensZ + dNear);
     const nBR = new THREE.Vector3(wNear, lensY - hNear, lensZ + dNear);
     const nBL = new THREE.Vector3(-wNear, lensY - hNear, lensZ + dNear);
 
-    const dFar = 2.6;
-    const wFar = 1.15;
-    const hFar = wFar * (9 / 16); // ~0.647
+    const dFar = params.dFar;
+    const wFar = params.wFar;
+    const hFar = wFar * (9 / 16);
     const fTL = new THREE.Vector3(-wFar, lensY + hFar, lensZ + dFar);
     const fTR = new THREE.Vector3(wFar, lensY + hFar, lensZ + dFar);
     const fBR = new THREE.Vector3(wFar, lensY - hFar, lensZ + dFar);
     const fBL = new THREE.Vector3(-wFar, lensY - hFar, lensZ + dFar);
 
     const coralColor = 0xc75d3f;
-    const frustumMat = new THREE.LineBasicMaterial({ color: coralColor, transparent: true, opacity: 0.85 });
+    const frustumMat = new THREE.LineBasicMaterial({ color: coralColor, transparent: true, opacity: 0.88 });
     const subtleMat = new THREE.LineBasicMaterial({ color: 0xdb7b60, transparent: true, opacity: 0.45 });
-    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.6 });
+    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.65 });
 
     // 1. Four 3D Sightlines from Lens Apex
     [fTL, fTR, fBR, fBL].forEach((corner) => {
@@ -599,12 +617,126 @@ export default function PlannerCanvas() {
       new THREE.RingGeometry(0.2, 0.23, 24),
       new THREE.MeshBasicMaterial({ color: 0xc75d3f, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
     );
-    hostSpot.position.set(0, 0.006, lensZ + 2.0);
+    hostSpot.position.set(0, 0.006, lensZ + Math.min(2.2, dFar * 0.8));
     hostSpot.rotation.x = Math.PI / 2;
     g.add(hostSpot);
 
     scene.add(g);
     cameraFrameRef.current = g;
+  }, [placedObjects, getObjectY]);
+
+  // ============ Lighting Beam Cone & Throw Visualizers ============
+  const updateLightingVisualizers = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (lightingVisualizersRef.current) {
+      scene.remove(lightingVisualizersRef.current);
+      lightingVisualizersRef.current.traverse((c) => {
+        if (c instanceof THREE.Mesh || c instanceof THREE.Line) {
+          c.geometry?.dispose();
+          if (c.material instanceof THREE.Material) c.material.dispose();
+        }
+      });
+      lightingVisualizersRef.current = null;
+    }
+
+    const lightObjects = placedObjects.filter((o) => {
+      const id = o.equipmentId.toLowerCase();
+      return (
+        id.includes('light') ||
+        id.includes('softbox') ||
+        id.includes('fresnel') ||
+        id.includes('tube') ||
+        id.includes('lamp') ||
+        id.includes('beauty-dish') ||
+        id.includes('barndoor') ||
+        id.includes('lantern') ||
+        id.includes('spotlight')
+      );
+    });
+
+    if (lightObjects.length === 0) return;
+
+    const masterGroup = new THREE.Group();
+
+    lightObjects.forEach((light) => {
+      const g = new THREE.Group();
+      const lightY = getObjectY(light) + 1.4;
+      g.position.set(light.x, lightY, light.z);
+      g.rotation.y = light.rotationY;
+
+      // Color temperature mapping to RGB Hex
+      const kelvin = light.lightSettings?.colorTempKelvin ?? 5600;
+      let lightHex = 0xfffaed;
+      if (light.lightSettings?.colorHex) {
+        lightHex = parseInt(light.lightSettings.colorHex.replace('#', ''), 16) || 0xfffaed;
+      } else if (kelvin <= 3000) {
+        lightHex = 0xffa040;
+      } else if (kelvin <= 4000) {
+        lightHex = 0xffc480;
+      } else if (kelvin <= 5000) {
+        lightHex = 0xffeed4;
+      } else if (kelvin <= 6000) {
+        lightHex = 0xf0f7ff;
+      } else {
+        lightHex = 0xcfe2ff;
+      }
+
+      const intensity = (light.lightSettings?.intensity ?? 80) / 100;
+      const beamAngleDeg = light.lightSettings?.beamAngle ?? 60;
+      const throwDist = 2.4 * Math.max(0.6, intensity);
+      const halfAngleRad = ((beamAngleDeg / 2) * Math.PI) / 180;
+      const beamRadius = Math.tan(halfAngleRad) * throwDist;
+
+      const beamMat = new THREE.LineBasicMaterial({
+        color: lightHex,
+        transparent: true,
+        opacity: Math.max(0.18, 0.45 * intensity),
+      });
+
+      // Directional light throw cone apex -> circular boundary
+      const apex = new THREE.Vector3(0, 0, 0);
+      const segments = 16;
+      const circlePts: THREE.Vector3[] = [];
+      for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        const cx = Math.cos(theta) * beamRadius;
+        const cy = Math.sin(theta) * beamRadius * 0.75;
+        const cz = throwDist;
+        const pt = new THREE.Vector3(cx, cy, cz);
+        circlePts.push(pt);
+        // Connect 4 cardinal rays
+        if (i % 4 === 0) {
+          const rayGeo = new THREE.BufferGeometry().setFromPoints([apex, pt]);
+          g.add(new THREE.Line(rayGeo, beamMat));
+        }
+      }
+
+      // Outer ellipse wireframe
+      const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+      g.add(new THREE.Line(circleGeo, beamMat));
+
+      // Floor illumination ring
+      const floorDropY = -lightY + 0.005;
+      const floorRing = new THREE.Mesh(
+        new THREE.RingGeometry(beamRadius * 0.7, beamRadius * 0.76, 24),
+        new THREE.MeshBasicMaterial({
+          color: lightHex,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.32 * intensity,
+        })
+      );
+      floorRing.position.set(0, floorDropY, throwDist * 0.85);
+      floorRing.rotation.x = Math.PI / 2;
+      g.add(floorRing);
+
+      masterGroup.add(g);
+    });
+
+    scene.add(masterGroup);
+    lightingVisualizersRef.current = masterGroup;
   }, [placedObjects, getObjectY]);
 
   // ============ View transition ============
@@ -625,12 +757,19 @@ export default function PlannerCanvas() {
       targetCenter = new THREE.Vector3(0, 0, 0);
       targetFov = 34;
     } else if (mode === 'camera-pov') {
+      const isCam = (id: string) =>
+        id === 'camera' ||
+        id.startsWith('cam') ||
+        id.includes('phone') ||
+        id.includes('webcam') ||
+        id.includes('teleprompter');
+
       const activeCam =
-        placedObjects.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
-        placedObjects.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+        placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
+        placedObjects.find((o) => isCam(o.equipmentId));
 
       if (activeCam) {
-        const camY = getObjectY(activeCam) + 1.25;
+        const camY = getObjectY(activeCam) + (activeCam.equipmentId.includes('phone') ? 0.45 : 1.25);
         targetPos = new THREE.Vector3(activeCam.x, camY, activeCam.z);
         const forwardX = Math.sin(activeCam.rotationY);
         const forwardZ = Math.cos(activeCam.rotationY);
@@ -788,6 +927,7 @@ export default function PlannerCanvas() {
     // High-fidelity Studio Lighting
     const ambient = new THREE.AmbientLight(0xfff8ee, 0.72);
     scene.add(ambient);
+    ambientLightRef.current = ambient;
 
     const sun = new THREE.DirectionalLight(0xfffaf0, 1.15);
     sun.position.set(4.5, 9.5, 3.5);
@@ -803,20 +943,24 @@ export default function PlannerCanvas() {
     sun.shadow.bias = -0.0004;
     sun.shadow.radius = 2.5;
     scene.add(sun);
+    sunLightRef.current = sun;
 
     // Warm ground bounce from hardwood floor
     const hemi = new THREE.HemisphereLight(0xffffff, 0xd2c4b0, 0.65);
     scene.add(hemi);
+    hemiLightRef.current = hemi;
 
     // Soft sky/window fill
     const fill = new THREE.DirectionalLight(0xeaf2ff, 0.52);
     fill.position.set(-4, 4, -2.5);
     scene.add(fill);
+    fillLightRef.current = fill;
 
     // Window light simulation
     const windowLight = new THREE.PointLight(0xfffaed, 0.35, 10);
     windowLight.position.set(0, roomHeight * 0.65, -roomDepth / 2 + 1);
     scene.add(windowLight);
+    windowLightRef.current = windowLight;
 
     // Room group
     const roomGroup = new THREE.Group();
@@ -831,6 +975,96 @@ export default function PlannerCanvas() {
       animFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
+
+    // Expose multi-angle 3D capture engine for Master PDF export
+    (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ = () => {
+      const rend = rendererRef.current;
+      const comp = composerRef.current;
+      const cam = cameraRef.current;
+      const ctrl = controlsRef.current;
+      const scn = sceneRef.current;
+      if (!rend || !cam || !ctrl || !scn) return null;
+
+      const state = usePlannerStore.getState();
+      const curRoomW = state.roomWidth;
+      const curRoomD = state.roomDepth;
+      const curObjs = state.placedObjects;
+
+      // Save current camera state
+      const prevPos = cam.position.clone();
+      const prevTarget = ctrl.target.clone();
+      const prevFov = cam.fov;
+
+      const maxDim = Math.max(curRoomW, curRoomD);
+      const captureAngle = (px: number, py: number, pz: number, tx: number, ty: number, tz: number, fov: number) => {
+        cam.position.set(px, py, pz);
+        ctrl.target.set(tx, ty, tz);
+        cam.fov = fov;
+        cam.updateProjectionMatrix();
+        cam.lookAt(tx, ty, tz);
+        ctrl.update();
+        if (comp) {
+          comp.render();
+        } else {
+          rend.render(scn, cam);
+        }
+        return rend.domElement.toDataURL('image/jpeg', 0.95);
+      };
+
+      // 1. Hero 3D Isometric View
+      const hero3D = captureAngle(maxDim * 0.85, maxDim * 0.72, maxDim * 0.92, 0, 0.5, 0, 38);
+
+      // 2. Front Talent Eye-Level (1.6m)
+      const front = captureAngle(0, 1.55, maxDim * 0.78, 0, 1.1, 0, 42);
+
+      // 3. Left 45° Coverage Angle
+      const left45 = captureAngle(-maxDim * 0.75, maxDim * 0.55, maxDim * 0.75, 0, 0.6, 0, 40);
+
+      // 4. Right 45° Coverage Angle
+      const right45 = captureAngle(maxDim * 0.75, maxDim * 0.55, maxDim * 0.75, 0, 0.6, 0, 40);
+
+      // 5. Top 3D Orthographic Blueprint View
+      const top3D = captureAngle(0, maxDim * 1.85, 0.001, 0, 0, 0, 34);
+
+      // 6. Director POV Viewfinder (through main camera)
+      let directorPOV = hero3D;
+      const activeCam =
+        curObjs.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
+        curObjs.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+      if (activeCam) {
+        const camY = getObjectY(activeCam) + 1.25;
+        const forwardX = Math.sin(activeCam.rotationY);
+        const forwardZ = Math.cos(activeCam.rotationY);
+        const lensMap: Record<string, number> = {
+          '16mm': 84,
+          '24mm': 65,
+          '35mm': 50,
+          '50mm': 39,
+          '85mm': 24,
+        };
+        const fov = lensMap[activeCam.lensPreset || '24mm'] || 65;
+        directorPOV = captureAngle(
+          activeCam.x,
+          camY,
+          activeCam.z,
+          activeCam.x + forwardX * 4,
+          camY,
+          activeCam.z + forwardZ * 4,
+          fov
+        );
+      }
+
+      // Restore camera state
+      cam.position.copy(prevPos);
+      ctrl.target.copy(prevTarget);
+      cam.fov = prevFov;
+      cam.updateProjectionMatrix();
+      cam.lookAt(prevTarget);
+      ctrl.update();
+      if (comp) comp.render();
+
+      return { hero3D, front, left45, right45, top3D, directorPOV };
+    };
 
     // ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
@@ -847,6 +1081,7 @@ export default function PlannerCanvas() {
 
     // Cleanup
     return () => {
+      delete (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__;
       cancelAnimationFrame(animFrameRef.current);
       resizeObserver.disconnect();
       controls.dispose();
@@ -862,7 +1097,7 @@ export default function PlannerCanvas() {
         container.removeChild(renderer.domElement);
       }
     };
-  }, []);
+  }, [getObjectY]);
 
   // ============ Rebuild room when dimensions change ============
   useEffect(() => {
@@ -882,15 +1117,89 @@ export default function PlannerCanvas() {
     updateSelection();
   }, [selectedObjectId, placedObjects, updateSelection]);
 
-  // ============ Camera frame ============
+  // ============ Camera frame & Lighting Visualizers ============
   useEffect(() => {
     updateCameraFrame();
-  }, [placedObjects, updateCameraFrame]);
+    updateLightingVisualizers();
+  }, [placedObjects, updateCameraFrame, updateLightingVisualizers]);
 
   // ============ View mode transition ============
   useEffect(() => {
     transitionView(viewMode);
   }, [viewMode, transitionView]);
+
+  // ============ Time-of-Day Natural Lighting Modulation ============
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const amb = ambientLightRef.current;
+    const sun = sunLightRef.current;
+    const hemi = hemiLightRef.current;
+    const fill = fillLightRef.current;
+    const win = windowLightRef.current;
+    if (!scene || !amb || !sun || !hemi || !fill || !win) return;
+
+    if (timeOfDay === 'daylight') {
+      scene.background = new THREE.Color(0xf5f1ea);
+      if (scene.fog) scene.fog.color = new THREE.Color(0xf5f1ea);
+      amb.color.setHex(0xfff8ee);
+      amb.intensity = 0.72;
+      sun.color.setHex(0xfffaf0);
+      sun.intensity = 1.15;
+      sun.position.set(4.5, 9.5, 3.5);
+      hemi.color.setHex(0xffffff);
+      hemi.groundColor.setHex(0xd2c4b0);
+      hemi.intensity = 0.65;
+      fill.color.setHex(0xeaf2ff);
+      fill.intensity = 0.52;
+      win.color.setHex(0xfffaed);
+      win.intensity = 0.45;
+    } else if (timeOfDay === 'golden-hour') {
+      scene.background = new THREE.Color(0xfdf2e9);
+      if (scene.fog) scene.fog.color = new THREE.Color(0xfdf2e9);
+      amb.color.setHex(0xffd8a8);
+      amb.intensity = 0.65;
+      sun.color.setHex(0xff922b);
+      sun.intensity = 1.6;
+      sun.position.set(6.5, 3.2, 5.0);
+      hemi.color.setHex(0xffe8cc);
+      hemi.groundColor.setHex(0x9a3412);
+      hemi.intensity = 0.55;
+      fill.color.setHex(0xfeb272);
+      fill.intensity = 0.7;
+      win.color.setHex(0xff922b);
+      win.intensity = 1.25;
+    } else if (timeOfDay === 'overcast') {
+      scene.background = new THREE.Color(0xe2e8f0);
+      if (scene.fog) scene.fog.color = new THREE.Color(0xe2e8f0);
+      amb.color.setHex(0xdbeafe);
+      amb.intensity = 0.85;
+      sun.color.setHex(0x94a3b8);
+      sun.intensity = 0.4;
+      sun.position.set(2, 8, 2);
+      hemi.color.setHex(0xe2e8f0);
+      hemi.groundColor.setHex(0x64748b);
+      hemi.intensity = 0.7;
+      fill.color.setHex(0xcfdbe8);
+      fill.intensity = 0.45;
+      win.color.setHex(0xe0f2fe);
+      win.intensity = 0.6;
+    } else if (timeOfDay === 'night') {
+      scene.background = new THREE.Color(0x090d16);
+      if (scene.fog) scene.fog.color = new THREE.Color(0x090d16);
+      amb.color.setHex(0x1e293b);
+      amb.intensity = 0.22;
+      sun.color.setHex(0x38bdf8);
+      sun.intensity = 0.12;
+      sun.position.set(-4, 6, -3);
+      hemi.color.setHex(0x0f172a);
+      hemi.groundColor.setHex(0x020617);
+      hemi.intensity = 0.25;
+      fill.color.setHex(0x1e3a8a);
+      fill.intensity = 0.2;
+      win.color.setHex(0x0284c7);
+      win.intensity = 0.18;
+    }
+  }, [timeOfDay]);
 
   // ============ Lux & Lighting Coverage Heatmap Floor Texture ============
   useEffect(() => {
@@ -1183,10 +1492,41 @@ export default function PlannerCanvas() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedObjectId, viewMode, setPlacingEquipment, setSelectedObject, setViewMode]);
 
+  // Compute active camera and background sightline diagnostics for Director POV
+  const isCam = (id: string) =>
+    id === 'camera' || id.startsWith('cam') || id.includes('phone') || id.includes('webcam') || id.includes('teleprompter');
+  const activeCamera = placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) || placedObjects.find((o) => isCam(o.equipmentId));
+
+  // Find host spot (chair / standing spot) and objects behind talent
+  const hostSpot = placedObjects.find((o) => o.equipmentId === 'chair' || o.equipmentId === 'sofa');
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '4:5' | '1:1'>('16:9');
+  const [showGrid, setShowGrid] = useState(true);
+  const [showSafeZone, setShowSafeZone] = useState(true);
+
+  // Background clutter analyzer
+  const backgroundItems = activeCamera
+    ? placedObjects.filter((o) => {
+        if (o.id === activeCamera.id) return false;
+        // Direction vector from camera
+        const fwdX = Math.sin(activeCamera.rotationY);
+        const fwdZ = Math.cos(activeCamera.rotationY);
+        const dx = o.x - activeCamera.x;
+        const dz = o.z - activeCamera.z;
+        const dot = dx * fwdX + dz * fwdZ;
+        return dot > 1.2; // In front of camera beyond foreground
+      })
+    : [];
+
+  const hasWindowBehind = windows.some((w) => {
+    if (!activeCamera) return false;
+    const fwdZ = Math.cos(activeCamera.rotationY);
+    return (w.wall === 'north' && fwdZ < -0.3) || (w.wall === 'south' && fwdZ > 0.3);
+  });
+
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full bg-[#F5F1EA] ${placingEquipmentId ? 'cursor-crosshair' : ''}`}
+      className={`relative w-full h-full bg-[#F5F1EA] overflow-hidden ${placingEquipmentId ? 'cursor-crosshair' : ''}`}
       style={{
         backgroundImage: `
           linear-gradient(${GRID_COLOR_A} 1px, transparent 1px),
@@ -1196,6 +1536,200 @@ export default function PlannerCanvas() {
         `,
         backgroundSize: '24px 24px, 24px 24px, 120px 120px, 120px 120px',
       }}
-    />
+    >
+      {/* Floating Time of Day Natural Light Quick-Switch */}
+      <div className="absolute top-3 left-3 z-20 flex items-center gap-1 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[2px_2px_0_#000] text-xs font-mono">
+        <span className="px-1.5 py-0.5 text-[10px] uppercase font-bold text-gray-500">Natural Sun:</span>
+        <button
+          className={`px-2 py-1 font-bold rounded-none transition-colors ${
+            timeOfDay === 'daylight' ? 'bg-[#FFDD00] text-black border border-black' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => setTimeOfDay('daylight')}
+          title="Bright 5600K Clean Daylight with crisp window fill"
+        >
+          ☀️ Daylight
+        </button>
+        <button
+          className={`px-2 py-1 font-bold rounded-none transition-colors ${
+            timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white border border-black' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => setTimeOfDay('golden-hour')}
+          title="Warm 3200K Golden Hour Sunbeam through windows"
+        >
+          🌅 Golden
+        </button>
+        <button
+          className={`px-2 py-1 font-bold rounded-none transition-colors ${
+            timeOfDay === 'overcast' ? 'bg-[#94A3B8] text-white border border-black' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => setTimeOfDay('overcast')}
+          title="Soft 6500K Diffused Overcast Sky"
+        >
+          ☁️ Overcast
+        </button>
+        <button
+          className={`px-2 py-1 font-bold rounded-none transition-colors ${
+            timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400 border border-black' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => setTimeOfDay('night')}
+          title="Moody Night Studio with Cool Rim Moonlight"
+        >
+          🌙 Night
+        </button>
+      </div>
+
+      {/* Director POV Framing & Sightline Analyzer Overlay */}
+      {viewMode === 'camera-pov' && (
+        <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4">
+          {/* Top Bar with Camera Metadata & Aspect Ratio Switcher */}
+          <div className="flex items-center justify-between pointer-events-auto">
+            <div className="flex items-center gap-2 p-1.5 bg-black/85 text-white backdrop-blur border border-white/20 shadow-lg font-mono text-[11px]">
+              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-red-600 font-bold text-white tracking-widest animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-white" /> REC 4K
+              </span>
+              <span className="text-zinc-300 font-bold">
+                {activeCamera?.lensPreset || '24mm Wide'} • ISO 400 • f/2.8 • 1/50s
+              </span>
+              <span className="text-amber-400">
+                {activeCamera?.equipmentId.includes('phone') ? '📱 Smartphone 4K Sensor' : '🎥 Cine / Mirrorless'}
+              </span>
+            </div>
+
+            {/* Aspect Ratio Guides Switcher */}
+            <div className="flex items-center gap-1 p-1 bg-black/85 text-white backdrop-blur border border-white/20 font-mono text-[11px]">
+              <span className="text-[10px] text-zinc-400 px-1 font-bold">FRAMING:</span>
+              <button
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${
+                  aspectRatio === '16:9' ? 'bg-[#FFDD00] text-black font-bold' : 'hover:bg-white/10 text-white'
+                }`}
+                onClick={() => setAspectRatio('16:9')}
+              >
+                16:9 YouTube
+              </button>
+              <button
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${
+                  aspectRatio === '9:16' ? 'bg-[#FFDD00] text-black font-bold' : 'hover:bg-white/10 text-white'
+                }`}
+                onClick={() => setAspectRatio('9:16')}
+              >
+                9:16 Shorts/Reels
+              </button>
+              <button
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${
+                  aspectRatio === '4:5' ? 'bg-[#FFDD00] text-black font-bold' : 'hover:bg-white/10 text-white'
+                }`}
+                onClick={() => setAspectRatio('4:5')}
+              >
+                4:5 IG Feed
+              </button>
+              <button
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${
+                  showGrid ? 'bg-white/20 text-white' : 'text-zinc-500'
+                }`}
+                onClick={() => setShowGrid(!showGrid)}
+                title="Toggle Rule of Thirds Grid"
+              >
+                Grid {showGrid ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
+          {/* Aspect Ratio Frame & Rule of Thirds Guide */}
+          <div className="relative flex-1 flex items-center justify-center my-2">
+            <div
+              className={`relative border-2 border-[#FFDD00]/70 transition-all duration-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] ${
+                aspectRatio === '16:9'
+                  ? 'w-[90%] aspect-[16/9]'
+                  : aspectRatio === '9:16'
+                  ? 'h-[92%] aspect-[9/16]'
+                  : aspectRatio === '4:5'
+                  ? 'h-[92%] aspect-[4/5]'
+                  : 'h-[92%] aspect-square'
+              }`}
+            >
+              {/* Rule of Thirds Crosshairs */}
+              {showGrid && (
+                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                  <div className="border-r border-b border-white/25 relative">
+                    <span className="absolute bottom-0 right-0 w-2 h-2 -mr-1 -mb-1 border-t-2 border-l-2 border-[#FFDD00]" />
+                  </div>
+                  <div className="border-r border-b border-white/25 relative">
+                    <span className="absolute bottom-0 left-0 w-2 h-2 -ml-1 -mb-1 border-t-2 border-r-2 border-[#FFDD00]" />
+                  </div>
+                  <div className="border-b border-white/25" />
+                  <div className="border-r border-b border-white/25 relative">
+                    <span className="absolute top-0 right-0 w-2 h-2 -mr-1 -mt-1 border-b-2 border-l-2 border-[#FFDD00]" />
+                  </div>
+                  <div className="border-r border-b border-white/25 relative">
+                    <span className="absolute top-0 left-0 w-2 h-2 -ml-1 -mt-1 border-b-2 border-r-2 border-[#FFDD00]" />
+                  </div>
+                  <div className="border-b border-white/25" />
+                  <div className="border-r border-white/25" />
+                  <div className="border-r border-white/25" />
+                  <div />
+                </div>
+              )}
+
+              {/* Title & Action Safe Margin Boxes */}
+              {showSafeZone && (
+                <>
+                  <div className="absolute inset-[5%] border border-dashed border-cyan-400/40 pointer-events-none">
+                    <span className="absolute top-1 left-1.5 text-[9px] font-mono text-cyan-400/80 uppercase">
+                      Action Safe 90%
+                    </span>
+                  </div>
+                  <div className="absolute inset-[10%] border border-dashed border-amber-400/40 pointer-events-none">
+                    <span className="absolute top-1 left-1.5 text-[9px] font-mono text-amber-400/80 uppercase">
+                      Title Safe 80%
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {/* Center Crosshair for Talent Alignment */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-6 h-6 border border-white/40 rounded-full flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 bg-[#FFDD00] rounded-full" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Live Sightline & Background Clutter Diagnostic HUD */}
+          <div className="pointer-events-auto flex items-center justify-between gap-3 p-2 bg-black/90 text-white backdrop-blur border border-white/20 font-mono text-xs shadow-2xl">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-[#FFDD00] text-black font-bold text-[10px]">
+                SIGHTLINE ANALYZER
+              </span>
+              <span className="text-zinc-300">
+                Background Depth: <strong className="text-emerald-400">~2.2m (Cinematic separation)</strong>
+              </span>
+              <span className="text-zinc-500">|</span>
+              <span className="text-zinc-300">
+                In-Shot Elements: <strong className="text-amber-400">{backgroundItems.length} items</strong>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px]">
+              {hasWindowBehind ? (
+                <span className="text-amber-300 flex items-center gap-1 bg-amber-950/60 px-2 py-0.5 border border-amber-500/40">
+                  ⚠️ Window in Background: Check rim highlight or draw sheer curtain.
+                </span>
+              ) : (
+                <span className="text-emerald-300 flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 border border-emerald-500/40">
+                  ✓ Clean background sightline with no direct blinding backlight.
+                </span>
+              )}
+              <button
+                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white font-bold transition-all text-[10px]"
+                onClick={() => usePlannerStore.getState().setViewMode('perspective')}
+              >
+                Exit POV ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
