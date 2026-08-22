@@ -113,6 +113,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   showProjectInfo: false,
   showWarnings: false,
   showCameraPreview: false,
+  showLuxHeatmap: false,
   leftPanelOpen: true,
   rightPanelOpen: true,
 

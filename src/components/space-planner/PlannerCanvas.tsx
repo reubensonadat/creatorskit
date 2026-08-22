@@ -12,8 +12,6 @@ import { usePlannerStore } from './store';
 import { createEquipmentModel, EQUIPMENT_CATALOG } from './equipment';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { PlacedObject, ViewMode } from './types';
-import { kelvinToThreeColor } from '@/lib/space-planner/lighting-engine';
-import LightingBalanceHUD from './LightingBalanceHUD';
 
 // ============================================================
 // PlannerCanvas — Core Three.js 3D scene
@@ -104,7 +102,6 @@ export default function PlannerCanvas() {
   const floorRef = useRef<THREE.Mesh | null>(null);
   const roomGroupRef = useRef<THREE.Group | null>(null);
   const objectMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
-  const dynamicLightsRef = useRef<Map<string, { light: THREE.SpotLight | THREE.PointLight; target: THREE.Object3D }>>(new Map());
   const selectionOutlineRef = useRef<THREE.LineSegments | null>(null);
   const cameraFrameRef = useRef<THREE.Group | null>(null);
   const ghostRef = useRef<THREE.Group | null>(null);
@@ -410,99 +407,8 @@ export default function PlannerCanvas() {
         animateIn();
       }
 
-        mesh.position.set(obj.x, getObjectY(obj), obj.z);
+      mesh.position.set(obj.x, getObjectY(obj), obj.z);
       mesh.rotation.y = obj.rotationY;
-    });
-
-    // ============ Sync Real-Time Studio Lights & Reflections ============
-    const isLightFixture = (eqId: string) => {
-      const def = COMPREHENSIVE_EQUIPMENT_CATALOG[eqId];
-      return (
-        def?.category === 'lighting' ||
-        eqId.includes('light') ||
-        eqId.includes('softbox') ||
-        eqId.includes('fresnel') ||
-        eqId.includes('tube') ||
-        eqId.includes('lamp')
-      );
-    };
-
-    // Remove deleted dynamic lights
-    dynamicLightsRef.current.forEach(({ light, target }, id) => {
-      if (!currentIds.has(id)) {
-        scene.remove(light);
-        scene.remove(target);
-        light.dispose?.();
-        dynamicLightsRef.current.delete(id);
-      }
-    });
-
-    // Add / update dynamic lights
-    placedObjects.forEach((obj) => {
-      if (!isLightFixture(obj.equipmentId)) return;
-
-      const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
-      const lightH = eq ? eq.dimensions.height * 0.82 : 1.2;
-      const posY = getObjectY(obj) + lightH;
-
-      let entry = dynamicLightsRef.current.get(obj.id);
-      if (!entry) {
-        const spot = new THREE.SpotLight(0xfff5ea, 12, 22, Math.PI / 4, 0.45, 2.0);
-        spot.castShadow = true;
-        spot.shadow.mapSize.set(1024, 1024);
-        spot.shadow.bias = -0.0004;
-        spot.shadow.radius = 2.0;
-
-        const target = new THREE.Object3D();
-        scene.add(target);
-        spot.target = target;
-        scene.add(spot);
-
-        entry = { light: spot, target };
-        dynamicLightsRef.current.set(obj.id, entry);
-      }
-
-      const { light, target } = entry;
-      light.position.set(obj.x, posY, obj.z);
-
-      const pitchRad = THREE.MathUtils.degToRad(obj.lightSettings?.pitchAngle ?? -15);
-      const forwardDist = 3.2;
-      target.position.set(
-        obj.x + Math.sin(obj.rotationY) * Math.cos(pitchRad) * forwardDist,
-        Math.max(0.1, posY + Math.sin(pitchRad) * forwardDist),
-        obj.z + Math.cos(obj.rotationY) * Math.cos(pitchRad) * forwardDist
-      );
-
-      // Color from Kelvin / RGB Gel
-      if (obj.lightSettings?.colorHex && (obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb') || obj.lightSettings.colorHex !== '#FFFFFF')) {
-        light.color.set(obj.lightSettings.colorHex);
-      } else {
-        const kelvin = obj.lightSettings?.colorTempKelvin ?? 5600;
-        light.color.copy(kelvinToThreeColor(kelvin));
-      }
-
-      // Intensity & Beam angle
-      const intensityPct = (obj.lightSettings?.intensity ?? 80) / 100;
-      const watts = eq?.watts || 60;
-      light.intensity = Math.max(0.1, intensityPct * (watts * 0.45));
-
-      if (light instanceof THREE.SpotLight) {
-        const beamDeg = obj.lightSettings?.beamAngle ?? 60;
-        light.angle = THREE.MathUtils.degToRad(beamDeg / 2);
-      }
-
-      // Synchronize fixture mesh emissive face
-      const mesh = objectMeshesRef.current.get(obj.id);
-      if (mesh) {
-        mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-            if (child.material.emissive && child.material.emissiveIntensity > 0) {
-              child.material.emissive.copy(light.color);
-              child.material.emissiveIntensity = Math.max(0.3, intensityPct * 1.5);
-            }
-          }
-        });
-      }
     });
   }, [placedObjects, getObjectY]);
 
@@ -1277,8 +1183,6 @@ export default function PlannerCanvas() {
         `,
         backgroundSize: '24px 24px, 24px 24px, 120px 120px, 120px 120px',
       }}
-    >
-      <LightingBalanceHUD />
-    </div>
+    />
   );
 }

@@ -136,36 +136,16 @@ export default function InspectorPanel() {
 
       {/* Studio Lighting Controls */}
       {isLight && (
-        <div className="mb-3 p-2 bg-[#f0f8ff] border-2 border-[#000] shadow-[2px_2px_0_#000]">
+        <div className="mb-3 p-2 bg-[#f0f8ff] border border-[#b8dcff]">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10.5px] font-black text-[#000] font-mono uppercase">💡 Studio Lighting Engine</span>
-            <span className="text-[9.5px] font-mono px-1.5 py-0.5 bg-[#FFDD00] text-black border border-black font-black">
-              {light.intensity}%
-            </span>
-          </div>
-
-          {/* Light Role Selector */}
-          <div className="mb-2">
-            <span className="text-[9px] font-mono font-bold text-[#444] block mb-1">LIGHTING ROLE:</span>
-            <div className="grid grid-cols-4 gap-1">
-              {(['key', 'fill', 'rim', 'accent'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => updateObjectLight(obj.id, { role: r })}
-                  className={`btn justify-center text-[8.5px] py-1 font-mono uppercase font-black ${
-                    (light.role || 'key') === r ? 'bg-black text-white' : 'bg-white border-black'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
+            <span className="text-[10px] font-bold text-[#004a8f] font-mono uppercase">💡 Light Specs</span>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-[#004a8f] text-white font-bold">{light.intensity}%</span>
           </div>
 
           {/* Dimmer Slider */}
-          <div className="mb-2.5">
-            <div className="flex justify-between text-[9px] font-mono text-[#000] font-bold mb-0.5">
-              <span>Dimmer Output</span>
+          <div className="mb-2">
+            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
+              <span>Dimmer / Output</span>
               <span>{light.intensity}%</span>
             </div>
             <input
@@ -179,39 +159,31 @@ export default function InspectorPanel() {
           </div>
 
           {/* Kelvin Temperature */}
-          <div className="mb-2.5">
-            <div className="flex justify-between text-[9px] font-mono text-[#000] font-bold mb-0.5">
-              <span>Color Temperature (CCT)</span>
-              <span className="font-black">{light.colorTempKelvin ?? 5600}K</span>
+          <div className="mb-2">
+            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
+              <span>Color Temperature</span>
+              <span className="font-bold">{light.colorTempKelvin ?? 5600}K</span>
             </div>
             <input
               type="range"
-              min={2400}
-              max={8000}
+              min={2700}
+              max={6500}
               step={100}
               value={light.colorTempKelvin ?? 5600}
               onChange={(e) => updateObjectLight(obj.id, { colorTempKelvin: parseInt(e.target.value, 10) })}
               className="w-full cursor-pointer"
               style={{
-                background: 'linear-gradient(to right, #ff8a00, #ffb366, #fff0e0, #ffffff, #cce4ff, #80bfff)',
-                height: 7,
+                background: 'linear-gradient(to right, #ffb154, #ffe4ce, #ffffff, #d3e8ff)',
+                height: 6,
                 borderRadius: 3,
-                border: '1px solid #000',
               }}
             />
-            <div className="grid grid-cols-4 gap-1 mt-1.5">
-              {[
-                { k: 2700, label: '2700K Warm' },
-                { k: 3200, label: '3200K Tungsten' },
-                { k: 4500, label: '4500K Studio' },
-                { k: 5600, label: '5600K Daylight' },
-              ].map((kp) => (
+            <div className="grid grid-cols-3 gap-1 mt-1">
+              {KELVIN_PRESETS.slice(1, 4).map((kp) => (
                 <button
                   key={kp.k}
                   onClick={() => updateObjectLight(obj.id, { colorTempKelvin: kp.k })}
-                  className={`btn justify-center text-[7.5px] py-0.5 px-0.5 font-mono ${
-                    light.colorTempKelvin === kp.k ? 'bg-black text-white' : 'bg-white border-black'
-                  }`}
+                  className={`btn justify-center text-[8px] py-0.5 px-1 font-mono ${light.colorTempKelvin === kp.k ? 'bg-black text-white' : 'bg-white'}`}
                 >
                   {kp.k}K
                 </button>
@@ -219,74 +191,18 @@ export default function InspectorPanel() {
             </div>
           </div>
 
-          {/* Beam Spread / Flood Angle Slider */}
-          <div className="mb-2.5">
-            <div className="flex justify-between text-[9px] font-mono text-[#000] font-bold mb-0.5">
-              <span>Beam Spread / Flood Angle</span>
-              <span>{light.beamAngle ?? 60}°</span>
-            </div>
-            <input
-              type="range"
-              min={15}
-              max={120}
-              step={5}
-              value={light.beamAngle ?? 60}
-              onChange={(e) => updateObjectLight(obj.id, { beamAngle: parseInt(e.target.value, 10) })}
-              className="w-full accent-black cursor-pointer"
-            />
-          </div>
-
-          {/* Pitch Angle Tilt Slider */}
-          <div className="mb-2.5">
-            <div className="flex justify-between text-[9px] font-mono text-[#000] font-bold mb-0.5">
-              <span>Aim Tilt Angle (Pitch)</span>
-              <span>{light.pitchAngle ?? -15}°</span>
-            </div>
-            <input
-              type="range"
-              min={-45}
-              max={45}
-              step={5}
-              value={light.pitchAngle ?? -15}
-              onChange={(e) => updateObjectLight(obj.id, { pitchAngle: parseInt(e.target.value, 10) })}
-              className="w-full accent-black cursor-pointer"
-            />
-          </div>
-
-          {/* RGB Gel Color (for tubes / mood lights) */}
-          <div className="pt-2 border-t border-black">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[9px] font-mono font-bold text-[#000]">RGB Gel Color Tint</span>
+          {/* RGB Accent Color (for tubes / mood lights) */}
+          {(obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb')) && (
+            <div className="flex items-center justify-between pt-1 border-t border-[#d0e4f7]">
+              <span className="text-[9px] font-mono text-[#555]">RGB Gel Color</span>
               <input
                 type="color"
-                value={light.colorHex || '#FFFFFF'}
+                value={light.colorHex || '#FF0055'}
                 onChange={(e) => updateObjectLight(obj.id, { colorHex: e.target.value })}
-                className="w-7 h-5 border border-black cursor-pointer p-0"
+                className="w-8 h-6 border border-black cursor-pointer p-0"
               />
             </div>
-            <div className="grid grid-cols-5 gap-1">
-              {[
-                { hex: '#FFFFFF', label: 'White' },
-                { hex: '#ff007f', label: 'Magenta' },
-                { hex: '#00f0ff', label: 'Cyan' },
-                { hex: '#ffaa00', label: 'Amber' },
-                { hex: '#8a2be2', label: 'Purple' },
-              ].map((g) => (
-                <button
-                  key={g.hex}
-                  onClick={() => updateObjectLight(obj.id, { colorHex: g.hex })}
-                  className="text-[8px] font-mono py-0.5 border border-black"
-                  style={{
-                    backgroundColor: g.hex,
-                    color: g.hex === '#FFFFFF' || g.hex === '#00f0ff' || g.hex === '#ffaa00' ? '#000' : '#fff',
-                    fontWeight: 900,
-                  }}
-                >
-                  {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
