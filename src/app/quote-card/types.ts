@@ -1,26 +1,42 @@
 export type CreatorModeId =
-  | 'studio-carousel'
-  | 'editorial-book'
-  | 'cinematic-meme'
-  | 'mobile-showcase'
-  | 'cyber-engagement';
+  | 'cobalt-hook'
+  | 'editorial-linen'
+  | 'dark-notes'
+  | 'marigold-display'
+  | 'dual-comparison'
+  | 'trio-showcase';
 
 export type BackgroundType =
+  | 'solid'
+  | 'graph-grid'
+  | 'halftone-dither'
   | 'mesh'
   | 'preset-gradient'
   | 'custom-gradient'
-  | 'graph-grid'
-  | 'halftone-dither'
-  | 'solid'
   | 'photo';
 
-export type AssetFrameType =
-  | 'none'
+export type LayoutMode =
+  | 'hero-hook'
+  | 'single-image'
+  | 'dual-comparison'
+  | 'trio-gallery'
+  | 'tweet-card'
+  | 'editorial-quote'
   | 'desktop-window'
   | 'mobile-phone'
-  | 'split-comparison'
-  | 'floating-card'
   | 'color-swatches';
+
+export type SwipePromptType =
+  | 'connected-arc'
+  | 'search-bar'
+  | 'notes-folder'
+  | 'pill-arrow'
+  | 'dots-bar'
+  | 'minimal-arrow'
+  | 'custom-text'
+  | 'none';
+
+export type HighlightStyle = 'pill' | 'box' | 'underline' | 'text-color';
 
 export interface MeshPin {
   id: number;
@@ -35,20 +51,66 @@ export interface ColorSwatchItem {
   desc?: string;
 }
 
+export interface SlideImageSlot {
+  id: string;
+  url?: string;
+  imgEl?: HTMLImageElement | null;
+  label?: string;
+  caption?: string;
+  fit?: 'cover' | 'contain';
+}
+
 export interface SlideItem {
   id: string;
-  // Text Content
+  layoutMode: LayoutMode;
+
+  // Header & Eyebrow Elements
   categoryBadge: string;
+  categoryBadgeIcon?: string; // Remix icon key
+  topTagPill?: string; // e.g. "Click Here to Edit Files"
   eyebrowText: string;
+  sectionNumber: string; // e.g. "PAGE 01", "01"
+  brandLogoText?: string; // e.g. "Brand"
+  brandLogoIcon?: string; // e.g. "RiPlaneLine"
+
+  // Main Typography
   heroTitle: string;
-  highlightWords: string; // Words to highlight in accent color
+  highlightWords: string; // Words to highlight
+  highlightStyle: HighlightStyle;
+  highlightBgColor: string;
+  highlightTextColor: string;
+  secondaryHighlightWords?: string;
+  secondaryHighlightBox?: boolean; // Dashed selection frame box
+  
   subtitleText: string;
-  sectionNumber: string; // e.g. "01", "02"
-  linkPillText: string; // e.g. "originkit.dev"
-  linkPillType: 'direct-link' | 'comment-dm' | 'swipe-cue' | 'custom';
-  swipePrompt: string; // e.g. "Swipe for start 👆" or "Swipe ➔"
+  bulletPoints?: string[]; // Optional 3 takeaways or numbered steps
+
+  // Fonts & Styling
+  titleFontFamily: string;
+  bodyFontFamily: string;
+  titleFontSize: number; // 70 to 140
+  textColor: string;
+  accentColor: string;
+  textAlign: 'left' | 'center' | 'right';
+  titleItalic: boolean;
+  titleTracking: number; // letter spacing modifier
+
+  // Multi-Image Slots
+  images: SlideImageSlot[];
+  imagePosition?: 'top' | 'center' | 'bottom' | 'split';
+  imageAspectRatio?: '16:9' | '4:3' | '1:1' | 'auto';
+  imageFrameStyle?: 'none' | 'shadow-card' | 'brutalist-border' | 'rounded-smooth';
+
+  // Micro-Components & Bottom Elements
+  dottedDivider: boolean;
+  swipePromptType: SwipePromptType;
+  swipePromptText: string; // e.g. "SWIPE"
+  swipePromptSubtext?: string; // e.g. "Swipe to view notes 4 >"
+  swipeSearchPlaceholder?: string; // e.g. "I'm looking for..."
+  watermarkText?: string; // e.g. "creatorkit.studio"
 
   // Author & Profile
+  showAuthorBlock: boolean;
   authorName: string;
   authorHandle: string;
   authorVerified: boolean;
@@ -57,29 +119,24 @@ export interface SlideItem {
 
   // Background
   bgType: BackgroundType;
+  solidColor: string;
   presetGradientId: string;
   customGradColors: [string, string, string];
   customGradAngle: number;
-  solidColor: string;
   photoUrl?: string;
   photoImgEl?: HTMLImageElement | null;
+  bgBlur: number;
+  bgDimness: number;
   meshPins: MeshPin[];
-  meshWarpSize: number; // 30 - 100%
-  meshDiffusion: number; // 10 - 100px
+  meshWarpSize: number;
+  meshDiffusion: number;
   gridColor: string;
   gridSize: number;
 
-  // Asset / Mockup Layer
-  assetFrameType: AssetFrameType;
-  screenshotUrl?: string;
-  screenshotImgEl?: HTMLImageElement | null;
-  secondaryScreenshotUrl?: string; // For Before/After or Dual Phone
-  secondaryScreenshotImgEl?: HTMLImageElement | null;
-  beforeLabel?: string; // e.g. "BEFORE"
-  afterLabel?: string; // e.g. "AFTER"
+  // Legacy compatibility
   colorSwatches?: ColorSwatchItem[];
-  windowTheme: 'dark' | 'light' | 'glass' | 'cyber';
-  phoneTheme: 'dark' | 'silver' | 'titanium';
+  windowTheme?: 'dark' | 'light' | 'glass' | 'cyber';
+  phoneTheme?: 'dark' | 'silver' | 'titanium';
 }
 
 export interface AspectRatioPreset {

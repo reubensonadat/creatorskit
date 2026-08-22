@@ -1,1974 +1,1548 @@
 'use client';
 
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import JSZip from 'jszip';
+import jsPDF from 'jspdf';
 import {
-  Sparkles,
-  Camera,
-  BookOpen,
-  Smartphone,
-  Flame,
-  Layers,
-  Palette,
-  Type,
-  Upload,
-  Download,
-  FolderArchive,
-  RefreshCw,
-  Copy,
-  Trash2,
-  Plus,
-  ArrowLeft,
-  ArrowRight,
-  ShieldCheck,
-  Check,
-  Sliders,
-  Maximize2,
-  Monitor,
-  ExternalLink,
-  Split,
-  Eye,
-  EyeOff,
-  User,
-  Heart,
-  Bookmark,
-  Share2,
-  MessageCircle,
-  Paintbrush,
-  Search,
-} from 'lucide-react';
-import { SlideItem, CreatorModeId, BackgroundType, AssetFrameType, AspectRatioPreset } from './types';
+  RiArrowRightLine,
+  RiArrowLeftLine,
+  RiDownload2Line,
+  RiFolderZipLine,
+  RiFileLine,
+  RiAddLine,
+  RiFileCopyLine,
+  RiDeleteBinLine,
+  RiImageAddLine,
+  RiPaletteLine,
+  RiFontSize,
+  RiLayoutMasonryLine,
+  RiSearchLine,
+  RiFolder3Line,
+  RiCheckLine,
+  RiShieldCheckLine,
+  RiUserLine,
+  RiSlidersHorizontalLine,
+  RiRefreshLine,
+  RiExternalLinkLine,
+  RiCloseLine,
+  RiCropLine,
+  RiText,
+  RiCheckboxCircleFill,
+  RiPlaneLine,
+  RiAwardLine,
+} from '@remixicon/react';
+
 import {
-  generateSmartHarmoniousTheme,
-  CURATED_STUDIO_GRADIENTS,
-  COLOR_KEYWORD_MAP,
-} from './gradient-engine';
+  SlideItem,
+  LayoutMode,
+  BackgroundType,
+  SwipePromptType,
+  HighlightStyle,
+  AspectRatioPreset,
+  SlideImageSlot,
+} from './types';
 import { renderSlideToCanvas, CanvasRenderOptions } from './canvas-renderer';
+import { REMIX_ICONS_LIST, getRemixIconComponent } from './icon-helper';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 
 // Standard Aspect Ratio Presets
 const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
-  { id: '4:5', label: '4:5 · Instagram Feed Portrait (Recommended)', width: 1080, height: 1350, aspect: '4/5' },
+  { id: '4:5', label: '4:5 · Instagram Feed / LinkedIn (Best)', width: 1080, height: 1350, aspect: '4/5' },
   { id: '1:1', label: '1:1 · Square Post', width: 1080, height: 1080, aspect: '1/1' },
   { id: '9:16', label: '9:16 · Story / Reels / TikTok', width: 1080, height: 1920, aspect: '9/16' },
-  { id: '16:9', label: '16:9 · YouTube / Landscape', width: 1920, height: 1080, aspect: '16/9' },
-  { id: '3:4', label: '3:4 · Editorial / Pinterest', width: 1080, height: 1440, aspect: '3/4' },
-  { id: 'original', label: '📸 Match Photo Ratio', width: 1920, height: 1080, aspect: 'auto' },
+  { id: '16:9', label: '16:9 · YouTube / Banner', width: 1920, height: 1080, aspect: '16/9' },
+  { id: '3:4', label: '3:4 · Pinterest / Portrait', width: 1080, height: 1440, aspect: '3/4' },
 ];
 
-// 5 Main Creator Archetypes
-const CREATOR_ARCHETYPES = [
+// 6 Viral Creator Templates (Directly matched to modern high-converting carousels)
+const VIRAL_TEMPLATES = [
   {
-    id: 'studio-carousel' as CreatorModeId,
-    name: '🚀 Studio Carousel & App Showcase',
-    badge: 'Craftwork / Originkit',
-    desc: 'Fluid mesh gradients, Mac browser window mockup, direct link pill, and slide counter',
-    icon: Sparkles,
+    id: 'cobalt-hook',
+    name: 'Electric Cobalt Hook',
+    tag: 'AI / Tech Hook',
+    desc: 'Solid cobalt blue, bold white headline, search bar mockup & top edit pill',
+    previewColor: '#0047FF',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'hero-hook',
+      bgType: 'solid',
+      solidColor: '#0047FF',
+      textColor: '#FFFFFF',
+      accentColor: '#00E5FF',
+      titleFontFamily: 'Inter',
+      bodyFontFamily: 'Inter',
+      eyebrowText: 'UNLOCK LASTING RESULTS',
+      heroTitle: '4 Strategies that drive AI Success',
+      highlightWords: 'AI Success',
+      highlightStyle: 'pill',
+      highlightBgColor: '#002B99',
+      highlightTextColor: '#FFFFFF',
+      topTagPill: 'Click Here to Edit Files',
+      swipePromptType: 'search-bar',
+      swipeSearchPlaceholder: "I'm looking for...",
+      dottedDivider: false,
+      sectionNumber: '01',
+    }),
   },
   {
-    id: 'editorial-book' as CreatorModeId,
-    name: '📰 Editorial Grid & Literature Post',
-    badge: 'Color Psychology / Kinfolk',
-    desc: 'Graph paper grid, elegant serif typography, color palette cards, and author footer',
-    icon: BookOpen,
+    id: 'editorial-linen',
+    name: 'Warm Linen Brand',
+    tag: 'Personal Brand',
+    desc: 'Warm paper texture, highlighted orange keyword pill, dashed box & swipe pill',
+    previewColor: '#F4EFEA',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'hero-hook',
+      bgType: 'graph-grid',
+      solidColor: '#F4EFEA',
+      textColor: '#1E293B',
+      accentColor: '#E05638',
+      titleFontFamily: 'DM Sans',
+      bodyFontFamily: 'Inter',
+      brandLogoText: 'Brand',
+      heroTitle: 'Build Your Personal Brand as a Graphic Designer',
+      highlightWords: 'as a',
+      highlightStyle: 'pill',
+      highlightBgColor: '#E05638',
+      highlightTextColor: '#FFFFFF',
+      secondaryHighlightWords: 'Graphic Designer',
+      secondaryHighlightBox: true,
+      dottedDivider: true,
+      sectionNumber: 'PAGE 01',
+      swipePromptType: 'pill-arrow',
+      swipePromptText: 'SWIPE ➔',
+    }),
   },
   {
-    id: 'cinematic-meme' as CreatorModeId,
-    name: '📸 Cinematic Photo & Comparison Breakdown',
-    badge: 'Before / After / Meme',
-    desc: 'Split comparison card, dark vignette, high-impact bold typography, and prompt breakdown',
-    icon: Camera,
+    id: 'dark-notes',
+    name: 'Obsidian Tweet / Notes',
+    tag: 'Social Authority',
+    desc: 'Deep dark card, verified avatar chip, highlight badge & folder prompt button',
+    previewColor: '#12151B',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'tweet-card',
+      bgType: 'halftone-dither',
+      solidColor: '#12151B',
+      textColor: '#FFFFFF',
+      accentColor: '#2563EB',
+      titleFontFamily: 'Inter',
+      bodyFontFamily: 'Inter',
+      authorName: 'Justas Markus',
+      authorHandle: '@JustasMarkus',
+      authorVerified: true,
+      heroTitle: 'Scaling With AI Planning',
+      highlightWords: "It's Replacing How You Work.",
+      highlightStyle: 'pill',
+      highlightBgColor: '#2563EB',
+      highlightTextColor: '#FFFFFF',
+      topTagPill: 'Click Here to Edit Files',
+      swipePromptType: 'notes-folder',
+      swipePromptSubtext: '📁 Swipe to view notes 4 >',
+    }),
   },
   {
-    id: 'mobile-showcase' as CreatorModeId,
-    name: '📱 Mobile App Showcase & Cards',
-    badge: 'iOS / Android Mockup',
-    desc: 'Modern iPhone frame mockup, highlight badges, modern sans, and feature takeaway points',
-    icon: Smartphone,
+    id: 'marigold-display',
+    name: 'Marigold & Purple Editorial',
+    tag: 'Thought Leadership',
+    desc: 'High-contrast yellow canvas, elegant serif italic & minimal arrow footer',
+    previewColor: '#FFB800',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'editorial-quote',
+      bgType: 'solid',
+      solidColor: '#FFB800',
+      textColor: '#2C0A3E',
+      accentColor: '#2C0A3E',
+      titleFontFamily: 'Playfair Display',
+      bodyFontFamily: 'Inter',
+      heroTitle: 'Consistency Over Creativity',
+      titleItalic: true,
+      subtitleText: 'Why staying consistent in marketing matters more than being "brilliant" once in a while.',
+      swipePromptType: 'minimal-arrow',
+      watermarkText: 'creatorkit.studio',
+      dottedDivider: false,
+    }),
   },
   {
-    id: 'cyber-engagement' as CreatorModeId,
-    name: '⚡ Retro Dither & Engagement Prompt',
-    badge: 'DM Lead Gen / Dither',
-    desc: 'Halftone dither textures, comment prompt sticker pill, and high-contrast callout boxes',
-    icon: Flame,
+    id: 'dual-comparison',
+    name: 'Before / After Comparison',
+    tag: 'Visual Proof',
+    desc: 'Side-by-side dual image slots with customizable comparison tags & headline',
+    previewColor: '#181A24',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'dual-comparison',
+      bgType: 'solid',
+      solidColor: '#0E1015',
+      textColor: '#FFFFFF',
+      accentColor: '#2ED573',
+      titleFontFamily: 'Inter',
+      heroTitle: '48-Hour Manual Effort vs Instant 1-Click Studio',
+      images: [
+        { id: '1', label: 'BEFORE: Manual', fit: 'cover' },
+        { id: '2', label: 'AFTER: Instant', fit: 'cover' },
+      ],
+      swipePromptType: 'connected-arc',
+    }),
+  },
+  {
+    id: 'trio-showcase',
+    name: '3-Step Tool Showcase',
+    tag: 'Step-by-Step',
+    desc: '3 image cards in a row with numbered step badges, title & take-action pill',
+    previewColor: '#0A0C10',
+    apply: (slide: SlideItem): SlideItem => ({
+      ...slide,
+      layoutMode: 'trio-gallery',
+      bgType: 'solid',
+      solidColor: '#0A0C10',
+      textColor: '#FFFFFF',
+      accentColor: '#FFE500',
+      titleFontFamily: 'Inter',
+      heroTitle: '3-Step Framework to Drive 10x More Engagement',
+      images: [
+        { id: '1', label: 'Step 01', fit: 'cover' },
+        { id: '2', label: 'Step 02', fit: 'cover' },
+        { id: '3', label: 'Step 03', fit: 'cover' },
+      ],
+      swipePromptType: 'pill-arrow',
+      swipePromptText: 'NEXT STEP ➔',
+    }),
   },
 ];
+
+// Initial default slide
+function createInitialSlide(index: number = 1): SlideItem {
+  return {
+    id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    layoutMode: 'hero-hook',
+    categoryBadge: 'CONTENT STRATEGY',
+    categoryBadgeIcon: 'arrow-right',
+    topTagPill: 'Click Here to Edit Files',
+    eyebrowText: 'UNLOCK LASTING RESULTS',
+    sectionNumber: `0${index}`,
+    brandLogoText: '',
+    heroTitle: '4 Strategies that drive AI Success',
+    highlightWords: 'AI Success',
+    highlightStyle: 'pill',
+    highlightBgColor: '#002B99',
+    highlightTextColor: '#FFFFFF',
+    subtitleText: "We're moving from clicks to connection. From impressions to high impact.",
+    titleFontFamily: 'Inter',
+    bodyFontFamily: 'Inter',
+    titleFontSize: 100,
+    textColor: '#FFFFFF',
+    accentColor: '#FFE500',
+    textAlign: 'left',
+    titleItalic: false,
+    titleTracking: 0,
+    images: [],
+    dottedDivider: false,
+    swipePromptType: 'search-bar',
+    swipePromptText: 'SWIPE ➔',
+    swipeSearchPlaceholder: "I'm looking for...",
+    showAuthorBlock: false,
+    authorName: 'Reuben Sonada',
+    authorHandle: '@reubensonada',
+    authorVerified: true,
+    bgType: 'solid',
+    solidColor: '#0047FF',
+    presetGradientId: 'electric-cobalt',
+    customGradColors: ['#0047FF', '#002699', '#00114D'],
+    customGradAngle: 135,
+    bgBlur: 0,
+    bgDimness: 0,
+    meshPins: [
+      { id: 1, color: '#0047FF', x: 20, y: 20 },
+      { id: 2, color: '#00E5FF', x: 80, y: 80 },
+    ],
+    meshWarpSize: 75,
+    meshDiffusion: 65,
+    gridColor: 'rgba(0, 0, 0, 0.06)',
+    gridSize: 45,
+  };
+}
 
 export default function QuoteCardPage() {
-  const [creatorMode, setCreatorMode] = useState<CreatorModeId>('studio-carousel');
-  const [activeTab, setActiveTab] = useState<'background' | 'mockup' | 'content' | 'author' | 'typography'>('background');
-
-  // Carousel Slides (1 to 10 slides)
+  // Slides State
   const [slides, setSlides] = useState<SlideItem[]>([
+    createInitialSlide(1),
     {
-      id: 'slide-1',
-      categoryBadge: '@creator.studio · DEV TOOLS',
-      eyebrowText: 'Swipe for start 👆',
-      heroTitle: 'Rare Dev Tools You Need In 2026',
-      highlightWords: 'Rare, 2026',
-      subtitleText: 'Curated workflow tools developers use and designers approve',
-      sectionNumber: '01',
-      linkPillText: 'originkit.dev',
-      linkPillType: 'direct-link',
-      swipePrompt: '',
-      authorName: 'Alex Creator',
-      authorHandle: '@alexcreator',
-      authorVerified: true,
-      bgType: 'mesh',
-      presetGradientId: 'liquid-silk-emerald',
-      customGradColors: ['#00A86B', '#FF2A85', '#0052D4'],
-      customGradAngle: 135,
-      solidColor: '#09090b',
-      meshPins: [
-        { id: 1, color: '#00A86B', x: 18, y: 22 },
-        { id: 2, color: '#FF2A85', x: 82, y: 28 },
-        { id: 3, color: '#FFB800', x: 50, y: 78 },
-        { id: 4, color: '#0052D4', x: 85, y: 82 },
-        { id: 5, color: '#022C22', x: 20, y: 80 },
-      ],
-      meshWarpSize: 75,
-      meshDiffusion: 65,
-      gridColor: 'rgba(0,0,0,0.08)',
-      gridSize: 44,
-      assetFrameType: 'desktop-window',
-      windowTheme: 'dark',
-      phoneTheme: 'dark',
-      beforeLabel: 'BEFORE',
-      afterLabel: 'AFTER',
-    },
-    {
-      id: 'slide-2',
-      categoryBadge: '@creator.studio · COLOR THEORY',
-      eyebrowText: '',
-      heroTitle: 'Psychology Of Colors Every Designer Should Know',
-      highlightWords: 'Colors, Designer',
-      subtitleText: 'How color harmony alters user perception and brand trust',
+      ...createInitialSlide(2),
+      heroTitle: 'Step 1: Focus On Direct Outcomes',
+      highlightWords: 'Direct Outcomes',
+      eyebrowText: 'STRATEGY 01',
       sectionNumber: '02',
-      linkPillText: 'creatorkit.io',
-      linkPillType: 'direct-link',
-      swipePrompt: 'Swipe ➔',
-      authorName: 'Studio Design',
-      authorHandle: '@studiodesign',
-      authorVerified: true,
-      bgType: 'graph-grid',
-      presetGradientId: 'editorial-graph-linen',
-      customGradColors: ['#FDFBF7', '#FAF7F0', '#E5E5DE'],
-      customGradAngle: 180,
-      solidColor: '#FDFBF7',
-      meshPins: [
-        { id: 1, color: '#FDFBF7', x: 20, y: 20 },
-        { id: 2, color: '#FAF7F0', x: 80, y: 20 },
-      ],
-      meshWarpSize: 70,
-      meshDiffusion: 50,
-      gridColor: 'rgba(0, 0, 0, 0.08)',
-      gridSize: 42,
-      assetFrameType: 'color-swatches',
-      windowTheme: 'light',
-      phoneTheme: 'silver',
-      colorSwatches: [
-        { name: 'Emerald', hex: '#10B981', desc: 'Calming' },
-        { name: 'Sapphire', hex: '#3B82F6', desc: 'Trust' },
-        { name: 'Crimson', hex: '#EF4444', desc: 'Urgency' },
-        { name: 'Amber', hex: '#F59E0B', desc: 'Warmth' },
-        { name: 'Violet', hex: '#8B5CF6', desc: 'Luxury' },
-      ],
+      swipePromptType: 'connected-arc',
     },
     {
-      id: 'slide-3',
-      categoryBadge: '@creator.studio · AI ENHANCE',
-      eyebrowText: 'Prompt Tested',
-      heroTitle: '10 Prompts That Consistently Work In 2026',
-      highlightWords: '10 Prompts, Work',
-      subtitleText: '4K Upscaling & Ultra-Detail Cine Prompts for Midjourney & FLUX',
+      ...createInitialSlide(3),
+      heroTitle: 'Consistency Over Sporadic Genius',
+      highlightWords: 'Consistency',
+      eyebrowText: 'STRATEGY 02',
       sectionNumber: '03',
-      linkPillText: 'TOOLS',
-      linkPillType: 'comment-dm',
-      swipePrompt: '',
-      authorName: 'AI Engineer',
-      authorHandle: '@aiworkflow',
-      authorVerified: true,
-      bgType: 'mesh',
-      presetGradientId: 'obsidian-midnight-noir',
-      customGradColors: ['#18181B', '#27272A', '#000000'],
-      customGradAngle: 180,
-      solidColor: '#09090b',
-      meshPins: [
-        { id: 1, color: '#18181B', x: 30, y: 20 },
-        { id: 2, color: '#27272A', x: 70, y: 30 },
-        { id: 3, color: '#09090B', x: 50, y: 70 },
-        { id: 4, color: '#000000', x: 50, y: 90 },
-      ],
-      meshWarpSize: 75,
-      meshDiffusion: 60,
-      gridColor: 'rgba(255,255,255,0.06)',
-      gridSize: 44,
-      assetFrameType: 'split-comparison',
-      windowTheme: 'dark',
-      phoneTheme: 'dark',
-      beforeLabel: 'RAW 1080P',
-      afterLabel: '4K ENHANCED',
+      swipePromptType: 'pill-arrow',
     },
   ]);
 
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-  const activeSlide = slides[activeSlideIndex] || slides[0];
+  const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
+  const [activeRatio, setActiveRatio] = useState<AspectRatioPreset>(ASPECT_RATIO_PRESETS[0]);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'layout' | 'typography' | 'badges' | 'background' | 'swipe'>('layout');
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
 
-  // Smart Gradient Input
-  const [smartSeedColor, setSmartSeedColor] = useState('#00A86B');
+  // Icon Selector Modal State
+  const [isIconModalOpen, setIsIconModalOpen] = useState<boolean>(false);
+  const [iconModalTarget, setIconModalTarget] = useState<'badge' | 'swipe' | 'brand'>('badge');
+  const [iconSearchQuery, setIconSearchQuery] = useState<string>('');
+  const [selectedIconCategory, setSelectedIconCategory] = useState<string>('all');
 
-  // Element Visibility Toggles
-  const [showCounter, setShowCounter] = useState(true);
-  const [counterPosition, setCounterPosition] = useState<'top-right' | 'top-left' | 'bottom-center'>('top-right');
-  const [counterStyle, setCounterStyle] = useState<'pill' | 'minimal' | 'badge'>('pill');
-  const [showCategoryBadge, setShowCategoryBadge] = useState(true);
-  const [showEyebrow, setShowEyebrow] = useState(true);
-  const [showHeroTitle, setShowHeroTitle] = useState(true);
-  const [showSubtitle, setShowSubtitle] = useState(true);
-  const [showLinkPill, setShowLinkPill] = useState(true);
-  const [showAuthorBlock, setShowAuthorBlock] = useState(false);
-  const [showQuoteMarks, setShowQuoteMarks] = useState(false);
-  const [showSafeZones, setShowSafeZones] = useState(false);
-  const [showInstagramMockup, setShowInstagramMockup] = useState(false);
+  // Canvas Ref
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Global Visual Controls
-  const [aspectRatioId, setAspectRatioId] = useState('4:5');
-  const [fontFamily, setFontFamily] = useState('Inter');
-  const [eyebrowFontFamily, setEyebrowFontFamily] = useState('Caveat');
-  const [heroFontSize, setHeroFontSize] = useState(64);
-  const [textColor, setTextColor] = useState('#FFFFFF');
-  const [accentColor, setAccentColor] = useState('#FFE500');
-  const [textAlign, setTextAlign] = useState<'center' | 'left' | 'right'>('center');
-  const [textVerticalPos, setTextVerticalPos] = useState<'center' | 'top' | 'bottom'>('center');
-  const [bgBlur, setBgBlur] = useState(0);
-  const [bgDimness, setBgDimness] = useState(0);
-  const [bgGrain, setBgGrain] = useState(14);
-  const [bgVignette, setBgVignette] = useState(10);
-  const [isBold, setIsBold] = useState(true);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  // Current Slide
+  const currentSlide = slides[activeSlideIndex] || slides[0];
 
-  // Export State
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState<string | null>(null);
-
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-  const screenshotInputRef = useRef<HTMLInputElement>(null);
-  const secondaryScreenshotInputRef = useRef<HTMLInputElement>(null);
-  const photoInputRef = useRef<HTMLInputElement>(null);
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-
-  // Compute Target Canvas Dimensions based on selected Aspect Ratio
-  const currentDimensions = useMemo(() => {
-    if (aspectRatioId === 'original' && activeSlide.photoImgEl) {
-      const nw = activeSlide.photoImgEl.naturalWidth || 1920;
-      const nh = activeSlide.photoImgEl.naturalHeight || 1080;
-      return { width: nw, height: nh, aspect: `${nw}/${nh}`, label: `Original (${nw} × ${nh})`, id: 'original' };
-    }
-    const found = ASPECT_RATIO_PRESETS.find((p) => p.id === aspectRatioId);
-    return found || ASPECT_RATIO_PRESETS[0];
-  }, [aspectRatioId, activeSlide.photoImgEl]);
-
-  // Update Active Slide
-  const updateActiveSlide = (fields: Partial<SlideItem>) => {
-    setSlides((prev) =>
-      prev.map((s, idx) => (idx === activeSlideIndex ? { ...s, ...fields } : s))
-    );
-  };
-
-  // 1-Click Smart Theme Generator based on Seed Color
-  const handleApplySmartTheme = (seedColor: string, applyToAll = false) => {
-    const theme = generateSmartHarmoniousTheme(seedColor);
-    setTextColor(theme.textColor);
-    setAccentColor(theme.accentColor);
-
-    const updateObj: Partial<SlideItem> = {
-      bgType: 'mesh',
-      meshPins: theme.meshPins,
-      customGradColors: theme.customGradColors,
-      solidColor: theme.baseHex,
-    };
-
-    if (applyToAll) {
-      setSlides((prev) => prev.map((s) => ({ ...s, ...updateObj })));
-    } else {
-      updateActiveSlide(updateObj);
-    }
-  };
-
-  // Apply Preset Gradient
-  const handleSelectPresetGradient = (presetId: string) => {
-    const preset = CURATED_STUDIO_GRADIENTS.find((g) => g.id === presetId);
-    if (!preset) return;
-
-    if (preset.id === 'editorial-graph-linen') {
-      updateActiveSlide({
-        bgType: 'graph-grid',
-        presetGradientId: presetId,
-        solidColor: '#FDFBF7',
-        gridColor: 'rgba(0,0,0,0.08)',
-      });
-      setTextColor('#09090B');
-      setAccentColor('#F59E0B');
-    } else if (preset.id === 'retro-halftone-cloud') {
-      updateActiveSlide({
-        bgType: 'halftone-dither',
-        presetGradientId: presetId,
-        solidColor: '#18181B',
-      });
-      setTextColor('#FFFFFF');
-      setAccentColor('#FFE500');
-    } else if (preset.meshNodes && preset.meshNodes.length > 0) {
-      updateActiveSlide({
-        bgType: 'mesh',
-        presetGradientId: presetId,
-        meshPins: preset.meshNodes,
-      });
-      if (preset.id === 'pastel-peach-cotton') {
-        setTextColor('#18181B');
-        setAccentColor('#EA580C');
-      } else {
-        setTextColor('#FFFFFF');
-        setAccentColor(preset.colors[1] || '#FFE500');
+  // Helper to update current slide
+  const updateCurrentSlide = useCallback((patch: Partial<SlideItem>) => {
+    setSlides((prev) => {
+      const next = [...prev];
+      if (next[activeSlideIndex]) {
+        next[activeSlideIndex] = { ...next[activeSlideIndex], ...patch };
       }
-    } else {
-      updateActiveSlide({
-        bgType: 'preset-gradient',
-        presetGradientId: presetId,
-      });
-    }
-  };
-
-  // Add Slide
-  const handleAddSlide = () => {
-    if (slides.length >= 10) return;
-    const nextGrad = CURATED_STUDIO_GRADIENTS[(slides.length) % CURATED_STUDIO_GRADIENTS.length];
-    const newSlide: SlideItem = {
-      id: `slide-${Date.now()}`,
-      categoryBadge: activeSlide.categoryBadge || '@creator.studio',
-      eyebrowText: '',
-      heroTitle: `Point ${slides.length + 1}`,
-      highlightWords: '',
-      subtitleText: 'Key takeaway or workflow description',
-      sectionNumber: String(slides.length + 1).padStart(2, '0'),
-      linkPillText: activeSlide.linkPillText || 'originkit.dev',
-      linkPillType: activeSlide.linkPillType || 'direct-link',
-      swipePrompt: '',
-      authorName: activeSlide.authorName || 'Creator',
-      authorHandle: activeSlide.authorHandle || '@creator',
-      authorVerified: true,
-      bgType: activeSlide.bgType,
-      presetGradientId: nextGrad.id,
-      customGradColors: activeSlide.customGradColors,
-      customGradAngle: activeSlide.customGradAngle,
-      solidColor: activeSlide.solidColor,
-      meshPins: nextGrad.meshNodes || activeSlide.meshPins,
-      meshWarpSize: activeSlide.meshWarpSize,
-      meshDiffusion: activeSlide.meshDiffusion,
-      gridColor: activeSlide.gridColor,
-      gridSize: activeSlide.gridSize,
-      assetFrameType: activeSlide.assetFrameType,
-      windowTheme: activeSlide.windowTheme,
-      phoneTheme: activeSlide.phoneTheme,
-    };
-    setSlides((prev) => [...prev, newSlide]);
-    setActiveSlideIndex(slides.length);
-  };
-
-  // Duplicate Slide
-  const handleDuplicateSlide = () => {
-    if (slides.length >= 10) return;
-    const clone: SlideItem = {
-      ...activeSlide,
-      id: `slide-${Date.now()}`,
-      heroTitle: `${activeSlide.heroTitle} (Copy)`,
-    };
-    const updated = [...slides];
-    updated.splice(activeSlideIndex + 1, 0, clone);
-    setSlides(updated);
-    setActiveSlideIndex(activeSlideIndex + 1);
-  };
-
-  // Move Slide Left / Right
-  const handleMoveSlide = (direction: 'left' | 'right') => {
-    const targetIdx = direction === 'left' ? activeSlideIndex - 1 : activeSlideIndex + 1;
-    if (targetIdx < 0 || targetIdx >= slides.length) return;
-    const updated = [...slides];
-    const [moved] = updated.splice(activeSlideIndex, 1);
-    updated.splice(targetIdx, 0, moved);
-    setSlides(updated);
-    setActiveSlideIndex(targetIdx);
-  };
-
-  // Delete Slide
-  const handleDeleteSlide = (idx: number) => {
-    if (slides.length <= 1) return;
-    const updated = slides.filter((_, i) => i !== idx);
-    setSlides(updated);
-    setActiveSlideIndex(Math.max(0, idx - 1));
-  };
-
-  // 1-Click Switch Creator Mode Archetypes with curated presets
-  const handleSelectCreatorMode = (modeId: CreatorModeId) => {
-    setCreatorMode(modeId);
-    if (modeId === 'studio-carousel') {
-      updateActiveSlide({
-        assetFrameType: 'desktop-window',
-        bgType: 'mesh',
-        presetGradientId: 'liquid-silk-emerald',
-      });
-      setShowAppWindow(true);
-      setShowCategoryBadge(true);
-      setShowEyebrow(true);
-      setShowLinkPill(true);
-      setShowAuthorBlock(false);
-      setShowQuoteMarks(false);
-      setShowCounter(true);
-      setTextAlign('center');
-      setFontFamily('Inter');
-      setTextColor('#FFFFFF');
-      setAccentColor('#FFE500');
-    } else if (modeId === 'editorial-book') {
-      updateActiveSlide({
-        assetFrameType: 'color-swatches',
-        bgType: 'graph-grid',
-        solidColor: '#FDFBF7',
-      });
-      setShowCategoryBadge(true);
-      setShowEyebrow(false);
-      setShowLinkPill(false);
-      setShowAuthorBlock(true);
-      setShowQuoteMarks(false);
-      setShowCounter(false);
-      setTextAlign('left');
-      setFontFamily('Playfair Display');
-      setTextColor('#09090B');
-      setAccentColor('#EA580C');
-    } else if (modeId === 'cinematic-meme') {
-      updateActiveSlide({
-        assetFrameType: 'split-comparison',
-        bgType: 'mesh',
-        presetGradientId: 'obsidian-midnight-noir',
-        beforeLabel: 'RAW PROMPT',
-        afterLabel: '4K ENHANCED',
-      });
-      setShowCategoryBadge(true);
-      setShowEyebrow(true);
-      setShowLinkPill(true);
-      setShowAuthorBlock(false);
-      setShowQuoteMarks(false);
-      setShowCounter(true);
-      setTextAlign('center');
-      setFontFamily('Bebas Neue');
-      setHeroFontSize(78);
-      setTextColor('#FFFFFF');
-      setAccentColor('#00D2DF');
-      setBgVignette(35);
-    } else if (modeId === 'mobile-showcase') {
-      updateActiveSlide({
-        assetFrameType: 'mobile-phone',
-        bgType: 'mesh',
-        presetGradientId: 'sunset-lavender-tangerine',
-      });
-      setShowCategoryBadge(true);
-      setShowEyebrow(false);
-      setShowLinkPill(true);
-      setShowAuthorBlock(false);
-      setShowQuoteMarks(false);
-      setShowCounter(true);
-      setTextAlign('center');
-      setFontFamily('Plus Jakarta Sans');
-      setTextColor('#FFFFFF');
-      setAccentColor('#FEF08A');
-    } else if (modeId === 'cyber-engagement') {
-      updateActiveSlide({
-        assetFrameType: 'none',
-        bgType: 'halftone-dither',
-        linkPillType: 'comment-dm',
-        linkPillText: 'TOOLS',
-      });
-      setShowCategoryBadge(true);
-      setShowEyebrow(true);
-      setShowLinkPill(true);
-      setShowAuthorBlock(true);
-      setShowQuoteMarks(false);
-      setShowCounter(true);
-      setCounterStyle('badge');
-      setTextAlign('center');
-      setFontFamily('Space Grotesk');
-      setTextColor('#FFFFFF');
-      setAccentColor('#84CC16');
-      setBgGrain(25);
-    }
-  };
-
-  const setShowAppWindow = (show: boolean) => {
-    updateActiveSlide({ assetFrameType: show ? 'desktop-window' : 'none' });
-  };
-
-  // Upload Handlers
-  const handleUploadScreenshot = (file: File | null) => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      updateActiveSlide({
-        screenshotUrl: url,
-        screenshotImgEl: img,
-      });
-    };
-    img.src = url;
-  };
-
-  const handleUploadSecondaryScreenshot = (file: File | null) => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      updateActiveSlide({
-        secondaryScreenshotUrl: url,
-        secondaryScreenshotImgEl: img,
-      });
-    };
-    img.src = url;
-  };
-
-  const handleUploadBackgroundPhoto = (file: File | null) => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      updateActiveSlide({
-        bgType: 'photo',
-        photoUrl: url,
-        photoImgEl: img,
-      });
-    };
-    img.src = url;
-  };
-
-  const handleUploadAvatar = (file: File | null) => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      updateActiveSlide({
-        avatarUrl: url,
-        avatarImgEl: img,
-      });
-    };
-    img.src = url;
-  };
-
-  // Canvas Drag & Drop
-  const handleCanvasDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (activeSlide.assetFrameType !== 'none') {
-        handleUploadScreenshot(file);
-      } else {
-        handleUploadBackgroundPhoto(file);
-      }
-    }
-  };
-
-  // Render Options
-  const canvasRenderOptions: CanvasRenderOptions = useMemo(
-    () => ({
-      width: currentDimensions.width,
-      height: currentDimensions.height,
-      showCounter,
-      counterPosition,
-      counterStyle,
-      showCategoryBadge,
-      showEyebrow,
-      showHeroTitle,
-      showSubtitle,
-      showLinkPill,
-      showAuthorBlock,
-      showQuoteMarks,
-      fontFamily,
-      eyebrowFontFamily,
-      heroFontSize,
-      textColor,
-      accentColor,
-      textAlign,
-      textVerticalPos,
-      bgBlur,
-      bgDimness,
-      bgGrain,
-      bgVignette,
-      isBold,
-      isItalic,
-      drawGuides: showSafeZones,
-    }),
-    [
-      currentDimensions,
-      showCounter,
-      counterPosition,
-      counterStyle,
-      showCategoryBadge,
-      showEyebrow,
-      showHeroTitle,
-      showSubtitle,
-      showLinkPill,
-      showAuthorBlock,
-      showQuoteMarks,
-      fontFamily,
-      eyebrowFontFamily,
-      heroFontSize,
-      textColor,
-      accentColor,
-      textAlign,
-      textVerticalPos,
-      bgBlur,
-      bgDimness,
-      bgGrain,
-      bgVignette,
-      isBold,
-      isItalic,
-      showSafeZones,
-    ]
-  );
-
-  // Redraw preview canvas whenever state updates
-  useEffect(() => {
-    const canvas = previewCanvasRef.current;
-    if (!canvas) return;
-    renderSlideToCanvas(canvas, activeSlide, activeSlideIndex + 1, slides.length, canvasRenderOptions);
-  }, [activeSlide, activeSlideIndex, slides.length, canvasRenderOptions]);
-
-  // Export Single Slide (4K PNG)
-  const handleExportSingleSlide = () => {
-    const exportCanvas = document.createElement('canvas');
-    renderSlideToCanvas(exportCanvas, activeSlide, activeSlideIndex + 1, slides.length, {
-      ...canvasRenderOptions,
-      drawGuides: false,
+      return next;
     });
+  }, [activeSlideIndex]);
 
-    const link = document.createElement('a');
-    link.download = `slide-${activeSlideIndex + 1}-${activeSlide.heroTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'card'}.png`;
-    link.href = exportCanvas.toDataURL('image/png');
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  // Render options
+  const renderOptions: CanvasRenderOptions = {
+    width: activeRatio.width,
+    height: activeRatio.height,
+    showCounter: true,
+    counterPosition: 'top-right',
+    counterStyle: 'pill',
+    showCategoryBadge: true,
+    showEyebrow: true,
+    showHeroTitle: true,
+    showSubtitle: true,
+    showAuthorBlock: currentSlide.showAuthorBlock,
+    showQuoteMarks: true,
+    fontFamily: currentSlide.titleFontFamily || 'Inter',
+    heroFontSize: currentSlide.titleFontSize || 100,
+    textColor: currentSlide.textColor || '#ffffff',
+    accentColor: currentSlide.accentColor || '#FFE500',
+    textAlign: currentSlide.textAlign || 'left',
+    bgBlur: currentSlide.bgBlur || 0,
+    bgDimness: currentSlide.bgDimness || 0,
+    bgGrain: 12,
+    bgVignette: 15,
+    isBold: true,
+    isItalic: currentSlide.titleItalic || false,
   };
 
-  // Export All Slides as ZIP (4K PNG Archive)
-  const handleExportAllZip = async () => {
-    setIsExporting(true);
-    setExportProgress('Rendering 4K carousel slides...');
+  // Render to canvas on slide / option change
+  useEffect(() => {
+    if (!canvasRef.current || !currentSlide) return;
+    renderSlideToCanvas(
+      canvasRef.current,
+      currentSlide,
+      activeSlideIndex + 1,
+      slides.length,
+      renderOptions
+    );
+  }, [currentSlide, activeSlideIndex, slides.length, activeRatio, renderOptions]);
 
+  // Single Slide 4K Lossless PNG Export
+  const exportSingleSlidePNG = () => {
+    if (!canvasRef.current) return;
+    const link = document.createElement('a');
+    link.download = `carousel-slide-0${activeSlideIndex + 1}.png`;
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+    showToast('Single slide exported as high-resolution PNG!');
+  };
+
+  // All Slides Sequential ZIP Export
+  const exportAllSlidesZIP = async () => {
+    if (slides.length === 0) return;
+    setIsExporting(true);
     try {
       const zip = new JSZip();
       for (let i = 0; i < slides.length; i++) {
-        setExportProgress(`Rendering slide ${i + 1} of ${slides.length}...`);
-        const slide = slides[i];
-        const exportCanvas = document.createElement('canvas');
-        renderSlideToCanvas(exportCanvas, slide, i + 1, slides.length, {
-          ...canvasRenderOptions,
-          drawGuides: false,
+        const tempCanvas = document.createElement('canvas');
+        renderSlideToCanvas(tempCanvas, slides[i], i + 1, slides.length, {
+          ...renderOptions,
+          width: activeRatio.width,
+          height: activeRatio.height,
         });
-
-        const dataUrl = exportCanvas.toDataURL('image/png');
-        const base64Data = dataUrl.split(',')[1];
-        const fileName = `slide-${String(i + 1).padStart(2, '0')}-${slide.heroTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'post'}.png`;
-        zip.file(fileName, base64Data, { base64: true });
+        const dataUrl = tempCanvas.toDataURL('image/png');
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+        zip.file(`slide-0${i + 1}.png`, base64Data, { base64: true });
       }
-
-      setExportProgress('Compressing 4K ZIP archive...');
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const downloadUrl = URL.createObjectURL(zipBlob);
+      const url = URL.createObjectURL(zipBlob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `creatorkit-carousel-${slides.length}-slides.zip`;
-      document.body.appendChild(link);
+      link.href = url;
+      link.download = `carousel-pack-all-slides.zip`;
       link.click();
-      link.remove();
-
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
-      setExportProgress(null);
+      URL.revokeObjectURL(url);
+      showToast(`Exported all ${slides.length} slides in full-res ZIP!`);
     } catch (err) {
-      console.error('ZIP Export failed:', err);
-      setExportProgress('Failed to export ZIP.');
-      setTimeout(() => setExportProgress(null), 3000);
+      console.error('ZIP Export Error', err);
     } finally {
       setIsExporting(false);
     }
   };
 
-  return (
-    <div style={{ position: 'relative', minHeight: '100%', padding: '20px 24px 80px', maxWidth: 1440, margin: '0 auto' }}>
-      {/* Hidden File Inputs */}
-      <input
-        ref={screenshotInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleUploadScreenshot(e.target.files[0]);
-          }
-        }}
-      />
-      <input
-        ref={secondaryScreenshotInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleUploadSecondaryScreenshot(e.target.files[0]);
-          }
-        }}
-      />
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleUploadBackgroundPhoto(e.target.files[0]);
-          }
-        }}
-      />
-      <input
-        ref={avatarInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleUploadAvatar(e.target.files[0]);
-          }
-        }}
-      />
+  // Multi-Page LinkedIn PDF Export
+  const exportLinkedInPDF = async () => {
+    if (slides.length === 0) return;
+    setIsExporting(true);
+    try {
+      const isPortrait = activeRatio.height >= activeRatio.width;
+      const doc = new jsPDF({
+        orientation: isPortrait ? 'portrait' : 'landscape',
+        unit: 'px',
+        format: [activeRatio.width, activeRatio.height],
+      });
 
-      {/* Top Header */}
-      <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: '0.7rem',
-              fontWeight: 900,
-              color: '#fff',
-              letterSpacing: '0.12em',
-              fontFamily: 'monospace',
-              textTransform: 'uppercase',
-              background: '#09090b',
-              padding: '3px 8px',
-              border: '2px solid #000',
-              borderRadius: 4,
-            }}
+      for (let i = 0; i < slides.length; i++) {
+        if (i > 0) {
+          doc.addPage([activeRatio.width, activeRatio.height], isPortrait ? 'portrait' : 'landscape');
+        }
+        const tempCanvas = document.createElement('canvas');
+        renderSlideToCanvas(tempCanvas, slides[i], i + 1, slides.length, {
+          ...renderOptions,
+          width: activeRatio.width,
+          height: activeRatio.height,
+        });
+        const imgData = tempCanvas.toDataURL('image/jpeg', 0.95);
+        doc.addImage(imgData, 'JPEG', 0, 0, activeRatio.width, activeRatio.height);
+      }
+      doc.save(`linkedin-carousel-document.pdf`);
+      showToast('LinkedIn Multi-Page Carousel PDF exported successfully!');
+    } catch (err) {
+      console.error('PDF Export error', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setExportSuccessMessage(msg);
+    setTimeout(() => setExportSuccessMessage(null), 3500);
+  };
+
+  // Slide Management Helpers
+  const handleAddSlide = () => {
+    const newSlide = createInitialSlide(slides.length + 1);
+    setSlides((prev) => [...prev, newSlide]);
+    setActiveSlideIndex(slides.length);
+  };
+
+  const handleDuplicateSlide = (idx: number) => {
+    const target = slides[idx];
+    if (!target) return;
+    const duplicated: SlideItem = {
+      ...target,
+      id: `slide-${Date.now()}`,
+      sectionNumber: `0${slides.length + 1}`,
+    };
+    const next = [...slides];
+    next.splice(idx + 1, 0, duplicated);
+    setSlides(next);
+    setActiveSlideIndex(idx + 1);
+  };
+
+  const handleDeleteSlide = (idx: number) => {
+    if (slides.length <= 1) return;
+    const next = slides.filter((_, i) => i !== idx);
+    setSlides(next);
+    setActiveSlideIndex(Math.max(0, idx - 1));
+  };
+
+  const handleMoveSlide = (from: number, to: number) => {
+    if (to < 0 || to >= slides.length) return;
+    const next = [...slides];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setSlides(next);
+    setActiveSlideIndex(to);
+  };
+
+  // Image Upload Handlers
+  const handleImageSlotUpload = (e: React.ChangeEvent<HTMLInputElement>, slotIndex: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const url = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const currentImages = [...(currentSlide.images || [])];
+        while (currentImages.length <= slotIndex) {
+          currentImages.push({ id: `img-${Date.now()}-${currentImages.length}` });
+        }
+        currentImages[slotIndex] = {
+          ...currentImages[slotIndex],
+          url,
+          imgEl: img,
+          fit: currentImages[slotIndex]?.fit || 'cover',
+        };
+        updateCurrentSlide({ images: currentImages });
+      };
+      img.src = url;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImageSlot = (slotIndex: number) => {
+    const currentImages = [...(currentSlide.images || [])];
+    currentImages.splice(slotIndex, 1);
+    updateCurrentSlide({ images: currentImages });
+  };
+
+  // Background Photo Upload
+  const handleBackgroundPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const url = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        updateCurrentSlide({
+          bgType: 'photo',
+          photoUrl: url,
+          photoImgEl: img,
+        });
+      };
+      img.src = url;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Filtered Remix Icons for Modal
+  const filteredIcons = REMIX_ICONS_LIST.filter((icon) => {
+    const matchesSearch =
+      icon.name.toLowerCase().includes(iconSearchQuery.toLowerCase()) ||
+      icon.id.toLowerCase().includes(iconSearchQuery.toLowerCase());
+    const matchesCat = selectedIconCategory === 'all' || icon.category === selectedIconCategory;
+    return matchesSearch && matchesCat;
+  });
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F0] text-black flex flex-col font-sans">
+      {/* Toast Notification */}
+      {exportSuccessMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#FFE500] text-black border-2 border-black px-5 py-3 font-mono font-bold shadow-[4px_4px_0px_#000] flex items-center gap-3">
+          <RiCheckboxCircleFill className="w-5 h-5 text-black" />
+          <span>{exportSuccessMessage}</span>
+        </div>
+      )}
+
+      {/* TOP HEADER BAR */}
+      <header className="border-b-2 border-black bg-white px-4 lg:px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-[0_2px_0px_#000]">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-bold bg-[#F5F5F0] border-2 border-black hover:bg-[#FFE500] transition-colors shadow-[2px_2px_0px_#000]"
           >
-            VISUAL POST & CAROUSEL STUDIO
-          </span>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#666', fontFamily: 'monospace' }}>
-            5 CREATOR ARCHETYPES · 4K PNG / MULTI-SLIDE ZIP
-          </span>
+            <RiArrowLeftLine className="w-3.5 h-3.5" />
+            <span>HOME</span>
+          </Link>
+          <div className="h-6 w-0.5 bg-black" />
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-[#FFE500] border border-black" />
+            <h1 className="text-base lg:text-lg font-black tracking-tight font-mono">
+              QUOTE CARD & CAROUSEL STUDIO
+            </h1>
+            <span className="text-[10px] font-mono px-2 py-0.5 bg-black text-white font-bold">
+              PRO STUDIO
+            </span>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.03em', color: '#000', textTransform: 'uppercase', margin: 0 }}>
-            Visual Post & Quote Card Studio
-          </h1>
-          <p style={{ fontSize: '0.86rem', color: '#555', maxWidth: 760, lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
-            Create carousel covers, app mockups, editorial quotes, and comparison breakdowns with liquid mesh gradients and layer-by-layer control.
-          </p>
+        {/* TOP ACTION BAR: ASPECT RATIOS & EXPORT BUTTONS */}
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Aspect Ratio Selector */}
+          <div className="flex items-center gap-1 bg-[#F5F5F0] border-2 border-black p-1 shadow-[2px_2px_0px_#000]">
+            {ASPECT_RATIO_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setActiveRatio(p)}
+                className={`px-2.5 py-1 text-xs font-mono font-bold transition-colors ${
+                  activeRatio.id === p.id ? 'bg-[#FFE500] text-black border border-black' : 'hover:bg-white text-black'
+                }`}
+              >
+                {p.id}
+              </button>
+            ))}
+          </div>
+
+          {/* Export Actions */}
+          <button
+            onClick={exportSingleSlidePNG}
+            className="px-3.5 py-1.5 bg-white border-2 border-black text-black font-mono font-black text-xs flex items-center gap-1.5 hover:bg-[#FFE500] transition-all shadow-[2px_2px_0px_#000] active:translate-x-[1px] active:translate-y-[1px]"
+          >
+            <RiDownload2Line className="w-3.5 h-3.5" />
+            <span>SLIDE PNG</span>
+          </button>
+
+          <button
+            onClick={exportAllSlidesZIP}
+            disabled={isExporting}
+            className="px-3.5 py-1.5 bg-white border-2 border-black text-black font-mono font-black text-xs flex items-center gap-1.5 hover:bg-[#FFE500] transition-all shadow-[2px_2px_0px_#000] active:translate-x-[1px] active:translate-y-[1px]"
+          >
+            <RiFolderZipLine className="w-3.5 h-3.5" />
+            <span>ALL ZIP ({slides.length})</span>
+          </button>
+
+          <button
+            onClick={exportLinkedInPDF}
+            disabled={isExporting}
+            className="px-4 py-1.5 bg-[#FFE500] border-2 border-black text-black font-mono font-black text-xs flex items-center gap-1.5 hover:bg-yellow-300 transition-all shadow-[3px_3px_0px_#000] active:translate-x-[1px] active:translate-y-[1px]"
+          >
+            <RiFileLine className="w-3.5 h-3.5" />
+            <span>LINKEDIN PDF</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 1-CLICK VIRAL TEMPLATES BAR */}
+      <div className="border-b-2 border-black bg-[#EFEFEA] px-4 lg:px-6 py-2 overflow-x-auto">
+        <div className="flex items-center gap-2 min-w-max">
+          <span className="text-[11px] font-mono font-black uppercase text-gray-700 mr-2 flex items-center gap-1">
+            <RiLayoutMasonryLine className="w-3.5 h-3.5" />
+            VIRAL PRESETS:
+          </span>
+          {VIRAL_TEMPLATES.map((tmpl) => (
+            <button
+              key={tmpl.id}
+              onClick={() => updateCurrentSlide(tmpl.apply(currentSlide))}
+              className="px-3 py-1 bg-white border-2 border-black text-xs font-mono font-bold hover:bg-[#FFE500] transition-all shadow-[2px_2px_0px_#000] flex items-center gap-2 group"
+            >
+              <div
+                className="w-3 h-3 border border-black"
+                style={{ backgroundColor: tmpl.previewColor }}
+              />
+              <span>{tmpl.name}</span>
+              <span className="text-[9px] bg-black text-white px-1 py-0.2 uppercase">
+                {tmpl.tag}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 5 Creator Archetypes Switcher Tabs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, marginBottom: 18 }}>
-        {CREATOR_ARCHETYPES.map((mode) => {
-          const Icon = mode.icon;
-          const isActive = creatorMode === mode.id;
-          return (
-            <button
-              key={mode.id}
-              onClick={() => handleSelectCreatorMode(mode.id)}
+      {/* MAIN TWO-COLUMN STUDIO WORKSPACE */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0">
+        {/* LEFT COLUMN: LIVE 4K PREVIEW STAGE + SLIDE TIMELINE */}
+        <div className="lg:col-span-7 bg-[#E8E8E2] border-b-2 lg:border-b-0 lg:border-r-2 border-black flex flex-col justify-between p-4 lg:p-6 overflow-y-auto">
+          {/* Top Stage Control Header */}
+          <div className="flex items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-black px-2 py-0.5 bg-black text-white">
+                STAGE · 4K PREVIEW
+              </span>
+              <span className="text-xs font-mono text-gray-600">
+                Slide {activeSlideIndex + 1} of {slides.length} ({activeRatio.id})
+              </span>
+            </div>
+            <div className="text-xs font-mono text-gray-500">
+              {activeRatio.width} × {activeRatio.height}px
+            </div>
+          </div>
+
+          {/* Centered Scaled Canvas Preview */}
+          <div className="flex-1 flex items-center justify-center min-h-[380px] lg:min-h-[520px] p-2">
+            <div
+              className="border-3 border-black shadow-[8px_8px_0px_#000] bg-black transition-all max-w-full max-h-[68vh] flex items-center justify-center overflow-hidden"
               style={{
-                padding: '12px 14px',
-                border: '2px solid #000',
-                borderRadius: 6,
-                background: isActive ? '#09090b' : '#ffffff',
-                color: isActive ? '#ffffff' : '#000000',
-                textAlign: 'left',
-                cursor: 'pointer',
-                boxShadow: isActive ? '3px 3px 0 #000' : 'none',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-                transition: 'all 0.12s',
+                aspectRatio: activeRatio.aspect === 'auto' ? '4/5' : activeRatio.aspect,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Icon size={15} style={{ color: isActive ? '#FFE500' : '#000' }} />
-                  <span style={{ fontWeight: 900, fontSize: '0.78rem' }}>{mode.name.split('&')[0]}</span>
-                </div>
-                <span
-                  style={{
-                    fontSize: '0.58rem',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    padding: '2px 5px',
-                    borderRadius: 3,
-                    background: isActive ? '#27272a' : '#f4f4f5',
-                    color: isActive ? '#FFE500' : '#555',
-                  }}
-                >
-                  {mode.badge}
+              <canvas
+                ref={canvasRef}
+                className="w-full h-full object-contain block"
+              />
+            </div>
+          </div>
+
+          {/* BOTTOM SLIDE CAROUSEL TIMELINE STRIP */}
+          <div className="mt-4 pt-3 border-t-2 border-black bg-white p-3 shadow-[3px_3px_0px_#000]">
+            <div className="flex items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-black">CAROUSEL TIMELINE</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-[#FFE500] border border-black font-bold">
+                  {slides.length} SLIDES
                 </span>
               </div>
-              <span style={{ fontSize: '0.66rem', color: isActive ? 'rgba(255, 255, 255, 0.75)' : '#666', lineHeight: 1.35 }}>
-                {mode.desc}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Multi-Slide Navigation Strip */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 18,
-          overflowX: 'auto',
-          padding: '8px 12px',
-          background: '#f4f4f5',
-          border: '2px solid #000',
-          borderRadius: 6,
-        }}
-      >
-        <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', whiteSpace: 'nowrap' }}>
-          Slides ({slides.length}/10):
-        </span>
-        {slides.map((s, idx) => {
-          const isActive = activeSlideIndex === idx;
-          return (
-            <button
-              key={s.id}
-              onClick={() => setActiveSlideIndex(idx)}
-              style={{
-                padding: '6px 12px',
-                border: '2px solid #000',
-                borderRadius: 4,
-                background: isActive ? '#09090b' : '#ffffff',
-                color: isActive ? '#ffffff' : '#000000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <span style={{ color: isActive ? '#FFE500' : '#777' }}>#{idx + 1}</span>
-              <span style={{ maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {s.heroTitle || 'Slide'}
-              </span>
-            </button>
-          );
-        })}
-
-        {/* Slide Management Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-          <button
-            onClick={() => handleMoveSlide('left')}
-            disabled={activeSlideIndex === 0}
-            className="brutalist-button"
-            style={{ padding: '6px 8px', fontSize: '0.72rem', borderRadius: 4, background: '#fff', opacity: activeSlideIndex === 0 ? 0.4 : 1 }}
-            title="Move slide left"
-          >
-            <ArrowLeft size={13} />
-          </button>
-          <button
-            onClick={() => handleMoveSlide('right')}
-            disabled={activeSlideIndex === slides.length - 1}
-            className="brutalist-button"
-            style={{ padding: '6px 8px', fontSize: '0.72rem', borderRadius: 4, background: '#fff', opacity: activeSlideIndex === slides.length - 1 ? 0.4 : 1 }}
-            title="Move slide right"
-          >
-            <ArrowRight size={13} />
-          </button>
-
-          {slides.length < 10 && (
-            <>
-              <button
-                onClick={handleDuplicateSlide}
-                className="brutalist-button"
-                style={{ padding: '6px 10px', fontSize: '0.72rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4, background: '#fff' }}
-                title="Duplicate current slide"
-              >
-                <Copy size={13} /> Duplicate
-              </button>
-              <button
-                onClick={handleAddSlide}
-                className="brutalist-button"
-                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4, background: '#FFE500' }}
-              >
-                <Plus size={14} /> Add Slide
-              </button>
-            </>
-          )}
-
-          {slides.length > 1 && (
-            <button
-              onClick={() => handleDeleteSlide(activeSlideIndex)}
-              className="brutalist-button"
-              style={{ padding: '6px 10px', fontSize: '0.72rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4, color: '#dc2626' }}
-            >
-              <Trash2 size={13} /> Delete
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Main Workspace 2-Column Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.3fr) minmax(390px, 480px)',
-          gap: 24,
-          alignItems: 'start',
-        }}
-      >
-        {/* LEFT COLUMN: Stage Canvas & Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div
-            className="brutalist-card"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDraggingOver(true);
-            }}
-            onDragLeave={() => setIsDraggingOver(false)}
-            onDrop={handleCanvasDrop}
-            style={{
-              background: '#121215',
-              padding: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 580,
-              position: 'relative',
-              boxShadow: '6px 6px 0 #000',
-              border: isDraggingOver ? '3px dashed #FFE500' : '3px solid #000',
-              transition: 'border 0.15s',
-            }}
-          >
-            {/* Live Instagram Feed Mockup Wrapper */}
-            {showInstagramMockup ? (
-              <div
-                style={{
-                  background: '#000000',
-                  borderRadius: 16,
-                  border: '3px solid #27272a',
-                  padding: '12px 14px',
-                  width: '100%',
-                  maxWidth: 480,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-                }}
-              >
-                {/* Instagram Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#FFE500', border: '1.5px solid #fff' }} />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fff' }}>craftwork.design</span>
-                  </div>
-                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 800 }}>Following</span>
-                </div>
-
-                {/* Canvas Inside Mockup */}
-                <canvas
-                  ref={previewCanvasRef}
-                  style={{
-                    width: '100%',
-                    borderRadius: 8,
-                    aspectRatio: currentDimensions.aspect,
-                    objectFit: 'contain',
-                  }}
-                />
-
-                {/* Instagram Bottom Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <Heart size={18} />
-                    <MessageCircle size={18} />
-                    <Share2 size={18} />
-                  </div>
-                  <Bookmark size={18} />
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>
-                  <strong style={{ color: '#fff' }}>3,605 likes</strong> · {activeSlide.heroTitle}
-                </div>
-              </div>
-            ) : (
-              /* Direct Canvas Stage */
-              <canvas
-                ref={previewCanvasRef}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '68vh',
-                  height: 'auto',
-                  border: '3px solid #000',
-                  borderRadius: 8,
-                  boxShadow: '0 14px 40px rgba(0,0,0,0.6)',
-                  aspectRatio: currentDimensions.aspect,
-                  objectFit: 'contain',
-                }}
-              />
-            )}
-
-            {/* Canvas Bottom Tooling Bar */}
-            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, flexWrap: 'wrap', gap: 8 }}>
-              {/* Aspect Ratio Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                {ASPECT_RATIO_PRESETS.map((a) => {
-                  const isActive = aspectRatioId === a.id;
-                  return (
-                    <button
-                      key={a.id}
-                      onClick={() => setAspectRatioId(a.id)}
-                      style={{
-                        padding: '5px 10px',
-                        border: '2px solid #000',
-                        borderRadius: 4,
-                        background: isActive ? '#09090b' : '#ffffff',
-                        color: isActive ? '#ffffff' : '#000000',
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.68rem',
-                        cursor: 'pointer',
-                        boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                      }}
-                    >
-                      {a.id}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Safe Zone & Feed Preview Toggles */}
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setShowInstagramMockup(!showInstagramMockup)}
-                  className="brutalist-button"
-                  style={{
-                    fontSize: '0.72rem',
-                    padding: '6px 10px',
-                    borderRadius: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: showInstagramMockup ? '#09090b' : '#ffffff',
-                    color: showInstagramMockup ? '#ffffff' : '#000000',
-                  }}
+                  onClick={() => handleMoveSlide(activeSlideIndex, activeSlideIndex - 1)}
+                  disabled={activeSlideIndex === 0}
+                  className="px-2 py-0.5 bg-[#F5F5F0] border border-black text-xs font-mono font-bold hover:bg-[#FFE500] disabled:opacity-30"
+                  title="Move slide left"
                 >
-                  <Smartphone size={13} /> Feed Preview
+                  ◀
                 </button>
                 <button
-                  onClick={() => setShowSafeZones(!showSafeZones)}
-                  className="brutalist-button"
-                  style={{
-                    fontSize: '0.72rem',
-                    padding: '6px 10px',
-                    borderRadius: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: showSafeZones ? '#FFE500' : '#ffffff',
-                  }}
+                  onClick={() => handleMoveSlide(activeSlideIndex, activeSlideIndex + 1)}
+                  disabled={activeSlideIndex === slides.length - 1}
+                  className="px-2 py-0.5 bg-[#F5F5F0] border border-black text-xs font-mono font-bold hover:bg-[#FFE500] disabled:opacity-30"
+                  title="Move slide right"
                 >
-                  <ShieldCheck size={13} /> Safe Zones
+                  ▶
+                </button>
+                <button
+                  onClick={() => handleDuplicateSlide(activeSlideIndex)}
+                  className="px-2 py-0.5 bg-[#F5F5F0] border border-black text-xs font-mono font-bold hover:bg-[#FFE500] flex items-center gap-1"
+                  title="Duplicate Slide"
+                >
+                  <RiFileCopyLine className="w-3 h-3" />
+                  <span>DUPLICATE</span>
+                </button>
+                <button
+                  onClick={() => handleDeleteSlide(activeSlideIndex)}
+                  disabled={slides.length <= 1}
+                  className="px-2 py-0.5 bg-red-100 border border-black text-xs font-mono font-bold hover:bg-red-300 disabled:opacity-30 flex items-center gap-1 text-red-900"
+                  title="Delete Slide"
+                >
+                  <RiDeleteBinLine className="w-3 h-3" />
+                  <span>DELETE</span>
                 </button>
               </div>
             </div>
 
-            {/* Export Progress Notification */}
-            {exportProgress && (
-              <div
-                style={{
-                  width: '100%',
-                  marginTop: 10,
-                  padding: '10px 14px',
-                  border: '2px solid #000',
-                  borderRadius: 4,
-                  background: '#fef08a',
-                  color: '#000',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  fontSize: '0.75rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
+            {/* Slide Thumbnails List */}
+            <div className="flex items-center gap-2.5 overflow-x-auto py-1">
+              {slides.map((s, idx) => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveSlideIndex(idx)}
+                  className={`flex-shrink-0 w-24 h-28 border-2 transition-all p-1 flex flex-col justify-between text-left ${
+                    activeSlideIndex === idx
+                      ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000] translate-y-[-2px]'
+                      : 'border-gray-400 bg-[#F9F9F7] hover:border-black'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[10px] font-mono font-black">
+                    <span>#{idx + 1}</span>
+                    <span className="text-[9px] uppercase px-1 bg-black text-white">
+                      {s.layoutMode.replace('hero-', '')}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-bold line-clamp-2 leading-tight">
+                    {s.heroTitle || 'Untitled Slide'}
+                  </div>
+                  <div
+                    className="h-2 w-full border border-black"
+                    style={{ backgroundColor: s.solidColor || '#0047FF' }}
+                  />
+                </button>
+              ))}
+
+              {/* Add New Slide Button */}
+              <button
+                onClick={handleAddSlide}
+                className="flex-shrink-0 w-24 h-28 border-2 border-dashed border-black bg-white hover:bg-[#FFE500] transition-colors flex flex-col items-center justify-center gap-1 font-mono text-xs font-bold shadow-[2px_2px_0px_#000]"
               >
-                <Sparkles size={15} />
-                {exportProgress}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Export Actions */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 12 }}>
-            <button
-              onClick={handleExportSingleSlide}
-              className="brutalist-button"
-              style={{
-                padding: '12px 18px',
-                fontSize: '0.82rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '4px 4px 0 #000',
-                background: '#ffffff',
-              }}
-            >
-              <Download size={17} />
-              Export Slide #{activeSlideIndex + 1} (PNG)
-            </button>
-
-            <button
-              onClick={handleExportAllZip}
-              disabled={isExporting}
-              className="brutalist-button brutalist-button-primary"
-              style={{
-                padding: '12px 18px',
-                fontSize: '0.82rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '4px 4px 0 #000',
-              }}
-            >
-              <FolderArchive size={17} />
-              Export All {slides.length} Slides (ZIP)
-            </button>
+                <RiAddLine className="w-5 h-5 text-black" />
+                <span>+ SLIDE</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Tabbed Studio Control Panel */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Sub-Tabs for Controls */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {/* RIGHT COLUMN: TABBED INSPECTOR CONTROLS */}
+        <div className="lg:col-span-5 bg-white flex flex-col h-full overflow-y-auto">
+          {/* TAB HEADERS */}
+          <div className="grid grid-cols-5 border-b-2 border-black bg-[#F5F5F0] sticky top-0 z-20">
             {[
-              { id: 'background', label: '🎨 Background & Mesh', icon: Palette },
-              { id: 'mockup', label: '🖼️ Asset & Mockups', icon: Layers },
-              { id: 'content', label: '✍️ Content & Text', icon: Type },
-              { id: 'author', label: '👤 Author & Badges', icon: User },
-              { id: 'typography', label: '🔤 Font & Polish', icon: Sliders },
+              { id: 'layout', label: 'Layout & Media', icon: RiLayoutMasonryLine },
+              { id: 'typography', label: 'Typography', icon: RiFontSize },
+              { id: 'badges', label: 'Badges & Icons', icon: RiAwardLine },
+              { id: 'background', label: 'Background', icon: RiPaletteLine },
+              { id: 'swipe', label: 'Swipe & Cues', icon: RiArrowRightLine },
             ].map((tab) => {
-              const isActive = activeTab === tab.id;
+              const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  style={{
-                    padding: '7px 12px',
-                    border: '2px solid #000',
-                    borderRadius: 4,
-                    background: isActive ? '#09090b' : '#ffffff',
-                    color: isActive ? '#ffffff' : '#000000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.72rem',
-                    cursor: 'pointer',
-                    boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
+                  onClick={() => setActiveInspectorTab(tab.id as any)}
+                  className={`py-3 px-1 text-center font-mono text-xs font-black border-r-2 border-black last:border-r-0 transition-colors flex flex-col items-center gap-1 ${
+                    activeInspectorTab === tab.id
+                      ? 'bg-white text-black shadow-[inset_0_-3px_0px_#FFE500]'
+                      : 'hover:bg-[#EFEFEA] text-gray-700'
+                  }`}
                 >
-                  {tab.label}
+                  <Icon className="w-4 h-4" />
+                  <span className="text-[10px] uppercase truncate">{tab.label}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* TAB 1: Background & Smart Gradient Studio */}
-          {activeTab === 'background' && (
-            <div className="brutalist-card" style={{ padding: 18, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Background Source Switcher */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                  Background Style
-                </span>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {(['mesh', 'preset-gradient', 'graph-grid', 'halftone-dither', 'custom-gradient', 'photo', 'solid'] as BackgroundType[]).map((bType) => (
-                    <button
-                      key={bType}
-                      onClick={() => updateActiveSlide({ bgType: bType })}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: '0.62rem',
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        border: '1.5px solid #000',
-                        borderRadius: 3,
-                        background: activeSlide.bgType === bType ? '#09090b' : '#ffffff',
-                        color: activeSlide.bgType === bType ? '#ffffff' : '#000000',
-                        cursor: 'pointer',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {bType === 'preset-gradient' ? 'Preset' : bType === 'custom-gradient' ? 'Linear' : bType}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ✨ Smart 1-Click Palette & Mesh Generator */}
-              <div
-                style={{
-                  background: '#f8fafc',
-                  border: '2px solid #000',
-                  borderRadius: 6,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Sparkles size={16} style={{ color: '#F59E0B' }} />
-                    <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace' }}>
-                      SMART PALETTE & MESH GENERATOR
-                    </span>
-                  </div>
-                  <Link
-                    href="/color-gradient"
-                    target="_blank"
-                    style={{ fontSize: '0.65rem', fontWeight: 800, color: '#2563eb', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}
-                  >
-                    Open Gradient Studio <ExternalLink size={11} />
-                  </Link>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="color"
-                    value={smartSeedColor}
-                    onChange={(e) => setSmartSeedColor(e.target.value)}
-                    style={{ width: 44, height: 34, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
-                  />
-                  <input
-                    type="text"
-                    value={smartSeedColor}
-                    onChange={(e) => setSmartSeedColor(e.target.value)}
-                    placeholder="Hex or color (e.g. #00A86B, amber, lavender)"
-                    style={{ flex: 1, padding: '7px 10px', border: '2px solid #000', borderRadius: 4, fontSize: '0.78rem', fontFamily: 'monospace', fontWeight: 700 }}
-                  />
-                  <button
-                    onClick={() => handleApplySmartTheme(smartSeedColor, false)}
-                    className="brutalist-button brutalist-button-primary"
-                    style={{ padding: '7px 12px', fontSize: '0.72rem', whiteSpace: 'nowrap', gap: 4 }}
-                  >
-                    <RefreshCw size={13} /> Generate Mesh
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.62rem', color: '#666' }}>
-                    Calculates HSL physics, harmonious mesh pins & WCAG contrast text.
-                  </span>
-                  <button
-                    onClick={() => handleApplySmartTheme(smartSeedColor, true)}
-                    style={{ background: 'none', border: 'none', color: '#000', fontSize: '0.64rem', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}
-                  >
-                    Apply to all {slides.length} slides
-                  </button>
-                </div>
-              </div>
-
-              {/* Studio Curated Gradient Presets */}
-              <div>
-                <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 6 }}>
-                  CURATED STUDIO PRESETS:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                  {CURATED_STUDIO_GRADIENTS.map((g) => {
-                    const isActive = activeSlide.presetGradientId === g.id && (activeSlide.bgType === 'mesh' || activeSlide.bgType === 'preset-gradient' || activeSlide.bgType === 'graph-grid');
-                    return (
+          {/* TAB CONTENT PANELS */}
+          <div className="p-4 lg:p-6 space-y-6">
+            {/* ======================================================== */}
+            {/* TAB 1: LAYOUT & IMAGE SLOTS */}
+            {/* ======================================================== */}
+            {activeInspectorTab === 'layout' && (
+              <div className="space-y-6">
+                {/* Layout Archetype Picker */}
+                <div>
+                  <label className="block text-xs font-mono font-black uppercase mb-2">
+                    Slide Layout Archetype
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'hero-hook', name: 'Hero Hook & Pill', desc: 'Display headline with tag pill & swipe' },
+                      { id: 'single-image', name: 'Single Image Slot', desc: 'Contained screenshot / photo with text' },
+                      { id: 'dual-comparison', name: 'Dual Comparison', desc: 'Side-by-side Before/After dual slots' },
+                      { id: 'trio-gallery', name: '3-Slot Trio Grid', desc: '3 images in a row with step badges' },
+                      { id: 'tweet-card', name: 'Tweet / Notes Card', desc: 'Social profile chip, verified mark & pill' },
+                      { id: 'editorial-quote', name: 'Editorial Quote', desc: 'Large quote marks, serif typography' },
+                      { id: 'desktop-window', name: 'Mac Window Mockup', desc: 'Browser window chrome frame' },
+                      { id: 'mobile-phone', name: 'Mobile Phone Frame', desc: 'Smartphone frame mockup' },
+                      { id: 'color-swatches', name: 'Color Swatches', desc: 'Curated 5 color harmony cards' },
+                    ].map((mode) => (
                       <button
-                        key={g.id}
-                        onClick={() => handleSelectPresetGradient(g.id)}
-                        style={{
-                          height: 54,
-                          background: `linear-gradient(135deg, ${g.colors[0]}, ${g.colors[1] || g.colors[0]})`,
-                          border: isActive ? '3px solid #000' : '1.5px solid rgba(0,0,0,0.3)',
-                          borderRadius: 6,
-                          boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                          cursor: 'pointer',
-                          padding: '6px 8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          textAlign: 'left',
-                        }}
+                        key={mode.id}
+                        onClick={() => updateCurrentSlide({ layoutMode: mode.id as LayoutMode })}
+                        className={`p-2.5 text-left border-2 transition-all font-mono ${
+                          currentSlide.layoutMode === mode.id
+                            ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000]'
+                            : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
+                        }`}
                       >
-                        <span style={{ fontSize: '0.64rem', fontWeight: 900, color: '#fff', background: 'rgba(0,0,0,0.65)', padding: '1px 5px', borderRadius: 3, width: 'fit-content' }}>
-                          {g.name}
-                        </span>
-                        <span style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: 2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                          {g.description.slice(0, 30)}...
-                        </span>
+                        <div className="text-xs font-black">{mode.name}</div>
+                        <div className="text-[10px] text-gray-600 mt-0.5 leading-tight">{mode.desc}</div>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Photo Upload Options */}
-              {activeSlide.bgType === 'photo' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <button
-                    onClick={() => photoInputRef.current?.click()}
-                    className="brutalist-button"
-                    style={{ padding: '9px 12px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff' }}
-                  >
-                    <Upload size={14} />
-                    {activeSlide.photoUrl ? 'Replace Background Photo' : 'Upload Background Photo'}
-                  </button>
+                {/* Upload Image Slots (When applicable) */}
+                <div className="border-2 border-black p-4 bg-[#F9F9F7] shadow-[3px_3px_0px_#000]">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-mono font-black uppercase flex items-center gap-1.5">
+                      <RiImageAddLine className="w-4 h-4" />
+                      IMAGE & SCREENSHOT SLOTS
+                    </span>
+                    <button
+                      onClick={() => {
+                        const imgs = [...(currentSlide.images || [])];
+                        imgs.push({ id: `img-${Date.now()}`, label: `Slot ${imgs.length + 1}` });
+                        updateCurrentSlide({ images: imgs });
+                      }}
+                      className="px-2 py-0.5 bg-white border border-black text-xs font-mono font-bold hover:bg-[#FFE500]"
+                    >
+                      + ADD SLOT
+                    </button>
+                  </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>BLUR: {bgBlur}px</span>
-                      <input type="range" min={0} max={25} value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} style={{ width: '100%' }} />
+                  {(!currentSlide.images || currentSlide.images.length === 0) && (
+                    <div className="text-xs font-mono text-gray-500 py-3 text-center border border-dashed border-gray-400">
+                      No custom image slots active on this slide. Click &quot;Add Slot&quot; or choose a Multi-Image Layout.
                     </div>
-                    <div>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>DIM: {bgDimness}%</span>
-                      <input type="range" min={0} max={85} value={bgDimness} onChange={(e) => setBgDimness(Number(e.target.value))} style={{ width: '100%' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* Graph Grid / Solid controls */}
-              {activeSlide.bgType === 'graph-grid' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>CANVAS COLOR:</span>
-                    <input
-                      type="color"
-                      value={activeSlide.solidColor || '#FDFBF7'}
-                      onChange={(e) => updateActiveSlide({ solidColor: e.target.value })}
-                      style={{ width: '100%', height: 32, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
-                    />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>GRID SIZE: {activeSlide.gridSize || 44}px</span>
-                    <input
-                      type="range"
-                      min={20}
-                      max={80}
-                      value={activeSlide.gridSize || 44}
-                      onChange={(e) => updateActiveSlide({ gridSize: Number(e.target.value) })}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                </div>
-              )}
+                  <div className="space-y-3">
+                    {(currentSlide.images || []).map((slot, sIdx) => (
+                      <div key={slot.id || sIdx} className="border-2 border-black bg-white p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono font-black">IMAGE SLOT 0{sIdx + 1}</span>
+                          <button
+                            onClick={() => handleRemoveImageSlot(sIdx)}
+                            className="text-xs text-red-600 hover:underline font-mono font-bold"
+                          >
+                            REMOVE
+                          </button>
+                        </div>
 
-              {/* Custom Linear Gradient */}
-              {activeSlide.bgType === 'custom-gradient' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                    {activeSlide.customGradColors.map((col, idx) => (
-                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 800 }}>Stop {idx + 1}</span>
-                        <input
-                          type="color"
-                          value={col}
-                          onChange={(e) => {
-                            const newColors = [...activeSlide.customGradColors] as [string, string, string];
-                            newColors[idx] = e.target.value;
-                            updateActiveSlide({ customGradColors: newColors });
-                          }}
-                          style={{ width: '100%', height: 32, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
-                        />
+                        {/* File Upload Input */}
+                        <div className="flex items-center gap-2">
+                          <label className="flex-1 cursor-pointer bg-[#F5F5F0] border-2 border-dashed border-black px-3 py-2 text-center text-xs font-mono font-bold hover:bg-[#FFE500] transition-colors truncate">
+                            <span>{slot.url ? '✓ Replace Image File' : '📁 Upload Photo / Screenshot'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleImageSlotUpload(e, sIdx)}
+                            />
+                          </label>
+                        </div>
+
+                        {/* Slot Label & Fit */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <label className="block text-[10px] font-mono font-bold text-gray-600 mb-1">
+                              BADGE LABEL
+                            </label>
+                            <input
+                              type="text"
+                              value={slot.label || ''}
+                              placeholder="e.g. BEFORE / STEP 01"
+                              onChange={(e) => {
+                                const imgs = [...(currentSlide.images || [])];
+                                imgs[sIdx] = { ...imgs[sIdx], label: e.target.value };
+                                updateCurrentSlide({ images: imgs });
+                              }}
+                              className="w-full text-xs font-mono p-1.5 border border-black bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-mono font-bold text-gray-600 mb-1">
+                              IMAGE FIT
+                            </label>
+                            <select
+                              value={slot.fit || 'cover'}
+                              onChange={(e) => {
+                                const imgs = [...(currentSlide.images || [])];
+                                imgs[sIdx] = { ...imgs[sIdx], fit: e.target.value as any };
+                                updateCurrentSlide({ images: imgs });
+                              }}
+                              className="w-full text-xs font-mono p-1.5 border border-black bg-white"
+                            >
+                              <option value="cover">Cover (Fill Card)</option>
+                              <option value="contain">Contain (Fit Whole Image)</option>
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 2: TYPOGRAPHY & COPY */}
+            {/* ======================================================== */}
+            {activeInspectorTab === 'typography' && (
+              <div className="space-y-5">
+                {/* Hero Title Input */}
+                <div>
+                  <label className="block text-xs font-mono font-black uppercase mb-1">
+                    HERO HEADLINE (MAIN TEXT)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={currentSlide.heroTitle}
+                    onChange={(e) => updateCurrentSlide({ heroTitle: e.target.value })}
+                    placeholder="Enter main headline or statement..."
+                    className="w-full p-2.5 text-sm font-mono border-2 border-black bg-white focus:outline-none focus:bg-[#FFE500]/10 shadow-[2px_2px_0px_#000]"
+                  />
+                </div>
+
+                {/* Highlighted Words & Highlighting Style */}
+                <div className="border-2 border-black p-3.5 bg-[#F9F9F7] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-black uppercase">KEYWORD HIGHLIGHT PILL</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-black text-white">AUTO-INLINE</span>
+                  </div>
+
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800 }}>
-                      <span>ANGLE:</span>
-                      <span>{activeSlide.customGradAngle}°</span>
-                    </div>
+                    <label className="block text-[11px] font-mono text-gray-700 mb-1">
+                      Words to Highlight in Hero Title:
+                    </label>
                     <input
-                      type="range"
-                      min={0}
-                      max={360}
-                      value={activeSlide.customGradAngle}
-                      onChange={(e) => updateActiveSlide({ customGradAngle: Number(e.target.value) })}
-                      style={{ width: '100%' }}
+                      type="text"
+                      value={currentSlide.highlightWords || ''}
+                      placeholder="e.g. AI Success or as a"
+                      onChange={(e) => updateCurrentSlide({ highlightWords: e.target.value })}
+                      className="w-full p-2 text-xs font-mono border border-black bg-white"
                     />
                   </div>
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* TAB 2: Asset & Mockups Layer */}
-          {activeTab === 'mockup' && (
-            <div className="brutalist-card" style={{ padding: 18, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                🖼️ Mockup & Asset Frame Layer
-              </span>
-
-              {/* Asset Frame Type Selector */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {[
-                  { id: 'desktop-window', label: '🖥️ Desktop Window' },
-                  { id: 'mobile-phone', label: '📱 Mobile Phone' },
-                  { id: 'split-comparison', label: '⚖️ Split Before/After' },
-                  { id: 'color-swatches', label: '🎨 Color Palette' },
-                  { id: 'none', label: '🚫 Pure Typography' },
-                ].map((af) => {
-                  const isActive = activeSlide.assetFrameType === af.id;
-                  return (
-                    <button
-                      key={af.id}
-                      onClick={() => updateActiveSlide({ assetFrameType: af.id as AssetFrameType })}
-                      style={{
-                        padding: '10px 8px',
-                        border: '2px solid #000',
-                        borderRadius: 4,
-                        background: isActive ? '#09090b' : '#ffffff',
-                        color: isActive ? '#ffffff' : '#000000',
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                      }}
-                    >
-                      {af.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Desktop Window Controls */}
-              {activeSlide.assetFrameType === 'desktop-window' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <button
-                    onClick={() => screenshotInputRef.current?.click()}
-                    className="brutalist-button"
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '0.78rem',
-                      borderRadius: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: activeSlide.screenshotUrl ? '#dcfce7' : '#ffffff',
-                    }}
-                  >
-                    <Upload size={14} />
-                    {activeSlide.screenshotUrl ? 'Replace App Screenshot' : 'Upload App Mockup Screenshot'}
-                  </button>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>WINDOW THEME:</span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {(['dark', 'light', 'glass'] as const).map((wt) => (
-                        <button
-                          key={wt}
-                          onClick={() => updateActiveSlide({ windowTheme: wt })}
-                          style={{
-                            padding: '4px 10px',
-                            border: '1.5px solid #000',
-                            borderRadius: 3,
-                            background: activeSlide.windowTheme === wt ? '#09090b' : '#fff',
-                            color: activeSlide.windowTheme === wt ? '#fff' : '#000',
-                            cursor: 'pointer',
-                            fontSize: '0.65rem',
-                            fontWeight: 800,
-                            textTransform: 'capitalize',
-                          }}
-                        >
-                          {wt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Mobile Phone Controls */}
-              {activeSlide.assetFrameType === 'mobile-phone' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <button
-                    onClick={() => screenshotInputRef.current?.click()}
-                    className="brutalist-button"
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '0.78rem',
-                      borderRadius: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: activeSlide.screenshotUrl ? '#dcfce7' : '#ffffff',
-                    }}
-                  >
-                    <Upload size={14} />
-                    {activeSlide.screenshotUrl ? 'Replace Mobile Screenshot' : 'Upload Mobile Screenshot'}
-                  </button>
-                </div>
-              )}
-
-              {/* Split Comparison Controls */}
-              {activeSlide.assetFrameType === 'split-comparison' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>LEFT LABEL:</label>
-                      <input
-                        type="text"
-                        value={activeSlide.beforeLabel || 'BEFORE'}
-                        onChange={(e) => updateActiveSlide({ beforeLabel: e.target.value })}
-                        style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 800 }}
-                      />
-                      <button
-                        onClick={() => screenshotInputRef.current?.click()}
-                        className="brutalist-button"
-                        style={{ width: '100%', marginTop: 6, padding: '6px 8px', fontSize: '0.68rem', background: '#fff' }}
-                      >
-                        <Upload size={12} style={{ display: 'inline', marginRight: 4 }} /> Left Image
-                      </button>
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>RIGHT LABEL:</label>
-                      <input
-                        type="text"
-                        value={activeSlide.afterLabel || 'AFTER'}
-                        onChange={(e) => updateActiveSlide({ afterLabel: e.target.value })}
-                        style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 800 }}
-                      />
-                      <button
-                        onClick={() => secondaryScreenshotInputRef.current?.click()}
-                        className="brutalist-button"
-                        style={{ width: '100%', marginTop: 6, padding: '6px 8px', fontSize: '0.68rem', background: '#FFE500' }}
-                      >
-                        <Upload size={12} style={{ display: 'inline', marginRight: 4 }} /> Right Image
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Color Palette Cards Controls */}
-              {activeSlide.assetFrameType === 'color-swatches' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
-                    PALETTE CARDS (5 SWATCHES):
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-                    {(activeSlide.colorSwatches || [
-                      { name: 'Emerald', hex: '#10B981' },
-                      { name: 'Sapphire', hex: '#3B82F6' },
-                      { name: 'Crimson', hex: '#EF4444' },
-                      { name: 'Amber', hex: '#F59E0B' },
-                      { name: 'Violet', hex: '#8B5CF6' },
-                    ]).map((swatch, idx) => (
-                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label className="block text-[10px] font-mono text-gray-600 mb-1">Pill Background</label>
+                      <div className="flex items-center gap-2">
                         <input
                           type="color"
-                          value={swatch.hex}
-                          onChange={(e) => {
-                            const newSwatches = [...(activeSlide.colorSwatches || [])];
-                            newSwatches[idx] = { ...swatch, hex: e.target.value };
-                            updateActiveSlide({ colorSwatches: newSwatches });
-                          }}
-                          style={{ width: '100%', height: 28, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
+                          value={currentSlide.highlightBgColor || '#E05638'}
+                          onChange={(e) => updateCurrentSlide({ highlightBgColor: e.target.value })}
+                          className="w-8 h-8 border border-black cursor-pointer p-0"
                         />
                         <input
                           type="text"
-                          value={swatch.name}
-                          onChange={(e) => {
-                            const newSwatches = [...(activeSlide.colorSwatches || [])];
-                            newSwatches[idx] = { ...swatch, name: e.target.value };
-                            updateActiveSlide({ colorSwatches: newSwatches });
-                          }}
-                          style={{ width: '100%', padding: '2px 4px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.62rem', fontWeight: 800, textAlign: 'center' }}
+                          value={currentSlide.highlightBgColor || '#E05638'}
+                          onChange={(e) => updateCurrentSlide({ highlightBgColor: e.target.value })}
+                          className="w-full text-xs font-mono p-1 border border-black"
                         />
                       </div>
-                    ))}
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono text-gray-600 mb-1">Pill Text Color</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={currentSlide.highlightTextColor || '#FFFFFF'}
+                          onChange={(e) => updateCurrentSlide({ highlightTextColor: e.target.value })}
+                          className="w-8 h-8 border border-black cursor-pointer p-0"
+                        />
+                        <input
+                          type="text"
+                          value={currentSlide.highlightTextColor || '#FFFFFF'}
+                          onChange={(e) => updateCurrentSlide({ highlightTextColor: e.target.value })}
+                          className="w-full text-xs font-mono p-1 border border-black"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Secondary Highlight Selection Box Toggle */}
+                  <div className="pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!currentSlide.secondaryHighlightBox}
+                        onChange={(e) => updateCurrentSlide({ secondaryHighlightBox: e.target.checked })}
+                        className="w-4 h-4 accent-black"
+                      />
+                      <span className="text-xs font-mono font-bold">
+                        Add Designer Dashed Selection Box (like Reference 2)
+                      </span>
+                    </label>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* TAB 3: Content & Text */}
-          {activeTab === 'content' && (
-            <div className="brutalist-card" style={{ padding: 18, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                ✍️ Content & Copy (Slide #{activeSlideIndex + 1})
-              </span>
-
-              {/* Main Headline */}
-              <div>
-                <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                  MAIN HEADLINE / QUOTE BODY:
-                </label>
-                <textarea
-                  rows={3}
-                  value={activeSlide.heroTitle}
-                  onChange={(e) => updateActiveSlide({ heroTitle: e.target.value })}
-                  placeholder="Dev Tools / Inspiring Quote / Main Takeaway"
-                  style={{ width: '100%', padding: '8px 10px', border: '2px solid #000', borderRadius: 4, fontSize: '0.85rem', fontWeight: 900, resize: 'none' }}
-                />
-              </div>
-
-              {/* Highlight Words */}
-              <div>
-                <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                  ✨ HIGHLIGHT WORDS (ACCENT COLOR):
-                </label>
-                <input
-                  type="text"
-                  value={activeSlide.highlightWords || ''}
-                  onChange={(e) => updateActiveSlide({ highlightWords: e.target.value })}
-                  placeholder="e.g. Rare, 2026 (comma separated)"
-                  style={{ width: '100%', padding: '6px 10px', border: '2px solid #000', borderRadius: 4, fontSize: '0.78rem', fontWeight: 700 }}
-                />
-              </div>
-
-              {/* Subtitle */}
-              <div>
-                <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                  SUBTITLE / KEY TAKEAWAY:
-                </label>
-                <input
-                  type="text"
-                  value={activeSlide.subtitleText}
-                  onChange={(e) => updateActiveSlide({ subtitleText: e.target.value })}
-                  placeholder="Additional context or bullet takeaway"
-                  style={{ width: '100%', padding: '6px 10px', border: '2px solid #000', borderRadius: 4, fontSize: '0.78rem', fontWeight: 600 }}
-                />
-              </div>
-
-              {/* Eyebrow & Category Badge */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {/* Subtitle / Descriptive Copy */}
                 <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    CATEGORY BADGE:
+                  <label className="block text-xs font-mono font-black uppercase mb-1">
+                    SUBTITLE / KEY TAKEAWAY
                   </label>
-                  <input
-                    type="text"
-                    value={activeSlide.categoryBadge}
-                    onChange={(e) => updateActiveSlide({ categoryBadge: e.target.value })}
-                    placeholder="@brand · DEV TOOLS"
-                    style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}
+                  <textarea
+                    rows={2}
+                    value={currentSlide.subtitleText || ''}
+                    onChange={(e) => updateCurrentSlide({ subtitleText: e.target.value })}
+                    placeholder="Enter secondary takeaway or multi-line description..."
+                    className="w-full p-2 text-xs font-mono border-2 border-black bg-white focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    EYEBROW SCRIPT / CUE:
-                  </label>
-                  <input
-                    type="text"
-                    value={activeSlide.eyebrowText}
-                    onChange={(e) => updateActiveSlide({ eyebrowText: e.target.value })}
-                    placeholder="Swipe for start 👆"
-                    style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}
-                  />
-                </div>
-              </div>
 
-              {/* Direct Link / Engagement Pill */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                {/* Google Fonts Selector */}
                 <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    DIRECT LINK / CALLOUT:
-                  </label>
-                  <input
-                    type="text"
-                    value={activeSlide.linkPillText}
-                    onChange={(e) => updateActiveSlide({ linkPillText: e.target.value })}
-                    placeholder="originkit.dev or KEYWORD"
-                    style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    PILL STYLE:
+                  <label className="block text-xs font-mono font-black uppercase mb-1 flex items-center justify-between">
+                    <span>HEADLINE FONT FAMILY</span>
+                    <span className="text-[10px] text-gray-500 font-normal">Google Fonts</span>
                   </label>
                   <select
-                    value={activeSlide.linkPillType || 'direct-link'}
-                    onChange={(e) => updateActiveSlide({ linkPillType: e.target.value as any })}
-                    style={{ width: '100%', padding: '6px', border: '2px solid #000', borderRadius: 4, fontSize: '0.72rem', fontWeight: 800 }}
+                    value={currentSlide.titleFontFamily || 'Inter'}
+                    onChange={(e) => updateCurrentSlide({ titleFontFamily: e.target.value })}
+                    className="w-full p-2 text-xs font-mono border-2 border-black bg-white font-bold"
                   >
-                    <option value="direct-link">🔗 Direct Link (🔗 site.com)</option>
-                    <option value="comment-dm">💬 Comment Prompt (Comment for DM)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Author & Badges */}
-          {activeTab === 'author' && (
-            <div className="brutalist-card" style={{ padding: 18, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                👤 Author & Social Badges
-              </span>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    AUTHOR / BRAND NAME:
-                  </label>
-                  <input
-                    type="text"
-                    value={activeSlide.authorName}
-                    onChange={(e) => updateActiveSlide({ authorName: e.target.value })}
-                    placeholder="Alex Creator"
-                    style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.78rem', fontWeight: 700 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 2 }}>
-                    HANDLE / TITLE:
-                  </label>
-                  <input
-                    type="text"
-                    value={activeSlide.authorHandle}
-                    onChange={(e) => updateActiveSlide({ authorHandle: e.target.value })}
-                    placeholder="@alexcreator"
-                    style={{ width: '100%', padding: '6px 8px', border: '2px solid #000', borderRadius: 4, fontSize: '0.78rem' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={activeSlide.authorVerified}
-                    onChange={(e) => updateActiveSlide({ authorVerified: e.target.checked })}
-                  />
-                  Verified Checkmark Badge (Blue Tick)
-                </label>
-
-                <button
-                  onClick={() => avatarInputRef.current?.click()}
-                  className="brutalist-button"
-                  style={{ padding: '6px 10px', fontSize: '0.7rem', background: '#fff' }}
-                >
-                  <Upload size={12} style={{ display: 'inline', marginRight: 4 }} />
-                  {activeSlide.avatarUrl ? 'Replace Avatar' : 'Upload Avatar'}
-                </button>
-              </div>
-
-              {/* Slide Counter Settings */}
-              <div style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
-                <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                  Slide Counter Options
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>POSITION:</label>
-                    <select
-                      value={counterPosition}
-                      onChange={(e) => setCounterPosition(e.target.value as any)}
-                      style={{ width: '100%', padding: '6px', border: '2px solid #000', borderRadius: 4, fontSize: '0.72rem', fontWeight: 800 }}
-                    >
-                      <option value="top-right">Top Right</option>
-                      <option value="top-left">Top Left</option>
-                      <option value="bottom-center">Bottom Center</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>STYLE:</label>
-                    <select
-                      value={counterStyle}
-                      onChange={(e) => setCounterStyle(e.target.value as any)}
-                      style={{ width: '100%', padding: '6px', border: '2px solid #000', borderRadius: 4, fontSize: '0.72rem', fontWeight: 800 }}
-                    >
-                      <option value="pill">Dark Glass Pill</option>
-                      <option value="badge">Cyber Yellow Badge</option>
-                      <option value="minimal">Minimal Text</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: Typography & Polish */}
-          {activeTab === 'typography' && (
-            <div className="brutalist-card" style={{ padding: 18, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                🔤 Typography & Canvas Polish
-              </span>
-
-              {/* Font Family & Alignment */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
-                <div>
-                  <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>PRIMARY FONT:</label>
-                  <select
-                    value={fontFamily}
-                    onChange={(e) => setFontFamily(e.target.value)}
-                    style={{ width: '100%', padding: '6px', border: '2px solid #000', borderRadius: 4, fontSize: '0.75rem', fontWeight: 800 }}
-                  >
-                    {GOOGLE_FONTS_LIST.slice(0, 35).map((f) => (
-                      <option key={f.name} value={f.name}>
+                    {GOOGLE_FONTS_LIST.map((f) => (
+                      <option key={f.name} value={f.name} style={{ fontFamily: f.name }}>
                         {f.name} ({f.category})
                       </option>
                     ))}
                   </select>
                 </div>
 
+                {/* Font Styling Adjusters */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-mono text-gray-600 mb-1">SIZE ({currentSlide.titleFontSize || 100}%)</label>
+                    <input
+                      type="range"
+                      min={70}
+                      max={150}
+                      value={currentSlide.titleFontSize || 100}
+                      onChange={(e) => updateCurrentSlide({ titleFontSize: Number(e.target.value) })}
+                      className="w-full accent-black"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono text-gray-600 mb-1">ITALIC SERIF</label>
+                    <button
+                      onClick={() => updateCurrentSlide({ titleItalic: !currentSlide.titleItalic })}
+                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${
+                        currentSlide.titleItalic ? 'bg-[#FFE500]' : 'bg-white'
+                      }`}
+                    >
+                      {currentSlide.titleItalic ? 'ITALIC ON' : 'REGULAR'}
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono text-gray-600 mb-1">DOTTED DIVIDER</label>
+                    <button
+                      onClick={() => updateCurrentSlide({ dottedDivider: !currentSlide.dottedDivider })}
+                      className={`w-full py-1 text-xs font-mono font-bold border border-black ${
+                        currentSlide.dottedDivider ? 'bg-[#FFE500]' : 'bg-white'
+                      }`}
+                    >
+                      {currentSlide.dottedDivider ? 'DIVIDER ON' : 'NONE'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 3: BADGES & ICONS (REMIX ICONS) */}
+            {/* ======================================================== */}
+            {activeInspectorTab === 'badges' && (
+              <div className="space-y-5">
+                {/* Eyebrow / Super-Tag */}
                 <div>
-                  <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>ALIGNMENT:</label>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {(['left', 'center', 'right'] as const).map((al) => (
+                  <label className="block text-xs font-mono font-black uppercase mb-1">
+                    EYEBROW / SECTION TAG
+                  </label>
+                  <input
+                    type="text"
+                    value={currentSlide.eyebrowText || ''}
+                    placeholder="e.g. UNLOCK LASTING RESULTS or 3-Step Framework"
+                    onChange={(e) => updateCurrentSlide({ eyebrowText: e.target.value })}
+                    className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
+                  />
+                </div>
+
+                {/* Top Right Tag Pill */}
+                <div>
+                  <label className="block text-xs font-mono font-black uppercase mb-1">
+                    TOP RIGHT TAG PILL (REFERENCE 1)
+                  </label>
+                  <input
+                    type="text"
+                    value={currentSlide.topTagPill || ''}
+                    placeholder="e.g. Click Here to Edit Files"
+                    onChange={(e) => updateCurrentSlide({ topTagPill: e.target.value })}
+                    className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
+                  />
+                </div>
+
+                {/* Brand Logo & Watermark */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      BRAND LOGO (TOP LEFT)
+                    </label>
+                    <input
+                      type="text"
+                      value={currentSlide.brandLogoText || ''}
+                      placeholder="e.g. Brand / CreatorKit"
+                      onChange={(e) => updateCurrentSlide({ brandLogoText: e.target.value })}
+                      className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      SLIDE NUMBER CUE
+                    </label>
+                    <input
+                      type="text"
+                      value={currentSlide.sectionNumber || ''}
+                      placeholder="e.g. PAGE 01 or 01"
+                      onChange={(e) => updateCurrentSlide({ sectionNumber: e.target.value })}
+                      className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Remix Icon Selector Button */}
+                <div className="border-2 border-black p-4 bg-[#F9F9F7]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-mono font-black uppercase">REMIX ICON LIBRARY</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 bg-[#FFE500] border border-black font-bold">
+                      PRO ICONS
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono text-gray-600 mb-3">
+                    Choose clean creator icons for your badges, swipe buttons, or watermark headers.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIconModalTarget('badge');
+                      setIsIconModalOpen(true);
+                    }}
+                    className="w-full py-2 bg-white border-2 border-black font-mono font-black text-xs hover:bg-[#FFE500] transition-colors shadow-[2px_2px_0px_#000] flex items-center justify-center gap-2"
+                  >
+                    <RiAwardLine className="w-4 h-4" />
+                    <span>OPEN ICON SELECTOR MODAL</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 4: BACKGROUND & THEME */}
+            {/* ======================================================== */}
+            {activeInspectorTab === 'background' && (
+              <div className="space-y-5">
+                {/* Background Type Selector */}
+                <div>
+                  <label className="block text-xs font-mono font-black uppercase mb-2">
+                    BACKGROUND TEXTURE & STYLE
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'solid', label: 'Solid Color' },
+                      { id: 'graph-grid', label: 'Linen & Grid' },
+                      { id: 'halftone-dither', label: 'Halftone Retro' },
+                      { id: 'preset-gradient', label: 'Gradient' },
+                      { id: 'mesh', label: 'Mesh Glow' },
+                      { id: 'photo', label: 'Custom Photo' },
+                    ].map((bg) => (
                       <button
-                        key={al}
-                        onClick={() => setTextAlign(al)}
-                        style={{
-                          flex: 1,
-                          padding: '6px',
-                          border: '1.5px solid #000',
-                          borderRadius: 3,
-                          background: textAlign === al ? '#09090b' : '#fff',
-                          color: textAlign === al ? '#fff' : '#000',
-                          cursor: 'pointer',
-                          textTransform: 'capitalize',
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                        }}
+                        key={bg.id}
+                        onClick={() => updateCurrentSlide({ bgType: bg.id as BackgroundType })}
+                        className={`py-2 px-1 text-center font-mono text-xs font-bold border-2 transition-all ${
+                          currentSlide.bgType === bg.id
+                            ? 'border-black bg-[#FFE500] shadow-[2px_2px_0px_#000]'
+                            : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
+                        }`}
                       >
-                        {al}
+                        {bg.label}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
 
-              {/* Text Colors */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {/* Solid Color Palette Swatches */}
                 <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>TEXT COLOR:</span>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <label className="block text-xs font-mono font-black uppercase mb-1">
+                    SOLID COLOR / BASE PALETTE
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
                     <input
                       type="color"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      style={{ width: 36, height: 30, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
+                      value={currentSlide.solidColor || '#0047FF'}
+                      onChange={(e) => updateCurrentSlide({ solidColor: e.target.value })}
+                      className="w-10 h-10 border-2 border-black cursor-pointer p-0"
                     />
                     <input
                       type="text"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      style={{ width: 75, padding: '4px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 800 }}
+                      value={currentSlide.solidColor || '#0047FF'}
+                      onChange={(e) => updateCurrentSlide({ solidColor: e.target.value })}
+                      className="flex-1 p-2 text-xs font-mono border-2 border-black"
                     />
+                  </div>
+
+                  {/* Quick Color Swatches */}
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { hex: '#0047FF', label: 'Cobalt' },
+                      { hex: '#F4EFEA', label: 'Linen' },
+                      { hex: '#12151B', label: 'Obsidian' },
+                      { hex: '#FFB800', label: 'Marigold' },
+                      { hex: '#10B981', label: 'Emerald' },
+                      { hex: '#FFFFFF', label: 'White' },
+                    ].map((sw) => (
+                      <button
+                        key={sw.hex}
+                        onClick={() => updateCurrentSlide({ solidColor: sw.hex })}
+                        className="flex-1 py-1 text-[10px] font-mono font-bold border border-black truncate"
+                        style={{
+                          backgroundColor: sw.hex,
+                          color: sw.hex === '#FFFFFF' || sw.hex === '#F4EFEA' || sw.hex === '#FFB800' ? '#000' : '#FFF',
+                        }}
+                      >
+                        {sw.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
+                {/* Text Color & Accent Color */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      TEXT COLOR
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentSlide.textColor || '#FFFFFF'}
+                        onChange={(e) => updateCurrentSlide({ textColor: e.target.value })}
+                        className="w-8 h-8 border border-black cursor-pointer p-0"
+                      />
+                      <input
+                        type="text"
+                        value={currentSlide.textColor || '#FFFFFF'}
+                        onChange={(e) => updateCurrentSlide({ textColor: e.target.value })}
+                        className="w-full text-xs font-mono p-1 border border-black"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      ACCENT COLOR
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentSlide.accentColor || '#FFE500'}
+                        onChange={(e) => updateCurrentSlide({ accentColor: e.target.value })}
+                        className="w-8 h-8 border border-black cursor-pointer p-0"
+                      />
+                      <input
+                        type="text"
+                        value={currentSlide.accentColor || '#FFE500'}
+                        onChange={(e) => updateCurrentSlide({ accentColor: e.target.value })}
+                        className="w-full text-xs font-mono p-1 border border-black"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Photo Background Upload & Sliders */}
+                {currentSlide.bgType === 'photo' && (
+                  <div className="border-2 border-black p-3.5 bg-[#F9F9F7] space-y-3">
+                    <label className="block text-xs font-mono font-black uppercase">
+                      PHOTO BACKGROUND SETTINGS
+                    </label>
+                    <label className="block cursor-pointer bg-white border-2 border-dashed border-black p-2 text-center text-xs font-mono font-bold hover:bg-[#FFE500]">
+                      <span>{currentSlide.photoUrl ? '✓ Replace Photo' : '📁 Upload Photo Background'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleBackgroundPhotoUpload}
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-mono text-gray-600 mb-1">
+                          BLUR ({currentSlide.bgBlur || 0}px)
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={30}
+                          value={currentSlide.bgBlur || 0}
+                          onChange={(e) => updateCurrentSlide({ bgBlur: Number(e.target.value) })}
+                          className="w-full accent-black"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-mono text-gray-600 mb-1">
+                          DIMNESS ({currentSlide.bgDimness || 0}%)
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={90}
+                          value={currentSlide.bgDimness || 0}
+                          onChange={(e) => updateCurrentSlide({ bgDimness: Number(e.target.value) })}
+                          className="w-full accent-black"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB 5: SWIPE & MICRO-COMPONENTS */}
+            {/* ======================================================== */}
+            {activeInspectorTab === 'swipe' && (
+              <div className="space-y-5">
+                {/* Swipe Cue Type */}
                 <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>ACCENT / HIGHLIGHT:</span>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={accentColor}
-                      onChange={(e) => setAccentColor(e.target.value)}
-                      style={{ width: 36, height: 30, border: '2px solid #000', borderRadius: 4, cursor: 'pointer' }}
-                    />
+                  <label className="block text-xs font-mono font-black uppercase mb-2">
+                    BOTTOM SWIPE PROMPT STYLE
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'search-bar', name: 'Search Bar Mockup', desc: '🔍 I\'m looking for... ➔' },
+                      { id: 'connected-arc', name: 'Connected Arc', desc: 'Sweeping arc with progress bar' },
+                      { id: 'notes-folder', name: 'Notes Folder Pill', desc: '📁 Swipe to view notes 4 >' },
+                      { id: 'pill-arrow', name: 'Minimal SWIPE Pill', desc: 'Bordered SWIPE ➔ pill' },
+                      { id: 'minimal-arrow', name: 'Watermark Arrow Line', desc: 'creatorkit.studio ────➔' },
+                      { id: 'none', name: 'No Swipe Prompt', desc: 'Clean minimal bottom' },
+                    ].map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => updateCurrentSlide({ swipePromptType: s.id as SwipePromptType })}
+                        className={`p-2.5 text-left border-2 font-mono ${
+                          currentSlide.swipePromptType === s.id
+                            ? 'border-black bg-[#FFE500] shadow-[3px_3px_0px_#000]'
+                            : 'border-gray-300 bg-[#F9F9F7] hover:border-black'
+                        }`}
+                      >
+                        <div className="text-xs font-black">{s.name}</div>
+                        <div className="text-[10px] text-gray-600 mt-0.5">{s.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Swipe Text Controls */}
+                {currentSlide.swipePromptType === 'search-bar' && (
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      SEARCH BAR PLACEHOLDER
+                    </label>
                     <input
                       type="text"
-                      value={accentColor}
-                      onChange={(e) => setAccentColor(e.target.value)}
-                      style={{ width: 75, padding: '4px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 800 }}
+                      value={currentSlide.swipeSearchPlaceholder || ''}
+                      placeholder="e.g. I'm looking for..."
+                      onChange={(e) => updateCurrentSlide({ swipeSearchPlaceholder: e.target.value })}
+                      className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
                     />
+                  </div>
+                )}
+
+                {currentSlide.swipePromptType === 'notes-folder' && (
+                  <div>
+                    <label className="block text-xs font-mono font-black uppercase mb-1">
+                      NOTES BUTTON TEXT
+                    </label>
+                    <input
+                      type="text"
+                      value={currentSlide.swipePromptSubtext || ''}
+                      placeholder="e.g. 📁 Swipe to view notes 4 >"
+                      onChange={(e) => updateCurrentSlide({ swipePromptSubtext: e.target.value })}
+                      className="w-full p-2 text-xs font-mono border-2 border-black bg-white"
+                    />
+                  </div>
+                )}
+
+                {/* Author Profile Block */}
+                <div className="border-2 border-black p-4 bg-[#F9F9F7] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-black uppercase">AUTHOR PROFILE CHIP</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!currentSlide.showAuthorBlock || currentSlide.layoutMode === 'tweet-card'}
+                        onChange={(e) => updateCurrentSlide({ showAuthorBlock: e.target.checked })}
+                        className="w-4 h-4 accent-black"
+                      />
+                      <span className="text-xs font-mono font-bold">ENABLE</span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-gray-600 mb-1">
+                        AUTHOR NAME
+                      </label>
+                      <input
+                        type="text"
+                        value={currentSlide.authorName || ''}
+                        placeholder="e.g. Justas Markus"
+                        onChange={(e) => updateCurrentSlide({ authorName: e.target.value })}
+                        className="w-full p-1.5 text-xs font-mono border border-black bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-gray-600 mb-1">
+                        @HANDLE
+                      </label>
+                      <input
+                        type="text"
+                        value={currentSlide.authorHandle || ''}
+                        placeholder="e.g. @JustasMarkus"
+                        onChange={(e) => updateCurrentSlide({ authorHandle: e.target.value })}
+                        className="w-full p-1.5 text-xs font-mono border border-black bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!currentSlide.authorVerified}
+                        onChange={(e) => updateCurrentSlide({ authorVerified: e.target.checked })}
+                        className="w-4 h-4 accent-black"
+                      />
+                      <span className="text-xs font-mono font-bold">Verified Checkmark Badge (✓)</span>
+                    </label>
                   </div>
                 </div>
               </div>
-
-              {/* Font Size & Grain */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>SIZE: {heroFontSize}px</span>
-                  <input type="range" min={32} max={110} value={heroFontSize} onChange={(e) => setHeroFontSize(Number(e.target.value))} style={{ width: '100%' }} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>GRAIN NOISE: {bgGrain}%</span>
-                  <input type="range" min={0} max={45} value={bgGrain} onChange={(e) => setBgGrain(Number(e.target.value))} style={{ width: '100%' }} />
-                </div>
-              </div>
-
-              {/* Vignette & Dimness */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>VIGNETTE: {bgVignette}%</span>
-                  <input type="range" min={0} max={70} value={bgVignette} onChange={(e) => setBgVignette(Number(e.target.value))} style={{ width: '100%' }} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>DIM OVERLAY: {bgDimness}%</span>
-                  <input type="range" min={0} max={75} value={bgDimness} onChange={(e) => setBgDimness(Number(e.target.value))} style={{ width: '100%' }} />
-                </div>
-              </div>
-
-              {/* Visibility Checklist */}
-              <div style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
-                <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                  Layer Element Visibility
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.72rem', fontWeight: 800 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showCounter} onChange={(e) => setShowCounter(e.target.checked)} />
-                    Slide Counter
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showCategoryBadge} onChange={(e) => setShowCategoryBadge(e.target.checked)} />
-                    Category Badge
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showEyebrow} onChange={(e) => setShowEyebrow(e.target.checked)} />
-                    Eyebrow Cue
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showLinkPill} onChange={(e) => setShowLinkPill(e.target.checked)} />
-                    Direct Link Pill
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showAuthorBlock} onChange={(e) => setShowAuthorBlock(e.target.checked)} />
-                    Author Profile
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={showQuoteMarks} onChange={(e) => setShowQuoteMarks(e.target.checked)} />
-                    Quote Marks (“”)
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ICON SELECTOR MODAL */}
+      {isIconModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-3 border-black w-full max-w-xl max-h-[80vh] flex flex-col shadow-[8px_8px_0px_#000]">
+            {/* Modal Header */}
+            <div className="border-b-2 border-black bg-[#FFE500] p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RiAwardLine className="w-5 h-5 text-black" />
+                <h3 className="font-mono font-black text-sm uppercase">SELECT REMIX ICON</h3>
+              </div>
+              <button
+                onClick={() => setIsIconModalOpen(false)}
+                className="p-1 hover:bg-white border border-black transition-colors"
+              >
+                <RiCloseLine className="w-5 h-5 text-black" />
+              </button>
+            </div>
+
+            {/* Search & Category Filter */}
+            <div className="p-3 border-b-2 border-black bg-[#F5F5F0] space-y-2">
+              <div className="flex items-center gap-2 bg-white border border-black px-2 py-1.5">
+                <RiSearchLine className="w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search icons (e.g. arrow, fire, rocket, check, search)..."
+                  value={iconSearchQuery}
+                  onChange={(e) => setIconSearchQuery(e.target.value)}
+                  className="w-full text-xs font-mono focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {['all', 'arrows', 'media', 'creator', 'actions', 'badge'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedIconCategory(cat)}
+                    className={`px-2 py-0.5 text-[10px] font-mono uppercase font-bold border border-black ${
+                      selectedIconCategory === cat ? 'bg-black text-white' : 'bg-white text-black hover:bg-[#FFE500]'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Icons Grid */}
+            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-4 sm:grid-cols-6 gap-2">
+              {filteredIcons.map((ic) => {
+                const IconComponent = ic.component;
+                return (
+                  <button
+                    key={ic.id}
+                    onClick={() => {
+                      updateCurrentSlide({ categoryBadgeIcon: ic.id });
+                      setIsIconModalOpen(false);
+                    }}
+                    className="p-2 border border-gray-300 hover:border-black hover:bg-[#FFE500] flex flex-col items-center justify-center gap-1 transition-all group"
+                  >
+                    <IconComponent className="w-6 h-6 text-black group-hover:scale-110 transition-transform" />
+                    <span className="text-[9px] font-mono truncate w-full text-center text-gray-700">
+                      {ic.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
