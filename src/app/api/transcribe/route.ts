@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "edge";
 export const maxDuration = 300;
 
 // Whisper transcription through the free Hugging Face serverless tier (Unified

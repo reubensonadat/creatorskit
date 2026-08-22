@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 
+export const runtime = "edge";
 export const maxDuration = 90;
 
 // Background removal proxy. Uses the Hugging Face serverless tier (Unified
