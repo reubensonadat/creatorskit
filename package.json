@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "pages:build": "npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "eslint .",
     "db:push": "prisma db push --accept-data-loss",
@@ -87,6 +88,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@tailwindcss/postcss": "^4",
     "@types/node": "26.2.0",
     "@types/react": "^19",
