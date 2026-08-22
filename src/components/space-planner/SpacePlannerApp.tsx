@@ -39,8 +39,8 @@ export default function SpacePlannerApp() {
   const rightPanelOpen = usePlannerStore((s) => s.rightPanelOpen);
   const toggleRightPanel = usePlannerStore((s) => s.toggleRightPanel);
   const clearAll = usePlannerStore((s) => s.clearAll);
-  const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
-  const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
+  const timeOfDay = usePlannerStore((s) => s.timeOfDay);
+  const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -311,176 +311,142 @@ export default function SpacePlannerApp() {
             <PlannerCanvas />
           </div>
 
-          {/* HUD overlays */}
-          <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000" }}>
-            <div className="flex items-center gap-3">
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Floor Area</div>
-                <div className="font-display font-bold text-sm mt-0.5" style={{ color: "#000" }}>
-                  {area} m²
+          {/* HUD overlays (hidden during Camera POV for full cinematic focus) */}
+          {viewMode !== 'camera-pov' && (
+            <>
+              <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000" }}>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Floor Area</div>
+                    <div className="font-display font-bold text-sm mt-0.5" style={{ color: "#000" }}>
+                      {area} m²
+                    </div>
+                  </div>
+                  <div className="h-7 w-px" style={{ background: "#ddd" }} />
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Dimensions</div>
+                    <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>
+                      {roomWidth} × {roomDepth} m
+                    </div>
+                  </div>
+                  <div className="h-7 w-px" style={{ background: "#ddd" }} />
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Items</div>
+                    <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>{placedObjects.length}</div>
+                  </div>
                 </div>
               </div>
-              <div className="h-7 w-px" style={{ background: "#ddd" }} />
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Dimensions</div>
-                <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>
-                  {roomWidth} × {roomDepth} m
-                </div>
-              </div>
-              <div className="h-7 w-px" style={{ background: "#ddd" }} />
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Items</div>
-                <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>{placedObjects.length}</div>
-              </div>
-            </div>
-          </div>
 
-          <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", gap: 8 }}>
-            {/* View toggle */}
-            <div style={{ display: "flex", border: "2px solid #000" }}>
-              <button
-                onClick={() => setViewMode('perspective')}
-                style={{ 
-                  color: viewMode === 'perspective' ? "#fff" : "#000",
-                  background: viewMode === 'perspective' ? "#000" : "transparent",
-                  padding: "4px 10px",
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  fontFamily: "monospace",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                🧊 3D
-              </button>
-              <button
-                onClick={() => setViewMode('top')}
-                style={{ 
-                  color: viewMode === 'top' ? "#fff" : "#000",
-                  background: viewMode === 'top' ? "#000" : "transparent",
-                  padding: "4px 10px",
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  fontFamily: "monospace",
-                  border: "none",
-                  borderLeft: "2px solid #000",
-                  cursor: "pointer",
-                }}
-              >
-                📐 Top
-              </button>
-            </div>
-
-            <div className="h-5 w-px" style={{ background: "#ddd" }} />
-
-            {/* Room dimensions */}
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <input
-                type="number"
-                value={roomWidth}
-                onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
-                style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
-                step="0.5"
-                min="2"
-                max="20"
-              />
-              <span style={{ fontSize: "10px", color: "#888" }}>×</span>
-              <input
-                type="number"
-                value={roomDepth}
-                onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
-                style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
-                step="0.5"
-                min="2"
-                max="20"
-              />
-              <span style={{ fontSize: "9px", color: "#888" }}>m</span>
-            </div>
-
-            <div className="h-5 w-px" style={{ background: "#ddd" }} />
-
-            {/* Export */}
-            <button onClick={handleExportPNG} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, cursor: "pointer" }}>
-              📸 PNG
-            </button>
-            <button onClick={handleExportPDF} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#000", color: "#fff", borderRadius: 0, cursor: "pointer" }}>
-              📄 PDF
-            </button>
-          </div>
-
-          {/* Bottom toolbar */}
-          <PlannerToolbar />
-
-          {/* Director Camera Viewfinder HUD overlay */}
-          {showCameraPreview && (
-            <div className="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between p-4 bg-black/35 backdrop-blur-[1px]">
-              {/* Top Bar */}
-              <div className="flex items-center justify-between pointer-events-auto">
-                <div className="flex items-center gap-2 bg-black/80 text-white px-3 py-1.5 border border-white/20 font-mono text-[11px]">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
-                  <span className="font-bold text-red-500">REC</span>
-                  <span className="text-white/80">00:14:28:12</span>
-                  <span className="text-white/40">|</span>
-                  <span className="text-emerald-400 font-bold">4K 60FPS</span>
-                  <span className="text-white/70">ProRes 422HQ</span>
+              <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", gap: 8 }}>
+                {/* Natural Light Time of Day */}
+                <div className="flex items-center border-2 border-black font-mono text-[10px]">
+                  <button
+                    onClick={() => setTimeOfDay('daylight')}
+                    className={`px-1.5 py-1 font-bold ${timeOfDay === 'daylight' ? 'bg-[#FFDD00] text-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    title="Bright 5600K Clean Daylight"
+                  >
+                    ☀️ Day
+                  </button>
+                  <button
+                    onClick={() => setTimeOfDay('golden-hour')}
+                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    title="Warm 3200K Golden Hour Sun"
+                  >
+                    🌅 Golden
+                  </button>
+                  <button
+                    onClick={() => setTimeOfDay('overcast')}
+                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'overcast' ? 'bg-[#94A3B8] text-white' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    title="Soft 6500K Diffused Sky"
+                  >
+                    ☁️ Overcast
+                  </button>
+                  <button
+                    onClick={() => setTimeOfDay('night')}
+                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    title="Moody Night Studio"
+                  >
+                    🌙 Night
+                  </button>
                 </div>
 
-                <button
-                  onClick={toggleCameraPreview}
-                  className="bg-black/90 hover:bg-black text-white px-3 py-1.5 border border-white/30 font-mono text-[11px] font-bold cursor-pointer transition-colors shadow-lg"
-                >
-                  ✕ Close Viewfinder
+                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+
+                {/* View toggle */}
+                <div style={{ display: "flex", border: "2px solid #000" }}>
+                  <button
+                    onClick={() => setViewMode('perspective')}
+                    style={{ 
+                      color: viewMode === 'perspective' ? "#fff" : "#000",
+                      background: viewMode === 'perspective' ? "#000" : "transparent",
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      fontFamily: "monospace",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🧊 3D
+                  </button>
+                  <button
+                    onClick={() => setViewMode('top')}
+                    style={{ 
+                      color: viewMode === 'top' ? "#fff" : "#000",
+                      background: viewMode === 'top' ? "#000" : "transparent",
+                      padding: "4px 10px",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      fontFamily: "monospace",
+                      border: "none",
+                      borderLeft: "2px solid #000",
+                      cursor: "pointer",
+                    }}
+                  >
+                    📐 Top
+                  </button>
+                </div>
+
+                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+
+                {/* Room dimensions */}
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    type="number"
+                    value={roomWidth}
+                    onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
+                    style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    step="0.5"
+                    min="2"
+                    max="20"
+                  />
+                  <span style={{ fontSize: "10px", color: "#888" }}>×</span>
+                  <input
+                    type="number"
+                    value={roomDepth}
+                    onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
+                    style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    step="0.5"
+                    min="2"
+                    max="20"
+                  />
+                  <span style={{ fontSize: "9px", color: "#888" }}>m</span>
+                </div>
+
+                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+
+                {/* Export */}
+                <button onClick={handleExportPNG} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, cursor: "pointer" }}>
+                  📸 PNG
+                </button>
+                <button onClick={handleExportPDF} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#000", color: "#fff", borderRadius: 0, cursor: "pointer" }}>
+                  📄 PDF
                 </button>
               </div>
 
-              {/* Center Framing Guides */}
-              <div className="relative flex-1 flex items-center justify-center my-2">
-                {/* 16:9 Border Guideline */}
-                <div className="relative w-full max-w-4xl aspect-video border border-white/40 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] flex flex-col justify-between p-3">
-                  {/* Rule of Thirds Grid */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20" />
-                    <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20" />
-                    <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20" />
-                    <div className="absolute top-2/3 left-0 right-0 h-px bg-white/20" />
-                  </div>
-
-                  {/* Corner Crosshairs */}
-                  <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-white" />
-                  <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-white" />
-                  <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-white" />
-                  <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-white" />
-
-                  {/* Center Autofocus Reticle */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 border-2 border-emerald-400/80 flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-                  </div>
-
-                  {/* Audio Level Meters */}
-                  <div className="absolute left-4 bottom-4 flex gap-1 items-end h-12 bg-black/60 p-1 border border-white/20">
-                    <div className="w-1.5 h-8 bg-gradient-to-t from-emerald-500 via-amber-400 to-red-500" />
-                    <div className="w-1.5 h-9 bg-gradient-to-t from-emerald-500 via-amber-400 to-red-500" />
-                    <span className="text-[8px] font-mono text-white/80 self-center ml-1">L/R CH</span>
-                  </div>
-
-                  {/* Lens info in frame */}
-                  <div className="absolute right-4 bottom-4 font-mono text-[10px] text-white/90 bg-black/60 px-2 py-1 border border-white/20">
-                    DSLR 50mm Prime • f/2.8 • AF-C Target Tracked
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Telemetry Bar */}
-              <div className="flex items-center justify-center">
-                <div className="flex items-center gap-4 bg-black/85 text-white px-4 py-1.5 border border-white/20 font-mono text-[10px]">
-                  <span><b className="text-white/60">SHUTTER:</b> 1/125s</span>
-                  <span><b className="text-white/60">APERTURE:</b> f/2.8</span>
-                  <span><b className="text-white/60">ISO:</b> 800</span>
-                  <span><b className="text-white/60">WB:</b> 5600K</span>
-                  <span><b className="text-white/60">BATTERY:</b> 98% 🔋</span>
-                </div>
-              </div>
-            </div>
+              {/* Bottom toolbar */}
+              <PlannerToolbar />
+            </>
           )}
         </section>
 

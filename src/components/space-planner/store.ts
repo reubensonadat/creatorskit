@@ -39,12 +39,22 @@ interface StoreState {
   windows: WindowPlacement[];
   timeOfDay: 'daylight' | 'golden-hour' | 'overcast' | 'night';
 
+  // Measurement Tool State
+  isMeasuring: boolean;
+  measureStart: { x: number; y?: number; z: number; name?: string } | null;
+  measureEnd: { x: number; y?: number; z: number; name?: string } | null;
+
+  // Active Camera & Light Cones
+  activeCameraId: string | null;
+  showLightBeams: boolean;
+
   // UI state
   showBudgetPanel: boolean;
   showProjectInfo: boolean;
   showWarnings: boolean;
   showCameraPreview: boolean;
   showLuxHeatmap: boolean;
+  isOrbitPanning: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
@@ -55,6 +65,11 @@ interface StoreState {
   setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
   setCurrency: (c: Currency) => void;
   setPlacingEquipment: (id: EquipmentId | null) => void;
+  toggleMeasuring: () => void;
+  setMeasurePoints: (start: { x: number; y?: number; z: number; name?: string } | null, end: { x: number; y?: number; z: number; name?: string } | null) => void;
+  toggleLightBeams: () => void;
+  setActiveCameraId: (id: string | null) => void;
+  optimizeStudioErgonomics: () => void;
   placeObject: (equipmentId: EquipmentId, x: number, z: number, rotationY?: number, isMainCamera?: boolean) => string;
   replacePlacedObjects: (objects: PlacedObject[]) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
@@ -112,6 +127,12 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   ],
   timeOfDay: 'daylight',
 
+  isMeasuring: false,
+  measureStart: null,
+  measureEnd: null,
+  activeCameraId: null,
+  showLightBeams: true,
+
   showBudgetPanel: false,
   showProjectInfo: false,
   showWarnings: false,
@@ -134,10 +155,70 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   setCurrency: (c) => set({ currency: c }),
 
-  setPlacingEquipment: (id) => set({
-    placingEquipmentId: id,
-    selectedObjectId: null,
-  }),
+  setPlacingEquipment: (id) => {
+    const currentMode = get().viewMode;
+    set({
+      placingEquipmentId: id,
+      selectedObjectId: null,
+      isMeasuring: false,
+      viewMode: id && (currentMode === 'camera-pov' || currentMode === 'walkthrough') ? 'perspective' : currentMode,
+    });
+  },
+
+  toggleMeasuring: () => set((s) => ({
+    isMeasuring: !s.isMeasuring,
+    measureStart: null,
+    measureEnd: null,
+    placingEquipmentId: null,
+  })),
+
+  setMeasurePoints: (start, end) => set({ measureStart: start, measureEnd: end }),
+
+  toggleLightBeams: () => set((s) => ({ showLightBeams: !s.showLightBeams })),
+
+  setActiveCameraId: (id) => set({ activeCameraId: id }),
+
+  optimizeStudioErgonomics: () => {
+    const { placedObjects, roomWidth, roomDepth } = get();
+    const halfD = roomDepth / 2;
+
+    // Find main desk/table and host chair
+    const desk = placedObjects.find((o) => o.equipmentId.includes('desk') || o.equipmentId.includes('table'));
+    const chair = placedObjects.find((o) => o.equipmentId === 'chair');
+    const mainCam = placedObjects.find((o) => o.isMainCamera || o.equipmentId.includes('cam') || o.equipmentId.includes('phone'));
+    const keyLight = placedObjects.find((o) => o.equipmentId.includes('softbox') || o.equipmentId.includes('light'));
+
+    let anchorX = 0;
+    let anchorZ = -0.2;
+
+    const updated = placedObjects.map((obj) => {
+      // 1. Desk positioned centered with clear walking space
+      if (desk && obj.id === desk.id) {
+        return { ...obj, x: anchorX, z: anchorZ, rotationY: 0 };
+      }
+      // 2. Host Chair placed with optimal 0.9m push-out clearance to rear wall
+      if (chair && obj.id === chair.id) {
+        return { ...obj, x: anchorX, z: anchorZ - 0.55, rotationY: 0 };
+      }
+      // 3. Camera placed in front of desk at 1.55m distance for cinematic focal depth
+      if (mainCam && obj.id === mainCam.id) {
+        return { ...obj, x: anchorX, z: anchorZ + 1.55, rotationY: Math.PI, lensPreset: '35mm' as const };
+      }
+      // 4. Key Light triangulated at 45 degrees
+      if (keyLight && obj.id === keyLight.id) {
+        return {
+          ...obj,
+          x: anchorX - 1.1,
+          z: anchorZ + 0.8,
+          rotationY: Math.PI / 4,
+          lightSettings: { ...obj.lightSettings, intensity: 85, colorTempKelvin: 5600, beamAngle: 65 },
+        };
+      }
+      return obj;
+    });
+
+    set({ placedObjects: updated });
+  },
 
   placeObject: (equipmentId, x, z, rotationY = 0, isMainCamera = false, parentId?: string) => {
     const id = uid();
@@ -231,9 +312,18 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     };
     toDelete.add(id);
     findChildren(id);
+    const remaining = s.placedObjects.filter((o) => !toDelete.has(o.id));
+    const hasCam = remaining.some((o) =>
+      o.equipmentId === 'camera' ||
+      o.equipmentId.startsWith('cam') ||
+      o.equipmentId.includes('phone') ||
+      o.equipmentId.includes('webcam') ||
+      o.equipmentId.includes('prompter')
+    );
     return {
-      placedObjects: s.placedObjects.filter((o) => !toDelete.has(o.id)),
+      placedObjects: remaining,
       selectedObjectId: toDelete.has(s.selectedObjectId ?? '') ? null : s.selectedObjectId,
+      viewMode: s.viewMode === 'camera-pov' && !hasCam ? 'perspective' : s.viewMode,
     };
   }),
 

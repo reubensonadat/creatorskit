@@ -1,7 +1,8 @@
 'use client';
 
 import { usePlannerStore } from './store';
-import { Camera, Compass, Eye, Flame, RotateCcw, RotateCw, Trash2, Home, Grid, Footprints } from 'lucide-react';
+import { Camera, Compass, Eye, Flame, RotateCcw, RotateCw, Trash2, Home, Grid, Footprints, Ruler, Sun, Sparkles, Sliders } from 'lucide-react';
+import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 
 export default function PlannerToolbar() {
   const viewMode = usePlannerStore((s) => s.viewMode);
@@ -18,15 +19,26 @@ export default function PlannerToolbar() {
   const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
   const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const toggleLuxHeatmap = usePlannerStore((s) => s.toggleLuxHeatmap);
+  const isMeasuring = usePlannerStore((s) => s.isMeasuring);
+  const toggleMeasuring = usePlannerStore((s) => s.toggleMeasuring);
+  const showLightBeams = usePlannerStore((s) => s.showLightBeams);
+  const toggleLightBeams = usePlannerStore((s) => s.toggleLightBeams);
+  const optimizeStudioErgonomics = usePlannerStore((s) => s.optimizeStudioErgonomics);
+  const activeCameraId = usePlannerStore((s) => s.activeCameraId);
+  const setActiveCameraId = usePlannerStore((s) => s.setActiveCameraId);
+  const setMainCamera = usePlannerStore((s) => s.setMainCamera);
 
-  const hasCamera = placedObjects.some((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+  const cameras = placedObjects.filter(
+    (o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam') || o.equipmentId.includes('phone') || o.equipmentId.includes('webcam')
+  );
+  const hasCamera = cameras.length > 0;
 
   return (
     <div className="hud hud-bc">
-      <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000]">
+      <div className="flex items-center gap-1 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000]">
         {/* View Mode Buttons */}
         <button
-          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 transition-all ${
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1.5 transition-all ${
             viewMode === 'perspective' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title={
@@ -53,7 +65,7 @@ export default function PlannerToolbar() {
         </button>
 
         <button
-          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 ${
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1.5 ${
             viewMode === 'top' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title="2D Top-Down CAD Blueprint (2)"
@@ -63,7 +75,7 @@ export default function PlannerToolbar() {
         </button>
 
         <button
-          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 ${
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1.5 ${
             viewMode === 'camera-pov' ? 'bg-[#FFDD00] text-black border-black' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title="Through-The-Lens Director POV (3)"
@@ -74,7 +86,7 @@ export default function PlannerToolbar() {
         </button>
 
         <button
-          className={`btn text-[11px] font-mono py-1 px-2.5 font-bold flex items-center gap-1.5 ${
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1.5 ${
             viewMode === 'walkthrough' ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title="First-Person Studio Walkthrough (4)"
@@ -85,6 +97,53 @@ export default function PlannerToolbar() {
 
         <div className="w-px h-5 mx-0.5 bg-black/20" />
 
+        {/* Multi-Camera Angle Switcher (if multiple cameras exist) */}
+        {cameras.length > 1 && (
+          <div className="flex items-center gap-1 bg-amber-50 px-1 py-0.5 border border-amber-400">
+            <span className="text-[9px] font-mono font-bold text-amber-900 uppercase">Cam:</span>
+            {cameras.map((c, idx) => {
+              const isMain = c.isMainCamera || (!placedObjects.some((o) => o.isMainCamera) && idx === 0);
+              const label = idx === 0 ? 'A (Main)' : idx === 1 ? 'B (Side)' : `C (${idx + 1})`;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setMainCamera(c.id)}
+                  className={`px-1.5 py-0.5 text-[10px] font-mono font-bold ${
+                    isMain ? 'bg-black text-[#FFDD00]' : 'bg-white text-black border border-black/30 hover:bg-gray-100'
+                  }`}
+                  title={`Switch active director camera to ${COMPREHENSIVE_EQUIPMENT_CATALOG[c.equipmentId]?.name || 'Camera'}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Laser Tape Ruler Tool */}
+        <button
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
+            isMeasuring ? 'bg-[#00FF66] text-black border border-black animate-pulse' : 'bg-white text-black hover:bg-gray-100'
+          }`}
+          title="Laser Tape Measure (M) — Click any 2 objects or floor points to measure exact distance & angle"
+          onClick={toggleMeasuring}
+        >
+          <Ruler size={13} />
+          <span>Ruler {isMeasuring ? 'ON' : ''}</span>
+        </button>
+
+        {/* Light Cones Volumetric Toggle */}
+        <button
+          className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
+            showLightBeams ? 'bg-[#38BDF8] text-black border border-black' : 'bg-white text-black hover:bg-gray-100'
+          }`}
+          title="Toggle 3D Lighting Beam Angles & Kelvin Temperature Cones"
+          onClick={toggleLightBeams}
+        >
+          <Sun size={13} />
+          <span>Beams</span>
+        </button>
+
         {/* Lux Heatmap Toggle */}
         <button
           className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
@@ -93,7 +152,7 @@ export default function PlannerToolbar() {
           title="Toggle Studio Lighting Lux & Coverage Heatmap"
           onClick={toggleLuxHeatmap}
         >
-          <Flame size={13} /> Lux Heatmap
+          <Flame size={13} /> Lux
         </button>
 
         {/* Live PiP Monitor Toggle */}
@@ -105,7 +164,19 @@ export default function PlannerToolbar() {
           onClick={toggleCameraPreview}
           disabled={!hasCamera}
         >
-          <Eye size={13} /> PiP Monitor
+          <Eye size={13} /> PiP
+        </button>
+
+        {/* 1-Click Studio Ergonomics Optimizer */}
+        <button
+          className="btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-black border border-black/20"
+          title="1-Click Creator Studio Auto-Alignment (Triangulates 45° Key Light, 0.9m Chair Pushout & Camera Eye-Level)"
+          onClick={() => {
+            optimizeStudioErgonomics();
+          }}
+        >
+          <Sparkles size={13} className="text-emerald-600" />
+          <span>Auto-Align</span>
         </button>
 
         {/* Selected Object Manipulation */}

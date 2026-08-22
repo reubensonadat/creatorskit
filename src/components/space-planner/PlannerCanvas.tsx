@@ -136,6 +136,15 @@ export default function PlannerCanvas() {
   const windows = usePlannerStore((s) => s.windows);
   const timeOfDay = usePlannerStore((s) => s.timeOfDay);
   const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
+  const isMeasuring = usePlannerStore((s) => s.isMeasuring);
+  const measureStart = usePlannerStore((s) => s.measureStart);
+  const measureEnd = usePlannerStore((s) => s.measureEnd);
+  const setMeasurePoints = usePlannerStore((s) => s.setMeasurePoints);
+  const toggleMeasuring = usePlannerStore((s) => s.toggleMeasuring);
+  const showLightBeams = usePlannerStore((s) => s.showLightBeams);
+
+  const measureGroupRef = useRef<THREE.Group | null>(null);
+  const [hoverMeasurePoint, setHoverMeasurePoint] = useState<{ x: number; y: number; z: number; name?: string } | null>(null);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
   const updateObjectPosition = usePlannerStore((s) => s.updateObjectPosition);
@@ -470,6 +479,63 @@ export default function PlannerCanvas() {
     selectionOutlineRef.current = outline;
   }, [selectedObjectId]);
 
+  // Helper to calculate exact physical lens apex and FOV for any camera/smartphone
+  const getCameraLensPos = useCallback((cam: PlacedObject) => {
+    const baseY = getObjectY(cam);
+    const id = cam.equipmentId.toLowerCase();
+    let localY = 1.25; // standard tripod eye level
+    let localZ = 0.14; // forward offset towards lens
+    let fov = 65;
+
+    if (id.includes('phone') || id.includes('gimbal')) {
+      if (baseY > 0.4) {
+        // Seated desktop mini-tripod
+        localY = 0.28;
+      } else {
+        // Standing eye-level floor tripod
+        localY = 1.28;
+      }
+      localZ = 0.05;
+      fov = 68; // standard smartphone wide lens
+    } else if (id.includes('webcam')) {
+      localY = 0.48;
+      localZ = 0.05;
+      fov = 75;
+    } else if (id.includes('overhead')) {
+      localY = 2.0;
+      localZ = 0;
+      fov = 84;
+    } else if (id.includes('pedestal') || id.includes('broadcast')) {
+      localY = 1.45;
+      localZ = 0.35;
+      fov = 50;
+    } else if (id.includes('prompter') || id.includes('teleprompter')) {
+      localY = 1.35;
+      localZ = 0.15;
+      fov = 55;
+    } else {
+      localY = baseY > 0.4 ? 0.35 : 1.25;
+      localZ = 0.14;
+      const lensMap: Record<string, number> = {
+        '16mm': 84,
+        '24mm': 65,
+        '35mm': 50,
+        '50mm': 39,
+        '85mm': 24,
+      };
+      fov = lensMap[cam.lensPreset || '24mm'] || 65;
+    }
+
+    return {
+      x: cam.x,
+      y: baseY + localY,
+      z: cam.z,
+      localY,
+      localZ,
+      fov,
+    };
+  }, [getObjectY]);
+
   // ============ Camera frame visualization ============
   const updateCameraFrame = useCallback(() => {
     const scene = sceneRef.current;
@@ -486,9 +552,17 @@ export default function PlannerCanvas() {
       cameraFrameRef.current = null;
     }
 
+    const isCam = (id: string) =>
+      id === 'camera' ||
+      id.startsWith('cam') ||
+      id.includes('phone') ||
+      id.includes('webcam') ||
+      id.includes('prompter') ||
+      id.includes('teleprompter');
+
     const mainCam =
-      placedObjects.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
-      placedObjects.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+      placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
+      placedObjects.find((o) => isCam(o.equipmentId));
     if (!mainCam) return;
 
     const g = new THREE.Group();
@@ -496,44 +570,43 @@ export default function PlannerCanvas() {
     g.position.set(mainCam.x, camBaseY, mainCam.z);
     g.rotation.y = mainCam.rotationY;
 
-    // Optical Lens center atop the tripod fluid head (y = 1.25m, forward z = 0.14m)
-    const lensY = 1.25;
-    const lensZ = 0.14;
-    const apex = new THREE.Vector3(0, lensY, lensZ);
+    // Optical Lens center atop the tripod or desk mount
+    const lens = getCameraLensPos(mainCam);
+    const apex = new THREE.Vector3(0, lens.localY, lens.localZ);
 
     // Lens-calibrated FoV geometry
     const lensPreset = mainCam.lensPreset || '24mm';
-    const LENS_PARAMS: Record<string, { wFar: number; dFar: number; fovDeg: number }> = {
-      '16mm': { wFar: 2.2, dFar: 2.2, fovDeg: 84 },
-      '24mm': { wFar: 1.5, dFar: 2.5, fovDeg: 65 },
-      '35mm': { wFar: 1.15, dFar: 2.6, fovDeg: 50 },
-      '50mm': { wFar: 0.85, dFar: 2.8, fovDeg: 39 },
-      '85mm': { wFar: 0.52, dFar: 3.0, fovDeg: 24 },
+    const LENS_PARAMS: Record<string, { wFar: number; dFar: number }> = {
+      '16mm': { wFar: 2.2, dFar: 2.2 },
+      '24mm': { wFar: 1.5, dFar: 2.5 },
+      '35mm': { wFar: 1.15, dFar: 2.6 },
+      '50mm': { wFar: 0.85, dFar: 2.8 },
+      '85mm': { wFar: 0.52, dFar: 3.0 },
     };
     const params = LENS_PARAMS[lensPreset] || LENS_PARAMS['24mm'];
 
-    const dNear = 0.9;
+    const dNear = 0.8;
     const wNear = params.wFar * (dNear / params.dFar);
     const hNear = wNear * (9 / 16);
-    const nTL = new THREE.Vector3(-wNear, lensY + hNear, lensZ + dNear);
-    const nTR = new THREE.Vector3(wNear, lensY + hNear, lensZ + dNear);
-    const nBR = new THREE.Vector3(wNear, lensY - hNear, lensZ + dNear);
-    const nBL = new THREE.Vector3(-wNear, lensY - hNear, lensZ + dNear);
+    const nTL = new THREE.Vector3(-wNear, lens.localY + hNear, lens.localZ + dNear);
+    const nTR = new THREE.Vector3(wNear, lens.localY + hNear, lens.localZ + dNear);
+    const nBR = new THREE.Vector3(wNear, lens.localY - hNear, lens.localZ + dNear);
+    const nBL = new THREE.Vector3(-wNear, lens.localY - hNear, lens.localZ + dNear);
 
     const dFar = params.dFar;
     const wFar = params.wFar;
     const hFar = wFar * (9 / 16);
-    const fTL = new THREE.Vector3(-wFar, lensY + hFar, lensZ + dFar);
-    const fTR = new THREE.Vector3(wFar, lensY + hFar, lensZ + dFar);
-    const fBR = new THREE.Vector3(wFar, lensY - hFar, lensZ + dFar);
-    const fBL = new THREE.Vector3(-wFar, lensY - hFar, lensZ + dFar);
+    const fTL = new THREE.Vector3(-wFar, lens.localY + hFar, lens.localZ + dFar);
+    const fTR = new THREE.Vector3(wFar, lens.localY + hFar, lens.localZ + dFar);
+    const fBR = new THREE.Vector3(wFar, lens.localY - hFar, lens.localZ + dFar);
+    const fBL = new THREE.Vector3(-wFar, lens.localY - hFar, lens.localZ + dFar);
 
     const coralColor = 0xc75d3f;
     const frustumMat = new THREE.LineBasicMaterial({ color: coralColor, transparent: true, opacity: 0.88 });
     const subtleMat = new THREE.LineBasicMaterial({ color: 0xdb7b60, transparent: true, opacity: 0.45 });
-    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.65 });
+    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.45 });
 
-    // 1. Four 3D Sightlines from Lens Apex
+    // 1. Four 3D Sightlines directly from Lens Apex to Far Frame Corners
     [fTL, fTR, fBR, fBL].forEach((corner) => {
       const geo = new THREE.BufferGeometry().setFromPoints([apex, corner]);
       g.add(new THREE.Line(geo, frustumMat));
@@ -547,83 +620,22 @@ export default function PlannerCanvas() {
     const nearRectGeo = new THREE.BufferGeometry().setFromPoints([nTL, nTR, nBR, nBL, nTL]);
     g.add(new THREE.Line(nearRectGeo, subtleMat));
 
-    // 4. Optical Center Sightline & Center Crosshair at Far Plane
-    const centerFar = new THREE.Vector3(0, lensY, lensZ + dFar);
+    // 4. Optical Center Sightline & Center Reticle at Far Plane
+    const centerFar = new THREE.Vector3(0, lens.localY, lens.localZ + dFar);
     g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([apex, centerFar]), subtleMat));
 
-    // Rule of thirds grid on far frame
-    const thirdX1 = -wFar / 3;
-    const thirdX2 = wFar / 3;
-    const thirdY1 = lensY - hFar / 3;
-    const thirdY2 = lensY + hFar / 3;
-    g.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(thirdX1, lensY + hFar, lensZ + dFar),
-          new THREE.Vector3(thirdX1, lensY - hFar, lensZ + dFar),
-        ]),
-        subtleMat
-      )
-    );
-    g.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(thirdX2, lensY + hFar, lensZ + dFar),
-          new THREE.Vector3(thirdX2, lensY - hFar, lensZ + dFar),
-        ]),
-        subtleMat
-      )
-    );
-    g.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(-wFar, thirdY1, lensZ + dFar),
-          new THREE.Vector3(wFar, thirdY1, lensZ + dFar),
-        ]),
-        subtleMat
-      )
-    );
-    g.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(-wFar, thirdY2, lensZ + dFar),
-          new THREE.Vector3(wFar, thirdY2, lensZ + dFar),
-        ]),
-        subtleMat
-      )
-    );
-
-    // 5. Vertical Drop-lines to Floor (connecting 3D frustum to physical room floor)
-    const gBL = new THREE.Vector3(fBL.x, 0.005, fBL.z);
-    const gBR = new THREE.Vector3(fBR.x, 0.005, fBR.z);
-    const gnBL = new THREE.Vector3(nBL.x, 0.005, nBL.z);
-    const gnBR = new THREE.Vector3(nBR.x, 0.005, nBR.z);
-    [
-      [fBL, gBL],
-      [fBR, gBR],
-      [nBL, gnBL],
-      [nBR, gnBR],
-    ].forEach(([topPt, btmPt]) => {
-      const dropGeo = new THREE.BufferGeometry().setFromPoints([topPt, btmPt]);
-      g.add(new THREE.Line(dropGeo, subtleMat));
-    });
-
-    // 6. Ground Field-of-View Coverage Footprint on Floor
-    const groundPts = [gnBL, gnBR, gBR, gBL, gnBL];
+    // 5. Floor coverage boundary directly underneath far frame
+    const floorY = -camBaseY + 0.005;
+    const floorFarBL = new THREE.Vector3(fBL.x * 0.9, floorY, fBL.z);
+    const floorFarBR = new THREE.Vector3(fBR.x * 0.9, floorY, fBR.z);
+    const floorNearBL = new THREE.Vector3(nBL.x * 0.9, floorY, nBL.z);
+    const floorNearBR = new THREE.Vector3(nBR.x * 0.9, floorY, nBR.z);
+    const groundPts = [floorNearBL, floorNearBR, floorFarBR, floorFarBL, floorNearBL];
     g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(groundPts), floorMat));
-
-    // 7. Creator / Host Standing Spot indicator on floor
-    const hostSpot = new THREE.Mesh(
-      new THREE.RingGeometry(0.2, 0.23, 24),
-      new THREE.MeshBasicMaterial({ color: 0xc75d3f, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
-    );
-    hostSpot.position.set(0, 0.006, lensZ + Math.min(2.2, dFar * 0.8));
-    hostSpot.rotation.x = Math.PI / 2;
-    g.add(hostSpot);
 
     scene.add(g);
     cameraFrameRef.current = g;
-  }, [placedObjects, getObjectY]);
+  }, [placedObjects, getObjectY, getCameraLensPos]);
 
   // ============ Lighting Beam Cone & Throw Visualizers ============
   const updateLightingVisualizers = useCallback(() => {
@@ -640,6 +652,8 @@ export default function PlannerCanvas() {
       });
       lightingVisualizersRef.current = null;
     }
+
+    if (!showLightBeams) return;
 
     const lightObjects = placedObjects.filter((o) => {
       const id = o.equipmentId.toLowerCase();
@@ -662,8 +676,31 @@ export default function PlannerCanvas() {
 
     lightObjects.forEach((light) => {
       const g = new THREE.Group();
-      const lightY = getObjectY(light) + 1.4;
-      g.position.set(light.x, lightY, light.z);
+      const baseY = getObjectY(light);
+      const id = light.equipmentId.toLowerCase();
+
+      let emitterLocalY = 1.45;
+      let emitterForwardZ = 0.12;
+      if (id.includes('desk-lamp') || id.includes('lamp')) {
+        emitterLocalY = 0.38;
+        emitterForwardZ = 0.08;
+      } else if (id.includes('tube') || id.includes('wand')) {
+        emitterLocalY = 0.2;
+        emitterForwardZ = 0.0;
+      } else if (id.includes('ring-light')) {
+        emitterLocalY = 1.45;
+        emitterForwardZ = 0.01;
+      } else if (id.includes('led-panel') || id.includes('panel')) {
+        emitterLocalY = baseY > 0.4 ? 0.35 : 1.35;
+        emitterForwardZ = 0.05;
+      }
+
+      const totalEmitterY = baseY + emitterLocalY;
+      g.position.set(
+        light.x + Math.sin(light.rotationY) * emitterForwardZ,
+        totalEmitterY,
+        light.z + Math.cos(light.rotationY) * emitterForwardZ
+      );
       g.rotation.y = light.rotationY;
 
       // Color temperature mapping to RGB Hex
@@ -692,7 +729,7 @@ export default function PlannerCanvas() {
       const beamMat = new THREE.LineBasicMaterial({
         color: lightHex,
         transparent: true,
-        opacity: Math.max(0.18, 0.45 * intensity),
+        opacity: Math.max(0.2, 0.45 * intensity),
       });
 
       // Directional light throw cone apex -> circular boundary
@@ -706,38 +743,99 @@ export default function PlannerCanvas() {
         const cz = throwDist;
         const pt = new THREE.Vector3(cx, cy, cz);
         circlePts.push(pt);
-        // Connect 4 cardinal rays
+        // Connect 4 cardinal rays directly from emitter apex
         if (i % 4 === 0) {
           const rayGeo = new THREE.BufferGeometry().setFromPoints([apex, pt]);
           g.add(new THREE.Line(rayGeo, beamMat));
         }
       }
 
-      // Outer ellipse wireframe
+      // Outer ellipse wireframe representing beam throw footprint
       const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
       g.add(new THREE.Line(circleGeo, beamMat));
-
-      // Floor illumination ring
-      const floorDropY = -lightY + 0.005;
-      const floorRing = new THREE.Mesh(
-        new THREE.RingGeometry(beamRadius * 0.7, beamRadius * 0.76, 24),
-        new THREE.MeshBasicMaterial({
-          color: lightHex,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.32 * intensity,
-        })
-      );
-      floorRing.position.set(0, floorDropY, throwDist * 0.85);
-      floorRing.rotation.x = Math.PI / 2;
-      g.add(floorRing);
 
       masterGroup.add(g);
     });
 
     scene.add(masterGroup);
     lightingVisualizersRef.current = masterGroup;
-  }, [placedObjects, getObjectY]);
+  }, [placedObjects, getObjectY, showLightBeams]);
+
+  // ============ Laser Tape Measurement Visualizer ============
+  const updateMeasureVisualizer = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (measureGroupRef.current) {
+      scene.remove(measureGroupRef.current);
+      measureGroupRef.current.traverse((c) => {
+        if (c instanceof THREE.Mesh || c instanceof THREE.Line) {
+          c.geometry?.dispose();
+          if (c.material instanceof THREE.Material) c.material.dispose();
+        }
+      });
+      measureGroupRef.current = null;
+    }
+
+    if (!isMeasuring && !measureStart && !measureEnd) return;
+
+    const p1 = measureStart;
+    const p2 = measureEnd || hoverMeasurePoint;
+    if (!p1) return;
+
+    const g = new THREE.Group();
+
+    // Start point glowing marker pin
+    const pinMatStart = new THREE.MeshBasicMaterial({ color: 0x00ff66 });
+    const pin1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), pinMatStart);
+    pin1.position.set(p1.x, (p1.y ?? 0) + 0.06, p1.z);
+    g.add(pin1);
+
+    // Ground ring at start
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+    const ring1 = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.15, 24), ringMat);
+    ring1.rotation.x = Math.PI / 2;
+    ring1.position.set(p1.x, 0.008, p1.z);
+    g.add(ring1);
+
+    if (p2) {
+      const pinMatEnd = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+      const pin2 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), pinMatEnd);
+      pin2.position.set(p2.x, (p2.y ?? 0) + 0.06, p2.z);
+      g.add(pin2);
+
+      const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.15, 24), new THREE.MeshBasicMaterial({ color: 0xff3b30, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }));
+      ring2.rotation.x = Math.PI / 2;
+      ring2.position.set(p2.x, 0.008, p2.z);
+      g.add(ring2);
+
+      // Connecting Laser Line (Direct 3D Line)
+      const v1 = new THREE.Vector3(p1.x, (p1.y ?? 0) + 0.06, p1.z);
+      const v2 = new THREE.Vector3(p2.x, (p2.y ?? 0) + 0.06, p2.z);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff66, linewidth: 3 });
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([v1, v2]), lineMat));
+
+      // Floor projected distance line (Horizontal Orthogonal Guide)
+      const g1 = new THREE.Vector3(p1.x, 0.008, p1.z);
+      const g2 = new THREE.Vector3(p2.x, 0.008, p2.z);
+      const floorGuideMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.1, gapSize: 0.05 });
+      const floorLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([g1, g2]), floorGuideMat);
+      floorLine.computeLineDistances();
+      g.add(floorLine);
+
+      // Vertical drop-lines to floor
+      const dropMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.06, gapSize: 0.04, transparent: true, opacity: 0.5 });
+      const drop1 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v1, g1]), dropMat);
+      drop1.computeLineDistances();
+      g.add(drop1);
+      const drop2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v2, g2]), dropMat);
+      drop2.computeLineDistances();
+      g.add(drop2);
+    }
+
+    scene.add(g);
+    measureGroupRef.current = g;
+  }, [isMeasuring, measureStart, measureEnd, hoverMeasurePoint]);
 
   // ============ View transition ============
   const transitionView = useCallback((mode: ViewMode) => {
@@ -762,6 +860,7 @@ export default function PlannerCanvas() {
         id.startsWith('cam') ||
         id.includes('phone') ||
         id.includes('webcam') ||
+        id.includes('prompter') ||
         id.includes('teleprompter');
 
       const activeCam =
@@ -769,20 +868,20 @@ export default function PlannerCanvas() {
         placedObjects.find((o) => isCam(o.equipmentId));
 
       if (activeCam) {
-        const camY = getObjectY(activeCam) + (activeCam.equipmentId.includes('phone') ? 0.45 : 1.25);
-        targetPos = new THREE.Vector3(activeCam.x, camY, activeCam.z);
+        const lens = getCameraLensPos(activeCam);
+        targetPos = new THREE.Vector3(
+          activeCam.x + Math.sin(activeCam.rotationY) * lens.localZ,
+          lens.y,
+          activeCam.z + Math.cos(activeCam.rotationY) * lens.localZ
+        );
         const forwardX = Math.sin(activeCam.rotationY);
         const forwardZ = Math.cos(activeCam.rotationY);
-        targetCenter = new THREE.Vector3(activeCam.x + forwardX * 3.5, camY, activeCam.z + forwardZ * 3.5);
-
-        const lensMap: Record<string, number> = {
-          '16mm': 84,
-          '24mm': 65,
-          '35mm': 50,
-          '50mm': 39,
-          '85mm': 24,
-        };
-        targetFov = lensMap[activeCam.lensPreset || '24mm'] || 65;
+        targetCenter = new THREE.Vector3(
+          targetPos.x + forwardX * 3.5,
+          lens.y,
+          targetPos.z + forwardZ * 3.5
+        );
+        targetFov = lens.fov;
       }
     } else if (mode === 'walkthrough') {
       targetPos = new THREE.Vector3(0, 1.65, roomDepth * 0.38);
@@ -793,7 +892,7 @@ export default function PlannerCanvas() {
     const startPos = camera.position.clone();
     const startTarget = controls.target.clone();
     const startFov = camera.fov;
-    const duration = 1100;
+    const duration = 900;
     const startTime = performance.now();
     controls.enabled = false;
 
@@ -815,7 +914,7 @@ export default function PlannerCanvas() {
     };
     if (cameraAnimRef.current) cameraAnimRef.current.cancel();
     tick();
-  }, [roomWidth, roomDepth, placedObjects, getObjectY]);
+  }, [roomWidth, roomDepth, placedObjects, getCameraLensPos]);
 
   // ============ Mouse intersection helper ============
   const getFloorIntersection = useCallback((clientX: number, clientY: number) => {
@@ -1117,11 +1216,12 @@ export default function PlannerCanvas() {
     updateSelection();
   }, [selectedObjectId, placedObjects, updateSelection]);
 
-  // ============ Camera frame & Lighting Visualizers ============
+  // ============ Camera frame, Lighting & Measuring Visualizers ============
   useEffect(() => {
     updateCameraFrame();
     updateLightingVisualizers();
-  }, [placedObjects, updateCameraFrame, updateLightingVisualizers]);
+    updateMeasureVisualizer();
+  }, [placedObjects, updateCameraFrame, updateLightingVisualizers, updateMeasureVisualizer, isMeasuring, measureStart, measureEnd]);
 
   // ============ View mode transition ============
   useEffect(() => {
@@ -1311,6 +1411,33 @@ export default function PlannerCanvas() {
     if (!container) return;
 
     const onMouseMove = (e: MouseEvent) => {
+      // Laser Tape Measuring preview
+      if (isMeasuring && measureStart && !measureEnd) {
+        const objGroup = getObjectIntersection(e.clientX, e.clientY);
+        if (objGroup) {
+          const id = objGroup.userData.placedId as string;
+          const obj = placedObjects.find((o) => o.id === id);
+          if (obj) {
+            setHoverMeasurePoint({
+              x: obj.x,
+              y: getObjectY(obj) + 0.3,
+              z: obj.z,
+              name: obj.equipmentId,
+            });
+            return;
+          }
+        }
+        const hit = getFloorIntersection(e.clientX, e.clientY);
+        if (hit) {
+          setHoverMeasurePoint({
+            x: hit.point.x,
+            y: 0,
+            z: hit.point.z,
+          });
+        }
+        return;
+      }
+
       // Ghost tracking
       if (placingEquipmentId && ghostRef.current) {
         // Check if hovering over a surface first
@@ -1398,6 +1525,34 @@ export default function PlannerCanvas() {
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
 
+      // Laser tape measure clicks
+      if (isMeasuring) {
+        let point: { x: number; y: number; z: number; name?: string } | null = null;
+        const objGroup = getObjectIntersection(e.clientX, e.clientY);
+        if (objGroup) {
+          const id = objGroup.userData.placedId as string;
+          const obj = placedObjects.find((o) => o.id === id);
+          if (obj) {
+            point = { x: obj.x, y: getObjectY(obj) + 0.3, z: obj.z, name: obj.equipmentId };
+          }
+        }
+        if (!point) {
+          const hit = getFloorIntersection(e.clientX, e.clientY);
+          if (hit) {
+            point = { x: hit.point.x, y: 0, z: hit.point.z, name: 'Floor' };
+          }
+        }
+
+        if (point) {
+          if (!measureStart || (measureStart && measureEnd)) {
+            setMeasurePoints(point, null);
+          } else {
+            setMeasurePoints(measureStart, point);
+          }
+        }
+        return;
+      }
+
       // Placing mode
       if (placingEquipmentId) {
         // Check if hovering over a surface
@@ -1464,17 +1619,40 @@ export default function PlannerCanvas() {
       container.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [placingEquipmentId, placedObjects, roomWidth, roomDepth, getFloorIntersection, getObjectIntersection, getSurfaceIntersection, placeObject, updateObjectPosition, setSelectedObject]);
+  }, [
+    isMeasuring,
+    measureStart,
+    measureEnd,
+    setMeasurePoints,
+    updateMeasureVisualizer,
+    placingEquipmentId,
+    placedObjects,
+    roomWidth,
+    roomDepth,
+    getFloorIntersection,
+    getObjectIntersection,
+    getSurfaceIntersection,
+    placeObject,
+    updateObjectPosition,
+    setSelectedObject,
+    getObjectY,
+  ]);
 
   // ============ Keyboard shortcuts ============
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
       if (e.key === 'Escape') {
+        if (isMeasuring) {
+          setMeasurePoints(null, null);
+          toggleMeasuring();
+        }
         setPlacingEquipment(null);
         setSelectedObject(null);
       } else if (e.key === 'v' || e.key === 'V') {
         setViewMode(viewMode === 'perspective' ? 'top' : 'perspective');
+      } else if (e.key === 'm' || e.key === 'M') {
+        toggleMeasuring();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedObjectId) {
           usePlannerStore.getState().deleteObject(selectedObjectId);
@@ -1490,7 +1668,7 @@ export default function PlannerCanvas() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedObjectId, viewMode, setPlacingEquipment, setSelectedObject, setViewMode]);
+  }, [selectedObjectId, viewMode, isMeasuring, toggleMeasuring, setMeasurePoints, setPlacingEquipment, setSelectedObject, setViewMode]);
 
   // Compute active camera and background sightline diagnostics for Director POV
   const isCam = (id: string) =>
@@ -1537,47 +1715,6 @@ export default function PlannerCanvas() {
         backgroundSize: '24px 24px, 24px 24px, 120px 120px, 120px 120px',
       }}
     >
-      {/* Floating Time of Day Natural Light Quick-Switch */}
-      <div className="absolute top-3 left-3 z-20 flex items-center gap-1 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[2px_2px_0_#000] text-xs font-mono">
-        <span className="px-1.5 py-0.5 text-[10px] uppercase font-bold text-gray-500">Natural Sun:</span>
-        <button
-          className={`px-2 py-1 font-bold rounded-none transition-colors ${
-            timeOfDay === 'daylight' ? 'bg-[#FFDD00] text-black border border-black' : 'hover:bg-gray-100'
-          }`}
-          onClick={() => setTimeOfDay('daylight')}
-          title="Bright 5600K Clean Daylight with crisp window fill"
-        >
-          ☀️ Daylight
-        </button>
-        <button
-          className={`px-2 py-1 font-bold rounded-none transition-colors ${
-            timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white border border-black' : 'hover:bg-gray-100'
-          }`}
-          onClick={() => setTimeOfDay('golden-hour')}
-          title="Warm 3200K Golden Hour Sunbeam through windows"
-        >
-          🌅 Golden
-        </button>
-        <button
-          className={`px-2 py-1 font-bold rounded-none transition-colors ${
-            timeOfDay === 'overcast' ? 'bg-[#94A3B8] text-white border border-black' : 'hover:bg-gray-100'
-          }`}
-          onClick={() => setTimeOfDay('overcast')}
-          title="Soft 6500K Diffused Overcast Sky"
-        >
-          ☁️ Overcast
-        </button>
-        <button
-          className={`px-2 py-1 font-bold rounded-none transition-colors ${
-            timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400 border border-black' : 'hover:bg-gray-100'
-          }`}
-          onClick={() => setTimeOfDay('night')}
-          title="Moody Night Studio with Cool Rim Moonlight"
-        >
-          🌙 Night
-        </button>
-      </div>
-
       {/* Director POV Framing & Sightline Analyzer Overlay */}
       {viewMode === 'camera-pov' && (
         <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4">
@@ -1727,6 +1864,65 @@ export default function PlannerCanvas() {
                 Exit POV ✕
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Laser Tape Measure Floating HUD */}
+      {isMeasuring && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 bg-zinc-950/95 text-white backdrop-blur-md border-2 border-emerald-400 shadow-[4px_4px_0px_#000] font-mono text-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-bold text-emerald-400 tracking-wider text-[11px]">LASER RULER</span>
+          </div>
+
+          <div className="h-4 w-px bg-white/20" />
+
+          {measureStart && (measureEnd || hoverMeasurePoint) ? (
+            (() => {
+              const p1 = measureStart;
+              const p2 = measureEnd || hoverMeasurePoint!;
+              const dist3D = Math.hypot(p2.x - p1.x, (p2.y ?? 0) - (p1.y ?? 0), p2.z - p1.z);
+              const distFeet = dist3D * 3.28084;
+              const dx = Math.abs(p2.x - p1.x);
+              const dz = Math.abs(p2.z - p1.z);
+              const dy = Math.abs((p2.y ?? 0) - (p1.y ?? 0));
+              return (
+                <div className="flex items-center gap-4">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-zinc-400 text-[10px]">DISTANCE:</span>
+                    <strong className="text-base text-emerald-400 font-black">{dist3D.toFixed(2)} m</strong>
+                    <span className="text-zinc-400 text-[11px]">({distFeet.toFixed(2)} ft)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-zinc-300 bg-white/10 px-2 py-0.5 rounded">
+                    <span>ΔX: {dx.toFixed(2)}m</span>
+                    <span>ΔZ: {dz.toFixed(2)}m</span>
+                    {dy > 0.05 && <span>ΔY: {dy.toFixed(2)}m</span>}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <span className="text-zinc-300">
+              {measureStart ? '🎯 Click 2nd point or object to finish measurement' : '📍 Click any equipment or floor point to start'}
+            </span>
+          )}
+
+          <div className="flex items-center gap-1.5 ml-2">
+            {(measureStart || measureEnd) && (
+              <button
+                className="px-2 py-1 bg-white/15 hover:bg-white/25 text-white font-bold text-[10px] transition-colors"
+                onClick={() => setMeasurePoints(null, null)}
+              >
+                Clear
+              </button>
+            )}
+            <button
+              className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] transition-colors"
+              onClick={() => toggleMeasuring()}
+            >
+              Done (M)
+            </button>
           </div>
         </div>
       )}
