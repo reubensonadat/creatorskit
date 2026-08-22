@@ -32,7 +32,19 @@ export interface RenderOptions {
   animationMode?: 'match-cut' | 'animated-highlight';
   highlightProgress?: number; // 0.0 to 1.0
   highlightDirection?: 'ltr' | 'rtl'; // Left-to-Right or Right-to-Left
+  highlightSector?: 'top-masthead' | 'center-headline' | 'body-paragraph';
+  fontFamily?: string;
+  fontCycleList?: string[]; // 5 fonts for rapid match cuts
 }
+
+export const AVAILABLE_FONTS = [
+  { id: 'serif', label: 'Vintage Serif', value: '"Playfair Display", Georgia, serif' },
+  { id: 'typewriter', label: 'Courier Typewriter', value: '"Courier New", Courier, monospace' },
+  { id: 'tabloid', label: 'Bold Tabloid Gothic', value: 'Impact, "Arial Black", sans-serif' },
+  { id: 'editorial', label: 'Classic Times', value: '"Times New Roman", Times, serif' },
+  { id: 'brutalist', label: 'Brutalist Sans', value: '"Helvetica Neue", Arial, sans-serif' },
+  { id: 'georgia', label: 'Antique Book', value: 'Georgia, serif' },
+];
 
 export const PAPER_THEMES = {
   vintage: {
@@ -350,10 +362,28 @@ export function renderNewspaperMatchCut(
   const pageWidth = Math.min(width * 0.92, 1040);
   const pageLeftX = (width - pageWidth) / 2;
 
+  // Resolve Font Family
+  const DEFAULT_CYCLE = [
+    '"Playfair Display", Georgia, serif',
+    '"Courier New", Courier, monospace',
+    'Impact, "Arial Black", sans-serif',
+    '"Times New Roman", Times, serif',
+    '"Helvetica Neue", Arial, sans-serif',
+  ];
+
+  let chosenFont = '"Playfair Display", Georgia, serif';
+  if (options.fontCycleList && options.fontCycleList.length > 0) {
+    chosenFont = options.fontCycleList[frameIndex % options.fontCycleList.length];
+  } else if (options.fontFamily === 'cycle-dynamic') {
+    chosenFont = DEFAULT_CYCLE[frameIndex % DEFAULT_CYCLE.length];
+  } else if (options.fontFamily) {
+    chosenFont = options.fontFamily;
+  }
+
   // Headline Typography (where anchor word lives)
   const headlineFontSize = Math.max(26, Math.round(width * 0.038));
   const headlineLineHeight = headlineFontSize * 1.35;
-  const headlineFont = `bold ${headlineFontSize}px "Playfair Display", "Times New Roman", Georgia, serif`;
+  const headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
 
   // Body Copy Typography (for background columns)
   const bodyFontSize = Math.max(12, Math.round(width * 0.0165));
@@ -390,15 +420,21 @@ export function renderNewspaperMatchCut(
   const fullHeadlineW = prefixW + matchW + suffixW;
 
   // Calculate Anchor Center in Document Space
-  // The anchor center X relative to headline start
   const anchorCenterFromHeadlineStart = prefixW + matchW / 2;
-
-  // Position headline in document space
   const docHeadlineX = pageLeftX + (pageWidth - fullHeadlineW) / 2;
   const docHeadlineY = 520; // fixed Y line in document space
 
-  const docAnchorCenterX = docHeadlineX + anchorCenterFromHeadlineStart;
-  const docAnchorCenterY = docHeadlineY;
+  let docAnchorCenterX = docHeadlineX + anchorCenterFromHeadlineStart;
+  let docAnchorCenterY = docHeadlineY;
+
+  const sector = options.highlightSector || 'center-headline';
+  if (sector === 'top-masthead') {
+    docAnchorCenterX = pageLeftX + pageWidth / 2;
+    docAnchorCenterY = docHeadlineY - 75;
+  } else if (sector === 'body-paragraph') {
+    docAnchorCenterX = pageLeftX + pageWidth * 0.28;
+    docAnchorCenterY = docHeadlineY + 140;
+  }
 
   // ============================================================
   // CAMERA TRACKING TRANSFORM
@@ -422,6 +458,10 @@ export function renderNewspaperMatchCut(
     ctx.translate(-docAnchorCenterX, -docAnchorCenterY);
   }
 
+  const bodyParas = (cut.bodyParagraphs && cut.bodyParagraphs.length > 0)
+    ? cut.bodyParagraphs
+    : BACKGROUND_BODY_PARAGRAPHS;
+
   // ------------------------------------------------------------
   // SECTION A: Dense Top Columns (Stage text above the headline)
   // ------------------------------------------------------------
@@ -433,7 +473,7 @@ export function renderNewspaperMatchCut(
     topColumnsY,
     pageWidth,
     topColumnsBottomY - topColumnsY,
-    BACKGROUND_BODY_PARAGRAPHS.slice(0, 2),
+    bodyParas.slice(0, 2),
     bodyFont,
     bodyFontSize,
     bodyLineHeight,
@@ -543,18 +583,19 @@ export function renderNewspaperMatchCut(
   // ------------------------------------------------------------
   // SECTION E: Dense Bottom Columns (Stage text below the headline)
   // ------------------------------------------------------------
-  const bottomColumnsH = 750;
+  const bottomColumnsH = 1600;
   drawDenseColumns(
     ctx,
     pageLeftX,
-    afterHeadlineY + 6,
+    afterHeadlineY + 8,
     pageWidth,
     bottomColumnsH,
-    BACKGROUND_BODY_PARAGRAPHS.slice(1, 4),
+    bodyParas,
     bodyFont,
     bodyFontSize,
     bodyLineHeight,
-    theme
+    theme,
+    3
   );
 
   ctx.restore(); // Restore camera tracking transform
@@ -567,7 +608,7 @@ export function renderNewspaperMatchCut(
     const blurCtx = blurCanvas.getContext('2d')!;
     blurCtx.clearRect(0, 0, width, height);
 
-    const blurRadius = Math.max(3, Math.round(options.dofIntensity * 6));
+    const blurRadius = Math.max(3, Math.round(options.dofIntensity * 14));
     try {
       blurCtx.filter = `blur(${blurRadius}px)`;
     } catch {}
@@ -580,35 +621,35 @@ export function renderNewspaperMatchCut(
     targetCanvasCtx.clearRect(0, 0, width, height);
     targetCanvasCtx.drawImage(blurCanvas, 0, 0);
 
-    // Create clear center focal mask
+    // Create clear center circular focal mask (Optical Circular Lens Blur)
     const mask = getBufferCanvas(width, height, 'mask');
     const mCtx = mask.getContext('2d')!;
     mCtx.clearRect(0, 0, width, height);
 
-    const focusBandHalf = height * 0.24; // wide crystal-clear band around anchor
-    const featherZone = height * 0.18;
+    const innerRadius = Math.min(width, height) * 0.18; // crystal-clear circular focal core
+    const outerRadius = Math.max(width, height) * 0.55; // smooth circular falloff
 
-    const grad = mCtx.createLinearGradient(0, 0, 0, height);
-    const topFade = Math.max(0, (targetCenterY - focusBandHalf - featherZone) / height);
-    const topFocus = Math.max(0, (targetCenterY - focusBandHalf) / height);
-    const btmFocus = Math.min(1, (targetCenterY + focusBandHalf) / height);
-    const btmFade = Math.min(1, (targetCenterY + focusBandHalf + featherZone) / height);
+    const radialGrad = mCtx.createRadialGradient(
+      targetCenterX,
+      targetCenterY,
+      innerRadius,
+      targetCenterX,
+      targetCenterY,
+      outerRadius
+    );
 
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(topFade, 'rgba(0,0,0,0)');
-    grad.addColorStop(topFocus, 'rgba(0,0,0,1)');
-    grad.addColorStop(btmFocus, 'rgba(0,0,0,1)');
-    grad.addColorStop(btmFade, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    radialGrad.addColorStop(0, 'rgba(0,0,0,1)');
+    radialGrad.addColorStop(0.35, 'rgba(0,0,0,1)');
+    radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
 
-    mCtx.fillStyle = grad;
+    mCtx.fillStyle = radialGrad;
     mCtx.fillRect(0, 0, width, height);
 
     mCtx.globalCompositeOperation = 'source-in';
     mCtx.drawImage(renderBuffer, 0, 0);
     mCtx.globalCompositeOperation = 'source-over';
 
-    // Blit crisp center band
+    // Blit crisp circular center band over blurred stage
     targetCanvasCtx.drawImage(mask, 0, 0);
   }
 
@@ -641,7 +682,7 @@ export function renderNewspaperMatchCut(
 }
 
 /**
- * Draws dense multi-column newspaper paragraphs
+ * Draws dense multi-column newspaper paragraphs with guaranteed full coverage
  */
 function drawDenseColumns(
   ctx: CanvasRenderingContext2D,
@@ -653,68 +694,80 @@ function drawDenseColumns(
   font: string,
   fontSize: number,
   lineHeight: number,
-  theme: typeof PAPER_THEMES['vintage']
+  theme: typeof PAPER_THEMES['vintage'],
+  numColumns = 3
 ) {
   ctx.save();
   ctx.font = font;
   ctx.fillStyle = theme.ink;
   ctx.textBaseline = 'top';
 
-  const numCols = 2;
-  const gutter = 28;
+  const numCols = numColumns;
+  const gutter = 22;
   const colWidth = (totalWidth - gutter * (numCols - 1)) / numCols;
+
+  // Flatten and expand text pool to ensure columns never run out of copy
+  const expandedText = [...paragraphs, ...BACKGROUND_BODY_PARAGRAPHS, ...paragraphs];
+  const allWords = expandedText.join(' ').split(/\s+/).filter(Boolean);
 
   let colIdx = 0;
   let curY = y;
+  let wordIdx = 0;
 
-  for (let p = 0; p < paragraphs.length; p++) {
-    const words = paragraphs[p].split(' ');
+  while (colIdx < numCols && wordIdx < allWords.length) {
     let currentLine = '';
 
-    for (let w = 0; w < words.length; w++) {
-      if (curY + lineHeight > y + maxHeight) {
-        colIdx++;
-        if (colIdx >= numCols) break;
-        curY = y;
-      }
-
-      const colX = x + colIdx * (colWidth + gutter);
-      const testLine = currentLine ? `${currentLine} ${words[w]}` : words[w];
+    while (wordIdx < allWords.length) {
+      const nextWord = allWords[wordIdx];
+      const testLine = currentLine ? `${currentLine} ${nextWord}` : nextWord;
       const testWidth = ctx.measureText(testLine).width;
 
       if (testWidth > colWidth && currentLine) {
+        // Draw line in current column
+        const colX = x + colIdx * (colWidth + gutter);
         ctx.fillText(currentLine, colX, curY);
-        currentLine = words[w];
         curY += lineHeight;
+        currentLine = '';
+
+        // If column bottom reached, step to next column
+        if (curY + lineHeight > y + maxHeight) {
+          colIdx++;
+          curY = y;
+          break;
+        }
       } else {
         currentLine = testLine;
+        wordIdx++;
       }
     }
 
-    if (colIdx >= numCols) break;
-
-    if (currentLine && curY + lineHeight <= y + maxHeight) {
+    // Flush trailing line if any
+    if (currentLine && colIdx < numCols && curY + lineHeight <= y + maxHeight) {
       const colX = x + colIdx * (colWidth + gutter);
       ctx.fillText(currentLine, colX, curY);
-      curY += lineHeight * 1.35;
+      curY += lineHeight;
+    }
+
+    // Loop words if needed to guarantee 100% dense column filling
+    if (colIdx < numCols && wordIdx >= allWords.length) {
+      wordIdx = 0;
     }
   }
 
-  // Thin vertical column divider rule
+  // Draw thin vertical column divider rules
   ctx.strokeStyle = theme.ruleColor;
-  ctx.lineWidth = 0.5;
-  const dividerX = x + colWidth + gutter / 2;
-  ctx.beginPath();
-  ctx.moveTo(dividerX, y);
-  ctx.lineTo(dividerX, y + maxHeight);
-  ctx.stroke();
+  ctx.lineWidth = 0.6;
+  for (let c = 1; c < numCols; c++) {
+    const dividerX = x + c * (colWidth + gutter) - gutter / 2;
+    ctx.beginPath();
+    ctx.moveTo(dividerX, y);
+    ctx.lineTo(dividerX, y + maxHeight);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
 
-/**
- * Draws the vivid marker highlighter, underline, box, or tape
- */
 /**
  * Draws the vivid marker highlighter, underline, box, or tape with optional animated progressive sweep
  */

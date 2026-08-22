@@ -17,6 +17,12 @@ import {
   Crosshair,
   RefreshCw,
   Sparkles,
+  Shuffle,
+  FileText,
+  Sliders,
+  MoveVertical,
+  Type,
+  Disc,
 } from 'lucide-react';
 import {
   RenderOptions,
@@ -26,8 +32,9 @@ import {
   playCutSound,
   NewspaperCut,
 } from '../match-cut/match-cut-engine';
-import { PRESET_TOPICS, generateCutsForPhrase } from '../match-cut/presets';
+import { PRESET_TOPICS, generateCutsForPhrase, BODY_CORPUS, MASTHEADS, SUBHEADS, LOCATIONS, BYLINES } from '../match-cut/presets';
 import { SimpleGifEncoder } from '../match-cut/gif-encoder';
+import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 
 const ASPECT_RATIOS = [
   { id: '9:16' as const, label: '9:16 · Story / Reels / TikTok', width: 1080, height: 1920, aspect: '9/16' },
@@ -54,6 +61,24 @@ export default function TextHighlighterPage() {
   const [cuts, setCuts] = useState<NewspaperCut[]>(PRESET_TOPICS[0].cuts);
   const [currentCutIndex, setCurrentCutIndex] = useState(0);
 
+  // Document Sector Position
+  const [highlightSector, setHighlightSector] = useState<'top-masthead' | 'center-headline' | 'body-paragraph'>('center-headline');
+
+  // Typography (52 Google Fonts)
+  const [fontFamily, setFontFamily] = useState<string>('"Playfair Display", Georgia, serif');
+  const [selectedFontCategory, setSelectedFontCategory] = useState<string>('All');
+
+  // Custom Document Copy State (for active cut)
+  const currentCut = cuts[currentCutIndex] || cuts[0];
+  const [customHeadline, setCustomHeadline] = useState(currentCut?.headline || '');
+  const [customMasthead, setCustomMasthead] = useState(currentCut?.masthead || 'THE DAILY CHRONICLE');
+  const [customSubhead, setCustomSubhead] = useState(currentCut?.subhead || '');
+  const [customByline, setCustomByline] = useState(currentCut?.byline || '');
+  const [customBodyText, setCustomBodyText] = useState((currentCut?.bodyParagraphs || BODY_CORPUS).join('\n\n'));
+
+  // Sidebar Tab
+  const [sidebarTab, setSidebarTab] = useState<'style' | 'text'>('style');
+
   // Animation & Sweep Transport
   const [isPlaying, setIsPlaying] = useState(true);
   const [highlightDuration, setHighlightDuration] = useState(2.0); // 2.0s smooth animation
@@ -68,8 +93,8 @@ export default function TextHighlighterPage() {
   const [highlightStyle, setHighlightStyle] = useState<'marker' | 'underline' | 'double-underline' | 'box' | 'circle' | 'tape'>('marker');
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
   const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('vintage');
-  const [depthOfField, setDepthOfField] = useState(false);
-  const [dofIntensity, setDofIntensity] = useState(0.5);
+  const [depthOfField, setDepthOfField] = useState(true); // Circular lens blur
+  const [dofIntensity, setDofIntensity] = useState(0.75); // Blur strength
   const [filmGrain, setFilmGrain] = useState(true);
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
@@ -86,6 +111,67 @@ export default function TextHighlighterPage() {
 
   const selectedAspect = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
 
+  // Sync inputs when cut changes
+  useEffect(() => {
+    if (currentCut) {
+      setCustomHeadline(currentCut.headline || '');
+      setCustomMasthead(currentCut.masthead || 'THE DAILY CHRONICLE');
+      setCustomSubhead(currentCut.subhead || '');
+      setCustomByline(currentCut.byline || '');
+      setCustomBodyText((currentCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
+    }
+  }, [currentCutIndex, cuts]);
+
+  // Update active cut with user edits
+  const handleApplyCustomText = () => {
+    const paras = customBodyText
+      .split('\n\n')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    const updated = [...cuts];
+    updated[currentCutIndex] = {
+      ...updated[currentCutIndex],
+      headline: customHeadline,
+      masthead: customMasthead,
+      subhead: customSubhead,
+      byline: customByline,
+      bodyParagraphs: paras.length > 0 ? paras : BODY_CORPUS,
+    };
+    setCuts(updated);
+    handleReplay();
+  };
+
+  // Shuffle & Generate Brand New Random Story Copy
+  const handleShuffleStory = () => {
+    const randMasthead = MASTHEADS[Math.floor(Math.random() * MASTHEADS.length)];
+    const randSubhead = SUBHEADS[Math.floor(Math.random() * SUBHEADS.length)];
+    const randLocation = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+    const randByline = BYLINES[Math.floor(Math.random() * BYLINES.length)];
+
+    const shuffledBody = [
+      BODY_CORPUS[Math.floor(Math.random() * BODY_CORPUS.length)],
+      BODY_CORPUS[Math.floor(Math.random() * BODY_CORPUS.length)],
+      BODY_CORPUS[Math.floor(Math.random() * BODY_CORPUS.length)],
+    ];
+
+    setCustomMasthead(randMasthead);
+    setCustomSubhead(randSubhead);
+    setCustomByline(`${randLocation} — ${randByline}`);
+    setCustomBodyText(shuffledBody.join('\n\n'));
+
+    const updated = [...cuts];
+    updated[currentCutIndex] = {
+      ...updated[currentCutIndex],
+      masthead: randMasthead,
+      subhead: randSubhead,
+      byline: `${randLocation} — ${randByline}`,
+      bodyParagraphs: shuffledBody,
+    };
+    setCuts(updated);
+    handleReplay();
+  };
+
   const renderOptions: RenderOptions = {
     anchorPhrase,
     highlightColor,
@@ -101,6 +187,8 @@ export default function TextHighlighterPage() {
     animationMode: 'animated-highlight',
     highlightProgress,
     highlightDirection,
+    highlightSector,
+    fontFamily,
   };
 
   // Redraw Canvas Frame
@@ -422,6 +510,12 @@ export default function TextHighlighterPage() {
     }
   };
 
+  // Filter Google Fonts by category
+  const filteredFonts =
+    selectedFontCategory === 'All'
+      ? GOOGLE_FONTS_LIST
+      : GOOGLE_FONTS_LIST.filter((f) => f.category === selectedFontCategory);
+
   return (
     <div style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000', padding: '24px 20px 80px' }}>
       {/* Top Breadcrumb & Title Bar */}
@@ -502,7 +596,7 @@ export default function TextHighlighterPage() {
               margin: 0,
             }}
           >
-            Cinematic slow-motion marker, circle, underline, and box highlighter animations. Export smooth 1080p video clips with authentic felt-tip drawing sounds.
+            Cinematic slow-motion marker, circle, underline, and box highlighter animations. Choose from 52 Google Fonts and customize circular lens blur.
           </p>
         </div>
       </div>
@@ -513,7 +607,7 @@ export default function TextHighlighterPage() {
           maxWidth: 1280,
           margin: '0 auto',
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.25fr) minmax(340px, 420px)',
+          gridTemplateColumns: 'minmax(0, 1.22fr) minmax(360px, 440px)',
           gap: 20,
           alignItems: 'start',
         }}
@@ -815,27 +909,47 @@ export default function TextHighlighterPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="brutalist-button"
                   onClick={handleDownloadSingleFrame}
-                  style={{ fontSize: '0.7rem', padding: '5px 10px', borderRadius: 4 }}
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 900,
+                    padding: '8px 14px',
+                    borderRadius: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#ffffff',
+                    boxShadow: '3px 3px 0 #000',
+                  }}
                   title="Download current single still image"
                 >
-                  <Download size={13} style={{ marginRight: 4 }} /> Still PNG
+                  <Download size={14} /> Still PNG
                 </button>
                 <button
                   className="brutalist-button"
                   onClick={handleCopySingleFrame}
-                  style={{ fontSize: '0.7rem', padding: '5px 10px', borderRadius: 4 }}
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 900,
+                    padding: '8px 14px',
+                    borderRadius: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: copiedNotification ? '#dcfce7' : '#ffffff',
+                    boxShadow: '3px 3px 0 #000',
+                  }}
                   title="Copy current frame to clipboard"
                 >
                   {copiedNotification ? (
-                    <Check size={13} style={{ marginRight: 4, color: '#22c55e' }} />
+                    <Check size={14} style={{ color: '#15803d' }} />
                   ) : (
-                    <Copy size={13} style={{ marginRight: 4 }} />
+                    <Copy size={14} />
                   )}
-                  {copiedNotification ? 'Copied!' : 'Copy'}
+                  {copiedNotification ? 'Copied!' : 'Copy Frame'}
                 </button>
               </div>
             </div>
@@ -869,8 +983,8 @@ export default function TextHighlighterPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: 10,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: 12,
             }}
           >
             <button
@@ -878,16 +992,17 @@ export default function TextHighlighterPage() {
               disabled={isExporting}
               className="brutalist-button brutalist-button-primary"
               style={{
-                padding: '10px 14px',
-                fontSize: '0.76rem',
+                padding: '12px 18px',
+                fontSize: '0.82rem',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 8,
+                boxShadow: '4px 4px 0 #000',
               }}
             >
-              <Film size={15} />
+              <Film size={17} />
               Export MP4 Video
             </button>
 
@@ -896,17 +1011,19 @@ export default function TextHighlighterPage() {
               disabled={isExporting}
               className="brutalist-button"
               style={{
-                padding: '10px 14px',
-                fontSize: '0.76rem',
+                padding: '12px 18px',
+                fontSize: '0.82rem',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 8,
+                boxShadow: '4px 4px 0 #000',
+                background: '#ffffff',
               }}
             >
-              <ImageIcon size={15} />
-              Looping GIF
+              <ImageIcon size={17} />
+              Looping Animated GIF
             </button>
           </div>
         </div>
@@ -979,15 +1096,22 @@ export default function TextHighlighterPage() {
               />
               <button
                 onClick={handleAutoGenerate}
-                className="brutalist-button"
+                className="brutalist-button brutalist-button-primary"
                 style={{
-                  fontSize: '0.74rem',
-                  padding: '8px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 900,
+                  padding: '10px 18px',
                   borderRadius: 4,
                   whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '3px 3px 0 #000',
+                  textTransform: 'uppercase',
                 }}
               >
-                Apply
+                <Sparkles size={15} />
+                Generate
               </button>
             </div>
 
@@ -996,30 +1120,35 @@ export default function TextHighlighterPage() {
               <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
                 Tool Presets:
               </span>
-              {PRESET_TOPICS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleLoadPreset(p.id)}
-                  style={{
-                    padding: '3px 8px',
-                    border: '1.5px solid #000',
-                    borderRadius: 4,
-                    background: anchorPhrase.toLowerCase() === p.anchor.toLowerCase() ? '#000' : '#fff',
-                    color: anchorPhrase.toLowerCase() === p.anchor.toLowerCase() ? '#fff' : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.65rem',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
+              {PRESET_TOPICS.map((p) => {
+                const isActive = anchorPhrase.toLowerCase() === p.anchor.toLowerCase();
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handleLoadPreset(p.id)}
+                    style={{
+                      padding: '4px 10px',
+                      border: '1.5px solid #000',
+                      borderRadius: 4,
+                      background: isActive ? '#FFE500' : '#ffffff',
+                      color: '#000000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.66rem',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                      boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Style Controls Card */}
+          {/* 52 Google Fonts Typography Selector Card */}
           <div
             className="brutalist-card"
             style={{
@@ -1027,11 +1156,139 @@ export default function TextHighlighterPage() {
               background: '#ffffff',
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 10,
               borderRadius: 4,
             }}
           >
-            {/* Highlighter Style Mode */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label
+                style={{
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  color: '#000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Type size={14} />
+                Font Selection (52 Google Fonts)
+              </label>
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  color: '#000',
+                  background: '#FFE500',
+                  padding: '2px 6px',
+                  border: '1px solid #000',
+                  borderRadius: 4,
+                }}
+              >
+                {GOOGLE_FONTS_LIST.find((f) => f.fontFamily === fontFamily)?.name || 'Custom'}
+              </span>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+              {['All', 'Serif', 'Typewriter', 'Tabloid', 'Sans', 'Display'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedFontCategory(cat)}
+                  style={{
+                    flex: 1,
+                    padding: '4px 2px',
+                    border: 'none',
+                    borderRight: cat !== 'Display' ? '1px solid #000' : 'none',
+                    background: selectedFontCategory === cat ? '#000' : '#fff',
+                    color: selectedFontCategory === cat ? '#fff' : '#000',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.58rem',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Main Font Select Dropdown */}
+            <select
+              value={fontFamily}
+              onChange={(e) => setFontFamily(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                border: '2px solid #000',
+                borderRadius: 4,
+                background: '#fff',
+                color: '#000',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              {filteredFonts.map((f) => (
+                <option key={f.id} value={f.fontFamily}>
+                  {f.name} ({f.category})
+                </option>
+              ))}
+            </select>
+
+            {/* Quick Popular Font Pills */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+              {[
+                { label: 'Playfair Serif', font: '"Playfair Display", Georgia, serif' },
+                { label: 'Special Elite', font: '"Special Elite", monospace' },
+                { label: 'Bebas Tabloid', font: '"Bebas Neue", Impact, sans-serif' },
+                { label: 'Cinzel Roman', font: '"Cinzel", "Times New Roman", serif' },
+                { label: 'Perm Marker', font: '"Permanent Marker", cursive' },
+                { label: 'Inter Sans', font: '"Inter", sans-serif' },
+              ].map((qf) => (
+                <button
+                  key={qf.label}
+                  onClick={() => setFontFamily(qf.font)}
+                  style={{
+                    padding: '4px 4px',
+                    border: '1.5px solid #000',
+                    borderRadius: 4,
+                    background: fontFamily === qf.font ? '#000' : '#fff',
+                    color: fontFamily === qf.font ? '#fff' : '#000',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.62rem',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {qf.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Document Sector & Circular Lens Blur Controls Card */}
+          <div
+            className="brutalist-card"
+            style={{
+              padding: 14,
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              borderRadius: 4,
+            }}
+          >
+            {/* Sector Placement */}
             <div>
               <label
                 style={{
@@ -1040,36 +1297,33 @@ export default function TextHighlighterPage() {
                   fontWeight: 900,
                   textTransform: 'uppercase',
                   color: '#000',
-                  display: 'block',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                   marginBottom: 6,
                 }}
               >
-                Highlighting Style
+                <MoveVertical size={13} />
+                Document Sector Position
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                 {[
-                  { id: 'marker', label: 'Marker Pen' },
-                  { id: 'circle', label: 'Hand Circle' },
-                  { id: 'underline', label: 'Underline' },
-                  { id: 'double-underline', label: 'Double Line' },
-                  { id: 'box', label: 'Block Box' },
-                  { id: 'tape', label: 'Washi Tape' },
+                  { id: 'top-masthead' as const, label: 'Top (Header)' },
+                  { id: 'center-headline' as const, label: 'Center (Main)' },
+                  { id: 'body-paragraph' as const, label: 'Bottom (Body)' },
                 ].map((s) => (
                   <button
                     key={s.id}
-                    onClick={() => {
-                      setHighlightStyle(s.id as any);
-                      handleReplay();
-                    }}
+                    onClick={() => setHighlightSector(s.id)}
                     style={{
-                      padding: '8px 4px',
+                      padding: '6px 4px',
                       border: '2px solid #000',
                       borderRadius: 4,
-                      background: highlightStyle === s.id ? '#000' : '#fff',
-                      color: highlightStyle === s.id ? '#fff' : '#000',
+                      background: highlightSector === s.id ? '#000' : '#fff',
+                      color: highlightSector === s.id ? '#fff' : '#000',
                       fontFamily: 'monospace',
                       fontWeight: 900,
-                      fontSize: '0.68rem',
+                      fontSize: '0.65rem',
                       cursor: 'pointer',
                       textTransform: 'uppercase',
                     }}
@@ -1080,78 +1334,346 @@ export default function TextHighlighterPage() {
               </div>
             </div>
 
-            {/* Ink Color */}
-            <div>
-              <label
-                style={{
-                  fontSize: '0.68rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  color: '#000',
-                  display: 'block',
-                  marginBottom: 6,
-                }}
-              >
-                Highlighter Color
-              </label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {HIGHLIGHT_COLORS.map((c) => (
-                  <button
-                    key={c.hex}
-                    onClick={() => setHighlightColor(c.hex)}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      background: c.hex,
-                      border: highlightColor === c.hex ? '3px solid #000' : '1.5px solid #000',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                    title={c.name}
+            {/* Circular Optical Lens Blur */}
+            <div
+              style={{
+                padding: 10,
+                border: '2px solid #000',
+                borderRadius: 4,
+                background: depthOfField ? '#fef08a' : '#f4f4f5',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={depthOfField}
+                    onChange={(e) => setDepthOfField(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
                   />
-                ))}
+                  <Disc size={13} />
+                  Circular Optical Lens Blur
+                </label>
+                <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                  {depthOfField ? `${Math.round(dofIntensity * 100)}%` : 'OFF'}
+                </span>
               </div>
-            </div>
 
-            {/* Paper Theme */}
-            <div>
-              <label
-                style={{
-                  fontSize: '0.68rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  color: '#000',
-                  display: 'block',
-                  marginBottom: 6,
-                }}
-              >
-                Paper Archetype
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {Object.values(PAPER_THEMES).map((theme) => (
-                  <button
-                    key={theme.id}
-                    onClick={() => setPaperTheme(theme.id as any)}
-                    style={{
-                      padding: '6px 4px',
-                      border: '2px solid #000',
-                      borderRadius: 4,
-                      background: paperTheme === theme.id ? '#000' : theme.bg,
-                      color: paperTheme === theme.id ? '#fff' : theme.ink,
-                      fontFamily: 'monospace',
-                      fontWeight: 900,
-                      fontSize: '0.65rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {theme.label.split(' ')[0]}
-                  </button>
-                ))}
-              </div>
+              {depthOfField && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                    SOFT
+                  </span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={dofIntensity}
+                    onChange={(e) => setDofIntensity(parseFloat(e.target.value))}
+                    style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                    HEAVY
+                  </span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Sidebar Tabs: Style vs Document Text */}
+          <div style={{ display: 'flex', border: '2px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+            <button
+              onClick={() => setSidebarTab('style')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                border: 'none',
+                borderRight: '2px solid #000',
+                background: sidebarTab === 'style' ? '#000' : '#fff',
+                color: sidebarTab === 'style' ? '#fff' : '#000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <Sliders size={13} />
+              HIGHLIGHT STYLE & PAPER
+            </button>
+            <button
+              onClick={() => setSidebarTab('text')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                border: 'none',
+                background: sidebarTab === 'text' ? '#000' : '#fff',
+                color: sidebarTab === 'text' ? '#fff' : '#000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <FileText size={13} />
+              EDIT STORY TEXT
+            </button>
+          </div>
+
+          {sidebarTab === 'style' ? (
+            /* Style Controls Card */
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 14,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+                borderRadius: 4,
+              }}
+            >
+              {/* Highlighter Style Mode */}
+              <div>
+                <label
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    display: 'block',
+                    marginBottom: 6,
+                  }}
+                >
+                  Highlighting Style
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {[
+                    { id: 'marker', label: 'Marker Pen' },
+                    { id: 'circle', label: 'Hand Circle' },
+                    { id: 'underline', label: 'Underline' },
+                    { id: 'double-underline', label: 'Double Line' },
+                    { id: 'box', label: 'Block Box' },
+                    { id: 'tape', label: 'Washi Tape' },
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setHighlightStyle(s.id as any);
+                        handleReplay();
+                      }}
+                      style={{
+                        padding: '8px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        background: highlightStyle === s.id ? '#000' : '#fff',
+                        color: highlightStyle === s.id ? '#fff' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.68rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ink Color */}
+              <div>
+                <label
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    display: 'block',
+                    marginBottom: 6,
+                  }}
+                >
+                  Highlighter Color
+                </label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {HIGHLIGHT_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      onClick={() => setHighlightColor(c.hex)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        background: c.hex,
+                        border: highlightColor === c.hex ? '3px solid #000' : '1.5px solid #000',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Paper Theme */}
+              <div>
+                <label
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    display: 'block',
+                    marginBottom: 6,
+                  }}
+                >
+                  Paper Archetype
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {Object.values(PAPER_THEMES).map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => setPaperTheme(theme.id as any)}
+                      style={{
+                        padding: '6px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        background: paperTheme === theme.id ? '#000' : theme.bg,
+                        color: paperTheme === theme.id ? '#fff' : theme.ink,
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.65rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {theme.label.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Custom Story Text Editor Card */
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 14,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                borderRadius: 4,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
+                  Document Copy Editor
+                </span>
+                <button
+                  onClick={handleShuffleStory}
+                  className="brutalist-button"
+                  style={{ padding: '4px 8px', fontSize: '0.66rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
+                  title="Generate a brand new random story"
+                >
+                  <Shuffle size={12} />
+                  Shuffle Story
+                </button>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                  Masthead Publication Title
+                </label>
+                <input
+                  type="text"
+                  value={customMasthead}
+                  onChange={(e) => setCustomMasthead(e.target.value)}
+                  style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                  Main Headline / Sentence (with anchor)
+                </label>
+                <input
+                  type="text"
+                  value={customHeadline}
+                  onChange={(e) => setCustomHeadline(e.target.value)}
+                  style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                  Subheading
+                </label>
+                <input
+                  type="text"
+                  value={customSubhead}
+                  onChange={(e) => setCustomSubhead(e.target.value)}
+                  style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, fontSize: '0.78rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                  Byline / Dateline
+                </label>
+                <input
+                  type="text"
+                  value={customByline}
+                  onChange={(e) => setCustomByline(e.target.value)}
+                  style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, fontSize: '0.78rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                  Surrounding Article Paragraphs (Separate with double enter)
+                </label>
+                <textarea
+                  rows={5}
+                  value={customBodyText}
+                  onChange={(e) => setCustomBodyText(e.target.value)}
+                  style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, fontSize: '0.74rem', lineHeight: 1.4, resize: 'vertical' }}
+                />
+              </div>
+
+              <button
+                onClick={handleApplyCustomText}
+                className="brutalist-button brutalist-button-primary"
+                style={{ padding: '8px', fontSize: '0.74rem', borderRadius: 4, width: '100%' }}
+              >
+                Apply Text to Document
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

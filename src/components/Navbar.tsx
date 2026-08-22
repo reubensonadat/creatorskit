@@ -8,8 +8,12 @@ import { ChevronDown, LayoutGrid } from "lucide-react";
 const tools = [
   { label: "Text Behind Image", href: "/text-behind", hint: "AI LAYERING" },
   { label: "Text Match CUT", href: "/match-cut", hint: "WORD ANCHOR" },
-  { label: "Auto-Captions", href: "/auto-captions", hint: "WHISPER AI" },
+  { label: "Text Highlighter", href: "/text-highlighter", hint: "ANIMATED SWEEP" },
+  { label: "Production Sync Slate", href: "/sync-slate", hint: "A/V CLAPPER" },
+  { label: "Exposure & False Color", href: "/exposure-monitor", hint: "SCOPES & IRE" },
   { label: "Studio Teleprompter", href: "/teleprompter", hint: "SPEECH LAB" },
+  { label: "Creator Space Planner", href: "/space-planner", hint: "PLAN THE SHOT" },
+  { label: "Auto-Captions", href: "/auto-captions", hint: "WHISPER AI" },
   { label: "Carousel Slicer", href: "/carousel-slicer", hint: "SPLITS" },
   { label: "Quote Card Maker", href: "/quote-card", hint: "POST GRAPHICS" },
   { label: "Platform Resizer", href: "/resizer", hint: "SIZES" },
@@ -18,7 +22,6 @@ const tools = [
   { label: "Watermark Batch", href: "/watermark", hint: "BATCH ZIP" },
   { label: "Background Replace", href: "/background-replace", hint: "AI REMOVE" },
   { label: "Silence Trimmer", href: "/silence-trimmer", hint: "AUDIO CUT" },
-  { label: "Creator Space Planner", href: "/space-planner", hint: "PLAN THE SHOT" },
 ];
 
 export default function Navbar() {

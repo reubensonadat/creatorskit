@@ -34,6 +34,7 @@ import {
 } from './match-cut-engine';
 import { PRESET_TOPICS, generateCutsForPhrase, MASTHEADS, LOCATIONS, BYLINES } from './presets';
 import { SimpleGifEncoder } from './gif-encoder';
+import { GOOGLE_FONTS_LIST } from './google-fonts';
 
 const ASPECT_RATIOS = [
   { id: '9:16' as const, label: '9:16 · Story / Reels / TikTok', width: 1080, height: 1920, aspect: '9/16' },
@@ -60,11 +61,11 @@ export default function TextMatchCutStudioPage() {
   const [cuts, setCuts] = useState<NewspaperCut[]>(PRESET_TOPICS[0].cuts);
   const [currentCutIndex, setCurrentCutIndex] = useState(0);
 
-  // Playback & Animation Transport
+  // Playback & Sound Engine State
   const [isPlaying, setIsPlaying] = useState(true);
-  const [cutsPerSecond, setCutsPerSecond] = useState(10.0); // 10 cuts/sec default high-energy speed
+  const [cutsPerSecond, setCutsPerSecond] = useState(10); // Default 10 cuts/sec
   const [soundEffect, setSoundEffect] = useState<'shutter' | 'typewriter' | 'motor' | 'paper' | 'mute'>('shutter');
-  const [soundVolume, setSoundVolume] = useState(0.35);
+  const [soundVolume, setSoundVolume] = useState(0.5);
 
   // Visual & Stylistic Options
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('9:16');
@@ -72,8 +73,17 @@ export default function TextMatchCutStudioPage() {
   const [highlightStyle, setHighlightStyle] = useState<'marker' | 'underline' | 'double-underline' | 'box' | 'circle' | 'tape'>('marker');
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
   const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('vintage');
-  const [depthOfField, setDepthOfField] = useState(false);
-  const [dofIntensity, setDofIntensity] = useState(0.5);
+  const [fontFamily, setFontFamily] = useState<string>('"Playfair Display", Georgia, serif');
+  const [fontCycleList, setFontCycleList] = useState<string[]>([
+    '"Playfair Display", Georgia, serif',
+    '"Special Elite", monospace',
+    '"Bebas Neue", Impact, sans-serif',
+    '"Cinzel", "Times New Roman", serif',
+    '"Inter", sans-serif',
+  ]);
+  const [highlightSector, setHighlightSector] = useState<'top-masthead' | 'center-headline' | 'body-paragraph'>('center-headline');
+  const [depthOfField, setDepthOfField] = useState(true);
+  const [dofIntensity, setDofIntensity] = useState(0.75);
   const [filmGrain, setFilmGrain] = useState(true);
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
@@ -116,6 +126,9 @@ export default function TextMatchCutStudioPage() {
     animationMode,
     highlightProgress: animationMode === 'animated-highlight' ? highlightProgress : 1.0,
     highlightDirection,
+    highlightSector,
+    fontFamily,
+    fontCycleList: animationMode === 'match-cut' ? fontCycleList : undefined,
   };
 
   // Redraw current cut
@@ -557,28 +570,9 @@ export default function TextMatchCutStudioPage() {
       }
 
       setExportProgress('Finalizing video file...');
-      recorder.stop();
-      const videoBlob = await recordPromise;
-
-      const url = URL.createObjectURL(videoBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      const modeSlug = animationMode === 'animated-highlight' ? 'highlight-sweep' : 'match-cut';
-      a.download = `${modeSlug}-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.${targetExt}`;
-      a.click();
-      setExportProgress(null);
-
-      // Flush final recorder data
-      try {
-        recorder.requestData();
-      } catch {}
-
-      await new Promise((r) => setTimeout(r, 200));
-
       if (recorder.state !== 'inactive') {
         recorder.stop();
       }
-
       const videoBlob = await recordPromise;
 
       const cleanAnchor =
@@ -598,6 +592,7 @@ export default function TextMatchCutStudioPage() {
       downloadLink.remove();
 
       setTimeout(() => URL.revokeObjectURL(videoUrl), 10000);
+      setExportProgress(null);
       setExportProgress(null);
       setIsPlaying(true);
     } catch (err) {
@@ -978,27 +973,47 @@ export default function TextMatchCutStudioPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="brutalist-button"
                   onClick={handleDownloadSingleFrame}
-                  style={{ fontSize: '0.7rem', padding: '5px 10px', borderRadius: 4 }}
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 900,
+                    padding: '8px 14px',
+                    borderRadius: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#ffffff',
+                    boxShadow: '3px 3px 0 #000',
+                  }}
                   title="Download current single still image"
                 >
-                  <Download size={13} style={{ marginRight: 4 }} /> Still PNG
+                  <Download size={14} /> Still PNG
                 </button>
                 <button
                   className="brutalist-button"
                   onClick={handleCopySingleFrame}
-                  style={{ fontSize: '0.7rem', padding: '5px 10px', borderRadius: 4 }}
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 900,
+                    padding: '8px 14px',
+                    borderRadius: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: copiedNotification ? '#dcfce7' : '#ffffff',
+                    boxShadow: '3px 3px 0 #000',
+                  }}
                   title="Copy current frame to clipboard"
                 >
                   {copiedNotification ? (
-                    <Check size={13} style={{ marginRight: 4, color: '#22c55e' }} />
+                    <Check size={14} style={{ color: '#15803d' }} />
                   ) : (
-                    <Copy size={13} style={{ marginRight: 4 }} />
+                    <Copy size={14} />
                   )}
-                  {copiedNotification ? 'Copied!' : 'Copy'}
+                  {copiedNotification ? 'Copied!' : 'Copy Frame'}
                 </button>
               </div>
             </div>
@@ -1032,8 +1047,8 @@ export default function TextMatchCutStudioPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: 10,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: 12,
             }}
           >
             <button
@@ -1041,16 +1056,17 @@ export default function TextMatchCutStudioPage() {
               disabled={isExporting}
               className="brutalist-button brutalist-button-primary"
               style={{
-                padding: '10px 14px',
-                fontSize: '0.76rem',
+                padding: '12px 18px',
+                fontSize: '0.82rem',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 8,
+                boxShadow: '4px 4px 0 #000',
               }}
             >
-              <Film size={15} />
+              <Film size={17} />
               Export MP4 Video
             </button>
 
@@ -1059,17 +1075,19 @@ export default function TextMatchCutStudioPage() {
               disabled={isExporting}
               className="brutalist-button"
               style={{
-                padding: '10px 14px',
-                fontSize: '0.76rem',
+                padding: '12px 18px',
+                fontSize: '0.82rem',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 8,
+                boxShadow: '4px 4px 0 #000',
+                background: '#ffffff',
               }}
             >
-              <ImageIcon size={15} />
-              Looping GIF
+              <ImageIcon size={17} />
+              Looping Animated GIF
             </button>
 
             <button
@@ -1077,16 +1095,18 @@ export default function TextMatchCutStudioPage() {
               disabled={isExporting}
               className="brutalist-button"
               style={{
-                padding: '10px 14px',
-                fontSize: '0.76rem',
+                padding: '12px 18px',
+                fontSize: '0.82rem',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 8,
+                boxShadow: '4px 4px 0 #000',
+                background: '#ffffff',
               }}
             >
-              <FileArchive size={15} />
+              <FileArchive size={17} />
               PNG Sequence (ZIP)
             </button>
           </div>
@@ -1160,16 +1180,23 @@ export default function TextMatchCutStudioPage() {
               />
               <button
                 onClick={handleAutoGenerate}
-                className="brutalist-button"
+                className="brutalist-button brutalist-button-primary"
                 style={{
-                  fontSize: '0.74rem',
-                  padding: '8px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 900,
+                  padding: '10px 18px',
                   borderRadius: 4,
                   whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '3px 3px 0 #000',
+                  textTransform: 'uppercase',
                 }}
                 title="Generate newspaper articles containing this anchor phrase"
               >
-                Generate
+                <Sparkles size={15} />
+                Generate Cuts
               </button>
             </div>
 
@@ -1178,25 +1205,31 @@ export default function TextMatchCutStudioPage() {
               <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
                 Presets:
               </span>
-              {PRESET_TOPICS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleLoadPreset(p.id)}
-                  style={{
-                    padding: '3px 8px',
-                    border: '1.5px solid #000',
-                    background: anchorPhrase.toLowerCase() === p.anchor.toLowerCase() ? '#000' : '#fff',
-                    color: anchorPhrase.toLowerCase() === p.anchor.toLowerCase() ? '#fff' : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.65rem',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
+              {PRESET_TOPICS.map((p) => {
+                const isActive = anchorPhrase.toLowerCase() === p.anchor.toLowerCase();
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handleLoadPreset(p.id)}
+                    style={{
+                      padding: '4px 10px',
+                      border: '1.5px solid #000',
+                      borderRadius: 4,
+                      background: isActive ? '#FFE500' : '#ffffff',
+                      color: '#000000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.66rem',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                      boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1449,6 +1482,52 @@ export default function TextMatchCutStudioPage() {
                   onChange={(e) => setMarkerOpacity(parseFloat(e.target.value))}
                   style={{ width: '100%', accentColor: '#000' }}
                 />
+              </div>
+
+              {/* 5-Font Rapid Cut Jitter Cycle Editor */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000' }}>
+                    5-Font Rapid Jitter Cycle (Google Fonts)
+                  </label>
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#d97706' }}>
+                    CYCLES EVERY CUT
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {fontCycleList.map((f, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, width: 22, color: '#666' }}>
+                        #{idx + 1}
+                      </span>
+                      <select
+                        value={f}
+                        onChange={(e) => {
+                          const updated = [...fontCycleList];
+                          updated[idx] = e.target.value;
+                          setFontCycleList(updated);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 8px',
+                          border: '1.5px solid #000',
+                          borderRadius: 4,
+                          background: '#fff',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {GOOGLE_FONTS_LIST.map((gf) => (
+                          <option key={gf.id} value={gf.fontFamily}>
+                            {gf.name} ({gf.category})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

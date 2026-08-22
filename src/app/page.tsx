@@ -5,19 +5,22 @@ import { ChevronRight } from 'lucide-react';
 
 const tools = [
   { label: 'Text Behind Image', href: '/text-behind', hint: 'AI LAYERING', desc: 'Place text behind subjects in photos automatically' },
-  { label: 'Text Match CUT', href: '/match-cut', hint: 'WORD ANCHOR', desc: 'Highlight a word, generate dynamic text cuts' },
+  { label: 'Text Match CUT', href: '/match-cut', hint: 'WORD ANCHOR', desc: 'Highlight a word, generate dynamic text cuts & Google Fonts' },
+  { label: 'Text Highlighter', href: '/text-highlighter', hint: 'ANIMATED SWEEP', desc: 'Cinematic animated marker, circle, box & underline strokes' },
+  { label: 'Production Sync Slate', href: '/sync-slate', hint: 'A/V CLAPPER', desc: 'Sub-frame timecode, 1kHz SMPTE audio tone & CSV shot sheets' },
+  { label: 'Exposure & False Color', href: '/exposure-monitor', hint: 'SCOPES & IRE', desc: 'ARRI/RED False Color shader, live waveforms, RGB parade & vectorscope' },
+  { label: 'Studio Teleprompter', href: '/teleprompter', hint: 'SPEECH LAB', desc: 'Voice Smart Speed, 52 Google Fonts, eyeline spotlight & mirror' },
+  { label: 'Creator Space Planner', href: '/space-planner', hint: 'PLAN THE SHOT', desc: 'Design 3D studio layouts with equipment, lighting & budget' },
   { label: 'Auto-Captions', href: '/auto-captions', hint: 'WHISPER AI', desc: 'Generate subtitles from audio with Whisper' },
-  { label: 'Studio Teleprompter', href: '/teleprompter', hint: 'SPEECH LAB', desc: 'Pro teleprompter with speed control & mirroring' },
-  { label: 'Carousel Slicer', href: '/carousel-slicer', hint: 'SPLITS', desc: 'Slice wide images into carousel posts' },
+  { label: 'Carousel Slicer', href: '/carousel-slicer', hint: 'SPLITS', desc: 'Slice wide images into seamless carousel posts' },
   { label: 'Quote Card Maker', href: '/quote-card', hint: 'POST GRAPHICS', desc: 'Turn quotes into styled social cards' },
-  { label: 'Platform Resizer', href: '/resizer', hint: 'SIZES', desc: 'Resize images for every platform instantly' },
-  { label: 'Palette Extractor', href: '/palette-extractor', hint: 'COLORS', desc: 'Extract color palettes from any image' },
+  { label: 'Platform Resizer', href: '/resizer', hint: 'SIZES', desc: 'Resize images for every social platform instantly' },
+  { label: 'Palette Extractor', href: '/palette-extractor', hint: 'COLORS', desc: 'Extract harmonious color palettes from any image' },
   { label: 'Image Compressor', href: '/compressor', hint: 'WEBP / JPEG', desc: 'Batch compress images with quality control' },
-  { label: 'Watermark Batch', href: '/watermark', hint: 'BATCH ZIP', desc: 'Add watermarks to hundreds of images' },
-  { label: 'Background Replace', href: '/background-replace', hint: 'AI REMOVE', desc: 'Remove & replace backgrounds with AI' },
-  { label: 'Silence Trimmer', href: '/silence-trimmer', hint: 'AUDIO CUT', desc: 'Auto-remove silence from audio/video' },
-  { label: 'Color Gradient', href: '/color-gradient', hint: 'GRADIENTS', desc: 'Create beautiful gradient backgrounds' },
-  { label: 'Creator Space Planner', href: '/space-planner', hint: 'PLAN THE SHOT', desc: 'Design studio layouts with equipment & budget' },
+  { label: 'Watermark Batch', href: '/watermark', hint: 'BATCH ZIP', desc: 'Add watermarks to hundreds of images in bulk' },
+  { label: 'Background Replace', href: '/background-replace', hint: 'AI REMOVE', desc: 'Remove & replace photo backgrounds with AI' },
+  { label: 'Silence Trimmer', href: '/silence-trimmer', hint: 'AUDIO CUT', desc: 'Auto-remove silence from audio/video files' },
+  { label: 'Color Gradient', href: '/color-gradient', hint: 'GRADIENTS', desc: 'Create beautiful multi-stop CSS gradient backgrounds' },
 ];
 
 export default function Home() {
