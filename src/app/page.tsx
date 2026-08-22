@@ -9,6 +9,7 @@ const tools = [
   { label: 'Text Highlighter', href: '/text-highlighter', hint: 'ANIMATED SWEEP', desc: 'Cinematic animated marker, circle, box & underline strokes' },
   { label: 'Production Sync Slate', href: '/sync-slate', hint: 'A/V CLAPPER', desc: 'Sub-frame timecode, 1kHz SMPTE audio tone & CSV shot sheets' },
   { label: 'Exposure & False Color', href: '/exposure-monitor', hint: 'SCOPES & IRE', desc: 'ARRI/RED False Color shader, live waveforms, RGB parade & vectorscope' },
+  { label: 'Thumbnail Lab & Split-Tester', href: '/thumbnail-lab', hint: 'CTR GRADER', desc: 'Simulate YouTube feeds, squint tests, competitor benchmarking & badge collision checks' },
   { label: 'Studio Teleprompter', href: '/teleprompter', hint: 'SPEECH LAB', desc: 'Voice Smart Speed, 52 Google Fonts, eyeline spotlight & mirror' },
   { label: 'Creator Space Planner', href: '/space-planner', hint: 'PLAN THE SHOT', desc: 'Design 3D studio layouts with equipment, lighting & budget' },
   { label: 'Auto-Captions', href: '/auto-captions', hint: 'WHISPER AI', desc: 'Generate subtitles from audio with Whisper' },

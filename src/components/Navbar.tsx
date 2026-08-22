@@ -11,6 +11,7 @@ const tools = [
   { label: "Text Highlighter", href: "/text-highlighter", hint: "ANIMATED SWEEP" },
   { label: "Production Sync Slate", href: "/sync-slate", hint: "A/V CLAPPER" },
   { label: "Exposure & False Color", href: "/exposure-monitor", hint: "SCOPES & IRE" },
+  { label: "Thumbnail Lab & Split-Tester", href: "/thumbnail-lab", hint: "CTR GRADER" },
   { label: "Studio Teleprompter", href: "/teleprompter", hint: "SPEECH LAB" },
   { label: "Creator Space Planner", href: "/space-planner", hint: "PLAN THE SHOT" },
   { label: "Auto-Captions", href: "/auto-captions", hint: "WHISPER AI" },
