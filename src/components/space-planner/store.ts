@@ -55,6 +55,7 @@ interface StoreState {
   showCameraPreview: boolean;
   showLuxHeatmap: boolean;
   isOrbitPanning: boolean;
+  isZenMode: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
@@ -70,6 +71,8 @@ interface StoreState {
   toggleLightBeams: () => void;
   setActiveCameraId: (id: string | null) => void;
   optimizeStudioErgonomics: () => void;
+  toggleZenMode: () => void;
+  setZenMode: (zen: boolean) => void;
   placeObject: (equipmentId: EquipmentId, x: number, z: number, rotationY?: number, isMainCamera?: boolean) => string;
   replacePlacedObjects: (objects: PlacedObject[]) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
@@ -139,6 +142,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   showCameraPreview: false,
   showLuxHeatmap: false,
   isOrbitPanning: false,
+  isZenMode: false,
   leftPanelOpen: true,
   rightPanelOpen: true,
 
@@ -178,40 +182,77 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   setActiveCameraId: (id) => set({ activeCameraId: id }),
 
+  toggleZenMode: () => set((s) => ({ isZenMode: !s.isZenMode })),
+  setZenMode: (zen) => set({ isZenMode: zen }),
+
   optimizeStudioErgonomics: () => {
     const { placedObjects, roomWidth, roomDepth } = get();
+    const halfW = roomWidth / 2;
     const halfD = roomDepth / 2;
 
-    // Find main desk/table and host chair
-    const desk = placedObjects.find((o) => o.equipmentId.includes('desk') || o.equipmentId.includes('table'));
+    // Find main desk/table/island, seating, cameras, and lights
+    const desk = placedObjects.find((o) => o.equipmentId.includes('desk') || o.equipmentId.includes('table') || o.equipmentId.includes('sofa'));
     const chair = placedObjects.find((o) => o.equipmentId === 'chair');
     const mainCam = placedObjects.find((o) => o.isMainCamera || o.equipmentId.includes('cam') || o.equipmentId.includes('phone'));
-    const keyLight = placedObjects.find((o) => o.equipmentId.includes('softbox') || o.equipmentId.includes('light'));
+    
+    // Categorize lights
+    const lights = placedObjects.filter((o) => 
+      o.equipmentId.includes('softbox') || 
+      o.equipmentId.includes('light') || 
+      o.equipmentId.includes('fresnel') || 
+      o.equipmentId.includes('beauty-dish') || 
+      o.equipmentId.includes('barndoor')
+    );
+    const keyLight = lights[0];
+    const fillLight = lights[1];
+    const rimLight = lights[2] || placedObjects.find(o => o.equipmentId.includes('rgb-tube'));
 
-    let anchorX = 0;
-    let anchorZ = -0.2;
+    // Acoustic panels
+    const acousticPanels = placedObjects.filter(o => o.equipmentId.includes('acoustic'));
+
+    const anchorX = 0;
+    const anchorZ = desk ? Math.max(-halfD + 0.8, -0.6) : 0;
 
     const updated = placedObjects.map((obj) => {
-      // 1. Desk positioned centered with clear walking space
+      // 1. Desk centered with optimal walking space
       if (desk && obj.id === desk.id) {
         return { ...obj, x: anchorX, z: anchorZ, rotationY: 0 };
       }
-      // 2. Host Chair placed with optimal 0.9m push-out clearance to rear wall
+      // 2. Host Chair placed with ergonomic push-out clearance
       if (chair && obj.id === chair.id) {
         return { ...obj, x: anchorX, z: anchorZ - 0.55, rotationY: 0 };
       }
-      // 3. Camera placed in front of desk at 1.55m distance for cinematic focal depth
+      // 3. Camera placed facing subject at optimal focal distance
       if (mainCam && obj.id === mainCam.id) {
-        return { ...obj, x: anchorX, z: anchorZ + 1.55, rotationY: Math.PI, lensPreset: '35mm' as const };
+        const camZ = Math.min(halfD - 0.5, anchorZ + 1.6);
+        return { ...obj, x: anchorX, z: camZ, rotationY: Math.PI, lensPreset: obj.lensPreset || '35mm' as const };
       }
-      // 4. Key Light triangulated at 45 degrees
+      // 4. 3-Point Lighting setup
       if (keyLight && obj.id === keyLight.id) {
         return {
           ...obj,
-          x: anchorX - 1.1,
-          z: anchorZ + 0.8,
-          rotationY: Math.PI / 4,
+          x: Math.max(-halfW + 0.5, anchorX - 1.3),
+          z: anchorZ + 0.65,
+          rotationY: Math.PI / 3,
           lightSettings: { ...obj.lightSettings, intensity: 85, colorTempKelvin: 5600, beamAngle: 65 },
+        };
+      }
+      if (fillLight && obj.id === fillLight.id) {
+        return {
+          ...obj,
+          x: Math.min(halfW - 0.5, anchorX + 1.3),
+          z: anchorZ + 0.65,
+          rotationY: -Math.PI / 3,
+          lightSettings: { ...obj.lightSettings, intensity: 50, colorTempKelvin: 4500, beamAngle: 75 },
+        };
+      }
+      if (rimLight && obj.id === rimLight.id) {
+        return {
+          ...obj,
+          x: Math.min(halfW - 0.5, anchorX + 1.1),
+          z: Math.max(-halfD + 0.4, anchorZ - 0.9),
+          rotationY: -Math.PI / 2,
+          lightSettings: { ...obj.lightSettings, intensity: 65, beamAngle: 120 },
         };
       }
       return obj;
@@ -398,11 +439,13 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
         objects[idx].parentId = idMap[item.parentId];
       }
     });
+    const mainCam = objects.find(o => o.isMainCamera) || objects.find(o => o.equipmentId.includes('cam') || o.equipmentId.includes('phone') || o.equipmentId.includes('webcam'));
     set({
       templateId,
       roomWidth: tpl.defaultRoom.width,
       roomDepth: tpl.defaultRoom.depth,
       placedObjects: objects,
+      activeCameraId: mainCam ? mainCam.id : null,
       selectedObjectId: null,
       placingEquipmentId: null,
     });

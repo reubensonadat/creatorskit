@@ -38,6 +38,8 @@ export default function SpacePlannerApp() {
   const toggleLeftPanel = usePlannerStore((s) => s.toggleLeftPanel);
   const rightPanelOpen = usePlannerStore((s) => s.rightPanelOpen);
   const toggleRightPanel = usePlannerStore((s) => s.toggleRightPanel);
+  const isZenMode = usePlannerStore((s) => s.isZenMode);
+  const toggleZenMode = usePlannerStore((s) => s.toggleZenMode);
   const clearAll = usePlannerStore((s) => s.clearAll);
   const timeOfDay = usePlannerStore((s) => s.timeOfDay);
   const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
@@ -119,6 +121,8 @@ export default function SpacePlannerApp() {
     }
   }, [loadTemplate, setRoomDimensions]);
 
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
   // Export handlers
   const handleExportPNG = useCallback(() => {
     const container = canvasContainerRef.current;
@@ -133,15 +137,23 @@ export default function SpacePlannerApp() {
     if (!container) return;
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
-    await exportPDF(canvas, {
-      projectInfo,
-      placedObjects,
-      roomWidth,
-      roomDepth,
-      currency,
-      powerTotal,
-      budgetTotal,
-    });
+    try {
+      setIsExportingPDF(true);
+      await new Promise((r) => setTimeout(r, 60)); // let UI update
+      await exportPDF(canvas, {
+        projectInfo,
+        placedObjects,
+        roomWidth,
+        roomDepth,
+        currency,
+        powerTotal,
+        budgetTotal,
+      });
+    } catch (err) {
+      console.error('PDF Export failed:', err);
+    } finally {
+      setIsExportingPDF(false);
+    }
   }, [projectInfo, placedObjects, roomWidth, roomDepth, currency, powerTotal, budgetTotal]);
 
   const area = (roomWidth * roomDepth).toFixed(1);
@@ -150,7 +162,7 @@ export default function SpacePlannerApp() {
   return (
     <div style={{ background: "#fff", height: "100vh", overflow: "hidden" }}>
       {/* WORKSPACE */}
-      <div style={{ display: "grid", gridTemplateColumns: "270px 1fr 300px", height: "100%" }}>
+      <div style={{ display: "grid", gridTemplateColumns: `${leftPanelOpen ? '270px' : '0px'} 1fr ${rightPanelOpen ? '300px' : '0px'}`, height: "100%" }}>
         {/* LEFT PANEL */}
         {leftPanelOpen && (
           <aside className="panel left-panel" style={{ background: "#fff", borderRight: "2px solid #000", overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -311,8 +323,22 @@ export default function SpacePlannerApp() {
             <PlannerCanvas />
           </div>
 
-          {/* HUD overlays (hidden during Camera POV for full cinematic focus) */}
-          {viewMode !== 'camera-pov' && (
+          {/* HUD overlays (hidden during Camera POV or when Zen Mode is active for full unobstructed 3D view) */}
+          {viewMode !== 'camera-pov' && isZenMode && (
+            <div className="hud hud-bc z-40">
+              <button
+                onClick={toggleZenMode}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-zinc-950/90 text-white hover:bg-black border-2 border-white/40 shadow-[4px_4px_0_#000] font-mono text-xs font-bold backdrop-blur transition-all hover:scale-105"
+                title="Exit Clean View Mode (Press H or click to restore full HUD)"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#00FF66] animate-pulse" />
+                <span>Clean 3D View Active</span>
+                <span className="text-[10px] text-zinc-300 bg-white/20 px-1.5 py-0.5 rounded">Press H to restore HUD</span>
+              </button>
+            </div>
+          )}
+
+          {viewMode !== 'camera-pov' && !isZenMode && (
             <>
               <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000" }}>
                 <div className="flex items-center gap-3">
@@ -337,7 +363,7 @@ export default function SpacePlannerApp() {
                 </div>
               </div>
 
-              <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, maxWidth: "calc(100vw - 340px)" }}>
                 {/* Natural Light Time of Day */}
                 <div className="flex items-center border-2 border-black font-mono text-[10px]">
                   <button
@@ -379,7 +405,7 @@ export default function SpacePlannerApp() {
                     style={{ 
                       color: viewMode === 'perspective' ? "#fff" : "#000",
                       background: viewMode === 'perspective' ? "#000" : "transparent",
-                      padding: "4px 10px",
+                      padding: "4px 8px",
                       fontSize: "10px",
                       fontWeight: 700,
                       fontFamily: "monospace",
@@ -394,7 +420,7 @@ export default function SpacePlannerApp() {
                     style={{ 
                       color: viewMode === 'top' ? "#fff" : "#000",
                       background: viewMode === 'top' ? "#000" : "transparent",
-                      padding: "4px 10px",
+                      padding: "4px 8px",
                       fontSize: "10px",
                       fontWeight: 700,
                       fontFamily: "monospace",
@@ -410,12 +436,12 @@ export default function SpacePlannerApp() {
                 <div className="h-5 w-px" style={{ background: "#ddd" }} />
 
                 {/* Room dimensions */}
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
                   <input
                     type="number"
                     value={roomWidth}
                     onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
-                    style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    style={{ width: 38, padding: "2px 2px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
                     step="0.5"
                     min="2"
                     max="20"
@@ -425,7 +451,7 @@ export default function SpacePlannerApp() {
                     type="number"
                     value={roomDepth}
                     onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
-                    style={{ width: 44, padding: "2px 4px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    style={{ width: 38, padding: "2px 2px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
                     step="0.5"
                     min="2"
                     max="20"
@@ -436,11 +462,69 @@ export default function SpacePlannerApp() {
                 <div className="h-5 w-px" style={{ background: "#ddd" }} />
 
                 {/* Export */}
-                <button onClick={handleExportPNG} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, cursor: "pointer" }}>
+                <button
+                  onClick={handleExportPNG}
+                  style={{
+                    padding: "3px 7px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    border: "2px solid #000",
+                    background: "#fff",
+                    color: "#000",
+                    borderRadius: 0,
+                    cursor: "pointer",
+                  }}
+                  title="Export High-Resolution Canvas PNG"
+                >
                   📸 PNG
                 </button>
-                <button onClick={handleExportPDF} style={{ padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "monospace", border: "2px solid #000", background: "#000", color: "#fff", borderRadius: 0, cursor: "pointer" }}>
-                  📄 PDF
+                <button
+                  onClick={handleExportPDF}
+                  disabled={isExportingPDF}
+                  style={{
+                    padding: "3px 7px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    border: "2px solid #000",
+                    background: isExportingPDF ? "#e2e8f0" : "#000",
+                    color: isExportingPDF ? "#000" : "#fff",
+                    borderRadius: 0,
+                    cursor: isExportingPDF ? "wait" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  title="Generate 5-Page Architectural 3D Production Dossier (PDF)"
+                >
+                  {isExportingPDF ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>PDF...</span>
+                    </>
+                  ) : (
+                    <span>📄 PDF</span>
+                  )}
+                </button>
+
+                {/* Zen Mode Button */}
+                <button
+                  onClick={toggleZenMode}
+                  style={{
+                    padding: "3px 7px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    border: "2px solid #000",
+                    background: "#FFDD00",
+                    color: "#000",
+                    borderRadius: 0,
+                    cursor: "pointer",
+                  }}
+                  title="Clean 3D View (H) — Hide all HUD overlays"
+                >
+                  🧹 Zen
                 </button>
               </div>
 
@@ -502,7 +586,55 @@ export default function SpacePlannerApp() {
         )}
       </div>
 
-      {/* Toast container (for future use) */}
+      {/* PDF Export Progress Modal */}
+      {isExportingPDF && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.7)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              border: "3px solid #000000",
+              boxShadow: "6px 6px 0 #000000",
+              padding: "24px 32px",
+              maxWidth: "420px",
+              width: "90%",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "4px solid #000",
+                  borderTopColor: "#38BDF8",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+            </div>
+            <h3 style={{ fontSize: 16, fontWeight: 900, fontFamily: "monospace", color: "#000", margin: "0 0 6px" }}>
+              GENERATING MASTER 3D REPORT
+            </h3>
+            <p style={{ fontSize: 11, fontFamily: "monospace", color: "#64748B", margin: "0 0 12px", lineHeight: 1.5 }}>
+              Rendering high-resolution multi-angle studio passes, compiling 2D CAD blueprint, optics schedule &amp; electrical safety audit...
+            </p>
+            <div style={{ display: "inline-block", background: "#f1f5f9", border: "1px solid #cbd5e1", padding: "4px 10px", fontSize: 10, fontFamily: "monospace", fontWeight: 700, color: "#0f172a" }}>
+              📄 5-Page Architectural Specification Dossier
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

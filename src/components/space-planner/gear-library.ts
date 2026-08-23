@@ -75,7 +75,7 @@ addGearItem('light-space-light-skirt', '6-Light Suspended Overhead Studio Space 
 addGearItem('light-balloon-light', 'Helium 1.5m Glow Sphere Film Balloon Light', '🎈', 'lighting', 1.5, 1.5, 2.4, 800, 3200, 165000, 0xffffee, 'Shadowless, ultra-soft overhead room ambient illumination');
 addGearItem('light-ellipsoidal-spot', '750W Tungsten / LED Ellipsoidal Profile Fixture', '🔦', 'lighting', 0.3, 0.65, 1.9, 750, 1100, 57000, 0x1a1918, 'Sharp-edged theatrical profile spot with 4 framing shutters');
 addGearItem('light-par-bar-4way', '4-Head Moving RGBWA Stage Truss Light Bar', '🚥', 'lighting', 1.0, 0.25, 2.1, 160, 980, 51000, 0x111111, 'Synchronized rotating stage beams with strobe and chase effects');
-addGearItem('light-moving-head-beam', '350W Stage Moving Head Sharp Beam Spotlight', '✨', 'lighting', 0.4, 0.4, 0.6, 350, 1400, 72000, 0x1c1b1a, 'Piercing parallel laser-like beam with rotating prism wheel');
+addGearItem('light-moving-head-beam', '350W Stage Moving Head Sharp Beam Spotlight', '🔦', 'lighting', 0.4, 0.4, 0.6, 350, 1400, 72000, 0x1c1b1a, 'Piercing parallel laser-like beam with rotating prism wheel');
 addGearItem('light-strobe-blaster', '1500W High-Power DMX Theatrical Strobe Blaster', '⚡', 'lighting', 0.45, 0.2, 0.25, 1500, 850, 44000, 0x222222, 'Instantaneous stadium flash tube with continuous blinders');
 addGearItem('light-glow-sticks-rgb', 'Set of 4 Magnetic Wireless RGB Light Wands', '🪄', 'lighting', 0.3, 0.3, 0.4, 40, 420, 22000, 0x8800ff, 'Handheld light painting and product edge rim tubes with charging case', { isMountableOnTable: true });
 addGearItem('light-sun-gun-hmi', '575W Compact HMI Daylight Sun Gun', '☀️', 'lighting', 0.35, 0.35, 1.8, 575, 2600, 135000, 0x444444, 'True 5600K high-intensity daylight source for matching open windows');
@@ -88,7 +88,7 @@ addGearItem('light-gobo-pattern-disc-set', 'Set of 20 Stainless Steel Theatrical
 addGearItem('light-blackwrap-cinefoil', '50ft Roll of Matte Black Aluminum Cinefoil', '🧻', 'lighting', 0.35, 0.08, 0.08, 0, 95, 4900, 0x111111, 'Heat-resistant mask to shape light beams and eliminate spill', { isMountableOnTable: true });
 addGearItem('light-ring-light-macro', 'Macro Lens Front Mounted Twin LED Ring Light', '⭕', 'lighting', 0.12, 0.12, 0.04, 8, 140, 7200, 0x222222, 'Shadow-free illumination for extreme closeups of jewelry and eyes', { isMountableOnTable: true });
 addGearItem('light-bubble-machine-fx', 'Dual-Wand High Output Studio Bubble Machine', '🫧', 'props', 0.35, 0.25, 0.28, 80, 290, 15000, 0x333333, 'Produces hundreds of continuous floating bubbles for music videos');
-addGearItem('light-cold-spark-machine', 'DMX Indoor Safe Titanium Cold Spark Fountain (3m)', '✨', 'props', 0.25, 0.22, 0.28, 600, 1200, 62000, 0x111111, 'Non-flammable pyrotechnic stage effect for stream climaxes');
+addGearItem('light-cold-spark-machine', 'DMX Indoor Safe Titanium Cold Spark Fountain (3m)', '⚡', 'props', 0.25, 0.22, 0.28, 600, 1200, 62000, 0x111111, 'Non-flammable pyrotechnic stage effect for stream climaxes');
 
 // ------------------------------------------------------------
 // 3. AUDIO, MICS, HEADPHONES & ACOUSTICS (45 items)

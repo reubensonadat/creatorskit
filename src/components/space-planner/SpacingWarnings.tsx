@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { SpacingWarning } from './types';
-import { CheckCircle2, Circle, Volume2, Zap, ShieldAlert, Sparkles, MoveRight } from 'lucide-react';
+import { CheckCircle2, Circle, Volume2, Zap, ShieldAlert, BookOpen, MoveRight } from 'lucide-react';
 
 const SEVERITY_STYLES = {
   info: { bg: 'bg-blue-50', border: 'border-blue-200', dot: 'bg-blue-500', text: 'text-blue-800' },
@@ -254,7 +254,7 @@ export default function SpacingWarnings() {
                   }`}
                   onClick={() => setActiveTab('checklist')}
                 >
-                  <Sparkles size={12} /> Build Guide
+                  <BookOpen size={12} /> Build Guide
                 </button>
               </div>
 

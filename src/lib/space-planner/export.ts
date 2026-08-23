@@ -207,9 +207,9 @@ export async function exportPDF(
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth(); // 297mm
   const pageH = doc.internal.pageSize.getHeight(); // 210mm
-  const TOTAL_PAGES = 4;
+  const TOTAL_PAGES = 5;
 
-  // Capture all 5 3D camera angles from WebGL Canvas
+  // Capture all 3D camera angles from WebGL Canvas
   let angles: Record<string, string> | null = null;
   if (typeof window !== 'undefined' && typeof (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ === 'function') {
     try {
@@ -217,7 +217,7 @@ export async function exportPDF(
     } catch {}
   }
 
-  const hero3D = angles?.hero3D || canvas.toDataURL('image/jpeg', 0.95);
+  const hero3D = angles?.hero3D || canvas.toDataURL('image/jpeg', 0.96);
   const front = angles?.front || hero3D;
   const left45 = angles?.left45 || hero3D;
   const right45 = angles?.right45 || hero3D;
@@ -245,23 +245,146 @@ export async function exportPDF(
     doc.text(subtitle, 14, 18);
 
     doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
     doc.text(`PAGE ${pageNum} OF ${TOTAL_PAGES}`, pageW - 14, 14, { align: 'right' });
   };
 
   const drawFooter = (pageNum: number) => {
+    doc.setFillColor(226, 232, 240);
+    doc.rect(14, pageH - 8, pageW - 28, 0.3, 'F');
+
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
-    doc.text(`Creator Studio Space Planner · Comprehensive Technical Production Report · Page ${pageNum} of ${TOTAL_PAGES}`, 14, pageH - 4);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, pageW - 14, pageH - 4, { align: 'right' });
+    doc.text(`Creator Studio Space Planner · Architectural & Technical Production Specification · Page ${pageNum} of ${TOTAL_PAGES}`, 14, pageH - 4);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} · Rev 1.0`, pageW - 14, pageH - 4, { align: 'right' });
   };
 
   // =========================================================================
-  // PAGE 1: ARCHITECTURAL 2D/3D FLOOR PLAN BLUEPRINT & EQUIPMENT INDEX
+  // PAGE 1: EXECUTIVE STUDIO COVER & MASTER PRODUCTION SPECIFICATION
   // =========================================================================
   drawHeader(
-    `1. ARCHITECTURAL FLOOR PLAN & EQUIPMENT PLACEMENT BLUEPRINT`,
-    `${projectInfo.name || 'Creator Studio'} · ${roomWidth}m × ${roomDepth}m (${(roomWidth * roomDepth).toFixed(1)} m²) · Scale Calibrated`,
+    `1. EXECUTIVE STUDIO MASTER PLAN & PRODUCTION SPECIFICATION`,
+    `${projectInfo.name || 'Professional Creator Studio'} · ${roomWidth}m × ${roomDepth}m (${(roomWidth * roomDepth).toFixed(1)} m²) · Scale 1:50 Calibrated`,
     1
+  );
+
+  // Large Hero 3D Viewport on Page 1 (Left / Center)
+  const coverHeroW = 168;
+  const coverHeroH = 126;
+  doc.setFillColor(15, 23, 42);
+  doc.rect(14, 26, coverHeroW, coverHeroH, 'F');
+  if (hero3D) {
+    doc.addImage(hero3D, 'JPEG', 14, 26, coverHeroW, coverHeroH);
+  }
+  // Architectural framing border & label
+  doc.setDrawColor(56, 189, 248);
+  doc.setLineWidth(0.4);
+  doc.rect(14, 26, coverHeroW, coverHeroH, 'S');
+
+  doc.setFillColor(15, 23, 42);
+  doc.rect(14, 26 + coverHeroH - 7, coverHeroW, 7, 'F');
+  doc.setTextColor(56, 189, 248);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('3D PERSPECTIVE SPATIAL RENDERING · PRIMARY TALENT VANTAGE', 18, 26 + coverHeroH - 2.5);
+
+  // Right Side Column: Executive Metadata & Engineering KPI Cards
+  const coverRightX = 14 + coverHeroW + 6;
+  const coverRightW = pageW - coverRightX - 14;
+
+  // Project Dossier Meta Card
+  doc.setFillColor(248, 250, 252);
+  doc.rect(coverRightX, 26, coverRightW, 46, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(coverRightX, 26, coverRightW, 46, 'S');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('STUDIO DOSSIER PROFILE', coverRightX + 5, 33);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  let metaY = 40;
+  const drawMetaRow = (lbl: string, val: string) => {
+    doc.setTextColor(100, 116, 139);
+    doc.text(lbl, coverRightX + 5, metaY);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.text(val, coverRightX + 36, metaY);
+    doc.setFont('helvetica', 'normal');
+    metaY += 5.2;
+  };
+
+  drawMetaRow('Project Title:', projectInfo.name || 'Creator Studio Alpha');
+  drawMetaRow('Production Lead:', projectInfo.author || 'Lead DP / Creator');
+  drawMetaRow('Engineering Date:', new Date().toLocaleDateString());
+  drawMetaRow('Build Status:', 'Approved for Construction');
+  drawMetaRow('Studio Class:', 'Controlled Multi-Rig Facility');
+
+  // 4 KPI Metric Blocks below meta
+  let kpiY = 76;
+  const drawKpiCard = (title: string, mainVal: string, subVal: string, bgTint: string = '#ffffff') => {
+    doc.setFillColor(bgTint === 'slate' ? 241 : 255, bgTint === 'slate' ? 245 : 255, bgTint === 'slate' ? 249 : 255);
+    doc.rect(coverRightX, kpiY, coverRightW, 18, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(coverRightX, kpiY, coverRightW, 18, 'S');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(title.toUpperCase(), coverRightX + 5, kpiY + 4.5);
+
+    doc.setFontSize(10.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(mainVal, coverRightX + 5, kpiY + 11.2);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text(subVal, coverRightX + 5, kpiY + 15.5);
+
+    kpiY += 21;
+  };
+
+  drawKpiCard('Total Studio Footprint', `${(roomWidth * roomDepth).toFixed(1)} m² (${(roomWidth * roomDepth * 10.7639).toFixed(0)} sq ft)`, `${roomWidth.toFixed(2)}m Width × ${roomDepth.toFixed(2)}m Depth`);
+  drawKpiCard('Connected Power Draw', `${powerTotal} Watts`, powerTotal > 1500 ? '20A Dedicated Circuit Required' : 'Standard 15A Residential Line Safe');
+  drawKpiCard('Active Equipment Deployed', `${placedObjects.length} Fixtures & Mounts`, 'Complete Camera, Light & Audio Rig');
+  drawKpiCard('Total Estimated Setup Budget', `${curr}${budgetTotal.toLocaleString()}`, `Full Itemized Schedule in Currency (${currency})`);
+
+  // Bottom Summary Highlights Bar
+  const btmBarY = 26 + coverHeroH + 6;
+  const btmBarH = pageH - btmBarY - 10;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, btmBarY, pageW - 28, btmBarH, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(14, btmBarY, pageW - 28, btmBarH, 'S');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('EXECUTIVE ENGINEERING NOTES & SPATIAL CLEARANCE:', 18, btmBarY + 5.5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `• Layout calibrated with 0.9m minimum egress clearance behind host seating. Optical lens height set at 1.25m eye-level with key-to-fill lighting ratio balanced for cinematic depth and skin-tone rendition.`,
+    18,
+    btmBarY + 10.5
+  );
+
+  drawFooter(1);
+
+  // =========================================================================
+  // PAGE 2: ARCHITECTURAL 2D/3D FLOOR PLAN BLUEPRINT & SPATIAL INDEX
+  // =========================================================================
+  doc.addPage('a4', 'landscape');
+  drawHeader(
+    `2. ARCHITECTURAL CAD FLOOR PLAN & EQUIPMENT PLACEMENT BLUEPRINT`,
+    `${projectInfo.name || 'Creator Studio'} · ${roomWidth}m × ${roomDepth}m (${(roomWidth * roomDepth).toFixed(1)} m²) · Scale Calibrated Coordinate Grid`,
+    2
   );
 
   const bpW = 160;
@@ -292,13 +415,15 @@ export async function exportPDF(
     doc.setTextColor(100, 116, 139);
     doc.text(lbl, rightX + 4, yPos);
     doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
     doc.text(val, rightX + 38, yPos);
+    doc.setFont('helvetica', 'normal');
     yPos += 4.5;
   };
   drawParam('Floor Area:', `${(roomWidth * roomDepth).toFixed(1)} m² (${(roomWidth * roomDepth * 10.7639).toFixed(0)} sq ft)`);
   drawParam('Footprint:', `${roomWidth.toFixed(2)}m W × ${roomDepth.toFixed(2)}m D`);
   drawParam('Equipment Units:', `${placedObjects.length} active fixtures`);
-  drawParam('Total Connected Power:', `${powerTotal} Watts`);
+  drawParam('Total Power Load:', `${powerTotal} Watts`);
 
   // Pin Placement Index Legend
   let pinY = 64;
@@ -337,16 +462,101 @@ export async function exportPDF(
     pinY += 4.5;
   });
 
-  drawFooter(1);
+  drawFooter(2);
 
   // =========================================================================
-  // PAGE 2: PRODUCTION LIGHTING & CAMERA OPTICAL CALL SHEET
+  // PAGE 3: 3D MULTI-PERSPECTIVE VISUAL PROOFS & CINEMATIC CONTACT SHEET
   // =========================================================================
   doc.addPage('a4', 'landscape');
   drawHeader(
-    `2. PRODUCTION LIGHTING & CAMERA OPTICAL CALL SHEET`,
+    `3. 3D MULTI-PERSPECTIVE VISUAL PROOFS & CINEMATIC PERSPECTIVES`,
+    `Hero Perspective · Talent Host Eye-Level · 45° Key Lighting Angle · Director 16:9 POV Viewfinder`,
+    3
+  );
+
+  // 4-Quadrant Matrix
+  const quadPadX = 14;
+  const quadPadY = 26;
+  const quadGap = 6;
+  const quadW = (pageW - quadPadX * 2 - quadGap) / 2; // ~131mm
+  const quadH = 75;
+
+  // Quadrant 1: Hero 3D Isometric View (Top-Left)
+  if (hero3D) {
+    doc.addImage(hero3D, 'JPEG', quadPadX, quadPadY, quadW, quadH);
+  }
+  doc.setFillColor(15, 23, 42);
+  doc.rect(quadPadX, quadPadY + quadH - 6.5, quadW, 6.5, 'F');
+  doc.setTextColor(56, 189, 248);
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('1. HERO 3D ISOMETRIC VANTAGE (FULL ROOM VOLUME)', quadPadX + 4, quadPadY + quadH - 2.2);
+
+  // Quadrant 2: Front Talent Eye-Level (Top-Right)
+  if (front) {
+    doc.addImage(front, 'JPEG', quadPadX + quadW + quadGap, quadPadY, quadW, quadH);
+  }
+  doc.setFillColor(15, 23, 42);
+  doc.rect(quadPadX + quadW + quadGap, quadPadY + quadH - 6.5, quadW, 6.5, 'F');
+  doc.setTextColor(56, 189, 248);
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('2. TALENT HOST EYE-LEVEL VIEW (1.55M AGL ELEVATION)', quadPadX + quadW + quadGap + 4, quadPadY + quadH - 2.2);
+
+  // Bottom Row
+  const btmQuadY = quadPadY + quadH + quadGap;
+  const btmQuadH = pageH - btmQuadY - 10;
+
+  // Quadrant 3: 45° Key Lighting & Production Depth (Bottom-Left)
+  if (left45) {
+    doc.addImage(left45, 'JPEG', quadPadX, btmQuadY, quadW, btmQuadH);
+  }
+  doc.setFillColor(15, 23, 42);
+  doc.rect(quadPadX, btmQuadY + btmQuadH - 6.5, quadW, 6.5, 'F');
+  doc.setTextColor(56, 189, 248);
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('3. 45° PRODUCTION RIGGING & KEY LIGHT ANGLE', quadPadX + 4, btmQuadY + btmQuadH - 2.2);
+
+  // Quadrant 4: Director 16:9 Cine POV Viewfinder (Bottom-Right)
+  if (directorPOV) {
+    doc.addImage(directorPOV, 'JPEG', quadPadX + quadW + quadGap, btmQuadY, quadW, btmQuadH);
+  }
+  // Overlay subtle framing guidelines on the POV box
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.25);
+  const povX = quadPadX + quadW + quadGap;
+  const povY = btmQuadY;
+
+  // Rule of thirds lines
+  doc.line(povX + quadW / 3, povY, povX + quadW / 3, povY + btmQuadH - 6.5);
+  doc.line(povX + (quadW * 2) / 3, povY, povX + (quadW * 2) / 3, povY + btmQuadH - 6.5);
+  doc.line(povX, povY + (btmQuadH - 6.5) / 3, povX + quadW, povY + (btmQuadH - 6.5) / 3);
+  doc.line(povX, povY + ((btmQuadH - 6.5) * 2) / 3, povX + quadW, povY + ((btmQuadH - 6.5) * 2) / 3);
+
+  // Center crosshair
+  const cX = povX + quadW / 2;
+  const cY = povY + (btmQuadH - 6.5) / 2;
+  doc.setDrawColor(52, 211, 153); // emerald-400
+  doc.circle(cX, cY, 3, 'S');
+
+  doc.setFillColor(15, 23, 42);
+  doc.rect(povX, btmQuadY + btmQuadH - 6.5, quadW, 6.5, 'F');
+  doc.setTextColor(245, 158, 11); // amber-500
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'bold');
+  doc.text('4. DIRECTOR 16:9 CINE POV (RULE-OF-THIRDS & SAFE ZONES)', povX + 4, btmQuadY + btmQuadH - 2.2);
+
+  drawFooter(3);
+
+  // =========================================================================
+  // PAGE 4: PRODUCTION LIGHTING & CAMERA OPTICAL CALL SHEET
+  // =========================================================================
+  doc.addPage('a4', 'landscape');
+  drawHeader(
+    `4. DIRECTOR CAMERA OPTICS & PRECISION LIGHTING RIGGING SCHEDULE`,
     `Calibrated Lens Angles · Color Temperatures (CCT) · Lighting Ratios · Beam Spreads`,
-    2
+    4
   );
 
   // Section A: Camera Optics & Framing Schedule (Top Half)
@@ -374,7 +584,14 @@ export async function exportPDF(
   doc.text('Coords (X, Z)', pageW - 18, cTableY + 3.5, { align: 'right' });
   cTableY += 7.5;
 
-  const cameras = placedObjects.filter((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam') || o.equipmentId.includes('cam'));
+  const cameras = placedObjects.filter(
+    (o) =>
+      o.equipmentId === 'camera' ||
+      o.equipmentId.startsWith('cam') ||
+      o.equipmentId.includes('cam') ||
+      o.equipmentId.includes('phone') ||
+      o.equipmentId.includes('webcam')
+  );
   const cameraList = cameras.length > 0 ? cameras : placedObjects.filter((o) => o.isMainCamera);
 
   doc.setFont('helvetica', 'normal');
@@ -484,16 +701,16 @@ export async function exportPDF(
     audioBoxY + 9.5
   );
 
-  drawFooter(2);
+  drawFooter(4);
 
   // =========================================================================
-  // PAGE 3: EQUIPMENT BILL OF MATERIALS (BOM) & ELECTRICAL LOAD ANALYSIS
+  // PAGE 5: EQUIPMENT BILL OF MATERIALS (BOM) & ELECTRICAL LOAD ANALYSIS
   // =========================================================================
   doc.addPage('a4', 'landscape');
   drawHeader(
-    `3. EQUIPMENT BILL OF MATERIALS (BOM) & ELECTRICAL LOAD PLAN`,
+    `5. EQUIPMENT BILL OF MATERIALS (BOM) & ELECTRICAL LOAD SAFETY PLAN`,
     `Itemized Schedule · Pricing Breakdown · Connected Power Audit · Circuit Breaker Verification`,
-    3
+    5
   );
 
   // Left Column: BOM Table (Width ~175mm)
@@ -569,7 +786,7 @@ export async function exportPDF(
   doc.setTextColor(16, 185, 129); // emerald-500
   doc.text(`${curr}${budgetTotal.toLocaleString()}`, 14 + bomW - 2, bomY + 6, { align: 'right' });
 
-  // Right Column: Electrical Safety & Load Panel
+  // Right Column: Electrical Safety & Sign-off Panel
   const elecX = 14 + bomW + 8;
   const elecW = pageW - elecX - 14;
 
@@ -583,30 +800,30 @@ export async function exportPDF(
   doc.setFont('helvetica', 'bold');
   doc.text('Electrical Load & Safety Audit', elecX + 5, 33);
 
-  let eY = 41;
+  let eY = 39;
   const drawElecCard = (title: string, value: string, desc: string, isAlert: boolean = false) => {
     doc.setFillColor(255, 255, 255);
-    doc.rect(elecX + 4, eY, elecW - 8, 20, 'F');
+    doc.rect(elecX + 4, eY, elecW - 8, 17, 'F');
     doc.setDrawColor(isAlert ? 245 : 226, isAlert ? 158 : 232, isAlert ? 11 : 240);
-    doc.rect(elecX + 4, eY, elecW - 8, 20, 'S');
+    doc.rect(elecX + 4, eY, elecW - 8, 17, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(100, 116, 139);
-    doc.text(title.toUpperCase(), elecX + 8, eY + 5);
+    doc.text(title.toUpperCase(), elecX + 7, eY + 4.5);
 
-    doc.setFontSize(10.5);
+    doc.setFontSize(9.5);
     doc.setTextColor(isAlert ? 217 : 15, isAlert ? 119 : 23, isAlert ? 6 : 42);
-    doc.text(value, elecX + 8, eY + 11.5);
+    doc.text(value, elecX + 7, eY + 10.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.2);
+    doc.setFontSize(6.0);
     doc.setTextColor(100, 116, 139);
-    doc.text(desc, elecX + 8, eY + 16.5);
-    eY += 24;
+    doc.text(desc, elecX + 7, eY + 14.5);
+    eY += 20.5;
   };
 
-  drawElecCard('Peak Total Connected Load', `${powerTotal} Watts`, `Max power draw if all lights & rigs run at 100%`);
+  drawElecCard('Peak Total Connected Load', `${powerTotal} Watts`, `Max power draw if all lights run at 100%`);
   drawElecCard('Hourly Consumption Rate', `${(powerTotal / 1000).toFixed(2)} kWh / hr`, `Estimated studio operating energy rate`);
   drawElecCard(
     'Circuit Breaker Requirement',
@@ -620,87 +837,34 @@ export async function exportPDF(
     `Estimated uninterrupted runtime during outages`
   );
 
-  drawFooter(3);
-
-  // =========================================================================
-  // PAGE 4: 3D MULTI-ANGLE VISUAL PROOFS & DIRECTOR POV CONTACT SHEET
-  // =========================================================================
-  doc.addPage('a4', 'landscape');
-  drawHeader(
-    `4. 3D MULTI-ANGLE VISUAL PROOFS & DIRECTOR POV CONTACT SHEET`,
-    `Hero Perspective · Front Eye-Level · 45° Coverage · Director Framing Viewfinder`,
-    4
-  );
-
-  // 4-Quadrant Matrix (Top Half)
-  const quadPadX = 14;
-  const quadPadY = 26;
-  const quadGap = 5;
-  const quadW = (pageW - quadPadX * 2 - quadGap) / 2; // ~132mm
-  const quadH = 68;
-
-  // View 1: Hero 3D (Top-Left)
-  doc.addImage(hero3D, 'JPEG', quadPadX, quadPadY, quadW, quadH);
-  doc.setFillColor(15, 23, 42);
-  doc.rect(quadPadX, quadPadY + quadH - 6, quadW, 6, 'F');
-  doc.setTextColor(56, 189, 248);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.text('1. HERO 3D ISOMETRIC VANTAGE', quadPadX + 4, quadPadY + quadH - 2);
-
-  // View 2: Front Talent Eye-Level (Top-Right)
-  doc.addImage(front, 'JPEG', quadPadX + quadW + quadGap, quadPadY, quadW, quadH);
-  doc.setFillColor(15, 23, 42);
-  doc.rect(quadPadX + quadW + quadGap, quadPadY + quadH - 6, quadW, 6, 'F');
-  doc.setTextColor(56, 189, 248);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.text('2. FRONT TALENT EYE-LEVEL (1.6M HEIGHT)', quadPadX + quadW + quadGap + 4, quadPadY + quadH - 2);
-
-  // Bottom Row: Director POV Viewfinder (Left) + Sign-Off Block (Right)
-  const btmY = quadPadY + quadH + quadGap;
-  const btmH = pageH - btmY - 10;
-
-  // Left: Director POV Framing Box
-  doc.addImage(directorPOV, 'JPEG', quadPadX, btmY, quadW, btmH);
-  doc.setFillColor(15, 23, 42);
-  doc.rect(quadPadX, btmY + btmH - 6, quadW, 6, 'F');
-  doc.setTextColor(245, 158, 11); // amber-500
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.text('3. DIRECTOR CAMERA VIEWFINDER (RULE-OF-THIRDS & SAFE MARGINS)', quadPadX + 4, btmY + btmH - 2);
-
-  // Right: Studio Sign-Off & Construction Approval Block
-  const signX = quadPadX + quadW + quadGap;
-  doc.setFillColor(248, 250, 252);
-  doc.rect(signX, btmY, quadW, btmH, 'F');
+  // Construction Sign-Off & Approval Block
+  const signY = eY + 2;
+  const signH = pageH - signY - 14;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(elecX + 4, signY, elecW - 8, signH, 'F');
   doc.setDrawColor(203, 213, 225);
-  doc.rect(signX, btmY, quadW, btmH, 'S');
+  doc.rect(elecX + 4, signY, elecW - 8, signH, 'S');
 
   doc.setTextColor(15, 23, 42);
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('STUDIO PRODUCTION SIGN-OFF & APPROVAL', signX + 6, btmY + 8);
+  doc.text('CONSTRUCTION SIGN-OFF & APPROVAL', elecX + 8, signY + 5.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  let sY = btmY + 16;
-  const drawSignLine = (label: string, placeholder: string) => {
+  doc.setFontSize(6.5);
+  let sLineY = signY + 11.5;
+  const drawSignItem = (lbl: string, val: string) => {
     doc.setTextColor(100, 116, 139);
-    doc.text(label, signX + 6, sY);
+    doc.text(lbl, elecX + 8, sLineY);
     doc.setTextColor(15, 23, 42);
-    doc.text(placeholder, signX + 42, sY);
-    doc.setDrawColor(226, 232, 240);
-    doc.line(signX + 42, sY + 1.5, signX + quadW - 6, sY + 1.5);
-    sY += 8.5;
+    doc.text(val, elecX + 35, sLineY);
+    sLineY += 5.5;
   };
+  drawSignItem('Lead Director:', projectInfo.author || 'Lead DP');
+  drawSignItem('Approval Stamp:', 'APPROVED FOR BUILD');
+  drawSignItem('Revision Code:', 'REV 1.0 (FINAL)');
 
-  drawSignLine('Production Lead:', projectInfo.name || 'Lead Creator / DP');
-  drawSignLine('Studio Designer:', 'AI Studio Certified Planner');
-  drawSignLine('Sign-Off Date:', new Date().toLocaleDateString());
-  drawSignLine('Revision Code:', 'REV 1.0 (APPROVED FOR BUILD)');
-
-  drawFooter(4);
+  drawFooter(5);
 
   // Save document
   doc.save(`${(projectInfo.name || 'Studio_Production_Plan').replace(/\s+/g, '_')}_Master_Report.pdf`);

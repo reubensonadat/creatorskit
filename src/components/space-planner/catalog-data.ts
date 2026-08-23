@@ -828,7 +828,7 @@ export const EXTENDED_EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = {
   'laser-effect-projector': {
     id: 'laser-effect-projector',
     name: 'RGB Graphic Animation Stage Laser System',
-    icon: '✨',
+    icon: '💡',
     category: 'lighting',
     dimensions: { width: 0.28, depth: 0.22, height: 0.18 },
     watts: 50,

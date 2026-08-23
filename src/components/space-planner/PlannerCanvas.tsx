@@ -165,75 +165,6 @@ export default function PlannerCanvas() {
     }
   }, [viewMode, isOrbitPanning]);
 
-  // Register Multi-Angle Studio Snapshot Capture Hook for PDF / Blueprint Export
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ = () => {
-      const renderer = rendererRef.current;
-      const scene = sceneRef.current;
-      const camera = cameraRef.current;
-      if (!renderer || !scene || !camera) return null;
-
-      const origPos = camera.position.clone();
-      const origRot = camera.rotation.clone();
-      const origFov = camera.fov;
-      const origTarget = controlsRef.current?.target.clone() || new THREE.Vector3(0, 0.5, 0);
-
-      // Temporarily hide outer walls so they never obstruct, clip, or block the interior studio view
-      const wasRoomVisible = roomGroupRef.current?.visible ?? true;
-      if (roomGroupRef.current) {
-        roomGroupRef.current.visible = false;
-      }
-
-      const angles: Record<string, string> = {};
-      const maxDim = Math.max(roomWidth, roomDepth);
-
-      const capture = (x: number, y: number, z: number, tx: number, ty: number, tz: number, fov: number, key: string) => {
-        camera.fov = fov;
-        camera.position.set(x, y, z);
-        camera.lookAt(tx, ty, tz);
-        camera.updateProjectionMatrix();
-        renderer.render(scene, camera);
-        angles[key] = renderer.domElement.toDataURL('image/jpeg', 0.95);
-      };
-
-      // 1. Hero 3D Perspective (Unobstructed Isometric Overview)
-      capture(roomWidth * 0.9, maxDim * 0.95, roomDepth * 0.95, 0, 0.6, 0, 44, 'hero3D');
-
-      // 2. Front Eye-Level Angle (Looking at stage/desk)
-      capture(0, 1.45, roomDepth * 0.85, 0, 0.9, 0, 48, 'front');
-
-      // 3. Left 45-deg Angle
-      capture(-roomWidth * 0.85, 1.5, roomDepth * 0.85, 0, 0.85, 0, 48, 'left45');
-
-      // 4. Right 45-deg Angle
-      capture(roomWidth * 0.85, 1.5, roomDepth * 0.85, 0, 0.85, 0, 48, 'right45');
-
-      // 5. Top-Down 3D Orthographic View (Actual 3D models viewed directly from above)
-      capture(0, maxDim * 1.35, 0.0001, 0, 0, 0, 42, 'top3D');
-
-      // Restore camera & room walls visibility
-      camera.fov = origFov;
-      camera.position.copy(origPos);
-      camera.rotation.copy(origRot);
-      camera.updateProjectionMatrix();
-      if (roomGroupRef.current) {
-        roomGroupRef.current.visible = wasRoomVisible;
-      }
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(origTarget);
-        controlsRef.current.update();
-      }
-      renderer.render(scene, camera);
-
-      return angles;
-    };
-
-    return () => {
-      delete (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__;
-    };
-  }, [roomWidth, roomDepth, roomHeight]);
-
   // ============ Room building ============
   const buildRoom = useCallback((
     scene: THREE.Scene,
@@ -1089,10 +1020,18 @@ export default function PlannerCanvas() {
       const curRoomD = state.roomDepth;
       const curObjs = state.placedObjects;
 
-      // Save current camera state
+      // Save current camera and gizmo visibility states
       const prevPos = cam.position.clone();
       const prevTarget = ctrl.target.clone();
       const prevFov = cam.fov;
+
+      const wasOutlineVisible = selectionOutlineRef.current?.visible ?? false;
+      const wasMeasureVisible = measureGroupRef.current?.visible ?? false;
+      const wasCamFrameVisible = cameraFrameRef.current?.visible ?? false;
+      const wasRoomVisible = roomGroupRef.current?.visible ?? true;
+
+      if (selectionOutlineRef.current) selectionOutlineRef.current.visible = false;
+      if (measureGroupRef.current) measureGroupRef.current.visible = false;
 
       const maxDim = Math.max(curRoomW, curRoomD);
       const captureAngle = (px: number, py: number, pz: number, tx: number, ty: number, tz: number, fov: number) => {
@@ -1107,59 +1046,71 @@ export default function PlannerCanvas() {
         } else {
           rend.render(scn, cam);
         }
-        return rend.domElement.toDataURL('image/jpeg', 0.95);
+        return rend.domElement.toDataURL('image/jpeg', 0.96);
       };
 
-      // 1. Hero 3D Isometric View
-      const hero3D = captureAngle(maxDim * 0.85, maxDim * 0.72, maxDim * 0.92, 0, 0.5, 0, 38);
+      // 1. Hero 3D Isometric View (Wide Architectural Studio Vantage)
+      const hero3D = captureAngle(curRoomW * 0.85, maxDim * 0.72, curRoomD * 0.95, 0, 0.55, 0, 40);
 
-      // 2. Front Talent Eye-Level (1.6m)
-      const front = captureAngle(0, 1.55, maxDim * 0.78, 0, 1.1, 0, 42);
+      // 2. Front Talent Eye-Level (1.55m elevation looking at creator desk / stage)
+      const front = captureAngle(0, 1.55, curRoomD * 0.82, 0, 1.05, 0, 44);
 
-      // 3. Left 45° Coverage Angle
-      const left45 = captureAngle(-maxDim * 0.75, maxDim * 0.55, maxDim * 0.75, 0, 0.6, 0, 40);
+      // 3. Left 45° Key Lighting & Rigging Perspective
+      const left45 = captureAngle(-curRoomW * 0.82, maxDim * 0.58, curRoomD * 0.82, 0, 0.65, 0, 42);
 
-      // 4. Right 45° Coverage Angle
-      const right45 = captureAngle(maxDim * 0.75, maxDim * 0.55, maxDim * 0.75, 0, 0.6, 0, 40);
+      // 4. Right 45° Studio Depth & Fill Perspective
+      const right45 = captureAngle(curRoomW * 0.82, maxDim * 0.58, curRoomD * 0.82, 0, 0.65, 0, 42);
 
-      // 5. Top 3D Orthographic Blueprint View
-      const top3D = captureAngle(0, maxDim * 1.85, 0.001, 0, 0, 0, 34);
+      // 5. Top 3D Orthographic View (Actual 3D models viewed directly from above for blueprint)
+      const top3D = captureAngle(0, maxDim * 1.85, 0.001, 0, 0, 0, 36);
 
-      // 6. Director POV Viewfinder (through main camera)
+      // 6. Director POV Viewfinder (exact lens optics)
       let directorPOV = hero3D;
+      const isCam = (id: string) =>
+        id === 'camera' ||
+        id.startsWith('cam') ||
+        id.includes('phone') ||
+        id.includes('webcam') ||
+        id.includes('prompter') ||
+        id.includes('teleprompter');
+
       const activeCam =
-        curObjs.find((o) => o.isMainCamera && (o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'))) ||
-        curObjs.find((o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam'));
+        curObjs.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
+        curObjs.find((o) => isCam(o.equipmentId));
+
       if (activeCam) {
-        const camY = getObjectY(activeCam) + 1.25;
+        const lens = getCameraLensPos(activeCam);
+        const camEyePos = new THREE.Vector3(
+          activeCam.x + Math.sin(activeCam.rotationY) * lens.localZ,
+          lens.y,
+          activeCam.z + Math.cos(activeCam.rotationY) * lens.localZ
+        );
         const forwardX = Math.sin(activeCam.rotationY);
         const forwardZ = Math.cos(activeCam.rotationY);
-        const lensMap: Record<string, number> = {
-          '16mm': 84,
-          '24mm': 65,
-          '35mm': 50,
-          '50mm': 39,
-          '85mm': 24,
-        };
-        const fov = lensMap[activeCam.lensPreset || '24mm'] || 65;
         directorPOV = captureAngle(
-          activeCam.x,
-          camY,
-          activeCam.z,
-          activeCam.x + forwardX * 4,
-          camY,
-          activeCam.z + forwardZ * 4,
-          fov
+          camEyePos.x,
+          camEyePos.y,
+          camEyePos.z,
+          camEyePos.x + forwardX * 4.0,
+          camEyePos.y,
+          camEyePos.z + forwardZ * 4.0,
+          lens.fov
         );
       }
 
-      // Restore camera state
+      // Restore camera state and gizmos
       cam.position.copy(prevPos);
       ctrl.target.copy(prevTarget);
       cam.fov = prevFov;
       cam.updateProjectionMatrix();
       cam.lookAt(prevTarget);
       ctrl.update();
+
+      if (selectionOutlineRef.current) selectionOutlineRef.current.visible = wasOutlineVisible;
+      if (measureGroupRef.current) measureGroupRef.current.visible = wasMeasureVisible;
+      if (cameraFrameRef.current) cameraFrameRef.current.visible = wasCamFrameVisible;
+      if (roomGroupRef.current) roomGroupRef.current.visible = wasRoomVisible;
+
       if (comp) comp.render();
 
       return { hero3D, front, left45, right45, top3D, directorPOV };
@@ -1653,6 +1604,8 @@ export default function PlannerCanvas() {
         setViewMode(viewMode === 'perspective' ? 'top' : 'perspective');
       } else if (e.key === 'm' || e.key === 'M') {
         toggleMeasuring();
+      } else if (e.key === 'h' || e.key === 'H' || e.key === 'z' || e.key === 'Z') {
+        usePlannerStore.getState().toggleZenMode();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedObjectId) {
           usePlannerStore.getState().deleteObject(selectedObjectId);
@@ -1870,7 +1823,7 @@ export default function PlannerCanvas() {
 
       {/* Interactive Laser Tape Measure Floating HUD */}
       {isMeasuring && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 bg-zinc-950/95 text-white backdrop-blur-md border-2 border-emerald-400 shadow-[4px_4px_0px_#000] font-mono text-xs">
+        <div className="absolute bottom-20 md:bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-3 px-4 py-2 bg-zinc-950/95 text-white backdrop-blur-md border-2 border-emerald-400 shadow-[4px_4px_0px_#000] font-mono text-xs max-w-[92vw]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-bold text-emerald-400 tracking-wider text-[11px]">LASER RULER</span>

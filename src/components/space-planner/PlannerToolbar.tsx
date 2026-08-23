@@ -1,7 +1,7 @@
 'use client';
 
 import { usePlannerStore } from './store';
-import { Camera, Compass, Eye, Flame, RotateCcw, RotateCw, Trash2, Home, Grid, Footprints, Ruler, Sun, Sparkles, Sliders } from 'lucide-react';
+import { Camera, Compass, Eye, Flame, RotateCcw, RotateCw, Trash2, Home, Grid, Footprints, Ruler, Sun, Wand2, Sliders, Minimize2, Maximize2 } from 'lucide-react';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 
 export default function PlannerToolbar() {
@@ -27,6 +27,8 @@ export default function PlannerToolbar() {
   const activeCameraId = usePlannerStore((s) => s.activeCameraId);
   const setActiveCameraId = usePlannerStore((s) => s.setActiveCameraId);
   const setMainCamera = usePlannerStore((s) => s.setMainCamera);
+  const isZenMode = usePlannerStore((s) => s.isZenMode);
+  const toggleZenMode = usePlannerStore((s) => s.toggleZenMode);
 
   const cameras = placedObjects.filter(
     (o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam') || o.equipmentId.includes('phone') || o.equipmentId.includes('webcam')
@@ -34,8 +36,8 @@ export default function PlannerToolbar() {
   const hasCamera = cameras.length > 0;
 
   return (
-    <div className="hud hud-bc">
-      <div className="flex items-center gap-1 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000]">
+    <div className="hud hud-bc z-30">
+      <div className="flex items-center flex-wrap gap-1 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000] max-w-[calc(100vw-360px)]">
         {/* View Mode Buttons */}
         <button
           className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1.5 transition-all ${
@@ -175,8 +177,18 @@ export default function PlannerToolbar() {
             optimizeStudioErgonomics();
           }}
         >
-          <Sparkles size={13} className="text-emerald-600" />
+          <Wand2 size={13} className="text-emerald-600" />
           <span>Auto-Align</span>
+        </button>
+
+        {/* Clean View / Zen Mode Button */}
+        <button
+          className="btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 bg-white hover:bg-zinc-100 text-black border border-black/20"
+          title="Clean View Mode (H) — Collapse all HUD overlays for an unobstructed 3D view"
+          onClick={toggleZenMode}
+        >
+          <Minimize2 size={13} />
+          <span>Zen</span>
         </button>
 
         {/* Selected Object Manipulation */}
