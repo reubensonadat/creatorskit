@@ -1182,17 +1182,18 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             data-cue="1"
             style={{
               display: 'inline-block',
-              padding: '2px 8px',
-              margin: '0 4px',
+              padding: '1px 6px',
+              margin: '0 3px',
               background: '#FFE500',
               color: '#000000',
-              borderRadius: 4,
+              borderRadius: 3,
               fontWeight: 900,
               fontSize: '0.72em',
               letterSpacing: '0.04em',
               textTransform: 'uppercase',
               border: '1.5px solid #000000',
-              verticalAlign: 'middle',
+              verticalAlign: 'baseline',
+              lineHeight: 1,
             }}
           >
             {tok.raw}
@@ -1209,14 +1210,15 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           data-word="1"
           data-index={tok.id}
           style={{
-            background: isCurrent ? '#FFE500' : 'transparent',
+            backgroundColor: isCurrent ? '#FFE500' : 'transparent',
             color: isCurrent ? '#000000' : isPast ? 'rgba(255,255,255,0.45)' : 'inherit',
-            padding: isCurrent ? '2px 6px' : '0 1px',
-            borderRadius: isCurrent ? 4 : 0,
-            fontWeight: isCurrent ? 900 : 'inherit',
-            boxShadow: isCurrent ? '0 0 16px rgba(255, 229, 0, 0.8)' : 'none',
-            transition: 'all 0.15s ease',
-            display: 'inline-block',
+            borderRadius: 3,
+            boxDecorationBreak: 'clone',
+            WebkitBoxDecorationBreak: 'clone',
+            padding: '0 1px',
+            margin: 0,
+            boxShadow: isCurrent ? '0 0 14px rgba(255, 229, 0, 0.7)' : 'none',
+            transition: 'color 0.1s ease, background-color 0.1s ease',
           }}
         >
           {tok.raw}
