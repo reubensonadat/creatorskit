@@ -690,20 +690,40 @@ export default function PlannerCanvas() {
       const baseY = getObjectY(light);
       const id = light.equipmentId.toLowerCase();
 
-      let emitterLocalY = 1.45;
-      let emitterForwardZ = 0.12;
-      if (id.includes('desk-lamp') || id.includes('lamp')) {
-        emitterLocalY = 0.38;
-        emitterForwardZ = 0.08;
-      } else if (id.includes('tube') || id.includes('wand')) {
-        emitterLocalY = 0.2;
-        emitterForwardZ = 0.0;
+      let emitterLocalY = 1.85;
+      let emitterForwardZ = 0.145;
+
+      if (id.includes('softbox')) {
+        // Center of front softbox translucent diffusion panel
+        emitterLocalY = 1.85;
+        emitterForwardZ = 0.145;
       } else if (id.includes('ring-light')) {
-        emitterLocalY = 1.45;
+        // Center of glowing ring torus aperture
+        emitterLocalY = 1.74;
         emitterForwardZ = 0.01;
+      } else if (id.includes('fresnel') || id.includes('spotlight') || id.includes('barndoor')) {
+        // Center of stepped glass Fresnel lens
+        emitterLocalY = 1.61;
+        emitterForwardZ = 0.125;
+      } else if (id.includes('beauty-dish') || id.includes('lantern')) {
+        // Front center of reflector dome
+        emitterLocalY = 1.80;
+        emitterForwardZ = 0.16;
+      } else if (id.includes('desk-lamp') || id.includes('architect-lamp') || id.includes('lamp')) {
+        // Center of angled tabletop lampshade
+        emitterLocalY = 0.38;
+        emitterForwardZ = 0.12;
       } else if (id.includes('led-panel') || id.includes('panel')) {
-        emitterLocalY = baseY > 0.4 ? 0.35 : 1.35;
-        emitterForwardZ = 0.05;
+        // Center of diffused LED face plate
+        emitterLocalY = baseY > 0.4 ? 0.35 : 1.65;
+        emitterForwardZ = 0.04;
+      } else if (id.includes('tube') || id.includes('wand')) {
+        // Center of glowing tube
+        emitterLocalY = 0.15;
+        emitterForwardZ = 0.0;
+      } else {
+        emitterLocalY = 1.65;
+        emitterForwardZ = 0.10;
       }
 
       const totalEmitterY = baseY + emitterLocalY;
