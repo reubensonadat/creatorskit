@@ -23,6 +23,7 @@ interface StoreState {
   // Template & view
   templateId: CreatorTemplateId;
   viewMode: ViewMode;
+  wallDisplayMode: import('./types').WallDisplayMode;
 
   // Objects
   placedObjects: PlacedObject[];
@@ -61,6 +62,7 @@ interface StoreState {
 
   // Actions
   setRoomDimensions: (width: number, depth: number, height?: number) => void;
+  setWallDisplayMode: (mode: import('./types').WallDisplayMode) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
   setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
@@ -111,7 +113,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   templateId: 'bedroom-studio',
   viewMode: 'perspective',
-
+  wallDisplayMode: 'auto-cutaway',
   placedObjects: [],
   selectedObjectId: null,
   placingEquipmentId: null,
@@ -119,7 +121,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   currency: 'USD',
 
   projectInfo: {
-    name: 'My Creator Setup',
+    name: 'My Creator Studio',
     location: '',
     notes: '',
     supplierContact: '',
@@ -151,6 +153,8 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     roomDepth: clamp(depth, 2, 25),
     roomHeight: height ? clamp(height, 2, 10) : s.roomHeight,
   })),
+
+  setWallDisplayMode: (mode) => set({ wallDisplayMode: mode }),
 
   setTemplateId: (id) => set({ templateId: id }),
 

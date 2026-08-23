@@ -162,6 +162,13 @@ export default function PlannerCanvas() {
   const setViewMode = usePlannerStore((s) => s.setViewMode);
   const getObjectY = usePlannerStore((s) => s.getObjectY);
 
+  const wallGroupsRef = useRef<{
+    back: THREE.Group;
+    front: THREE.Group;
+    left: THREE.Group;
+    right: THREE.Group;
+  } | null>(null);
+
   // Sync auto-rotation / slow cinematic pan with OrbitControls
   useEffect(() => {
     const controls = controlsRef.current;
@@ -174,7 +181,7 @@ export default function PlannerCanvas() {
     }
   }, [viewMode, isOrbitPanning]);
 
-  // ============ Room building ============
+  // ============ Room building (All 4 Walls Architecture) ============
   const buildRoom = useCallback((
     scene: THREE.Scene,
     roomGroup: THREE.Group,
@@ -215,39 +222,10 @@ export default function PlannerCanvas() {
       roomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
     }
 
-    // Walls with warm matte plaster finish
+    // Materials
     const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.9, metalness: 0.01 });
-    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), wallMat);
-    wallBack.position.set(0, h / 2, -d / 2);
-    wallBack.receiveShadow = true;
-    roomGroup.add(wallBack);
-
-    const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, d), wallMat);
-    wallLeft.position.set(-w / 2, h / 2, 0);
-    wallLeft.receiveShadow = true;
-    roomGroup.add(wallLeft);
-
-    // Modern Architectural Multi-profile Baseboards
     const baseMat = new THREE.MeshStandardMaterial({ color: BASEBOARD_COLOR, roughness: 0.5, metalness: 0.1 });
     const baseTrimMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.6 });
-
-    // Back wall baseboard
-    const baseBack = new THREE.Mesh(new THREE.BoxGeometry(w, 0.09, 0.024), baseMat);
-    baseBack.position.set(0, 0.045, -d / 2 + 0.072);
-    roomGroup.add(baseBack);
-    const baseBackCap = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.028), baseTrimMat);
-    baseBackCap.position.set(0, 0.095, -d / 2 + 0.074);
-    roomGroup.add(baseBackCap);
-
-    // Left wall baseboard
-    const baseLeft = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.09, d), baseMat);
-    baseLeft.position.set(-w / 2 + 0.072, 0.045, 0);
-    roomGroup.add(baseLeft);
-    const baseLeftCap = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.014, d), baseTrimMat);
-    baseLeftCap.position.set(-w / 2 + 0.074, 0.095, 0);
-    roomGroup.add(baseLeftCap);
-
-    // Render windows from store
     const frameMat = new THREE.MeshStandardMaterial({ color: WINDOW_FRAME_COLOR, roughness: 0.5 });
     const glassMat = new THREE.MeshStandardMaterial({ 
       color: WINDOW_GLASS_COLOR, 
@@ -257,55 +235,156 @@ export default function PlannerCanvas() {
       metalness: 0.1,
     });
 
+    // 1. BACK WALL (North: -Z)
+    const wallBackGroup = new THREE.Group();
+    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), wallMat.clone());
+    wallBack.position.set(0, h / 2, -d / 2);
+    wallBack.receiveShadow = true;
+    wallBackGroup.add(wallBack);
+
+    const baseBack = new THREE.Mesh(new THREE.BoxGeometry(w, 0.09, 0.024), baseMat);
+    baseBack.position.set(0, 0.045, -d / 2 + 0.072);
+    wallBackGroup.add(baseBack);
+    const baseBackCap = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.028), baseTrimMat);
+    baseBackCap.position.set(0, 0.095, -d / 2 + 0.074);
+    wallBackGroup.add(baseBackCap);
+
+    // 2. FRONT WALL (South: +Z)
+    const wallFrontGroup = new THREE.Group();
+    const wallFront = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), wallMat.clone());
+    wallFront.position.set(0, h / 2, d / 2);
+    wallFront.receiveShadow = true;
+    wallFrontGroup.add(wallFront);
+
+    const baseFront = new THREE.Mesh(new THREE.BoxGeometry(w, 0.09, 0.024), baseMat);
+    baseFront.position.set(0, 0.045, d / 2 - 0.072);
+    wallFrontGroup.add(baseFront);
+    const baseFrontCap = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.028), baseTrimMat);
+    baseFrontCap.position.set(0, 0.095, d / 2 - 0.074);
+    wallFrontGroup.add(baseFrontCap);
+
+    // 3. LEFT WALL (West: -X)
+    const wallLeftGroup = new THREE.Group();
+    const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, d), wallMat.clone());
+    wallLeft.position.set(-w / 2, h / 2, 0);
+    wallLeft.receiveShadow = true;
+    wallLeftGroup.add(wallLeft);
+
+    const baseLeft = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.09, d), baseMat);
+    baseLeft.position.set(-w / 2 + 0.072, 0.045, 0);
+    wallLeftGroup.add(baseLeft);
+    const baseLeftCap = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.014, d), baseTrimMat);
+    baseLeftCap.position.set(-w / 2 + 0.074, 0.095, 0);
+    wallLeftGroup.add(baseLeftCap);
+
+    // 4. RIGHT WALL (East: +X)
+    const wallRightGroup = new THREE.Group();
+    const wallRight = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, d), wallMat.clone());
+    wallRight.position.set(w / 2, h / 2, 0);
+    wallRight.receiveShadow = true;
+    wallRightGroup.add(wallRight);
+
+    const baseRight = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.09, d), baseMat);
+    baseRight.position.set(w / 2 - 0.072, 0.045, 0);
+    wallRightGroup.add(baseRight);
+    const baseRightCap = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.014, d), baseTrimMat);
+    baseRightCap.position.set(w / 2 - 0.074, 0.095, 0);
+    wallRightGroup.add(baseRightCap);
+
+    // Render windows onto respective wall groups
     wins.forEach((win) => {
       if (win.wall === 'back') {
         const xPos = win.xOffset * (w / 2 - 0.5);
-        // Glass
         const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
         glass.position.set(xPos, win.heightOffset, -d / 2 + 0.07);
-        roomGroup.add(glass);
-        // Frame
+        wallBackGroup.add(glass);
         const ft = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
         ft.position.set(xPos, win.heightOffset + win.height / 2 + 0.03, -d / 2 + 0.08);
-        roomGroup.add(ft);
+        wallBackGroup.add(ft);
         const fb = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
         fb.position.set(xPos, win.heightOffset - win.height / 2 - 0.03, -d / 2 + 0.08);
-        roomGroup.add(fb);
+        wallBackGroup.add(fb);
         const fl = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
         fl.position.set(xPos - win.width / 2 - 0.03, win.heightOffset, -d / 2 + 0.08);
-        roomGroup.add(fl);
+        wallBackGroup.add(fl);
         const fr = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
         fr.position.set(xPos + win.width / 2 + 0.03, win.heightOffset, -d / 2 + 0.08);
-        roomGroup.add(fr);
-        // Cross bars
+        wallBackGroup.add(fr);
         const ch = new THREE.Mesh(new THREE.BoxGeometry(win.width, 0.03, 0.02), frameMat);
         ch.position.set(xPos, win.heightOffset, -d / 2 + 0.09);
-        roomGroup.add(ch);
+        wallBackGroup.add(ch);
         const cv = new THREE.Mesh(new THREE.BoxGeometry(0.03, win.height, 0.02), frameMat);
         cv.position.set(xPos, win.heightOffset, -d / 2 + 0.09);
-        roomGroup.add(cv);
+        wallBackGroup.add(cv);
+      } else if (win.wall === 'front') {
+        const xPos = win.xOffset * (w / 2 - 0.5);
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
+        glass.rotation.y = Math.PI;
+        glass.position.set(xPos, win.heightOffset, d / 2 - 0.07);
+        wallFrontGroup.add(glass);
+        const ft = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
+        ft.position.set(xPos, win.heightOffset + win.height / 2 + 0.03, d / 2 - 0.08);
+        wallFrontGroup.add(ft);
+        const fb = new THREE.Mesh(new THREE.BoxGeometry(win.width + 0.1, 0.06, 0.04), frameMat);
+        fb.position.set(xPos, win.heightOffset - win.height / 2 - 0.03, d / 2 - 0.08);
+        wallFrontGroup.add(fb);
+        const fl = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
+        fl.position.set(xPos - win.width / 2 - 0.03, win.heightOffset, d / 2 - 0.08);
+        wallFrontGroup.add(fl);
+        const fr = new THREE.Mesh(new THREE.BoxGeometry(0.06, win.height + 0.12, 0.04), frameMat);
+        fr.position.set(xPos + win.width / 2 + 0.03, win.heightOffset, d / 2 - 0.08);
+        wallFrontGroup.add(fr);
+        const ch = new THREE.Mesh(new THREE.BoxGeometry(win.width, 0.03, 0.02), frameMat);
+        ch.position.set(xPos, win.heightOffset, d / 2 - 0.09);
+        wallFrontGroup.add(ch);
+        const cv = new THREE.Mesh(new THREE.BoxGeometry(0.03, win.height, 0.02), frameMat);
+        cv.position.set(xPos, win.heightOffset, d / 2 - 0.09);
+        wallFrontGroup.add(cv);
       } else if (win.wall === 'left') {
         const zPos = win.xOffset * (d / 2 - 0.5);
-        // Glass
         const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
         glass.rotation.y = Math.PI / 2;
         glass.position.set(-w / 2 + 0.07, win.heightOffset, zPos);
-        roomGroup.add(glass);
-        // Frame
+        wallLeftGroup.add(glass);
         const ft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
         ft.position.set(-w / 2 + 0.08, win.heightOffset + win.height / 2 + 0.03, zPos);
-        roomGroup.add(ft);
+        wallLeftGroup.add(ft);
         const fb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
         fb.position.set(-w / 2 + 0.08, win.heightOffset - win.height / 2 - 0.03, zPos);
-        roomGroup.add(fb);
+        wallLeftGroup.add(fb);
         const ff = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
         ff.position.set(-w / 2 + 0.08, win.heightOffset, zPos - win.width / 2 - 0.03);
-        roomGroup.add(ff);
+        wallLeftGroup.add(ff);
         const fbb = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
         fbb.position.set(-w / 2 + 0.08, win.heightOffset, zPos + win.width / 2 + 0.03);
-        roomGroup.add(fbb);
+        wallLeftGroup.add(fbb);
+      } else if (win.wall === 'right') {
+        const zPos = win.xOffset * (d / 2 - 0.5);
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(win.width, win.height), glassMat);
+        glass.rotation.y = -Math.PI / 2;
+        glass.position.set(w / 2 - 0.07, win.heightOffset, zPos);
+        wallRightGroup.add(glass);
+        const ft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
+        ft.position.set(w / 2 - 0.08, win.heightOffset + win.height / 2 + 0.03, zPos);
+        wallRightGroup.add(ft);
+        const fb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, win.width + 0.1), frameMat);
+        fb.position.set(w / 2 - 0.08, win.heightOffset - win.height / 2 - 0.03, zPos);
+        wallRightGroup.add(fb);
+        const ff = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
+        ff.position.set(w / 2 - 0.08, win.heightOffset, zPos - win.width / 2 - 0.03);
+        wallRightGroup.add(ff);
+        const fbb = new THREE.Mesh(new THREE.BoxGeometry(0.04, win.height + 0.12, 0.06), frameMat);
+        fbb.position.set(w / 2 - 0.08, win.heightOffset, zPos + win.width / 2 + 0.03);
+        wallRightGroup.add(fbb);
       }
     });
+
+    // Add all 4 walls to roomGroup
+    roomGroup.add(wallBackGroup);
+    roomGroup.add(wallFrontGroup);
+    roomGroup.add(wallLeftGroup);
+    roomGroup.add(wallRightGroup);
+    wallGroupsRef.current = { back: wallBackGroup, front: wallFrontGroup, left: wallLeftGroup, right: wallRightGroup };
 
     // Wall dimension labels (small markers)
     const labelMat = new THREE.MeshBasicMaterial({ color: ACCENT_COLOR, transparent: true, opacity: 0.6 });
@@ -991,9 +1070,49 @@ export default function PlannerCanvas() {
     roomGroupRef.current = roomGroup;
     buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight, windows);
 
-    // Animation loop
+    // Animation loop with Smart Architectural 4-Wall Cutaway Engine
     const tick = () => {
       controls.update();
+
+      // Dynamic 4-Wall Visibility & Camera Cutaway
+      const wallMode = usePlannerStore.getState().wallDisplayMode;
+      const walls = wallGroupsRef.current;
+      if (walls) {
+        if (wallMode === 'floor-only') {
+          walls.back.visible = false;
+          walls.front.visible = false;
+          walls.left.visible = false;
+          walls.right.visible = false;
+        } else if (wallMode === 'corner-2') {
+          walls.back.visible = true;
+          walls.left.visible = true;
+          walls.front.visible = false;
+          walls.right.visible = false;
+        } else if (wallMode === 'u-shape-3') {
+          walls.back.visible = true;
+          walls.left.visible = true;
+          walls.right.visible = true;
+          walls.front.visible = false;
+        } else if (wallMode === 'all-4') {
+          walls.back.visible = true;
+          walls.front.visible = true;
+          walls.left.visible = true;
+          walls.right.visible = true;
+        } else {
+          // 'auto-cutaway' (Default Smart Mode)
+          // Dynamically cutaway/hide any wall situated between the camera and the room interior
+          const camPos = camera.position;
+          const rW = usePlannerStore.getState().roomWidth;
+          const rD = usePlannerStore.getState().roomDepth;
+          const pad = 0.2;
+
+          walls.back.visible = camPos.z >= -rD / 2 - pad;
+          walls.front.visible = camPos.z <= rD / 2 + pad;
+          walls.left.visible = camPos.x >= -rW / 2 - pad;
+          walls.right.visible = camPos.x <= rW / 2 + pad;
+        }
+      }
+
       composer.render();
       animFrameRef.current = requestAnimationFrame(tick);
     };

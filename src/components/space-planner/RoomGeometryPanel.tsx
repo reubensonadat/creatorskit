@@ -90,6 +90,8 @@ export default function RoomGeometryPanel() {
   const roomWidth = usePlannerStore((s) => s.roomWidth);
   const roomDepth = usePlannerStore((s) => s.roomDepth);
   const roomHeight = usePlannerStore((s) => s.roomHeight);
+  const wallDisplayMode = usePlannerStore((s) => s.wallDisplayMode);
+  const setWallDisplayMode = usePlannerStore((s) => s.setWallDisplayMode);
   const setRoomDimensions = usePlannerStore((s) => s.setRoomDimensions);
   const placeObject = usePlannerStore((s) => s.placeObject);
 
@@ -284,6 +286,51 @@ export default function RoomGeometryPanel() {
                   className="w-full accent-black cursor-pointer"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Wall Enclosure & Visibility Modes */}
+          <div className="p-2.5 bg-white border-2 border-black shadow-[2px_2px_0_#000]">
+            <span className="font-black text-[11px] uppercase tracking-wider text-black block mb-2">
+              Wall Enclosure & View
+            </span>
+            <div className="grid grid-cols-2 gap-1 text-[9.5px]">
+              <button
+                onClick={() => setWallDisplayMode('auto-cutaway')}
+                className={`py-1 px-1.5 font-bold border border-black text-center transition-all ${
+                  wallDisplayMode === 'auto-cutaway' ? 'bg-black text-white font-black' : 'bg-stone-50 text-black hover:bg-stone-100'
+                }`}
+                title="Smart cutaway: walls facing camera fade so view is never blocked"
+              >
+                Auto-Cutaway
+              </button>
+              <button
+                onClick={() => setWallDisplayMode('all-4')}
+                className={`py-1 px-1.5 font-bold border border-black text-center transition-all ${
+                  wallDisplayMode === 'all-4' ? 'bg-black text-white font-black' : 'bg-stone-50 text-black hover:bg-stone-100'
+                }`}
+                title="All 4 solid walls enclosed"
+              >
+                4 Solid Walls
+              </button>
+              <button
+                onClick={() => setWallDisplayMode('corner-2')}
+                className={`py-1 px-1.5 font-bold border border-black text-center transition-all ${
+                  wallDisplayMode === 'corner-2' ? 'bg-black text-white font-black' : 'bg-stone-50 text-black hover:bg-stone-100'
+                }`}
+                title="Open 2-wall corner studio"
+              >
+                Corner (2 Walls)
+              </button>
+              <button
+                onClick={() => setWallDisplayMode('floor-only')}
+                className={`py-1 px-1.5 font-bold border border-black text-center transition-all ${
+                  wallDisplayMode === 'floor-only' ? 'bg-black text-white font-black' : 'bg-stone-50 text-black hover:bg-stone-100'
+                }`}
+                title="Open soundstage floor"
+              >
+                Floor Only
+              </button>
             </div>
           </div>
 

@@ -174,9 +174,11 @@ export interface ProjectInfo {
   supplierContact: string;
 }
 
+export type WallDisplayMode = 'auto-cutaway' | 'all-4' | 'corner-2' | 'u-shape-3' | 'floor-only';
+
 export interface WindowPlacement {
   id: string;
-  wall: 'back' | 'left';
+  wall: 'back' | 'left' | 'right' | 'front';
   xOffset: number; // -1 to 1, position along wall
   width: number;
   height: number;
@@ -189,6 +191,7 @@ export interface PlannerState {
   roomHeight: number;
   templateId: CreatorTemplateId;
   viewMode: ViewMode;
+  wallDisplayMode: WallDisplayMode;
   placedObjects: PlacedObject[];
   selectedObjectId: string | null;
   placingEquipmentId: EquipmentId | null;
@@ -202,15 +205,18 @@ export interface PlannerState {
   showCameraPreview: boolean;
   showLuxHeatmap: boolean;
   isOrbitPanning: boolean;
+  isZenMode: boolean;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
-  setRoomDimensions: (width: number, depth: number) => void;
+  setRoomDimensions: (width: number, depth: number, height?: number) => void;
+  setWallDisplayMode: (mode: WallDisplayMode) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
   setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
   toggleOrbitPanning: () => void;
   setOrbitPanning: (panning: boolean) => void;
+  toggleZenMode: () => void;
   setCurrency: (currency: Currency) => void;
   setPlacingEquipment: (id: EquipmentId | null) => void;
   placeObject: (obj: PlacedObject) => void;
@@ -224,7 +230,7 @@ export interface PlannerState {
   clearAll: () => void;
   setProjectInfo: (info: Partial<ProjectInfo>) => void;
   setCustomPrice: (id: string, currency: Currency, price: number) => void;
-  addWindow: (wall: 'back' | 'left') => void;
+  addWindow: (wall: 'back' | 'left' | 'right' | 'front') => void;
   removeWindow: (id: string) => void;
   updateWindow: (id: string, updates: Partial<WindowPlacement>) => void;
   toggleBudgetPanel: () => void;
