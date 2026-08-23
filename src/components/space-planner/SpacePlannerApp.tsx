@@ -18,11 +18,13 @@ import ProjectInfoPanel from './ProjectInfoPanel';
 import PlannerToolbar from './PlannerToolbar';
 import WindowsPanel from './WindowsPanel';
 import RoomGeometryPanel from './RoomGeometryPanel';
+import PdfExportModal from './PdfExportModal';
 import type { Currency, ViewMode } from './types';
 
 export default function SpacePlannerApp() {
   const hasHydratedRef = useRef(false);
   const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates' | 'room-ai'>('equipment');
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
   // Store subscriptions
   const viewMode = usePlannerStore((s) => s.viewMode);
@@ -440,34 +442,24 @@ export default function SpacePlannerApp() {
                 <div className="flex items-center gap-1 font-mono text-[9.5px]">
                   <button
                     onClick={handleExportPNG}
-                    className="btn px-2 py-0.5 font-bold bg-white text-black border border-black hover:bg-zinc-100"
+                    className="btn px-2 py-0.5 font-bold bg-white text-black border border-black hover:bg-stone-100"
                     title="Export High-Resolution Canvas PNG"
                   >
-                    📸 PNG
+                    PNG
                   </button>
                   <button
-                    onClick={handleExportPDF}
-                    disabled={isExportingPDF}
-                    className={`btn px-2 py-0.5 font-bold flex items-center gap-1 border border-black ${
-                      isExportingPDF ? 'bg-zinc-300 text-zinc-600' : 'bg-black text-white hover:bg-zinc-800'
-                    }`}
-                    title="Generate 5-Page Architectural 3D Production Dossier (PDF)"
+                    onClick={() => setIsPdfModalOpen(true)}
+                    className="btn px-2.5 py-0.5 font-bold bg-black text-white hover:bg-stone-800 border border-black shadow-[1px_1px_0_#000]"
+                    title="Configure and Export Master Studio Architectural PDF Dossier"
                   >
-                    {isExportingPDF ? (
-                      <>
-                        <span className="inline-block w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>PDF...</span>
-                      </>
-                    ) : (
-                      <span>📄 PDF</span>
-                    )}
+                    PDF
                   </button>
                   <button
                     onClick={toggleZenMode}
-                    className="btn px-1.5 py-0.5 font-bold bg-[#FFDD00] text-black border border-black hover:bg-amber-300"
+                    className="btn px-1.5 py-0.5 font-bold bg-[#FFE500] text-black border border-black hover:bg-amber-300"
                     title="Clean 3D View (H) — Hide all HUD overlays"
                   >
-                    🧹 Zen
+                    / Zen
                   </button>
                 </div>
               </div>
@@ -579,6 +571,13 @@ export default function SpacePlannerApp() {
           </div>
         </div>
       )}
+
+      {/* Interactive PDF Export Modal */}
+      <PdfExportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        canvasContainerRef={canvasContainerRef}
+      />
     </div>
   );
 }

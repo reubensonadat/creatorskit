@@ -1175,6 +1175,17 @@ export default function PlannerCanvas() {
         cam.updateProjectionMatrix();
         cam.lookAt(tx, ty, tz);
         ctrl.update();
+
+        // Dynamically cutaway walls for this camera perspective
+        const walls = wallGroupsRef.current;
+        if (walls) {
+          const pad = 0.2;
+          walls.back.visible = pz >= -curRoomD / 2 - pad;
+          walls.front.visible = pz <= curRoomD / 2 + pad;
+          walls.left.visible = px >= -curRoomW / 2 - pad;
+          walls.right.visible = px <= curRoomW / 2 + pad;
+        }
+
         if (comp) {
           comp.render();
         } else {
@@ -1186,19 +1197,23 @@ export default function PlannerCanvas() {
       // 1. Hero 3D Isometric View (Wide Architectural Studio Vantage)
       const hero3D = captureAngle(curRoomW * 0.85, maxDim * 0.72, curRoomD * 0.95, 0, 0.55, 0, 40);
 
-      // 2. Front Talent Eye-Level (1.55m elevation looking at creator desk / stage)
-      const front = captureAngle(0, 1.55, curRoomD * 0.82, 0, 1.05, 0, 44);
+      // 2. North Elevation (Back Wall View looking at workstation / window)
+      const front = captureAngle(0, 1.55, curRoomD * 0.85, 0, 1.05, 0, 46);
+      const north = front;
 
-      // 3. Left 45° Key Lighting & Rigging Perspective
-      const left45 = captureAngle(-curRoomW * 0.82, maxDim * 0.58, curRoomD * 0.82, 0, 0.65, 0, 42);
+      // 3. South Elevation (Front Wall View looking back towards entry / front wall)
+      const south = captureAngle(0, 1.55, -curRoomD * 0.85, 0, 1.05, 0, 46);
 
-      // 4. Right 45° Studio Depth & Fill Perspective
-      const right45 = captureAngle(curRoomW * 0.82, maxDim * 0.58, curRoomD * 0.82, 0, 0.65, 0, 42);
+      // 4. West 45° Key Lighting & Rigging Perspective
+      const left45 = captureAngle(-curRoomW * 0.85, maxDim * 0.60, curRoomD * 0.85, 0, 0.65, 0, 42);
 
-      // 5. Top 3D Orthographic View (Actual 3D models viewed directly from above for blueprint)
+      // 5. East 45° Fill & Depth Perspective
+      const right45 = captureAngle(curRoomW * 0.85, maxDim * 0.60, curRoomD * 0.85, 0, 0.65, 0, 42);
+
+      // 6. Top 3D Orthographic View (Actual 3D models viewed directly from above for blueprint)
       const top3D = captureAngle(0, maxDim * 1.85, 0.001, 0, 0, 0, 36);
 
-      // 6. Director POV Viewfinder (exact lens optics)
+      // 7. Director POV Viewfinder (exact lens optics)
       let directorPOV = hero3D;
       const activeCam =
         curObjs.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
@@ -1239,7 +1254,7 @@ export default function PlannerCanvas() {
 
       if (comp) comp.render();
 
-      return { hero3D, front, left45, right45, top3D, directorPOV };
+      return { hero3D, front, north, south, left45, right45, top3D, directorPOV };
     };
 
     // ResizeObserver
