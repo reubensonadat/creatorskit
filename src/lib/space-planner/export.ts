@@ -138,13 +138,91 @@ export async function generate2DBlueprintSchematic(
   ctx.fillText(`↕ DEPTH: ${roomDepth.toFixed(2)} m (${(roomDepth * 3.28084).toFixed(1)} ft)`, 0, 0);
   ctx.restore();
 
-  // Overlay Subtle Equipment Pin Callouts over the real 3D render
+  // Draw Equipment 2D Overlays (Bounding Boxes, FOV Cones, Throw Wedges)
   placedObjects.forEach((obj, idx) => {
     const cx = roomLeft + (obj.x + roomWidth / 2) * scale;
     const cy = roomTop + (obj.z + roomDepth / 2) * scale;
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+    const cat = def?.category || 'other';
 
-    // Pin circle
-    ctx.fillStyle = '#38bdf8';
+    const objW = (def?.dimensions?.width || 0.6) * scale;
+    const objD = (def?.dimensions?.depth || 0.5) * scale;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(obj.rotationY || 0);
+
+    // Category Color Coding
+    let strokeColor = '#38bdf8'; // Sky cyan
+    let fillColor = 'rgba(56, 189, 248, 0.15)';
+    if (cat === 'camera') {
+      strokeColor = '#ec4899'; // Pink / Magenta
+      fillColor = 'rgba(236, 72, 153, 0.2)';
+    } else if (cat === 'lighting') {
+      strokeColor = '#eab308'; // Amber
+      fillColor = 'rgba(234, 179, 8, 0.2)';
+    } else if (cat === 'audio') {
+      strokeColor = '#06b6d4'; // Cyan
+      fillColor = 'rgba(6, 182, 212, 0.2)';
+    } else if (cat === 'furniture') {
+      strokeColor = '#10b981'; // Emerald
+      fillColor = 'rgba(16, 185, 129, 0.15)';
+    }
+
+    // Draw Camera FOV Wedge
+    if (cat === 'camera' || obj.equipmentId.includes('cam')) {
+      const fovRad = (60 * Math.PI) / 180;
+      const throwDist = 2.4 * scale;
+      ctx.fillStyle = 'rgba(236, 72, 153, 0.12)';
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, throwDist, Math.PI / 2 - fovRad / 2, Math.PI / 2 + fovRad / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Draw Lighting Beam Cone
+    if (cat === 'lighting' || obj.equipmentId.includes('light') || obj.equipmentId.includes('softbox')) {
+      const beamRad = ((obj.lightSettings?.beamAngle || 60) * Math.PI) / 180;
+      const throwDist = 2.2 * scale;
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, throwDist, Math.PI / 2 - beamRad / 2, Math.PI / 2 + beamRad / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Draw Equipment Footprint Rectangle
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-objW / 2, -objD / 2, objW, objD, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Direction arrow pointing forward
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, objD / 2 + 8);
+    ctx.lineTo(-4, objD / 2 + 3);
+    ctx.moveTo(0, objD / 2 + 8);
+    ctx.lineTo(4, objD / 2 + 3);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Pin Callout Badge
+    ctx.fillStyle = strokeColor;
     ctx.strokeStyle = '#090d16';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -152,19 +230,66 @@ export async function generate2DBlueprintSchematic(
     ctx.fill();
     ctx.stroke();
 
-    // Pin Number
     ctx.fillStyle = '#090d16';
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`${idx + 1}`, cx, cy + 4.5);
   });
 
-  // Architectural Title Block
-  const tbW = 520;
-  const tbH = 125;
+  // Equipment Schedule Legend Box (Bottom-Left)
+  const legW = 460;
+  const maxItemsToShow = Math.min(placedObjects.length, 6);
+  const legH = 45 + maxItemsToShow * 24;
+  const legX = 35;
+  const legY = h - legH - 35;
+
+  ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2;
+  ctx.fillRect(legX, legY, legW, legH);
+  ctx.strokeRect(legX, legY, legW, legH);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`EQUIPMENT SCHEDULE (${placedObjects.length} TOTAL)`, legX + 15, legY + 24);
+
+  placedObjects.slice(0, 6).forEach((obj, i) => {
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+    const name = def?.name || obj.equipmentId;
+    const cat = (def?.category || 'gear').toUpperCase();
+    const itemY = legY + 48 + i * 24;
+
+    // Badge
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.arc(legX + 22, itemY - 4, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#090d16';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${i + 1}`, legX + 22, itemY - 0.5);
+
+    // Name & Category
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    const truncatedName = name.length > 28 ? name.substring(0, 26) + '…' : name;
+    ctx.fillText(truncatedName, legX + 38, itemY);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`[${cat}]`, legX + legW - 15, itemY);
+  });
+
+  // Architectural Title Block (Bottom-Right)
+  const tbW = 540;
+  const tbH = 135;
   const tbX = w - tbW - 35;
   const tbY = h - tbH - 35;
-  ctx.fillStyle = '#090d16';
+  ctx.fillStyle = 'rgba(9, 13, 22, 0.95)';
   ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 2.5;
   ctx.fillRect(tbX, tbY, tbW, tbH);
@@ -173,16 +298,19 @@ export async function generate2DBlueprintSchematic(
   ctx.fillStyle = '#38bdf8';
   ctx.font = 'bold 18px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(`ARCHITECTURAL CAD BLUEPRINT`, tbX + 18, tbY + 30);
+  ctx.fillText(`ARCHITECTURAL CAD BLUEPRINT`, tbX + 18, tbY + 28);
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = '13px monospace';
-  ctx.fillText(`PROJECT: ${projectInfo.name || 'CREATOR STUDIO'}`, tbX + 18, tbY + 56);
+  ctx.font = '12px monospace';
+  ctx.fillText(`PROJECT: ${projectInfo.name || 'CREATOR STUDIO PLAN'}`, tbX + 18, tbY + 54);
   ctx.fillText(
-    `STUDIO FLOOR AREA: ${(roomWidth * roomDepth).toFixed(1)} m² (${(roomWidth * roomDepth * 10.7639).toFixed(0)} sq ft)`,
+    `FLOOR AREA: ${(roomWidth * roomDepth).toFixed(1)} m² (${(roomWidth * roomDepth * 10.7639).toFixed(0)} sq ft) | ${roomWidth.toFixed(1)}m × ${roomDepth.toFixed(1)}m`,
     tbX + 18,
-    tbY + 78
+    tbY + 76
   );
-  ctx.fillText(`EQUIPMENT PLACED: ${placedObjects.length} UNITS`, tbX + 18, tbY + 100);
+  ctx.fillText(`TOTAL LOAD: ${placedObjects.reduce((acc, o) => acc + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts || 0), 0)}W | SCALE 1:50 METRIC`, tbX + 18, tbY + 98);
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText(`GENERATED WITH CREATORKIT STUDIO PRE-VIS ENGINE`, tbX + 18, tbY + 120);
 
   return canvas.toDataURL('image/jpeg', 0.95);
 }

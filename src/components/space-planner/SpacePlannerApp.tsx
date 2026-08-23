@@ -370,192 +370,148 @@ export default function SpacePlannerApp() {
 
           {viewMode !== 'camera-pov' && !isZenMode && (
             <>
-              <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000" }}>
+              {/* Top-Left Metric HUD */}
+              <div className="hud hud-tl" style={{ background: "rgba(255,255,255,0.96)", border: "2px solid #000", boxShadow: "3px 3px 0 #000", padding: "6px 12px" }}>
                 <div className="flex items-center gap-3">
                   <div>
-                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Floor Area</div>
-                    <div className="font-display font-bold text-sm mt-0.5" style={{ color: "#000" }}>
+                    <div className="text-[9px] font-mono uppercase tracking-[0.14em] text-stone-500 font-bold">Floor Area</div>
+                    <div className="font-mono font-black text-sm text-black">
                       {area} m²
                     </div>
                   </div>
-                  <div className="h-7 w-px" style={{ background: "#ddd" }} />
+                  <div className="h-6 w-px bg-stone-300" />
                   <div>
-                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Dimensions</div>
-                    <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>
+                    <div className="text-[9px] font-mono uppercase tracking-[0.14em] text-stone-500 font-bold">Dimensions</div>
+                    <div className="font-mono text-xs text-black font-bold">
                       {roomWidth} × {roomDepth} m
                     </div>
                   </div>
-                  <div className="h-7 w-px" style={{ background: "#ddd" }} />
+                  <div className="h-6 w-px bg-stone-300" />
                   <div>
-                    <div className="text-[9px] uppercase tracking-[0.16em]" style={{ color: "#888" }}>Items</div>
-                    <div className="font-mono text-xs mt-0.5" style={{ color: "#000" }}>{placedObjects.length}</div>
+                    <div className="text-[9px] font-mono uppercase tracking-[0.14em] text-stone-500 font-bold">Items</div>
+                    <div className="font-mono text-xs text-black font-bold">{placedObjects.length}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.95)", border: "2px solid #000", boxShadow: "4px 4px 0 #000", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, maxWidth: "calc(100vw - 340px)" }}>
+              {/* Top-Right Control & Export HUD */}
+              <div className="hud hud-tr" style={{ background: "rgba(255,255,255,0.96)", border: "2px solid #000", boxShadow: "3px 3px 0 #000", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px" }}>
                 {/* Natural Light Time of Day */}
-                <div className="flex items-center border-2 border-black font-mono text-[10px]">
+                <div className="flex items-center border border-black font-mono text-[9.5px]">
                   <button
                     onClick={() => setTimeOfDay('daylight')}
-                    className={`px-1.5 py-1 font-bold ${timeOfDay === 'daylight' ? 'bg-[#FFDD00] text-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    className={`px-1.5 py-0.5 font-bold ${timeOfDay === 'daylight' ? 'bg-[#FFDD00] text-black font-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
                     title="Bright 5600K Clean Daylight"
                   >
                     ☀️ Day
                   </button>
                   <button
                     onClick={() => setTimeOfDay('golden-hour')}
-                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    className={`px-1.5 py-0.5 font-bold border-l border-black ${timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white font-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
                     title="Warm 3200K Golden Hour Sun"
                   >
                     🌅 Golden
                   </button>
                   <button
                     onClick={() => setTimeOfDay('overcast')}
-                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'overcast' ? 'bg-[#94A3B8] text-white' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    className={`px-1.5 py-0.5 font-bold border-l border-black ${timeOfDay === 'overcast' ? 'bg-[#94A3B8] text-white font-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
                     title="Soft 6500K Diffused Sky"
                   >
                     ☁️ Overcast
                   </button>
                   <button
                     onClick={() => setTimeOfDay('night')}
-                    className={`px-1.5 py-1 font-bold border-l border-black ${timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
+                    className={`px-1.5 py-0.5 font-bold border-l border-black ${timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400 font-black' : 'bg-white text-zinc-700 hover:bg-zinc-100'}`}
                     title="Moody Night Studio"
                   >
                     🌙 Night
                   </button>
                 </div>
 
-                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+                <div className="h-4 w-px bg-stone-300" />
 
                 {/* View toggle */}
-                <div style={{ display: "flex", border: "2px solid #000" }}>
+                <div className="flex items-center border border-black font-mono text-[9.5px]">
                   <button
                     onClick={() => setViewMode('perspective')}
-                    style={{ 
-                      color: viewMode === 'perspective' ? "#fff" : "#000",
-                      background: viewMode === 'perspective' ? "#000" : "transparent",
-                      padding: "4px 8px",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      fontFamily: "monospace",
-                      border: "none",
-                      cursor: "pointer",
-                    }}
+                    className={`px-2 py-0.5 font-bold transition-all ${
+                      viewMode === 'perspective' ? 'bg-black text-white' : 'bg-white text-black hover:bg-zinc-100'
+                    }`}
                   >
                     🧊 3D
                   </button>
                   <button
                     onClick={() => setViewMode('top')}
-                    style={{ 
-                      color: viewMode === 'top' ? "#fff" : "#000",
-                      background: viewMode === 'top' ? "#000" : "transparent",
-                      padding: "4px 8px",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      fontFamily: "monospace",
-                      border: "none",
-                      borderLeft: "2px solid #000",
-                      cursor: "pointer",
-                    }}
+                    className={`px-2 py-0.5 font-bold border-l border-black transition-all ${
+                      viewMode === 'top' ? 'bg-black text-white' : 'bg-white text-black hover:bg-zinc-100'
+                    }`}
                   >
                     📐 Top
                   </button>
                 </div>
 
-                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+                <div className="h-4 w-px bg-stone-300" />
 
                 {/* Room dimensions */}
-                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <div className="flex items-center gap-1 font-mono text-[9.5px]">
                   <input
                     type="number"
                     value={roomWidth}
                     onChange={(e) => setRoomDimensions(parseFloat(e.target.value) || 5, roomDepth)}
-                    style={{ width: 38, padding: "2px 2px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    className="w-9 px-1 py-0.5 text-center font-bold border border-black bg-white text-black"
                     step="0.5"
                     min="2"
                     max="20"
                   />
-                  <span style={{ fontSize: "10px", color: "#888" }}>×</span>
+                  <span className="text-stone-500 font-bold">×</span>
                   <input
                     type="number"
                     value={roomDepth}
                     onChange={(e) => setRoomDimensions(roomWidth, parseFloat(e.target.value) || 4)}
-                    style={{ width: 38, padding: "2px 2px", fontSize: "10px", fontFamily: "monospace", border: "2px solid #000", background: "#fff", color: "#000", borderRadius: 0, fontWeight: 700, textAlign: "center" }}
+                    className="w-9 px-1 py-0.5 text-center font-bold border border-black bg-white text-black"
                     step="0.5"
                     min="2"
                     max="20"
                   />
-                  <span style={{ fontSize: "9px", color: "#888" }}>m</span>
+                  <span className="text-stone-500 font-bold">m</span>
                 </div>
 
-                <div className="h-5 w-px" style={{ background: "#ddd" }} />
+                <div className="h-4 w-px bg-stone-300" />
 
-                {/* Export */}
-                <button
-                  onClick={handleExportPNG}
-                  style={{
-                    padding: "3px 7px",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "monospace",
-                    border: "2px solid #000",
-                    background: "#fff",
-                    color: "#000",
-                    borderRadius: 0,
-                    cursor: "pointer",
-                  }}
-                  title="Export High-Resolution Canvas PNG"
-                >
-                  📸 PNG
-                </button>
-                <button
-                  onClick={handleExportPDF}
-                  disabled={isExportingPDF}
-                  style={{
-                    padding: "3px 7px",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "monospace",
-                    border: "2px solid #000",
-                    background: isExportingPDF ? "#e2e8f0" : "#000",
-                    color: isExportingPDF ? "#000" : "#fff",
-                    borderRadius: 0,
-                    cursor: isExportingPDF ? "wait" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                  title="Generate 5-Page Architectural 3D Production Dossier (PDF)"
-                >
-                  {isExportingPDF ? (
-                    <>
-                      <span className="inline-block w-2.5 h-2.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                      <span>PDF...</span>
-                    </>
-                  ) : (
-                    <span>📄 PDF</span>
-                  )}
-                </button>
-
-                {/* Zen Mode Button */}
-                <button
-                  onClick={toggleZenMode}
-                  style={{
-                    padding: "3px 7px",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "monospace",
-                    border: "2px solid #000",
-                    background: "#FFDD00",
-                    color: "#000",
-                    borderRadius: 0,
-                    cursor: "pointer",
-                  }}
-                  title="Clean 3D View (H) — Hide all HUD overlays"
-                >
-                  🧹 Zen
-                </button>
+                {/* Export & Zen Mode */}
+                <div className="flex items-center gap-1 font-mono text-[9.5px]">
+                  <button
+                    onClick={handleExportPNG}
+                    className="btn px-2 py-0.5 font-bold bg-white text-black border border-black hover:bg-zinc-100"
+                    title="Export High-Resolution Canvas PNG"
+                  >
+                    📸 PNG
+                  </button>
+                  <button
+                    onClick={handleExportPDF}
+                    disabled={isExportingPDF}
+                    className={`btn px-2 py-0.5 font-bold flex items-center gap-1 border border-black ${
+                      isExportingPDF ? 'bg-zinc-300 text-zinc-600' : 'bg-black text-white hover:bg-zinc-800'
+                    }`}
+                    title="Generate 5-Page Architectural 3D Production Dossier (PDF)"
+                  >
+                    {isExportingPDF ? (
+                      <>
+                        <span className="inline-block w-2 h-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>PDF...</span>
+                      </>
+                    ) : (
+                      <span>📄 PDF</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleZenMode}
+                    className="btn px-1.5 py-0.5 font-bold bg-[#FFDD00] text-black border border-black hover:bg-amber-300"
+                    title="Clean 3D View (H) — Hide all HUD overlays"
+                  >
+                    🧹 Zen
+                  </button>
+                </div>
               </div>
 
               {/* Bottom toolbar */}
