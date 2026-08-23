@@ -1956,9 +1956,9 @@ export default function PlannerCanvas() {
         </div>
       )}
 
-      {/* Interactive Laser Tape Measure Floating HUD */}
+      {/* Interactive Laser Tape Measure Floating HUD — Positioned at top-center to never collide with bottom toolbar */}
       {isMeasuring && (
-        <div className="absolute bottom-24 md:bottom-28 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-2.5 px-3.5 py-2 bg-white/95 backdrop-blur-md border-2 border-black shadow-[4px_4px_0_#000] font-mono text-xs text-black max-w-[94vw]">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-2.5 px-3.5 py-2 bg-white/95 backdrop-blur-md border-2 border-black shadow-[4px_4px_0_#000] font-mono text-xs text-black max-w-[94vw] animate-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-1.5 bg-black text-[#FFE500] px-2 py-0.5 font-black text-[10px] uppercase tracking-wider">
             <span>RULER</span>
           </div>

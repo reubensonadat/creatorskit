@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Navbar from "@/components/Navbar";
 import ToolLayout from "@/components/ToolLayout";
 import AdBlockDetector from "@/components/AdBlockDetector";
+import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
 
 const toolPaths = [
   "/match-cut",
@@ -43,6 +44,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         </>
       )}
       <Toaster />
+      <PwaInstallPrompt />
     </>
   );
 }

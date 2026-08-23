@@ -1,14 +1,32 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ClientLayout from "@/components/ClientLayout";
 
+export const viewport: Viewport = {
+  themeColor: "#FFE500",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+};
+
 export const metadata: Metadata = {
   title: "CreatorKit — Tools for Creators who ship",
-  description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
-  keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools"],
+  description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser & offline as a PWA.",
+  keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools", "PWA", "space planner", "teleprompter"],
   authors: [{ name: "CreatorKit" }],
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CreatorKit",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: "/logo.png",
+    apple: "/logo.png",
   },
   openGraph: {
     title: "CreatorKit — Tools for Creators who ship",
