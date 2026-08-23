@@ -42,8 +42,9 @@ export default function InspectorPanel() {
   const parentObj = obj.parentId ? placedObjects.find((o) => o.id === obj.parentId) : null;
   const parentDef = parentObj ? COMPREHENSIVE_EQUIPMENT_CATALOG[parentObj.equipmentId] : null;
 
-  const isCamera = eq.category === 'camera' || obj.equipmentId.startsWith('cam') || obj.equipmentId === 'camera';
-  const isLight = eq.category === 'lighting' || obj.equipmentId.includes('light') || obj.equipmentId.includes('softbox') || obj.equipmentId.includes('fresnel') || obj.equipmentId.includes('tube') || obj.equipmentId.includes('lamp');
+  const eqId = typeof obj.equipmentId === 'string' ? obj.equipmentId : '';
+  const isCamera = eq.category === 'camera' || eqId.startsWith('cam') || eqId === 'camera';
+  const isLight = eq.category === 'lighting' || eqId.includes('light') || eqId.includes('softbox') || eqId.includes('fresnel') || eqId.includes('tube') || eqId.includes('lamp');
 
   const light = obj.lightSettings || {
     intensity: 80,

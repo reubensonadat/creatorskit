@@ -31,7 +31,13 @@ export default function PlannerToolbar() {
   const toggleZenMode = usePlannerStore((s) => s.toggleZenMode);
 
   const cameras = placedObjects.filter(
-    (o) => o.equipmentId === 'camera' || o.equipmentId.startsWith('cam') || o.equipmentId.includes('phone') || o.equipmentId.includes('webcam')
+    (o) =>
+      typeof o.equipmentId === 'string' &&
+      (o.equipmentId === 'camera' ||
+        o.equipmentId.startsWith('cam') ||
+        o.equipmentId.includes('phone') ||
+        o.equipmentId.includes('webcam') ||
+        o.equipmentId.includes('prompter'))
   );
   const hasCamera = cameras.length > 0;
 

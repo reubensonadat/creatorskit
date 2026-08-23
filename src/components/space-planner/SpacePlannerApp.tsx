@@ -194,77 +194,36 @@ export default function SpacePlannerApp() {
             </div>
 
             {/* Segmented Mode Switcher */}
-            <div style={{ display: "flex", borderBottom: "2px solid #000", background: "#f0f0f0" }}>
+            <div className="flex border-b-2 border-black bg-stone-100 font-mono text-[10px]">
               <button
                 onClick={() => setLeftSidebarTab('equipment')}
-                style={{
-                  flex: 1,
-                  padding: "8px 4px",
-                  fontFamily: "monospace",
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  background: leftSidebarTab === 'equipment' ? "#fff" : "#f4f4f5",
-                  color: leftSidebarTab === 'equipment' ? "#000" : "#666",
-                  border: "none",
-                  borderRight: "2px solid #000",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 4,
-                  whiteSpace: "nowrap",
-                }}
+                className={`flex-1 py-2 px-1 font-bold border-r-2 border-black flex items-center justify-center gap-1.5 transition-all ${
+                  leftSidebarTab === 'equipment' ? 'bg-white text-black font-black' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
               >
-                <span>📦 Gear</span>
-                <span style={{ fontSize: "9px", background: "#FFDD00", color: "#000", border: "1px solid #000", padding: "0 4px", borderRadius: 2, fontWeight: 900 }}>
+                <span>Catalog</span>
+                <span className="text-[9px] bg-[#FFDD00] text-black border border-black px-1 rounded-sm font-black">
                   {ALL_EQUIPMENT_IDS.length}
                 </span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('templates')}
-                style={{
-                  flex: 1,
-                  padding: "8px 4px",
-                  fontFamily: "monospace",
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  background: leftSidebarTab === 'templates' ? "#fff" : "#f4f4f5",
-                  color: leftSidebarTab === 'templates' ? "#000" : "#666",
-                  border: "none",
-                  borderRight: "2px solid #000",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 4,
-                  whiteSpace: "nowrap",
-                }}
+                className={`flex-1 py-2 px-1 font-bold border-r-2 border-black flex items-center justify-center gap-1.5 transition-all ${
+                  leftSidebarTab === 'templates' ? 'bg-white text-black font-black' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
               >
-                <span>📐 Presets</span>
-                <span style={{ fontSize: "9px", background: "#FFDD00", color: "#000", border: "1px solid #000", padding: "0 4px", borderRadius: 2, fontWeight: 900 }}>
+                <span>Presets</span>
+                <span className="text-[9px] bg-[#FFDD00] text-black border border-black px-1 rounded-sm font-black">
                   {COMPREHENSIVE_TEMPLATE_IDS.length}
                 </span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('room-ai')}
-                style={{
-                  flex: 1,
-                  padding: "8px 4px",
-                  fontFamily: "monospace",
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  background: leftSidebarTab === 'room-ai' ? "#fff" : "#f4f4f5",
-                  color: leftSidebarTab === 'room-ai' ? "#000" : "#666",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 4,
-                  whiteSpace: "nowrap",
-                }}
+                className={`flex-1 py-2 px-1 font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  leftSidebarTab === 'room-ai' ? 'bg-white text-black font-black' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
               >
-                <span>🏠 Room & AI</span>
+                <span>Room Builder</span>
               </button>
             </div>
 
@@ -286,8 +245,7 @@ export default function SpacePlannerApp() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                    <span style={{ fontSize: "14px" }}>{COMPREHENSIVE_TEMPLATES[templateId]?.icon || '📐'}</span>
-                    <span style={{ fontSize: "11px", fontWeight: 900, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span className="text-[11px] font-black text-black truncate">
                       {COMPREHENSIVE_TEMPLATES[templateId]?.name || 'Studio Layout'}
                     </span>
                   </div>
@@ -331,7 +289,7 @@ export default function SpacePlannerApp() {
               </div>
             )}
 
-            {/* TAB CONTENT: Room Geometry, Obstacles & AI Photo Calibrator */}
+            {/* TAB CONTENT: Room Builder & Multi-Angle Photo Reference */}
             {leftSidebarTab === 'room-ai' && (
               <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
                 <RoomGeometryPanel />

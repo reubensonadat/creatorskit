@@ -4,13 +4,6 @@ import { useMemo, useState } from 'react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { SpacingWarning } from './types';
-import { CheckCircle2, Circle, Volume2, Zap, ShieldAlert, BookOpen, MoveRight } from 'lucide-react';
-
-const SEVERITY_STYLES = {
-  info: { bg: 'bg-blue-50', border: 'border-blue-200', dot: 'bg-blue-500', text: 'text-blue-800' },
-  warning: { bg: 'bg-amber-50', border: 'border-amber-200', dot: 'bg-amber-500', text: 'text-amber-800' },
-  danger: { bg: 'bg-red-50', border: 'border-red-200', dot: 'bg-red-500', text: 'text-red-800' },
-};
 
 function computeWarnings(
   placedObjects: { id: string; equipmentId: string; x: number; z: number }[],
@@ -33,13 +26,13 @@ function computeWarnings(
       warnings.push({
         type: 'chair-clearance',
         severity: 'warning',
-        message: `Chair has only ${(spaceToBackWall).toFixed(2)}m clearance to the rear wall. Allow ≥0.85m so you can slide in/out comfortably.`,
+        message: `Chair has ${(spaceToBackWall).toFixed(2)}m rear clearance. Allow ≥0.85m for slide-out room.`,
         objectIds: [chair.id],
       });
     }
   });
 
-  // 2. Equipment too close to wall
+  // 2. Equipment near wall
   placedObjects.forEach((o) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     if (!def) return;
@@ -53,7 +46,7 @@ function computeWarnings(
         warnings.push({
           type: 'equipment-near-wall',
           severity: 'info',
-          message: `${def.name} is right against a wall. Pulling it 15-20cm inward improves cable access and light wrap.`,
+          message: `${def.name} is against the wall. Move 15cm inward for cable and lighting clearance.`,
           objectIds: [o.id],
         });
       }
@@ -69,7 +62,7 @@ function computeWarnings(
         warnings.push({
           type: 'camera-too-close',
           severity: 'warning',
-          message: `Camera is very close (${dist.toFixed(1)}m from host). Lens will cause wide-angle face distortion unless backed up to ≥1.2m.`,
+          message: `Camera is ${dist.toFixed(1)}m from host. Back up to ≥1.2m to avoid wide-angle face distortion.`,
           objectIds: [cam.id, chair.id],
         });
       }
@@ -86,17 +79,16 @@ function computeWarnings(
       acousticWarnings.push({
         type: 'acoustic-echo',
         severity: 'danger',
-        message: 'No acoustic treatment detected. Bare plaster/concrete walls create severe flutter echo and hollow voice reverb.',
+        message: 'No acoustic treatment detected. Bare walls cause hollow flutter echo.',
       });
     } else if (acousticPanels.length === 0 && softAbsorbers.length > 0) {
       acousticWarnings.push({
         type: 'acoustic-echo',
         severity: 'info',
-        message: 'Natural absorption detected (Bed / Sofa). For cleaner broadcast audio, position a blanket or foam panel on the wall directly opposite your mic.',
+        message: 'Bed/Sofa provides partial absorption. Add a panel opposite your mic for broadcast clarity.',
       });
     }
 
-    // Check mic proximity to noisy machines
     const noisyGear = placedObjects.filter((o) => o.equipmentId === 'generator' || o.equipmentId === 'fog-machine');
     mics.forEach((mic) => {
       noisyGear.forEach((gear) => {
@@ -105,7 +97,7 @@ function computeWarnings(
           acousticWarnings.push({
             type: 'audio-noise',
             severity: 'danger',
-            message: `Microphone is within ${dist.toFixed(1)}m of ${COMPREHENSIVE_EQUIPMENT_CATALOG[gear.equipmentId]?.name}. Mechanical noise will bleed into your audio track.`,
+            message: `Mic is within ${dist.toFixed(1)}m of ${COMPREHENSIVE_EQUIPMENT_CATALOG[gear.equipmentId]?.name}. Fan noise may bleed.`,
             objectIds: [mic.id, gear.id],
           });
         }
@@ -113,7 +105,7 @@ function computeWarnings(
     });
   }
 
-  // 5. Electrical Load & Circuit Balancing
+  // 5. Electrical Load
   const totalWatts = placedObjects.reduce((sum, o) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     return sum + (def?.watts || 0);
@@ -122,19 +114,12 @@ function computeWarnings(
   const socketLimit = 2860;
   const hasGen = placedObjects.some((o) => o.equipmentId === 'generator');
   const hasPS = placedObjects.some((o) => o.equipmentId === 'power-station');
-  const powerStrips = placedObjects.filter((o) => o.equipmentId === 'power-strip');
 
   if (totalWatts > socketLimit && !hasGen && !hasPS) {
     powerWarnings.push({
       type: 'power-overload',
       severity: 'danger',
-      message: `Total draw is ~${totalWatts}W, exceeding a standard 13A home breaker socket (~${socketLimit}W). Split high-watt lights across different wall circuits or use a power station.`,
-    });
-  } else if (totalWatts > 1200 && powerStrips.length === 0) {
-    powerWarnings.push({
-      type: 'power-strip-needed',
-      severity: 'warning',
-      message: `Multiple powered studio lights detected (~${totalWatts}W total). Place a dedicated surge-protected power strip near your desk to prevent daisy-chaining cords.`,
+      message: `Total draw is ~${totalWatts}W (exceeds 13A ~${socketLimit}W socket limit). Split across circuits.`,
     });
   }
 
@@ -163,23 +148,23 @@ export default function SpacingWarnings() {
   const setupSteps = [
     {
       title: '1. Establish Host Anchor & Desk',
-      desc: `Place desk and chair maintaining at least 0.85m push-out space. Position talent to face the primary shooting axis.`,
+      desc: 'Set desk maintaining ≥0.85m rear chair space.',
     },
     {
-      title: '2. Position Key & Natural Light (45° Rule)',
-      desc: 'Set main key light (or position near window) 45° to the left or right of host at 1.7m height angled 30° down.',
+      title: '2. Position Key Light (45° Rule)',
+      desc: 'Place key light 45° off-axis at 1.7m height angled 30° down.',
     },
     {
-      title: '3. Mount Camera / Smartphone at Eye Level',
-      desc: 'Set camera tripod lens exactly at eye level (~1.3m). Maintain ~1.5m host-to-lens distance for natural facial proportions.',
+      title: '3. Mount Camera at Eye Level',
+      desc: 'Position lens at eye level (~1.3m) and ~1.5m away.',
     },
     {
-      title: '4. Microphone Placement (15–20cm Rule)',
-      desc: 'Position lavalier mic 15cm from mouth or boom mic 30cm overhead pointing at chin. Ensure away from PC fans.',
+      title: '4. Microphone Placement (15–20cm)',
+      desc: 'Set lavalier or boom mic close to talent, away from PC fans.',
     },
     {
-      title: '5. Cable Management & Circuit Safety',
-      desc: 'Route cables along wall perimeters with gaffer tape. Connect lighting to dedicated surge protector.',
+      title: '5. Cable Management & Safety',
+      desc: 'Route cords along room edges to prevent tripping.',
     },
   ];
 
@@ -189,147 +174,130 @@ export default function SpacingWarnings() {
 
   return (
     <>
-      <div className="panel-section">
+      <div className="p-3 border-b border-black font-mono">
         <button
-          className={`btn w-full justify-center font-bold text-xs py-2 ${
-            warningCount > 0 && hasDanger ? 'border-red-400 bg-red-50 text-red-700' : 'bg-white hover:bg-gray-50'
+          className={`btn w-full justify-between py-1.5 px-2 text-xs font-bold border-2 border-black ${
+            warningCount > 0 && hasDanger ? 'bg-red-50 text-red-900 border-red-700' : 'bg-white hover:bg-stone-50 text-black'
           }`}
           onClick={toggleWarnings}
         >
-          <ShieldAlert size={14} className={hasDanger ? 'text-red-600' : 'text-amber-600'} />
-          <span>Setup & Sightline Checks</span>
-          {warningCount > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-red-600 text-white font-bold font-mono">
-              {warningCount}
-            </span>
-          )}
+          <span>Studio Diagnostics</span>
+          <span className={`px-1.5 py-0.2 text-[10px] font-black border ${
+            warningCount > 0 ? (hasDanger ? 'bg-red-600 text-white border-black' : 'bg-[#FFDD00] text-black border-black') : 'bg-emerald-100 text-emerald-800 border-emerald-400'
+          }`}>
+            {warningCount === 0 ? 'Clear' : `${warningCount} Issues`}
+          </span>
         </button>
       </div>
 
       {showWarnings && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={toggleWarnings} />
-          <div className="w-96 bg-white border-l-2 border-black h-full overflow-y-auto p-5 relative z-10 flex flex-col justify-between shadow-2xl">
+          <div className="absolute inset-0 bg-black/30" onClick={toggleWarnings} />
+          <div className="w-84 max-w-full bg-white border-l-2 border-black h-full overflow-y-auto p-4 relative z-10 flex flex-col justify-between font-mono">
             <div>
               {/* Header */}
-              <div className="flex items-center justify-between mb-3 border-b pb-3">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b-2 border-black">
                 <div>
-                  <div className="font-mono font-bold text-base flex items-center gap-2">
-                    <ShieldAlert size={18} className="text-[#FFDD00]" />
-                    <span>Studio Quality Checks</span>
-                  </div>
-                  <div className="text-[10px] text-gray-500 font-mono">
-                    Professional creator ergonomics & acoustic safety diagnostics.
-                  </div>
+                  <div className="font-bold text-sm text-black">Studio Diagnostics</div>
+                  <div className="text-[10px] text-stone-500">Sightline, acoustic & power checks</div>
                 </div>
                 <button
-                  className="btn btn-icon text-sm font-mono hover:bg-gray-100"
+                  className="px-2 py-0.5 text-xs font-bold border border-black hover:bg-stone-100"
                   onClick={toggleWarnings}
                 >
-                  ✕
+                  ✕ Close
                 </button>
               </div>
 
               {/* Sub-tabs */}
-              <div className="flex border border-black mb-4 font-mono text-[11px] font-bold">
+              <div className="flex border border-black mb-3 text-[10px] font-bold">
                 <button
-                  className={`flex-1 py-1.5 px-2 text-center transition-colors flex items-center justify-center gap-1 ${
-                    activeTab === 'spatial' ? 'bg-black text-white' : 'bg-white hover:bg-gray-100'
+                  className={`flex-1 py-1 text-center transition-colors ${
+                    activeTab === 'spatial' ? 'bg-black text-white' : 'bg-white hover:bg-stone-100 text-black'
                   }`}
                   onClick={() => setActiveTab('spatial')}
                 >
-                  <Zap size={12} /> Spatial & Power ({warnings.length + powerWarnings.length})
+                  Spatial ({warnings.length + powerWarnings.length})
                 </button>
                 <button
-                  className={`flex-1 py-1.5 px-2 text-center transition-colors flex items-center justify-center gap-1 border-l border-black ${
-                    activeTab === 'acoustic' ? 'bg-black text-white' : 'bg-white hover:bg-gray-100'
+                  className={`flex-1 py-1 text-center transition-colors border-l border-black ${
+                    activeTab === 'acoustic' ? 'bg-black text-white' : 'bg-white hover:bg-stone-100 text-black'
                   }`}
                   onClick={() => setActiveTab('acoustic')}
                 >
-                  <Volume2 size={12} /> Audio ({acousticWarnings.length})
+                  Audio ({acousticWarnings.length})
                 </button>
                 <button
-                  className={`flex-1 py-1.5 px-2 text-center transition-colors flex items-center justify-center gap-1 border-l border-black ${
-                    activeTab === 'checklist' ? 'bg-[#FFDD00] text-black' : 'bg-white hover:bg-gray-100'
+                  className={`flex-1 py-1 text-center transition-colors border-l border-black ${
+                    activeTab === 'checklist' ? 'bg-[#FFDD00] text-black' : 'bg-white hover:bg-stone-100 text-black'
                   }`}
                   onClick={() => setActiveTab('checklist')}
                 >
-                  <BookOpen size={12} /> Build Guide
+                  Guide
                 </button>
               </div>
 
               {/* Tab 1: Spatial & Power */}
               {activeTab === 'spatial' && (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {warnings.length === 0 && powerWarnings.length === 0 ? (
-                    <div className="text-center py-8 border-2 border-dashed border-emerald-300 bg-emerald-50/50 p-4">
-                      <CheckCircle2 size={28} className="text-emerald-600 mx-auto mb-1.5" />
-                      <div className="text-xs font-bold text-emerald-900 font-mono">Spatial & Power Clear</div>
-                      <div className="text-[11px] text-emerald-700 mt-1">
-                        Excellent chair clearances, sightlines, and safe electrical circuit load.
+                    <div className="p-3 border border-dashed border-emerald-500 bg-emerald-50 text-center">
+                      <div className="text-xs font-bold text-emerald-900">Spatial & Power Clear</div>
+                      <div className="text-[10px] text-emerald-700 mt-0.5">
+                        Clearances and power loads are within normal limits.
                       </div>
                     </div>
                   ) : (
-                    [...warnings, ...powerWarnings].map((w, i) => {
-                      const style = SEVERITY_STYLES[w.severity];
-                      return (
-                        <div key={i} className={`p-3 border-2 border-black shadow-[2px_2px_0_#000] ${style.bg}`}>
-                          <div className="flex items-start gap-2">
-                            <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${style.dot}`} />
-                            <div className={`text-[11.5px] leading-relaxed font-mono ${style.text}`}>
-                              {w.message}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
+                    [...warnings, ...powerWarnings].map((w, i) => (
+                      <div
+                        key={i}
+                        className={`p-2.5 border-2 text-[11px] leading-snug ${
+                          w.severity === 'danger'
+                            ? 'border-red-600 bg-red-50 text-red-900'
+                            : w.severity === 'warning'
+                            ? 'border-amber-500 bg-amber-50 text-amber-900'
+                            : 'border-black bg-stone-50 text-stone-900'
+                        }`}
+                      >
+                        {w.message}
+                      </div>
+                    ))
                   )}
                 </div>
               )}
 
               {/* Tab 2: Acoustic Analysis */}
               {activeTab === 'acoustic' && (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {acousticWarnings.length === 0 ? (
-                    <div className="text-center py-8 border-2 border-dashed border-emerald-300 bg-emerald-50/50 p-4">
-                      <CheckCircle2 size={28} className="text-emerald-600 mx-auto mb-1.5" />
-                      <div className="text-xs font-bold text-emerald-900 font-mono">Audio Reflections Optimized</div>
-                      <div className="text-[11px] text-emerald-700 mt-1">
-                        Acoustic absorption materials detected. Voice tracks will remain tight and articulate.
+                    <div className="p-3 border border-dashed border-emerald-500 bg-emerald-50 text-center">
+                      <div className="text-xs font-bold text-emerald-900">Audio Reflections OK</div>
+                      <div className="text-[10px] text-emerald-700 mt-0.5">
+                        Absorption elements detected to keep vocal recordings clean.
                       </div>
                     </div>
                   ) : (
-                    acousticWarnings.map((w, i) => {
-                      const style = SEVERITY_STYLES[w.severity];
-                      return (
-                        <div key={i} className={`p-3 border-2 border-black shadow-[2px_2px_0_#000] ${style.bg}`}>
-                          <div className="flex items-start gap-2">
-                            <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${style.dot}`} />
-                            <div className={`text-[11.5px] leading-relaxed font-mono ${style.text}`}>
-                              {w.message}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
+                    acousticWarnings.map((w, i) => (
+                      <div
+                        key={i}
+                        className={`p-2.5 border-2 text-[11px] leading-snug ${
+                          w.severity === 'danger'
+                            ? 'border-red-600 bg-red-50 text-red-900'
+                            : 'border-amber-500 bg-amber-50 text-amber-900'
+                        }`}
+                      >
+                        {w.message}
+                      </div>
+                    ))
                   )}
-
-                  <div className="p-3 bg-zinc-900 text-white font-mono text-[11px] border-2 border-black mt-3">
-                    <div className="text-[#FFDD00] font-bold mb-1 flex items-center gap-1">
-                      💡 Pro Home Studio Acoustic Tip:
-                    </div>
-                    <div>
-                      Place a thick blanket or soft mattress behind the camera. Sound bouncing off your mouth travels past the camera and causes the most audible slap-back echo.
-                    </div>
-                  </div>
                 </div>
               )}
 
               {/* Tab 3: Step-by-Step Creator Setup Guide */}
               {activeTab === 'checklist' && (
-                <div className="space-y-3">
-                  <div className="text-xs font-bold font-mono text-gray-700">
-                    Physical Studio Assembly Sequence ({Object.values(completedSteps).filter(Boolean).length}/5 Done):
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-stone-700 mb-1">
+                    Setup Checklist ({Object.values(completedSteps).filter(Boolean).length}/5):
                   </div>
                   {setupSteps.map((step, idx) => {
                     const isDone = !!completedSteps[idx];
@@ -337,24 +305,21 @@ export default function SpacingWarnings() {
                       <div
                         key={idx}
                         onClick={() => toggleStep(idx)}
-                        className={`p-3 border-2 border-black cursor-pointer transition-all ${
-                          isDone ? 'bg-emerald-50 border-emerald-700 shadow-none' : 'bg-white shadow-[2px_2px_0_#000] hover:bg-gray-50'
+                        className={`p-2 border border-black cursor-pointer transition-all ${
+                          isDone ? 'bg-emerald-50 text-emerald-900' : 'bg-white hover:bg-stone-50 text-black'
                         }`}
                       >
-                        <div className="flex items-start gap-2.5">
-                          {isDone ? (
-                            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />
-                          ) : (
-                            <Circle size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
-                          )}
-                          <div>
-                            <div className={`text-xs font-bold font-mono ${isDone ? 'line-through text-emerald-800' : 'text-black'}`}>
-                              {step.title}
-                            </div>
-                            <div className="text-[11px] text-gray-600 mt-1 leading-relaxed">
-                              {step.desc}
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isDone}
+                            readOnly
+                            className="accent-black pointer-events-none"
+                          />
+                          <div className="text-[11px] font-bold">{step.title}</div>
+                        </div>
+                        <div className="text-[10px] text-stone-600 mt-1 pl-5 leading-tight">
+                          {step.desc}
                         </div>
                       </div>
                     );
@@ -363,9 +328,9 @@ export default function SpacingWarnings() {
               )}
             </div>
 
-            {/* Footer Notice */}
-            <div className="mt-6 pt-3 border-t text-[10px] text-gray-500 font-mono leading-relaxed">
-              Calculations are engineered for creator workflow planning and visual sightline clarity.
+            {/* Footer */}
+            <div className="mt-4 pt-2 border-t text-[9.5px] text-stone-400">
+              Creator space layout diagnostics.
             </div>
           </div>
         </div>

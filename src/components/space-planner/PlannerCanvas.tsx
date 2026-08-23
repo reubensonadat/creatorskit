@@ -32,6 +32,15 @@ const GHOST_OPACITY = 0.45;
 const GRID_COLOR_A = 'rgba(0, 0, 0, 0.04)';
 const GRID_COLOR_B = 'rgba(0, 0, 0, 0.08)';
 
+export const isCamEquipment = (id?: any): boolean =>
+  typeof id === 'string' &&
+  (id === 'camera' ||
+    id.startsWith('cam') ||
+    id.includes('phone') ||
+    id.includes('webcam') ||
+    id.includes('prompter') ||
+    id.includes('teleprompter'));
+
 // Procedural high-resolution White Oak Hardwood Parquet floor texture generator
 let cachedFloorTexture: THREE.CanvasTexture | null = null;
 function getStudioFloorTexture(): THREE.CanvasTexture {
@@ -483,17 +492,9 @@ export default function PlannerCanvas() {
       cameraFrameRef.current = null;
     }
 
-    const isCam = (id: string) =>
-      id === 'camera' ||
-      id.startsWith('cam') ||
-      id.includes('phone') ||
-      id.includes('webcam') ||
-      id.includes('prompter') ||
-      id.includes('teleprompter');
-
     const mainCam =
-      placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
-      placedObjects.find((o) => isCam(o.equipmentId));
+      placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
+      placedObjects.find((o) => isCamEquipment(o.equipmentId));
     if (!mainCam) return;
 
     const g = new THREE.Group();
@@ -786,17 +787,9 @@ export default function PlannerCanvas() {
       targetCenter = new THREE.Vector3(0, 0, 0);
       targetFov = 34;
     } else if (mode === 'camera-pov') {
-      const isCam = (id: string) =>
-        id === 'camera' ||
-        id.startsWith('cam') ||
-        id.includes('phone') ||
-        id.includes('webcam') ||
-        id.includes('prompter') ||
-        id.includes('teleprompter');
-
       const activeCam =
-        placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
-        placedObjects.find((o) => isCam(o.equipmentId));
+        placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
+        placedObjects.find((o) => isCamEquipment(o.equipmentId));
 
       if (activeCam) {
         const lens = getCameraLensPos(activeCam);
@@ -1066,17 +1059,9 @@ export default function PlannerCanvas() {
 
       // 6. Director POV Viewfinder (exact lens optics)
       let directorPOV = hero3D;
-      const isCam = (id: string) =>
-        id === 'camera' ||
-        id.startsWith('cam') ||
-        id.includes('phone') ||
-        id.includes('webcam') ||
-        id.includes('prompter') ||
-        id.includes('teleprompter');
-
       const activeCam =
-        curObjs.find((o) => o.isMainCamera && isCam(o.equipmentId)) ||
-        curObjs.find((o) => isCam(o.equipmentId));
+        curObjs.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
+        curObjs.find((o) => isCamEquipment(o.equipmentId));
 
       if (activeCam) {
         const lens = getCameraLensPos(activeCam);
@@ -1624,9 +1609,7 @@ export default function PlannerCanvas() {
   }, [selectedObjectId, viewMode, isMeasuring, toggleMeasuring, setMeasurePoints, setPlacingEquipment, setSelectedObject, setViewMode]);
 
   // Compute active camera and background sightline diagnostics for Director POV
-  const isCam = (id: string) =>
-    id === 'camera' || id.startsWith('cam') || id.includes('phone') || id.includes('webcam') || id.includes('teleprompter');
-  const activeCamera = placedObjects.find((o) => o.isMainCamera && isCam(o.equipmentId)) || placedObjects.find((o) => isCam(o.equipmentId));
+  const activeCamera = placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) || placedObjects.find((o) => isCamEquipment(o.equipmentId));
 
   // Find host spot (chair / standing spot) and objects behind talent
   const hostSpot = placedObjects.find((o) => o.equipmentId === 'chair' || o.equipmentId === 'sofa');
