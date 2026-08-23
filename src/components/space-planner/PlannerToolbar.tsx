@@ -68,7 +68,7 @@ export default function PlannerToolbar() {
           <Home size={13} />
           <span>3D Orbit</span>
           {viewMode === 'perspective' && isOrbitPanning && (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00FF66] animate-pulse" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FFE500] animate-pulse" />
           )}
         </button>
 
@@ -131,9 +131,9 @@ export default function PlannerToolbar() {
         {/* Laser Tape Ruler Tool */}
         <button
           className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
-            isMeasuring ? 'bg-[#00FF66] text-black border border-black animate-pulse' : 'bg-white text-black hover:bg-gray-100'
+            isMeasuring ? 'bg-[#FFE500] text-black border border-black font-black' : 'bg-white text-black hover:bg-gray-100'
           }`}
-          title="Laser Tape Measure (M) — Click any 2 objects or floor points to measure exact distance & angle"
+          title="Tape Measure Ruler (M) — Click any 2 objects or floor points to measure exact distance & angle"
           onClick={toggleMeasuring}
         >
           <Ruler size={13} />
@@ -143,7 +143,7 @@ export default function PlannerToolbar() {
         {/* Light Cones Volumetric Toggle */}
         <button
           className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
-            showLightBeams ? 'bg-[#38BDF8] text-black border border-black' : 'bg-white text-black hover:bg-gray-100'
+            showLightBeams ? 'bg-black text-[#FFE500]' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title="Toggle 3D Lighting Beam Angles & Kelvin Temperature Cones"
           onClick={toggleLightBeams}
@@ -155,7 +155,7 @@ export default function PlannerToolbar() {
         {/* Lux Heatmap Toggle */}
         <button
           className={`btn text-[11px] font-mono py-1 px-2 font-bold flex items-center gap-1 ${
-            showLuxHeatmap ? 'bg-gradient-to-r from-amber-500 to-red-500 text-white' : 'bg-white text-black hover:bg-gray-100'
+            showLuxHeatmap ? 'bg-black text-[#FFE500]' : 'bg-white text-black hover:bg-gray-100'
           }`}
           title="Toggle Studio Lighting Lux & Coverage Heatmap"
           onClick={toggleLuxHeatmap}

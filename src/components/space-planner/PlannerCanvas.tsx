@@ -797,45 +797,47 @@ export default function PlannerCanvas() {
     const g = new THREE.Group();
 
     // Start point glowing marker pin
-    const pinMatStart = new THREE.MeshBasicMaterial({ color: 0x00ff66 });
-    const pin1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), pinMatStart);
+    // Pin 1 (Start Point) - Studio Yellow with crisp ring
+    const pinMatStart = new THREE.MeshBasicMaterial({ color: 0xffe500 });
+    const pin1 = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 16), pinMatStart);
     pin1.position.set(p1.x, (p1.y ?? 0) + 0.06, p1.z);
     g.add(pin1);
 
     // Ground ring at start
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ff66, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-    const ring1 = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.15, 24), ringMat);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+    const ring1 = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.14, 24), ringMat);
     ring1.rotation.x = Math.PI / 2;
     ring1.position.set(p1.x, 0.008, p1.z);
     g.add(ring1);
 
     if (p2) {
+      // Pin 2 (End Point) - Studio Coral Red
       const pinMatEnd = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
-      const pin2 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), pinMatEnd);
+      const pin2 = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 16), pinMatEnd);
       pin2.position.set(p2.x, (p2.y ?? 0) + 0.06, p2.z);
       g.add(pin2);
 
-      const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.15, 24), new THREE.MeshBasicMaterial({ color: 0xff3b30, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }));
+      const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.14, 24), new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
       ring2.rotation.x = Math.PI / 2;
       ring2.position.set(p2.x, 0.008, p2.z);
       g.add(ring2);
 
-      // Connecting Laser Line (Direct 3D Line)
+      // Connecting 3D Laser Line
       const v1 = new THREE.Vector3(p1.x, (p1.y ?? 0) + 0.06, p1.z);
       const v2 = new THREE.Vector3(p2.x, (p2.y ?? 0) + 0.06, p2.z);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff66, linewidth: 3 });
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 3 });
       g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([v1, v2]), lineMat));
 
       // Floor projected distance line (Horizontal Orthogonal Guide)
       const g1 = new THREE.Vector3(p1.x, 0.008, p1.z);
       const g2 = new THREE.Vector3(p2.x, 0.008, p2.z);
-      const floorGuideMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.1, gapSize: 0.05 });
+      const floorGuideMat = new THREE.LineDashedMaterial({ color: 0x44403c, dashSize: 0.1, gapSize: 0.05 });
       const floorLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([g1, g2]), floorGuideMat);
       floorLine.computeLineDistances();
       g.add(floorLine);
 
       // Vertical drop-lines to floor
-      const dropMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.06, gapSize: 0.04, transparent: true, opacity: 0.5 });
+      const dropMat = new THREE.LineDashedMaterial({ color: 0x78716c, dashSize: 0.06, gapSize: 0.04, transparent: true, opacity: 0.6 });
       const drop1 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v1, g1]), dropMat);
       drop1.computeLineDistances();
       g.add(drop1);
@@ -1925,13 +1927,12 @@ export default function PlannerCanvas() {
 
       {/* Interactive Laser Tape Measure Floating HUD */}
       {isMeasuring && (
-        <div className="absolute bottom-20 md:bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-3 px-4 py-2 bg-zinc-950/95 text-white backdrop-blur-md border-2 border-emerald-400 shadow-[4px_4px_0px_#000] font-mono text-xs max-w-[92vw]">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-bold text-emerald-400 tracking-wider text-[11px]">LASER RULER</span>
+        <div className="absolute bottom-24 md:bottom-28 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-2.5 px-3.5 py-2 bg-white/95 backdrop-blur-md border-2 border-black shadow-[4px_4px_0_#000] font-mono text-xs text-black max-w-[94vw]">
+          <div className="flex items-center gap-1.5 bg-black text-[#FFE500] px-2 py-0.5 font-black text-[10px] uppercase tracking-wider">
+            <span>RULER</span>
           </div>
 
-          <div className="h-4 w-px bg-white/20" />
+          <div className="h-4 w-px bg-black/20" />
 
           {measureStart && (measureEnd || hoverMeasurePoint) ? (
             (() => {
@@ -1943,13 +1944,13 @@ export default function PlannerCanvas() {
               const dz = Math.abs(p2.z - p1.z);
               const dy = Math.abs((p2.y ?? 0) - (p1.y ?? 0));
               return (
-                <div className="flex items-center gap-4">
+                <div className="flex items-center flex-wrap gap-3">
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-zinc-400 text-[10px]">DISTANCE:</span>
-                    <strong className="text-base text-emerald-400 font-black">{dist3D.toFixed(2)} m</strong>
-                    <span className="text-zinc-400 text-[11px]">({distFeet.toFixed(2)} ft)</span>
+                    <span className="text-stone-500 font-bold text-[10px]">DISTANCE:</span>
+                    <strong className="text-sm font-black text-black">{dist3D.toFixed(2)} m</strong>
+                    <span className="text-stone-500 text-[11px] font-bold">({distFeet.toFixed(2)} ft)</span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-zinc-300 bg-white/10 px-2 py-0.5 rounded">
+                  <div className="flex items-center gap-2 text-[10px] text-stone-700 bg-stone-100 border border-black/20 px-2 py-0.5">
                     <span>ΔX: {dx.toFixed(2)}m</span>
                     <span>ΔZ: {dz.toFixed(2)}m</span>
                     {dy > 0.05 && <span>ΔY: {dy.toFixed(2)}m</span>}
@@ -1958,22 +1959,22 @@ export default function PlannerCanvas() {
               );
             })()
           ) : (
-            <span className="text-zinc-300">
-              {measureStart ? '🎯 Click 2nd point or object to finish measurement' : '📍 Click any equipment or floor point to start'}
+            <span className="text-stone-700 font-medium text-[11px]">
+              {measureStart ? 'Click 2nd object or floor point to finish' : 'Click any equipment or floor point to start measuring'}
             </span>
           )}
 
-          <div className="flex items-center gap-1.5 ml-2">
+          <div className="flex items-center gap-1.5 ml-auto">
             {(measureStart || measureEnd) && (
               <button
-                className="px-2 py-1 bg-white/15 hover:bg-white/25 text-white font-bold text-[10px] transition-colors"
+                className="px-2 py-1 bg-stone-100 hover:bg-stone-200 border border-black text-black font-bold text-[10px] transition-colors"
                 onClick={() => setMeasurePoints(null, null)}
               >
                 Clear
               </button>
             )}
             <button
-              className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] transition-colors"
+              className="px-2.5 py-1 bg-black hover:bg-stone-800 text-white font-bold text-[10px] transition-colors"
               onClick={() => toggleMeasuring()}
             >
               Done (M)
