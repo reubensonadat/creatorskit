@@ -45,7 +45,9 @@ export const isCamEquipment = (id?: any): boolean =>
 let cachedFloorTexture: THREE.CanvasTexture | null = null;
 function getStudioFloorTexture(): THREE.CanvasTexture {
   if (cachedFloorTexture) return cachedFloorTexture;
-  if (typeof document === 'undefined') return new THREE.CanvasTexture(document.createElement('canvas'));
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return new THREE.CanvasTexture({} as HTMLCanvasElement);
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
@@ -1785,8 +1787,14 @@ export default function PlannerCanvas() {
 
   const hasWindowBehind = windows.some((w) => {
     if (!activeCamera) return false;
+    const fwdX = Math.sin(activeCamera.rotationY);
     const fwdZ = Math.cos(activeCamera.rotationY);
-    return (w.wall === 'north' && fwdZ < -0.3) || (w.wall === 'south' && fwdZ > 0.3);
+    return (
+      (w.wall === 'back' && fwdZ < -0.3) ||
+      (w.wall === 'front' && fwdZ > 0.3) ||
+      (w.wall === 'left' && fwdX < -0.3) ||
+      (w.wall === 'right' && fwdX > 0.3)
+    );
   });
 
   return (
