@@ -193,7 +193,7 @@ export default function InspectorPanel() {
           </div>
 
           {/* RGB Accent Color (for tubes / mood lights) */}
-          {(obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb')) && (
+          {typeof obj.equipmentId === 'string' && (obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb')) && (
             <div className="flex items-center justify-between pt-1 border-t border-[#d0e4f7]">
               <span className="text-[9px] font-mono text-[#555]">RGB Gel Color</span>
               <input

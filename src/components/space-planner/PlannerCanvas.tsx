@@ -501,7 +501,7 @@ export default function PlannerCanvas() {
   // Helper to calculate exact physical lens apex and FOV for any camera/smartphone
   const getCameraLensPos = useCallback((cam: PlacedObject) => {
     const baseY = getObjectY(cam);
-    const id = cam.equipmentId.toLowerCase();
+    const id = typeof cam?.equipmentId === 'string' ? cam.equipmentId.toLowerCase() : '';
     let localY = 1.25; // standard tripod eye level
     let localZ = 0.14; // forward offset towards lens
     let fov = 65;
@@ -667,7 +667,7 @@ export default function PlannerCanvas() {
     if (!showLightBeams) return;
 
     const lightObjects = placedObjects.filter((o) => {
-      const id = o.equipmentId.toLowerCase();
+      const id = typeof o?.equipmentId === 'string' ? o.equipmentId.toLowerCase() : '';
       return (
         id.includes('light') ||
         id.includes('softbox') ||
@@ -688,7 +688,7 @@ export default function PlannerCanvas() {
     lightObjects.forEach((light) => {
       const g = new THREE.Group();
       const baseY = getObjectY(light);
-      const id = light.equipmentId.toLowerCase();
+      const id = typeof light?.equipmentId === 'string' ? light.equipmentId.toLowerCase() : '';
 
       let emitterLocalY = 1.85;
       let emitterForwardZ = 0.145;
@@ -1425,14 +1425,10 @@ export default function PlannerCanvas() {
       }
 
       ctx.globalCompositeOperation = 'screen';
-      const lights = placedObjects.filter(
-        (o) =>
-          o.equipmentId.includes('light') ||
-          o.equipmentId.includes('softbox') ||
-          o.equipmentId.includes('fresnel') ||
-          o.equipmentId.includes('tube') ||
-          o.equipmentId.includes('lamp')
-      );
+      const lights = placedObjects.filter((o) => {
+        const id = typeof o.equipmentId === 'string' ? o.equipmentId.toLowerCase() : '';
+        return id.includes('light') || id.includes('softbox') || id.includes('fresnel') || id.includes('tube') || id.includes('lamp');
+      });
 
       lights.forEach((light) => {
         const cx = ((light.x + roomWidth / 2) / roomWidth) * 512;
@@ -1820,7 +1816,7 @@ export default function PlannerCanvas() {
                 {activeCamera?.lensPreset || '24mm Wide'} • ISO 400 • f/2.8 • 1/50s
               </span>
               <span className="text-amber-400">
-                {activeCamera?.equipmentId.includes('phone') ? '📱 Smartphone 4K Sensor' : '🎥 Cine / Mirrorless'}
+                {activeCamera?.equipmentId?.toLowerCase().includes('phone') ? '📱 Smartphone 4K Sensor' : '🎥 Cine / Mirrorless'}
               </span>
             </div>
 

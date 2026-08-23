@@ -5,6 +5,12 @@ import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import type { SpacingWarning } from './types';
 
+const isMatch = (val: unknown, ...needles: string[]) => {
+  if (typeof val !== 'string') return false;
+  const s = val.toLowerCase();
+  return needles.some((n) => s.includes(n.toLowerCase()));
+};
+
 function computeWarnings(
   placedObjects: { id: string; equipmentId: string; x: number; z: number }[],
   roomWidth: number,
@@ -19,7 +25,7 @@ function computeWarnings(
   const wallThreshold = 0.25;
 
   // 1. Chair Push-Out Clearance Check
-  const chairs = placedObjects.filter((o) => o.equipmentId === 'chair');
+  const chairs = placedObjects.filter((o) => o.equipmentId === 'chair' || isMatch(o.equipmentId, 'chair'));
   chairs.forEach((chair) => {
     const spaceToBackWall = hd - chair.z;
     if (spaceToBackWall < 0.75) {
@@ -36,8 +42,8 @@ function computeWarnings(
   placedObjects.forEach((o) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     if (!def) return;
-    const halfW = def.dimensions.width / 2;
-    const halfD = def.dimensions.depth / 2;
+    const halfW = (def.dimensions?.width || 0.5) / 2;
+    const halfD = (def.dimensions?.depth || 0.5) / 2;
     if (
       Math.abs(o.x) + halfW > hw - wallThreshold ||
       Math.abs(o.z) + halfD > hd - wallThreshold
@@ -54,7 +60,7 @@ function computeWarnings(
   });
 
   // 3. Camera distance to talent
-  const cameras = placedObjects.filter((o) => o.equipmentId.includes('cam') || o.equipmentId.includes('phone'));
+  const cameras = placedObjects.filter((o) => isMatch(o.equipmentId, 'cam', 'phone', 'webcam', 'prompter'));
   chairs.forEach((chair) => {
     cameras.forEach((cam) => {
       const dist = Math.sqrt((cam.x - chair.x) ** 2 + (cam.z - chair.z) ** 2);
@@ -70,9 +76,9 @@ function computeWarnings(
   });
 
   // 4. Acoustic Reflection & Audio Analysis
-  const mics = placedObjects.filter((o) => o.equipmentId.includes('mic') || o.equipmentId.includes('lav'));
-  const acousticPanels = placedObjects.filter((o) => o.equipmentId === 'acoustic-panel' || o.equipmentId === 'vocal-booth-screen');
-  const softAbsorbers = placedObjects.filter((o) => o.equipmentId === 'bed-furniture' || o.equipmentId === 'sofa');
+  const mics = placedObjects.filter((o) => isMatch(o.equipmentId, 'mic', 'lav', 'podcast', 'audio'));
+  const acousticPanels = placedObjects.filter((o) => isMatch(o.equipmentId, 'acoustic', 'vocal-booth'));
+  const softAbsorbers = placedObjects.filter((o) => isMatch(o.equipmentId, 'bed', 'sofa'));
 
   if (mics.length > 0) {
     if (acousticPanels.length === 0 && softAbsorbers.length === 0) {
@@ -89,7 +95,7 @@ function computeWarnings(
       });
     }
 
-    const noisyGear = placedObjects.filter((o) => o.equipmentId === 'generator' || o.equipmentId === 'fog-machine');
+    const noisyGear = placedObjects.filter((o) => isMatch(o.equipmentId, 'generator', 'fog', 'haze'));
     mics.forEach((mic) => {
       noisyGear.forEach((gear) => {
         const dist = Math.sqrt((mic.x - gear.x) ** 2 + (mic.z - gear.z) ** 2);
@@ -97,7 +103,7 @@ function computeWarnings(
           acousticWarnings.push({
             type: 'audio-noise',
             severity: 'danger',
-            message: `Mic is within ${dist.toFixed(1)}m of ${COMPREHENSIVE_EQUIPMENT_CATALOG[gear.equipmentId]?.name}. Fan noise may bleed.`,
+            message: `Mic is within ${dist.toFixed(1)}m of ${COMPREHENSIVE_EQUIPMENT_CATALOG[gear.equipmentId]?.name || 'device'}. Fan noise may bleed.`,
             objectIds: [mic.id, gear.id],
           });
         }

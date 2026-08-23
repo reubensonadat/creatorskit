@@ -195,25 +195,27 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     const halfW = roomWidth / 2;
     const halfD = roomDepth / 2;
 
+    const hasTag = (id: unknown, ...tags: string[]) => {
+      if (typeof id !== 'string') return false;
+      const lower = id.toLowerCase();
+      return tags.some((t) => lower.includes(t.toLowerCase()));
+    };
+
     // Find main desk/table/island, seating, cameras, and lights
-    const desk = placedObjects.find((o) => o.equipmentId.includes('desk') || o.equipmentId.includes('table') || o.equipmentId.includes('sofa'));
-    const chair = placedObjects.find((o) => o.equipmentId === 'chair');
-    const mainCam = placedObjects.find((o) => o.isMainCamera || o.equipmentId.includes('cam') || o.equipmentId.includes('phone'));
+    const desk = placedObjects.find((o) => hasTag(o.equipmentId, 'desk', 'table', 'sofa', 'island'));
+    const chair = placedObjects.find((o) => o.equipmentId === 'chair' || hasTag(o.equipmentId, 'chair'));
+    const mainCam = placedObjects.find((o) => o.isMainCamera || hasTag(o.equipmentId, 'cam', 'phone', 'webcam'));
     
     // Categorize lights
     const lights = placedObjects.filter((o) => 
-      o.equipmentId.includes('softbox') || 
-      o.equipmentId.includes('light') || 
-      o.equipmentId.includes('fresnel') || 
-      o.equipmentId.includes('beauty-dish') || 
-      o.equipmentId.includes('barndoor')
+      hasTag(o.equipmentId, 'softbox', 'light', 'fresnel', 'beauty-dish', 'barndoor', 'panel', 'tube')
     );
     const keyLight = lights[0];
     const fillLight = lights[1];
-    const rimLight = lights[2] || placedObjects.find(o => o.equipmentId.includes('rgb-tube'));
+    const rimLight = lights[2] || placedObjects.find(o => hasTag(o.equipmentId, 'rgb-tube', 'tube'));
 
     // Acoustic panels
-    const acousticPanels = placedObjects.filter(o => o.equipmentId.includes('acoustic'));
+    const acousticPanels = placedObjects.filter(o => hasTag(o.equipmentId, 'acoustic'));
 
     const anchorX = 0;
     const anchorZ = desk ? Math.max(-halfD + 0.8, -0.6) : 0;
@@ -359,13 +361,10 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     toDelete.add(id);
     findChildren(id);
     const remaining = s.placedObjects.filter((o) => !toDelete.has(o.id));
-    const hasCam = remaining.some((o) =>
-      o.equipmentId === 'camera' ||
-      o.equipmentId.startsWith('cam') ||
-      o.equipmentId.includes('phone') ||
-      o.equipmentId.includes('webcam') ||
-      o.equipmentId.includes('prompter')
-    );
+    const hasCam = remaining.some((o) => {
+      const id = typeof o.equipmentId === 'string' ? o.equipmentId.toLowerCase() : '';
+      return id === 'camera' || id.startsWith('cam') || id.includes('phone') || id.includes('webcam') || id.includes('prompter');
+    });
     return {
       placedObjects: remaining,
       selectedObjectId: toDelete.has(s.selectedObjectId ?? '') ? null : s.selectedObjectId,
@@ -444,7 +443,10 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
         objects[idx].parentId = idMap[item.parentId];
       }
     });
-    const mainCam = objects.find(o => o.isMainCamera) || objects.find(o => o.equipmentId.includes('cam') || o.equipmentId.includes('phone') || o.equipmentId.includes('webcam'));
+    const mainCam = objects.find(o => o.isMainCamera) || objects.find(o => {
+      const id = typeof o.equipmentId === 'string' ? o.equipmentId.toLowerCase() : '';
+      return id.includes('cam') || id.includes('phone') || id.includes('webcam');
+    });
     set({
       templateId,
       roomWidth: tpl.defaultRoom.width,
