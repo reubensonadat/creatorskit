@@ -17,11 +17,12 @@ import SpacingWarnings from './SpacingWarnings';
 import ProjectInfoPanel from './ProjectInfoPanel';
 import PlannerToolbar from './PlannerToolbar';
 import WindowsPanel from './WindowsPanel';
+import RoomGeometryPanel from './RoomGeometryPanel';
 import type { Currency, ViewMode } from './types';
 
 export default function SpacePlannerApp() {
   const hasHydratedRef = useRef(false);
-  const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates'>('equipment');
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates' | 'room-ai'>('equipment');
 
   // Store subscriptions
   const viewMode = usePlannerStore((s) => s.viewMode);
@@ -230,6 +231,7 @@ export default function SpacePlannerApp() {
                   background: leftSidebarTab === 'templates' ? "#fff" : "#f4f4f5",
                   color: leftSidebarTab === 'templates' ? "#000" : "#666",
                   border: "none",
+                  borderRight: "2px solid #000",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -242,6 +244,27 @@ export default function SpacePlannerApp() {
                 <span style={{ fontSize: "9px", background: "#FFDD00", color: "#000", border: "1px solid #000", padding: "0 4px", borderRadius: 2, fontWeight: 900 }}>
                   {COMPREHENSIVE_TEMPLATE_IDS.length}
                 </span>
+              </button>
+              <button
+                onClick={() => setLeftSidebarTab('room-ai')}
+                style={{
+                  flex: 1,
+                  padding: "8px 4px",
+                  fontFamily: "monospace",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  background: leftSidebarTab === 'room-ai' ? "#fff" : "#f4f4f5",
+                  color: leftSidebarTab === 'room-ai' ? "#000" : "#666",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>🏠 Room & AI</span>
               </button>
             </div>
 
@@ -305,6 +328,13 @@ export default function SpacePlannerApp() {
             {leftSidebarTab === 'templates' && (
               <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
                 <TemplateSelector onSelectTemplate={() => setLeftSidebarTab('equipment')} />
+              </div>
+            )}
+
+            {/* TAB CONTENT: Room Geometry, Obstacles & AI Photo Calibrator */}
+            {leftSidebarTab === 'room-ai' && (
+              <div className="panel-section" style={{ overflowY: "auto", flex: 1, padding: "10px" }}>
+                <RoomGeometryPanel />
               </div>
             )}
           </aside>

@@ -562,6 +562,90 @@ function buildFurnitureItem(g: THREE.Group, def: EquipmentDefinition, id: string
     return;
   }
 
+  // Built-in Wardrobe / Closet Cabinet
+  if (name.includes('wardrobe') || name.includes('closet')) {
+    const plinthH = 0.08;
+    // Main carcass
+    addBox(g, w, h - plinthH, d, col, 0, plinthH + (h - plinthH) / 2, 0, { roughness: 0.75 });
+    // Recessed base plinth
+    addBox(g, w * 0.96, plinthH, d * 0.94, 0x222222, 0, plinthH / 2, 0, { roughness: 0.8 });
+    // Top crown trim
+    addBox(g, w * 1.02, 0.03, d * 1.02, col, 0, h - 0.015, 0, { roughness: 0.6 });
+
+    // Doors & handles
+    const numDoors = w > 1.4 ? (w > 2.2 ? 4 : 3) : 2;
+    const doorW = (w - 0.02 * (numDoors + 1)) / numDoors;
+    for (let i = 0; i < numDoors; i++) {
+      const dx = -w / 2 + 0.02 + doorW / 2 + i * (doorW + 0.01);
+      // Door panel
+      addBox(g, doorW, h - plinthH - 0.06, 0.015, col, dx, plinthH + 0.03 + (h - plinthH - 0.06) / 2, d / 2 + 0.008, {
+        roughness: 0.65,
+      });
+      // Minimalist brushed metal handle
+      const handleSide = i % 2 === 0 ? dx + doorW * 0.38 : dx - doorW * 0.38;
+      addBox(g, 0.015, 0.35, 0.025, 0xdddddd, handleSide, h * 0.52, d / 2 + 0.025, { metalness: 0.9, roughness: 0.2 });
+    }
+    return;
+  }
+
+  // Bed & Headboard Obstacle
+  if (name.includes('bed')) {
+    const baseH = 0.28;
+    const mattressH = 0.22;
+    // Bed base
+    addBox(g, w, baseH, d, 0x2a2420, 0, baseH / 2, 0, { roughness: 0.8 });
+    // Headboard
+    const headboardH = Math.min(1.1, h * 1.6);
+    addBox(g, w * 1.02, headboardH, 0.08, 0x3d332a, 0, headboardH / 2, -d / 2 + 0.04, { roughness: 0.85 });
+    // Mattress
+    addBox(g, w * 0.96, mattressH, d * 0.92, 0xf7f5f0, 0, baseH + mattressH / 2, d * 0.02, { roughness: 0.95 });
+    // Duvet / Comforter
+    addBox(g, w * 0.98, 0.04, d * 0.65, col, 0, baseH + mattressH + 0.02, d * 0.15, { roughness: 0.9 });
+    // Pillows
+    const pillowW = (w * 0.85) / 2;
+    [-pillowW / 2 - 0.02, pillowW / 2 + 0.02].forEach((px) => {
+      addBox(g, pillowW, 0.1, 0.35, 0xffffff, px, baseH + mattressH + 0.05, -d * 0.28, { rx: 0.2, roughness: 0.95 });
+    });
+    return;
+  }
+
+  // Door Swing & Clearance Arc
+  if (name.includes('door') || name.includes('swing')) {
+    // Door frame
+    const frameW = 0.06;
+    addBox(g, frameW, h, 0.08, 0x2a2826, -w / 2 + frameW / 2, h / 2, 0, { roughness: 0.8 });
+    addBox(g, frameW, h, 0.08, 0x2a2826, w / 2 - frameW / 2, h / 2, 0, { roughness: 0.8 });
+    addBox(g, w, frameW, 0.08, 0x2a2826, 0, h - frameW / 2, 0, { roughness: 0.8 });
+    // Open door leaf at 45 degree angle
+    const doorLeafW = w - frameW * 2;
+    addBox(g, 0.035, h - frameW, doorLeafW, 0x8a6a4a, -w / 2 + frameW + 0.02, (h - frameW) / 2, doorLeafW / 2, {
+      ry: 0.5,
+      roughness: 0.7,
+    });
+    // Metal door handle
+    addBox(g, 0.06, 0.03, 0.12, 0xcccccc, -w / 2 + frameW + 0.15, 0.95, doorLeafW * 0.85, { metalness: 0.9 });
+    // Floor clearance arc
+    const arcRadius = doorLeafW;
+    const arcPoints: THREE.Vector3[] = [];
+    for (let a = 0; a <= Math.PI / 2; a += Math.PI / 16) {
+      arcPoints.push(new THREE.Vector3(-w / 2 + frameW + Math.sin(a) * arcRadius, 0.005, Math.cos(a) * arcRadius));
+    }
+    const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMat = new THREE.LineDashedMaterial({ color: 0xffaa00, dashSize: 0.08, gapSize: 0.05 });
+    const arcLine = new THREE.Line(arcGeo, arcMat);
+    arcLine.computeLineDistances();
+    g.add(arcLine);
+    return;
+  }
+
+  // Structural Column / Pillar
+  if (name.includes('pillar') || name.includes('column')) {
+    addBox(g, w, h, d, col || 0xe5e2dc, 0, h / 2, 0, { roughness: 0.9 });
+    addBox(g, w * 1.08, 0.08, d * 1.08, 0x2a2826, 0, 0.04, 0, { roughness: 0.8 });
+    addBox(g, w * 1.08, 0.08, d * 1.08, 0x2a2826, 0, h - 0.04, 0, { roughness: 0.8 });
+    return;
+  }
+
   // Shelving Units, Credenzas & Gear Racks
   if (name.includes('shelf') || name.includes('rack') || name.includes('credenza') || name.includes('cabinet')) {
     [-w / 2 + 0.02, w / 2 - 0.02].forEach((px) => {

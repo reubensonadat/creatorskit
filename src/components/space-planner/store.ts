@@ -60,7 +60,7 @@ interface StoreState {
   rightPanelOpen: boolean;
 
   // Actions
-  setRoomDimensions: (width: number, depth: number) => void;
+  setRoomDimensions: (width: number, depth: number, height?: number) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
   setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
@@ -146,10 +146,11 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   leftPanelOpen: true,
   rightPanelOpen: true,
 
-  setRoomDimensions: (width, depth) => set({
-    roomWidth: clamp(width, 2, 20),
-    roomDepth: clamp(depth, 2, 20),
-  }),
+  setRoomDimensions: (width, depth, height) => set((s) => ({
+    roomWidth: clamp(width, 2, 25),
+    roomDepth: clamp(depth, 2, 25),
+    roomHeight: height ? clamp(height, 2, 10) : s.roomHeight,
+  })),
 
   setTemplateId: (id) => set({ templateId: id }),
 

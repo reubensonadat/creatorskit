@@ -126,6 +126,9 @@ addGearItem('furn-clapper-shelf-display', 'Retro Film Clapper & Vintage Camera D
 addGearItem('furn-wardrobe-rack-rolling', 'Heavy Duty Double Bar Chrome Rolling Garment Rack', '👗', 'props', 1.2, 0.5, 1.6, 0, 210, 11000, 0xcccccc, 'Holds 40+ outfit changes for fashion lookbooks and try-on hauls');
 addGearItem('furn-whiteboard-easel', 'Magnetic Double-Sided Rolling Glass Whiteboard', '📋', 'furniture', 1.0, 0.55, 1.85, 0, 480, 25000, 0xf0f0f0, 'Clear glass dry-erase board for tutorials, coding streams and brainstorming');
 addGearItem('furn-director-folding-chair', 'Classic Hardwood Canvas Director Chair (Tall)', '🪑', 'furniture', 0.55, 0.5, 1.15, 0, 220, 11500, 0x111111, 'Traditional high vantage film set chair with personalized backrest');
+addGearItem('furn-wardrobe-builtin', 'Built-in Floor-to-Ceiling Wardrobe Cabinet', '🚪', 'furniture', 1.8, 0.6, 2.4, 0, 0, 0, 0x4a4036, 'Large architectural wardrobe unit along room wall');
+addGearItem('furn-door-swing', 'Room Entry Door with Swing Clearance Arc', '🚪', 'furniture', 0.9, 0.9, 2.1, 0, 0, 0, 0x8a6a4a, 'Standard 90cm room entry door showing swing arc boundary');
+addGearItem('furn-pillar-column', 'Structural Column / Room Pillar Obstacle', '🏛️', 'furniture', 0.45, 0.45, 2.8, 0, 0, 0, 0xdedbd2, 'Square load-bearing architectural column to design layout around');
 
 // ------------------------------------------------------------
 // 5. STREAMING, TECH, SWITCHERS, COMPUTERS & DISPLAYS (35 items)
