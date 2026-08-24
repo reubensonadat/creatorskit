@@ -69,7 +69,7 @@ export default function BudgetPanel() {
       <div className="panel-section space-y-3">
         <div className="panel-title flex items-center justify-between">
           <span>Power & Procurement</span>
-          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-black text-[#FFE500] font-black">
+          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-zinc-900 text-white font-bold">
             BOM
           </span>
         </div>
@@ -81,7 +81,7 @@ export default function BudgetPanel() {
               key={c}
               onClick={() => setCurrency(c)}
               className={`btn justify-center text-[9.5px] px-1 py-1 font-mono font-bold ${
-                currency === c ? 'bg-black text-[#FFE500]' : 'bg-white text-stone-800'
+                currency === c ? 'bg-zinc-900 text-white' : 'bg-white text-stone-800'
               }`}
             >
               {CURRENCY_SYMBOLS[c]}
@@ -109,7 +109,7 @@ export default function BudgetPanel() {
         </div>
 
         {/* Budget Total */}
-        <div className="flex items-baseline justify-between p-2 bg-[#FFE500]/20 border-2 border-black">
+        <div className="flex items-baseline justify-between p-2 bg-stone-100 border-2 border-black">
           <span className="text-[10px] font-mono font-bold uppercase text-stone-700">Studio BOM Est.</span>
           <span className="font-mono font-black text-lg text-black">
             {sym}{budgetTotal.toLocaleString()}
@@ -117,7 +117,7 @@ export default function BudgetPanel() {
         </div>
 
         <button
-          className="btn w-full justify-center py-1.5 font-bold bg-black text-[#FFE500] hover:bg-stone-800 shadow-[2px_2px_0_#000]"
+          className="btn w-full justify-center py-1.5 font-bold bg-zinc-900 text-white hover:bg-black shadow-[2px_2px_0_#000]"
           onClick={toggleBudgetPanel}
         >
           <ShoppingCart size={13} className="mr-1" />

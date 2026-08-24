@@ -92,7 +92,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={`Search ${COMPREHENSIVE_TEMPLATE_IDS.length}+ setup archetypes & gear...`}
-          className="w-full pl-8 pr-7 py-1.5 text-[11px] font-mono bg-white border-2 border-black rounded-none focus:outline-none focus:bg-[#FFDD00]/10 placeholder:text-stone-400 font-bold"
+          className="w-full pl-8 pr-7 py-1.5 text-[11px] font-mono bg-white border-2 border-black rounded-none focus:outline-none focus:bg-stone-50 placeholder:text-stone-400 font-bold"
         />
         {search && (
           <button
@@ -112,7 +112,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
             onClick={() => setSelectedCat(cat)}
             className={`px-2.5 py-1 font-mono font-bold whitespace-nowrap transition-all border-2 ${
               selectedCat === cat
-                ? 'bg-black text-white border-black shadow-[2px_2px_0_#FFDD00]'
+                ? 'bg-zinc-900 text-white border-black shadow-[2px_2px_0_#000]'
                 : 'bg-white text-stone-700 border-black hover:bg-stone-100 shadow-[2px_2px_0_#000]'
             }`}
           >
@@ -139,22 +139,26 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                   onClick={() => handleSelect(id)}
                   className={`p-2 text-left border-2 transition-all flex flex-col justify-between ${
                     isActive
-                      ? 'bg-[#FFDD00] border-black shadow-[3px_3px_0_#000]'
-                      : 'bg-white border-black hover:bg-amber-50 shadow-[2px_2px_0_#000]'
+                      ? 'bg-zinc-900 text-white border-black shadow-[3px_3px_0_#000]'
+                      : 'bg-white border-black hover:bg-stone-50 text-black shadow-[2px_2px_0_#000]'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-stone-100 border border-black/20 text-stone-800">
+                    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 border ${
+                      isActive ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-stone-100 border-black/20 text-stone-800'
+                    }`}>
                       {tpl.category.toUpperCase().slice(0, 3)}
                     </span>
-                    <span className="text-[9px] font-mono font-black text-black bg-white border border-black px-1">
+                    <span className={`text-[9px] font-mono font-bold border px-1 ${
+                      isActive ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-white text-black border-black'
+                    }`}>
                       {tpl.defaultRoom.width}×{tpl.defaultRoom.depth}m
                     </span>
                   </div>
-                  <div className="text-[11px] font-black mt-1 leading-tight text-black truncate">
+                  <div className={`text-[11px] font-bold mt-1 leading-tight truncate ${isActive ? 'text-white' : 'text-black'}`}>
                     {tpl.name}
                   </div>
-                  <div className="text-[9px] font-mono text-stone-600 mt-0.5 truncate">
+                  <div className={`text-[9px] font-mono mt-0.5 truncate ${isActive ? 'text-zinc-300' : 'text-stone-600'}`}>
                     {tpl.items.length} gear items · {tpl.category}
                   </div>
                 </button>
@@ -181,8 +185,8 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                 onClick={() => handleSelect(id)}
                 className={`relative p-2.5 text-left border-2 transition-all flex flex-col justify-between ${
                   isActive
-                    ? 'bg-[#FFDD00] border-black shadow-[3px_3px_0_#000]'
-                    : 'bg-white border-black hover:bg-stone-50 shadow-[2px_2px_0_#000]'
+                    ? 'bg-zinc-900 text-white border-black shadow-[3px_3px_0_#000]'
+                    : 'bg-white border-black hover:bg-stone-50 text-black shadow-[2px_2px_0_#000]'
                 }`}
                 title={tpl.description}
               >

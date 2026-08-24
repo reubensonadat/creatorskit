@@ -263,7 +263,7 @@ export default function SpacePlannerApp() {
             <button
               onClick={toggleLeftPanel}
               className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${
-                leftPanelOpen ? 'bg-black text-[#FFE500]' : 'bg-transparent text-stone-700 hover:bg-stone-200'
+                leftPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
               }`}
               title="Toggle Left Library Panel (Shortcut: [)"
             >
@@ -274,7 +274,7 @@ export default function SpacePlannerApp() {
             <button
               onClick={toggleRightPanel}
               className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${
-                rightPanelOpen ? 'bg-black text-[#FFE500]' : 'bg-transparent text-stone-700 hover:bg-stone-200'
+                rightPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
               }`}
               title="Toggle Right Inspector & BOM Panel (Shortcut: ])"
             >
@@ -289,21 +289,21 @@ export default function SpacePlannerApp() {
           <div className="hidden lg:flex items-center border-2 border-black bg-white shadow-[1.5px_1.5px_0_#000] text-[9.5px]">
             <button
               onClick={() => setTimeOfDay('daylight')}
-              className={`px-2 py-1 font-bold ${timeOfDay === 'daylight' ? 'bg-[#FFE500] text-black font-black' : 'hover:bg-stone-100'}`}
+              className={`px-2 py-1 font-bold ${timeOfDay === 'daylight' ? 'bg-zinc-900 text-white font-bold' : 'hover:bg-stone-100'}`}
               title="Bright 5600K Clean Daylight"
             >
               Day
             </button>
             <button
               onClick={() => setTimeOfDay('golden-hour')}
-              className={`px-2 py-1 font-bold border-l border-black ${timeOfDay === 'golden-hour' ? 'bg-[#F97316] text-white font-black' : 'hover:bg-stone-100'}`}
+              className={`px-2 py-1 font-bold border-l border-black ${timeOfDay === 'golden-hour' ? 'bg-amber-600 text-white font-bold' : 'hover:bg-stone-100'}`}
               title="Warm 3200K Golden Hour Sun"
             >
               Golden
             </button>
             <button
               onClick={() => setTimeOfDay('night')}
-              className={`px-2 py-1 font-bold border-l border-black ${timeOfDay === 'night' ? 'bg-[#0F172A] text-sky-400 font-black' : 'hover:bg-stone-100'}`}
+              className={`px-2 py-1 font-bold border-l border-black ${timeOfDay === 'night' ? 'bg-slate-900 text-sky-400 font-bold' : 'hover:bg-stone-100'}`}
               title="Moody Night Studio"
             >
               Night
@@ -313,7 +313,7 @@ export default function SpacePlannerApp() {
           {/* 1-Click 100% Client-Side Share Button */}
           <button
             onClick={() => setIsShareModalOpen(true)}
-            className="px-2.5 py-1 bg-[#FFE500] hover:bg-amber-300 text-black border-2 border-black font-black text-xs shadow-[2px_2px_0_#000] flex items-center gap-1.5 transition-all hover:translate-x-[-1px]"
+            className="px-2.5 py-1 bg-white hover:bg-stone-100 text-black border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center gap-1.5 transition-all hover:translate-x-[-1px]"
             title="100% Client-Side 3D Studio Kit URL Generator (No Backend Needed)"
           >
             <Share2 size={13} />
@@ -364,9 +364,9 @@ export default function SpacePlannerApp() {
             <div className="flex border-b-2 border-black bg-stone-100 p-1 gap-1">
               <button
                 onClick={() => setLeftSidebarTab('equipment')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
                   leftSidebarTab === 'equipment'
-                    ? 'bg-black text-[#FFE500] shadow-[1.5px_1.5px_0_#000]'
+                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
                     : 'bg-white text-stone-700 hover:bg-stone-200'
                 }`}
               >
@@ -375,9 +375,9 @@ export default function SpacePlannerApp() {
               </button>
               <button
                 onClick={() => setLeftSidebarTab('templates')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
                   leftSidebarTab === 'templates'
-                    ? 'bg-black text-[#FFE500] shadow-[1.5px_1.5px_0_#000]'
+                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
                     : 'bg-white text-stone-700 hover:bg-stone-200'
                 }`}
               >
@@ -386,9 +386,9 @@ export default function SpacePlannerApp() {
               </button>
               <button
                 onClick={() => setLeftSidebarTab('room-ai')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
                   leftSidebarTab === 'room-ai'
-                    ? 'bg-black text-[#FFE500] shadow-[1.5px_1.5px_0_#000]'
+                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
                     : 'bg-white text-stone-700 hover:bg-stone-200'
                 }`}
               >
@@ -397,9 +397,9 @@ export default function SpacePlannerApp() {
               </button>
               <button
                 onClick={() => setLeftSidebarTab('openings')}
-                className={`py-1.5 px-2 text-[10px] font-black uppercase tracking-wider flex items-center justify-center border border-black transition-all ${
+                className={`py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center border border-black transition-all ${
                   leftSidebarTab === 'openings'
-                    ? 'bg-black text-[#FFE500] shadow-[1.5px_1.5px_0_#000]'
+                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
                     : 'bg-white text-stone-700 hover:bg-stone-200'
                 }`}
                 title="Doors & Windows"
@@ -413,12 +413,12 @@ export default function SpacePlannerApp() {
               {leftSidebarTab === 'equipment' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2 bg-stone-100 border-2 border-black shadow-[2px_2px_0_#000]">
-                    <span className="text-[11px] font-black text-black truncate">
+                    <span className="text-[11px] font-bold text-black truncate">
                       Active: {COMPREHENSIVE_TEMPLATES[templateId]?.name || 'Studio Layout'}
                     </span>
                     <button
                       onClick={() => setLeftSidebarTab('templates')}
-                      className="px-2 py-0.5 bg-[#FFE500] border border-black font-black text-[9px] text-black hover:bg-amber-300 shadow-[1px_1px_0_#000]"
+                      className="px-2 py-0.5 bg-stone-900 border border-black font-bold text-[9px] text-white hover:bg-black shadow-[1px_1px_0_#000]"
                     >
                       SWITCH
                     </button>
@@ -453,7 +453,7 @@ export default function SpacePlannerApp() {
           <div className="w-10 bg-white border-r-2 border-black flex flex-col items-center py-2 gap-2 z-20 shadow-[2px_0_0_#000]">
             <button
               onClick={toggleLeftPanel}
-              className="p-1.5 bg-[#FFE500] hover:bg-amber-300 border-2 border-black text-black shadow-[1.5px_1.5px_0_#000]"
+              className="p-1.5 bg-stone-900 hover:bg-black border-2 border-black text-white shadow-[1.5px_1.5px_0_#000]"
               title="Expand Library Panel ([)"
             >
               <ChevronRight size={14} />
@@ -604,25 +604,27 @@ export default function SpacePlannerApp() {
                           key={obj.id}
                           className={`flex items-center justify-between p-1.5 cursor-pointer transition-all border ${
                             isSelected
-                              ? 'bg-[#FFE500] border-2 border-black shadow-[2px_2px_0_#000] font-bold'
+                              ? 'bg-zinc-900 border-2 border-black shadow-[2px_2px_0_#000] text-white font-bold'
                               : 'bg-white border-stone-200 hover:border-black'
                           }`}
                           onClick={() => setSelectedObject(obj.id)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[8.5px] font-mono font-black px-1 py-0.5 bg-stone-100 border border-black/20 text-stone-700 flex-shrink-0">
+                            <span className={`text-[8.5px] font-mono font-bold px-1 py-0.5 border flex-shrink-0 ${
+                              isSelected ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-stone-100 border-black/20 text-stone-700'
+                            }`}>
                               {eq.category.toUpperCase().slice(0, 3)}
                             </span>
                             <div className="min-w-0">
                               <div className="text-[11px] truncate leading-tight">{eq.name}</div>
-                              <div className="text-[9px] text-stone-500 font-mono">
+                              <div className={`text-[9px] font-mono ${isSelected ? 'text-zinc-300' : 'text-stone-500'}`}>
                                 {obj.isMainCamera ? 'Main Camera • ' : ''}
                                 {obj.x.toFixed(1)}m, {obj.z.toFixed(1)}m
                               </div>
                             </div>
                           </div>
                           {isSelected && (
-                            <span className="text-[9px] font-mono font-black uppercase text-black">Active</span>
+                            <span className="text-[9px] font-mono font-bold uppercase text-emerald-400">Active</span>
                           )}
                         </div>
                       );
@@ -651,7 +653,7 @@ export default function SpacePlannerApp() {
           <div className="w-10 bg-white border-l-2 border-black flex flex-col items-center py-2 gap-2 z-20 shadow-[-2px_0_0_#000]">
             <button
               onClick={toggleRightPanel}
-              className="p-1.5 bg-[#FFE500] hover:bg-amber-300 border-2 border-black text-black shadow-[-1.5px_1.5px_0_#000]"
+              className="p-1.5 bg-stone-900 hover:bg-black border-2 border-black text-white shadow-[-1.5px_1.5px_0_#000]"
               title="Expand Inspector Panel (])"
             >
               <ChevronLeft size={14} />

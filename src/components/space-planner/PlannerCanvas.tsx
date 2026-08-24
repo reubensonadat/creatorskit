@@ -21,16 +21,12 @@ import {
 import { analyzeStudioLighting } from '@/lib/space-planner/acoustics-lighting-engine';
 import type { PlacedObject, ViewMode, CameraLensPreset, CameraSensorSize, CameraAperture } from './types';
 
-// Scene colors
-const BG_COLOR = 0xf2f0eb;
+// Scene colors - Architectural & Neutral Palette
+const BG_COLOR = 0xedebe6;
 const WALL_COLOR = 0xf5f3ee;
 const BASEBOARD_COLOR = 0x2a2825;
-const ACCENT_COLOR = 0x1a1a1a;
-const WINDOW_FRAME_COLOR = 0x222222;
-const WINDOW_GLASS_COLOR = 0xb0d4ea;
+const ACCENT_COLOR = 0x18181b;
 
-const SELECTION_OUTLINE_COLOR = 0x000000;
-const GHOST_OPACITY = 0.45;
 const GRID_COLOR_A = 'rgba(0, 0, 0, 0.04)';
 const GRID_COLOR_B = 'rgba(0, 0, 0, 0.08)';
 
@@ -52,16 +48,14 @@ export default function PlannerCanvas() {
   const floorRef = useRef<THREE.Mesh | null>(null);
   const roomGroupRef = useRef<THREE.Group | null>(null);
   const objectMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
-  const selectionOutlineRef = useRef<THREE.LineSegments | null>(null);
   const cameraFrameRef = useRef<THREE.Group | null>(null);
   const lightingVisualizersRef = useRef<THREE.Group | null>(null);
   const acousticRaysRef = useRef<THREE.Group | null>(null);
-  const ghostRef = useRef<THREE.Group | null>(null);
+  const laserRulerGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
   const composerRef = useRef<EffectComposer | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
   const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
-  const fillLightRef = useRef<THREE.DirectionalLight | null>(null);
   const cameraAnimRef = useRef<{ cancel: () => void } | null>(null);
 
   // Overlay state for Director Camera POV View
@@ -75,7 +69,8 @@ export default function PlannerCanvas() {
   const mouseRef = useRef(new THREE.Vector2());
   const isDraggingRef = useRef(false);
   const dragTargetRef = useRef<string | null>(null);
-  const dragOffsetRef = useRef(new THREE.Vector3());
+  const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const pointerDownPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Subscribe to store
   const roomWidth = usePlannerStore((s) => s.roomWidth);
@@ -91,8 +86,6 @@ export default function PlannerCanvas() {
   const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const showAcousticRays = usePlannerStore((s) => s.showAcousticRays);
   const windows = usePlannerStore((s) => s.windows);
-  const timeOfDay = usePlannerStore((s) => s.timeOfDay);
-  const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
   const isMeasuring = usePlannerStore((s) => s.isMeasuring);
   const measureStart = usePlannerStore((s) => s.measureStart);
   const measureEnd = usePlannerStore((s) => s.measureEnd);
@@ -101,14 +94,11 @@ export default function PlannerCanvas() {
   const showLightBeams = usePlannerStore((s) => s.showLightBeams);
   const isZenMode = usePlannerStore((s) => s.isZenMode);
 
-  const measureGroupRef = useRef<THREE.Group | null>(null);
   const [hoverMeasurePoint, setHoverMeasurePoint] = useState<{ x: number; y: number; z: number; name?: string } | null>(null);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
   const updateObjectPosition = usePlannerStore((s) => s.updateObjectPosition);
   const updateObjectLens = usePlannerStore((s) => s.updateObjectLens);
-  const updateObjectSensor = usePlannerStore((s) => s.updateObjectSensor);
-  const updateObjectAperture = usePlannerStore((s) => s.updateObjectAperture);
   const setSelectedObject = usePlannerStore((s) => s.setSelectedObject);
   const setPlacingEquipment = usePlannerStore((s) => s.setPlacingEquipment);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
@@ -133,7 +123,7 @@ export default function PlannerCanvas() {
     }
   }, [viewMode, isOrbitPanning]);
 
-  // ============ Room building (All 4 Walls Architecture & Dynamic Floor Textures) ============
+  // ============ Room building ============
   const buildRoom = useCallback((
     scene: THREE.Scene,
     roomGroup: THREE.Group,
@@ -162,8 +152,8 @@ export default function PlannerCanvas() {
     roomGroup.add(floor);
     floorRef.current = floor;
 
-    // Floor precision measurement grid lines
-    const gridMat = new THREE.LineBasicMaterial({ color: 0x6e6559, transparent: true, opacity: 0.18 });
+    // Floor precision measurement grid lines (0.5m increments)
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x4a453e, transparent: true, opacity: 0.22 });
     for (let i = -d / 2; i <= d / 2; i += 0.5) {
       const pts = [new THREE.Vector3(-w / 2, 0.002, i), new THREE.Vector3(w / 2, 0.002, i)];
       roomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
@@ -193,37 +183,41 @@ export default function PlannerCanvas() {
     const leftGroup = new THREE.Group();
     const rightGroup = new THREE.Group();
 
-    // Back Wall
+    // Back Wall (North)
     const backWallMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallThickness), wallMat);
     backWallMesh.position.set(0, h / 2, -d / 2 - wallThickness / 2);
     backWallMesh.receiveShadow = true;
+    backWallMesh.userData.wallName = 'North Wall';
     backGroup.add(backWallMesh);
     const bbBack = new THREE.Mesh(new THREE.BoxGeometry(w, baseboardH, 0.015), baseboardMat);
     bbBack.position.set(0, baseboardH / 2, -d / 2 + 0.008);
     backGroup.add(bbBack);
 
-    // Front Wall
+    // Front Wall (South)
     const frontWallMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallThickness), wallMat);
     frontWallMesh.position.set(0, h / 2, d / 2 + wallThickness / 2);
     frontWallMesh.receiveShadow = true;
+    frontWallMesh.userData.wallName = 'South Wall';
     frontGroup.add(frontWallMesh);
     const bbFront = new THREE.Mesh(new THREE.BoxGeometry(w, baseboardH, 0.015), baseboardMat);
     bbFront.position.set(0, baseboardH / 2, d / 2 - 0.008);
     frontGroup.add(bbFront);
 
-    // Left Wall
+    // Left Wall (West)
     const leftWallMesh = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, h, d), wallMat);
     leftWallMesh.position.set(-w / 2 - wallThickness / 2, h / 2, 0);
     leftWallMesh.receiveShadow = true;
+    leftWallMesh.userData.wallName = 'West Wall';
     leftGroup.add(leftWallMesh);
     const bbLeft = new THREE.Mesh(new THREE.BoxGeometry(0.015, baseboardH, d), baseboardMat);
     bbLeft.position.set(-w / 2 + 0.008, baseboardH / 2, 0);
     leftGroup.add(bbLeft);
 
-    // Right Wall
+    // Right Wall (East)
     const rightWallMesh = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, h, d), wallMat);
     rightWallMesh.position.set(w / 2 + wallThickness / 2, h / 2, 0);
     rightWallMesh.receiveShadow = true;
+    rightWallMesh.userData.wallName = 'East Wall';
     rightGroup.add(rightWallMesh);
     const bbRight = new THREE.Mesh(new THREE.BoxGeometry(0.015, baseboardH, d), baseboardMat);
     bbRight.position.set(w / 2 - 0.008, baseboardH / 2, 0);
@@ -249,43 +243,26 @@ export default function PlannerCanvas() {
     let localY = 1.25;
     let localZ = 0.14;
 
-    const sensor = cam.sensorSize || (id.includes('phone') ? 'smartphone' : 'full-frame');
-    const lens = cam.lensPreset || '24mm';
-    const opt = calculateOpticalFov(lens, sensor);
-
-    if (id.includes('phone') || id.includes('gimbal')) {
-      localY = baseY > 0.4 ? 0.28 : 1.28;
-      localZ = 0.05;
+    if (id.includes('phone')) {
+      localY = 1.22;
+      localZ = 0.08;
     } else if (id.includes('webcam')) {
-      localY = 0.48;
+      localY = 0.95;
       localZ = 0.05;
-    } else if (id.includes('overhead')) {
-      localY = 2.0;
-      localZ = 0;
-    } else if (id.includes('pedestal') || id.includes('broadcast')) {
-      localY = 1.45;
-      localZ = 0.35;
-    } else if (id.includes('prompter') || id.includes('teleprompter')) {
+    } else if (id.includes('red') || id.includes('arri')) {
       localY = 1.35;
-      localZ = 0.15;
-    } else {
-      localY = baseY > 0.4 ? 0.35 : 1.25;
-      localZ = 0.14;
+      localZ = 0.22;
     }
 
-    return {
-      x: cam.x,
-      y: baseY + localY,
-      z: cam.z,
-      localY,
-      localZ,
-      fov: opt.verticalFovDegrees,
-      hFov: opt.horizontalFovDegrees,
-      opt,
-    };
+    const lens = cam.lensPreset || '24mm';
+    const sensor = cam.sensorSize || 'full-frame';
+    const opt = calculateOpticalFov(lens, sensor);
+    const fov = opt.verticalFovDegrees;
+
+    return { y: baseY + localY, localY, localZ, fov, opt };
   }, [getObjectY]);
 
-  // ============ Optical Camera Frustum & Cone Visualizer ============
+  // ============ Camera Frustum Framing Visualizer ============
   const updateCameraFrame = useCallback(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -336,10 +313,9 @@ export default function PlannerCanvas() {
     const fBR = new THREE.Vector3(wFar, lens.localY - hFar, lens.localZ + dFar);
     const fBL = new THREE.Vector3(-wFar, lens.localY - hFar, lens.localZ + dFar);
 
-    const coralColor = 0xc75d3f;
-    const frustumMat = new THREE.LineBasicMaterial({ color: coralColor, transparent: true, opacity: 0.88 });
-    const subtleMat = new THREE.LineBasicMaterial({ color: 0xdb7b60, transparent: true, opacity: 0.45 });
-    const floorMat = new THREE.LineBasicMaterial({ color: 0x4a7a8c, transparent: true, opacity: 0.45 });
+    const frustumMat = new THREE.LineBasicMaterial({ color: 0x09090b, transparent: true, opacity: 0.85 });
+    const subtleMat = new THREE.LineBasicMaterial({ color: 0x71717a, transparent: true, opacity: 0.45 });
+    const floorMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.45 });
 
     // 1. Sightlines from apex to corners
     [fTL, fTR, fBR, fBL].forEach((corner) => {
@@ -462,44 +438,41 @@ export default function PlannerCanvas() {
 
     if (!showAcousticRays) return;
 
-    const g = new THREE.Group();
-    const talent = placedObjects.find(
-      (o) => o.equipmentId.includes('chair') || o.equipmentId.includes('desk') || o.equipmentId.includes('human')
-    ) || { x: 0, z: 0 };
+    const mic = placedObjects.find(
+      (o) =>
+        o.equipmentId.includes('mic') ||
+        o.equipmentId.includes('sm7b') ||
+        o.equipmentId.includes('rode') ||
+        o.equipmentId.includes('shure')
+    );
+    const soundPos = mic ? new THREE.Vector3(mic.x, 1.1, mic.z) : new THREE.Vector3(0, 1.1, 0);
 
-    const mic = placedObjects.find((o) => o.equipmentId.includes('mic')) || {
-      x: talent.x,
-      z: talent.z + 0.4,
-    };
+    const g = new THREE.Group();
+    const rayMat = new THREE.LineDashedMaterial({
+      color: 0x9333ea,
+      dashSize: 0.12,
+      gapSize: 0.08,
+      linewidth: 1.5,
+      transparent: true,
+      opacity: 0.75,
+    });
 
     const hw = roomWidth / 2;
-    const hd = roomDepth / 2;
-    const soundY = 1.25;
+    const soundY = 1.1;
 
-    // Reflection math: Mirror points on Left Wall (x = -hw) and Right Wall (x = hw)
     const traceReflection = (wallX: number) => {
-      const zReflect = (talent.z + mic.z) / 2;
-      const pTalent = new THREE.Vector3(talent.x, soundY, talent.z);
-      const pWall = new THREE.Vector3(wallX, soundY, zReflect);
-      const pMic = new THREE.Vector3(mic.x, soundY, mic.z);
+      const zReflect = soundPos.z;
+      const pts = [
+        soundPos,
+        new THREE.Vector3(wallX, soundY, zReflect),
+        new THREE.Vector3(soundPos.x, soundY, zReflect + 1.2),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geo, rayMat);
+      line.computeLineDistances();
+      g.add(line);
 
-      const rayMat = new THREE.LineDashedMaterial({
-        color: 0x9333ea,
-        dashSize: 0.1,
-        gapSize: 0.05,
-        linewidth: 2,
-      });
-
-      const line1 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pTalent, pWall]), rayMat);
-      line1.computeLineDistances();
-      g.add(line1);
-
-      const line2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pWall, pMic]), rayMat);
-      line2.computeLineDistances();
-      g.add(line2);
-
-      // Acoustic Panel Target Marker on Wall
-      const targetMat = new THREE.MeshBasicMaterial({ color: 0xc084fc, side: THREE.DoubleSide });
+      const targetMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, side: THREE.DoubleSide });
       const target = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.24, 24), targetMat);
       target.position.set(wallX + (wallX < 0 ? 0.01 : -0.01), soundY, zReflect);
       target.rotation.y = Math.PI / 2;
@@ -511,7 +484,163 @@ export default function PlannerCanvas() {
 
     scene.add(g);
     acousticRaysRef.current = g;
-  }, [placedObjects, showAcousticRays, roomWidth, roomDepth]);
+  }, [placedObjects, showAcousticRays, roomWidth]);
+
+  // ============ 3D Laser Ruler Dimension Overlay Rendering ============
+  const updateLaserRulerVisualizer = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (laserRulerGroupRef.current) {
+      scene.remove(laserRulerGroupRef.current);
+      laserRulerGroupRef.current.traverse((c) => {
+        if (c instanceof THREE.Mesh || c instanceof THREE.Line || c instanceof THREE.Sprite) {
+          c.geometry?.dispose();
+          if (c.material instanceof THREE.Material) c.material.dispose();
+        }
+      });
+      laserRulerGroupRef.current = null;
+    }
+
+    if (!isMeasuring) return;
+
+    const g = new THREE.Group();
+    const p1 = measureStart;
+    const p2 = measureEnd || hoverMeasurePoint;
+
+    // Hover snap ring indicator
+    if (hoverMeasurePoint && !measureEnd) {
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, side: THREE.DoubleSide, depthTest: false });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.12, 32), ringMat);
+      ring.position.set(hoverMeasurePoint.x, 0.005, hoverMeasurePoint.z);
+      ring.rotation.x = -Math.PI / 2;
+      ring.renderOrder = 99;
+      g.add(ring);
+
+      // Center dot
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(0.04, 16), new THREE.MeshBasicMaterial({ color: 0x0891b2, depthTest: false }));
+      dot.position.set(hoverMeasurePoint.x, 0.006, hoverMeasurePoint.z);
+      dot.rotation.x = -Math.PI / 2;
+      dot.renderOrder = 100;
+      g.add(dot);
+    }
+
+    // Active measurement line between Start and End/Hover
+    if (p1 && p2) {
+      const linePts = [
+        new THREE.Vector3(p1.x, 0.015, p1.z),
+        new THREE.Vector3(p2.x, 0.015, p2.z),
+      ];
+
+      // Laser dimension line
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 2, depthTest: false });
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(linePts);
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.renderOrder = 98;
+      g.add(line);
+
+      // Start witness tick
+      const startRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.09, 0.14, 24),
+        new THREE.MeshBasicMaterial({ color: 0x0284c7, side: THREE.DoubleSide, depthTest: false })
+      );
+      startRing.position.set(p1.x, 0.016, p1.z);
+      startRing.rotation.x = -Math.PI / 2;
+      startRing.renderOrder = 99;
+      g.add(startRing);
+
+      // End witness tick
+      const endRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.09, 0.14, 24),
+        new THREE.MeshBasicMaterial({ color: 0x0284c7, side: THREE.DoubleSide, depthTest: false })
+      );
+      endRing.position.set(p2.x, 0.016, p2.z);
+      endRing.rotation.x = -Math.PI / 2;
+      endRing.renderOrder = 99;
+      g.add(endRing);
+    }
+
+    scene.add(g);
+    laserRulerGroupRef.current = g;
+  }, [isMeasuring, measureStart, measureEnd, hoverMeasurePoint]);
+
+  // ============ Magnetic Building & Wall Snapping Function ============
+  const calculateMagneticSnap = useCallback((rawX: number, rawZ: number) => {
+    const hw = roomWidth / 2;
+    const hd = roomDepth / 2;
+    const snapDist = 0.28; // Snapping radius threshold in meters
+
+    let snappedX = rawX;
+    let snappedZ = rawZ;
+    let snapName = 'Custom Coordinate';
+
+    // 1. Room Boundary Wall Corners (High Priority)
+    const corners = [
+      { x: -hw, z: -hd, name: `North-West Corner (-${hw.toFixed(1)}m, -${hd.toFixed(1)}m)` },
+      { x: hw, z: -hd, name: `North-East Corner (${hw.toFixed(1)}m, -${hd.toFixed(1)}m)` },
+      { x: -hw, z: hd, name: `South-West Corner (-${hw.toFixed(1)}m, ${hd.toFixed(1)}m)` },
+      { x: hw, z: hd, name: `South-East Corner (${hw.toFixed(1)}m, ${hd.toFixed(1)}m)` },
+    ];
+
+    for (const c of corners) {
+      if (Math.hypot(rawX - c.x, rawZ - c.z) < snapDist) {
+        return { x: c.x, z: c.z, name: c.name };
+      }
+    }
+
+    // 2. Wall Midpoints & Axis Centers
+    const wallMidpoints = [
+      { x: 0, z: -hd, name: `North Wall Center (Z: -${hd.toFixed(2)}m)` },
+      { x: 0, z: hd, name: `South Wall Center (Z: +${hd.toFixed(2)}m)` },
+      { x: -hw, z: 0, name: `West Wall Center (X: -${hw.toFixed(2)}m)` },
+      { x: hw, z: 0, name: `East Wall Center (X: +${hw.toFixed(2)}m)` },
+      { x: 0, z: 0, name: 'Room Floor Center (0, 0)' },
+    ];
+
+    for (const m of wallMidpoints) {
+      if (Math.hypot(rawX - m.x, rawZ - m.z) < snapDist) {
+        return { x: m.x, z: m.z, name: m.name };
+      }
+    }
+
+    // 3. Wall Perimeter Planes (Perpendicular Lock)
+    if (Math.abs(rawZ - -hd) < snapDist) {
+      snappedZ = -hd;
+      snapName = `North Wall Edge (Z: -${hd.toFixed(2)}m)`;
+    } else if (Math.abs(rawZ - hd) < snapDist) {
+      snappedZ = hd;
+      snapName = `South Wall Edge (Z: +${hd.toFixed(2)}m)`;
+    }
+
+    if (Math.abs(rawX - -hw) < snapDist) {
+      snappedX = -hw;
+      snapName = `West Wall Edge (X: -${hw.toFixed(2)}m)`;
+    } else if (Math.abs(rawX - hw) < snapDist) {
+      snappedX = hw;
+      snapName = `East Wall Edge (X: +${hw.toFixed(2)}m)`;
+    }
+
+    // 4. Placed Equipment Centers & Table Bounds
+    for (const obj of placedObjects) {
+      if (Math.hypot(rawX - obj.x, rawZ - obj.z) < snapDist) {
+        const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+        return {
+          x: obj.x,
+          z: obj.z,
+          name: `${def?.name || obj.equipmentId} Position`,
+        };
+      }
+    }
+
+    // 5. Standard Grid Snapping (0.25m intervals if not snapped to walls)
+    if (snapName === 'Custom Coordinate') {
+      snappedX = Math.round(rawX * 4) / 4;
+      snappedZ = Math.round(rawZ * 4) / 4;
+      snapName = `Grid Point (${snappedX.toFixed(2)}m, ${snappedZ.toFixed(2)}m)`;
+    }
+
+    return { x: snappedX, z: snappedZ, name: snapName };
+  }, [roomWidth, roomDepth, placedObjects]);
 
   // ============ View transition ============
   const transitionView = useCallback((mode: ViewMode) => {
@@ -582,7 +711,7 @@ export default function PlannerCanvas() {
     tick();
   }, [roomWidth, roomDepth, placedObjects, getCameraLensPos]);
 
-  // Handle Scene Setup
+  // ============ Scene Setup & Interaction Listeners ============
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -705,7 +834,117 @@ export default function PlannerCanvas() {
     });
     resizeObserver.observe(container);
 
-    // Register Multi-Angle Capture Engine for High-Definition PDF Generation
+    // ============ Pointer Event Listeners for Raycast & Snapping ============
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return; // Left-click only
+      pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+
+      const state = usePlannerStore.getState();
+
+      // 1. Measuring Mode Click
+      if (state.isMeasuring) {
+        const floorIntersection = new THREE.Vector3();
+        if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
+          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const pt = { x: snap.x, y: 0, z: snap.z, name: snap.name };
+
+          if (!state.measureStart) {
+            state.setMeasurePoints(pt, null);
+          } else if (!state.measureEnd) {
+            state.setMeasurePoints(state.measureStart, pt);
+          } else {
+            // Restart measurement from new point
+            state.setMeasurePoints(pt, null);
+          }
+        }
+        return;
+      }
+
+      // 2. Placing new equipment item
+      if (state.placingEquipmentId) {
+        const floorIntersection = new THREE.Vector3();
+        if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
+          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          state.placeObject(state.placingEquipmentId, snap.x, snap.z);
+          state.setPlacingEquipment(null);
+        }
+        return;
+      }
+
+      // 3. Object Selection & Dragging
+      const objectGroups: THREE.Object3D[] = [];
+      objectMeshesRef.current.forEach((g) => objectGroups.push(g));
+      const hits = raycasterRef.current.intersectObjects(objectGroups, true);
+
+      if (hits.length > 0) {
+        let hitGroup: THREE.Object3D | null = hits[0].object;
+        while (hitGroup && !hitGroup.userData.placedId && hitGroup.parent) {
+          hitGroup = hitGroup.parent;
+        }
+
+        if (hitGroup && hitGroup.userData.placedId) {
+          const targetId = hitGroup.userData.placedId;
+          state.setSelectedObject(targetId);
+          dragTargetRef.current = targetId;
+          isDraggingRef.current = true;
+          controls.enabled = false; // Disable orbit during object drag
+        }
+      } else {
+        // Click on empty space
+        state.setSelectedObject(null);
+      }
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const state = usePlannerStore.getState();
+
+      // Laser Ruler Hover Snapping
+      if (state.isMeasuring) {
+        const floorIntersection = new THREE.Vector3();
+        if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
+          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          setHoverMeasurePoint({ x: snap.x, y: 0, z: snap.z, name: snap.name });
+        }
+        return;
+      }
+
+      // Object Dragging
+      if (isDraggingRef.current && dragTargetRef.current) {
+        const floorIntersection = new THREE.Vector3();
+        if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
+          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const halfW = state.roomWidth / 2 - 0.15;
+          const halfD = state.roomDepth / 2 - 0.15;
+          const clampedX = Math.max(-halfW, Math.min(halfW, snap.x));
+          const clampedZ = Math.max(-halfD, Math.min(halfD, snap.z));
+          state.updateObjectPosition(dragTargetRef.current, clampedX, clampedZ);
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      isDraggingRef.current = false;
+      dragTargetRef.current = null;
+      controls.enabled = true;
+    };
+
+    const dom = renderer.domElement;
+    dom.addEventListener('pointerdown', handlePointerDown);
+    dom.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+
+    // Multi-Angle Snapshot Generator for PDF & Export
     (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ = () => {
       const origPos = camera.position.clone();
       const origTarget = controls.target.clone();
@@ -742,82 +981,14 @@ export default function PlannerCanvas() {
         return renderer.domElement.toDataURL('image/jpeg', 0.95);
       };
 
-      // 1. Hero 3D Isometric View
-      const hero3D = captureFrame(
-        maxDim * 0.85,
-        maxDim * 0.72,
-        maxDim * 0.95,
-        0,
-        0.5,
-        0,
-        38,
-        { back: true, left: true, right: true, front: false }
-      );
+      const hero3D = captureFrame(maxDim * 0.85, maxDim * 0.72, maxDim * 0.95, 0, 0.5, 0, 38, { back: true, left: true, right: true, front: false });
+      const north = captureFrame(0, 1.5, maxDim * 0.9, 0, 1.2, -rD * 0.2, 42, { back: true, left: true, right: true, front: false });
+      const south = captureFrame(0, 1.6, -maxDim * 0.85, 0, 1.1, 0, 44, { back: false, left: true, right: true, front: true });
+      const left45 = captureFrame(-maxDim * 0.8, maxDim * 0.6, maxDim * 0.65, 0, 0.6, 0, 40, { back: true, left: false, right: true, front: false });
+      const right45 = captureFrame(maxDim * 0.8, maxDim * 0.6, maxDim * 0.65, 0, 0.6, 0, 40, { back: true, left: true, right: false, front: false });
+      const top3D = captureFrame(0, maxDim * 1.85, 0.001, 0, 0, 0, 32, { back: true, left: true, right: true, front: true });
 
-      // 2. North Elevation (Facing Desk & Background Wall)
-      const north = captureFrame(
-        0,
-        1.5,
-        maxDim * 0.9,
-        0,
-        1.2,
-        -rD * 0.2,
-        42,
-        { back: true, left: true, right: true, front: false }
-      );
-
-      // 3. South Elevation (Reverse Angle / Entryway)
-      const south = captureFrame(
-        0,
-        1.6,
-        -maxDim * 0.85,
-        0,
-        1.1,
-        0,
-        44,
-        { back: false, left: true, right: true, front: true }
-      );
-
-      // 4. Left 45° Key Light Vantage
-      const left45 = captureFrame(
-        -maxDim * 0.8,
-        maxDim * 0.6,
-        maxDim * 0.65,
-        0,
-        0.6,
-        0,
-        40,
-        { back: true, left: false, right: true, front: false }
-      );
-
-      // 5. Right 45° Fill / Depth Vantage
-      const right45 = captureFrame(
-        maxDim * 0.8,
-        maxDim * 0.6,
-        maxDim * 0.65,
-        0,
-        0.6,
-        0,
-        40,
-        { back: true, left: true, right: false, front: false }
-      );
-
-      // 6. Top Orthographic 2D/3D Plan
-      const top3D = captureFrame(
-        0,
-        maxDim * 1.85,
-        0.001,
-        0,
-        0,
-        0,
-        32,
-        { back: true, left: true, right: true, front: true }
-      );
-
-      // 7. Director Through-The-Lens POV
-      const activeCam =
-        usePlannerStore.getState().placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
-        usePlannerStore.getState().placedObjects.find((o) => isCamEquipment(o.equipmentId));
+      const activeCam = usePlannerStore.getState().placedObjects.find((o) => isCamEquipment(o.equipmentId));
       let directorPOV = hero3D;
 
       if (activeCam) {
@@ -828,19 +999,9 @@ export default function PlannerCanvas() {
         const fwdX = Math.sin(activeCam.rotationY);
         const fwdZ = Math.cos(activeCam.rotationY);
 
-        directorPOV = captureFrame(
-          posX,
-          posY,
-          posZ,
-          posX + fwdX * 3.5,
-          posY,
-          posZ + fwdZ * 3.5,
-          lens.fov,
-          { back: true, left: true, right: true, front: true }
-        );
+        directorPOV = captureFrame(posX, posY, posZ, posX + fwdX * 3.5, posY, posZ + fwdZ * 3.5, lens.fov, { back: true, left: true, right: true, front: true });
       }
 
-      // Restore original state
       camera.position.copy(origPos);
       controls.target.copy(origTarget);
       camera.fov = origFov;
@@ -875,13 +1036,16 @@ export default function PlannerCanvas() {
     return () => {
       delete (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__;
       delete (window as any).__SPACE_PLANNER_SNAP_CAMERA__;
+      dom.removeEventListener('pointerdown', handlePointerDown);
+      dom.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('resize', onResize);
       resizeObserver.disconnect();
       cancelAnimationFrame(animFrameRef.current);
       renderer.dispose();
       container.innerHTML = '';
     };
-  }, [buildRoom, roomWidth, roomDepth, roomHeight, windows, floorFinish]);
+  }, [buildRoom, roomWidth, roomDepth, roomHeight, windows, floorFinish, calculateMagneticSnap, getCameraLensPos]);
 
   // Sync scene models
   useEffect(() => {
@@ -905,6 +1069,11 @@ export default function PlannerCanvas() {
     updateLightingVisualizers();
     updateAcousticRays();
   }, [placedObjects, getObjectY, updateCameraFrame, updateLightingVisualizers, updateAcousticRays]);
+
+  // Sync laser ruler 3D visualizer
+  useEffect(() => {
+    updateLaserRulerVisualizer();
+  }, [updateLaserRulerVisualizer]);
 
   // Sync viewMode changes
   useEffect(() => {
@@ -943,7 +1112,7 @@ export default function PlannerCanvas() {
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full bg-[#F5F1EA] overflow-hidden ${placingEquipmentId ? 'cursor-crosshair' : ''}`}
+      className={`relative w-full h-full bg-[#EAE7DF] overflow-hidden ${placingEquipmentId || isMeasuring ? 'cursor-crosshair' : ''}`}
       style={{
         backgroundImage: `
           linear-gradient(${GRID_COLOR_A} 1px, transparent 1px),
@@ -960,23 +1129,22 @@ export default function PlannerCanvas() {
           {/* Top Bar with Camera Metadata & Optical Quick Bar */}
           <div className="flex items-center justify-between pointer-events-auto flex-wrap gap-2">
             <div className="flex items-center gap-2 p-1 bg-black/90 text-white backdrop-blur border border-white/20 shadow-xl font-mono text-[11px]">
-              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-red-600 font-bold text-white tracking-widest animate-pulse">
+              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-600 font-bold text-white tracking-widest animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-white" /> REC 4K
               </span>
               <span className="text-zinc-200 font-bold">
                 {activeCamera?.lensPreset || '24mm'} • {opticalMetrics?.opt.effectiveFocalLengthMm.toFixed(0)}mm Eq. • {activeCamera?.aperture || 'f/2.8'}
               </span>
-              <span className="text-[#FFE500] font-bold">
+              <span className="text-cyan-300 font-bold">
                 {opticalMetrics?.opt.horizontalFovDegrees}° H-FOV
               </span>
             </div>
 
-            {/* Aspect Ratio Guides Switcher */}
+            {/* Framing Guides Switcher */}
             <div className="flex items-center gap-1 p-1 bg-black/90 text-white backdrop-blur border border-white/20 font-mono text-[11px]">
-              <span className="text-[10px] text-zinc-400 px-1 font-bold">CROP:</span>
               <button
                 className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '16:9' ? 'bg-[#FFDD00] text-black' : 'hover:bg-white/10 text-white'
+                  aspectRatio === '16:9' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
                 }`}
                 onClick={() => setAspectRatio('16:9')}
               >
@@ -984,7 +1152,7 @@ export default function PlannerCanvas() {
               </button>
               <button
                 className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '9:16' ? 'bg-[#FFDD00] text-black' : 'hover:bg-white/10 text-white'
+                  aspectRatio === '9:16' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
                 }`}
                 onClick={() => setAspectRatio('9:16')}
               >
@@ -992,7 +1160,7 @@ export default function PlannerCanvas() {
               </button>
               <button
                 className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '4:5' ? 'bg-[#FFDD00] text-black' : 'hover:bg-white/10 text-white'
+                  aspectRatio === '4:5' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
                 }`}
                 onClick={() => setAspectRatio('4:5')}
               >
@@ -1013,7 +1181,7 @@ export default function PlannerCanvas() {
           {/* Aspect Ratio Frame & Grid Guide */}
           <div className="relative flex-1 flex items-center justify-center my-2">
             <div
-              className={`relative border-2 border-[#FFDD00]/80 transition-all duration-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] ${
+              className={`relative border-2 border-white/80 transition-all duration-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ${
                 aspectRatio === '16:9'
                   ? 'w-[90%] aspect-[16/9]'
                   : aspectRatio === '9:16'
@@ -1032,35 +1200,16 @@ export default function PlannerCanvas() {
                   <div className="border-r border-b border-white/25" />
                   <div className="border-r border-b border-white/25" />
                   <div className="border-b border-white/25" />
-                  <div className="border-r border-white/25" />
-                  <div className="border-r border-white/25" />
+                  <div className="border-r border-b border-white/25" />
+                  <div className="border-r border-b border-white/25" />
                   <div />
-                </div>
-              )}
-
-              {/* TikTok / Reels UI Overlay Protection */}
-              {showTikTokUIOverlay && aspectRatio === '9:16' && (
-                <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3">
-                  <div className="h-10 bg-black/40 border border-dashed border-cyan-400/60 flex items-center justify-center text-[9px] font-mono text-cyan-300">
-                    TOP HEADER / SEARCH / FOR YOU (Keep clean)
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <div className="w-[60%] h-20 bg-black/40 border border-dashed border-amber-400/60 p-1 text-[8px] font-mono text-amber-300">
-                      CAPTIONS & USERNAME SAFE AREA
-                    </div>
-                    <div className="w-12 h-36 bg-black/40 border border-dashed border-red-400/60 flex flex-col justify-around items-center text-[7px] font-mono text-red-300 text-center">
-                      <span>LIKE</span>
-                      <span>COMMENT</span>
-                      <span>SHARE</span>
-                    </div>
-                  </div>
                 </div>
               )}
 
               {/* Center Eyeline Crosshair */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-6 h-6 border border-white/50 rounded-full flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 bg-[#FFDD00] rounded-full" />
+                  <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full" />
                 </div>
               </div>
             </div>
@@ -1069,7 +1218,7 @@ export default function PlannerCanvas() {
           {/* Bottom Live Optical Diagnostic HUD */}
           <div className="pointer-events-auto flex items-center justify-between gap-3 p-2.5 bg-black/95 text-white backdrop-blur border border-white/20 font-mono text-xs shadow-2xl flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 bg-[#FFE500] text-black font-black text-[10px]">
+              <span className="px-2 py-0.5 bg-zinc-800 text-white font-bold text-[10px] border border-white/20">
                 DIRECTOR HUD
               </span>
               <span className="text-zinc-300">
@@ -1077,7 +1226,7 @@ export default function PlannerCanvas() {
               </span>
               <span className="text-zinc-500">|</span>
               <span className="text-zinc-300">
-                Bokeh Score: <strong className="text-amber-400">{opticalMetrics?.framing.bokehScore}/10</strong>
+                Bokeh Score: <strong className="text-amber-300">{opticalMetrics?.framing.bokehScore}/10</strong>
               </span>
               <span className="text-zinc-500">|</span>
               <span className="text-zinc-400 text-[11px]">
@@ -1092,7 +1241,7 @@ export default function PlannerCanvas() {
                   key={lens}
                   className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-all ${
                     activeCamera?.lensPreset === lens
-                      ? 'bg-[#FFE500] text-black'
+                      ? 'bg-white text-black'
                       : 'bg-white/15 hover:bg-white/25 text-white'
                   }`}
                   onClick={() => activeCamera && updateObjectLens(activeCamera.id, lens)}
@@ -1116,8 +1265,8 @@ export default function PlannerCanvas() {
         <div className="absolute inset-0 pointer-events-none z-10 p-4 flex flex-col justify-between font-mono text-xs">
           {/* Top Dimension Header Callout */}
           <div className="flex items-center justify-between pointer-events-auto">
-            <div className="flex items-center gap-2 p-1.5 bg-white/95 backdrop-blur border-2 border-black shadow-[3px_3px_0_#000] text-black">
-              <span className="px-1.5 py-0.5 bg-black text-[#FFE500] font-black text-[9.5px] uppercase">
+            <div className="flex items-center gap-2 p-1.5 bg-white/95 backdrop-blur border border-black shadow-md text-black">
+              <span className="px-1.5 py-0.5 bg-black text-white font-bold text-[9.5px] uppercase">
                 2D Blueprint
               </span>
               <span className="font-bold text-[11px]">
@@ -1130,8 +1279,8 @@ export default function PlannerCanvas() {
             </div>
 
             {/* Quick Room Scale Adjusters on Blueprint */}
-            <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur border-2 border-black shadow-[2px_2px_0_#000]">
-              <span className="text-[10px] font-bold text-stone-600 px-1">ROOM:</span>
+            <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur border border-black shadow-sm">
+              <span className="text-[10px] font-bold text-stone-600 px-1">DIMENSIONS:</span>
               <button
                 onClick={() => usePlannerStore.getState().setRoomDimensions(Math.max(2, roomWidth - 0.5), roomDepth, roomHeight)}
                 className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
@@ -1162,79 +1311,37 @@ export default function PlannerCanvas() {
               </button>
             </div>
           </div>
-
-          {/* Blueprint Dimension Overlay Lines */}
-          <div className="relative flex-1 flex items-center justify-center pointer-events-none my-4">
-            <div className="relative w-[78%] h-[78%] border border-dashed border-black/25 flex flex-col justify-between items-center p-2">
-              {/* Top Width Wall Dimension */}
-              <div className="w-full flex items-center justify-center gap-2 text-stone-800 font-bold text-[11px] bg-white/90 px-2 py-0.5 border border-black/40 shadow-sm max-w-fit">
-                <span>◀ ── {roomWidth.toFixed(2)}m ({(roomWidth * 3.28084).toFixed(1)}ft) ── ▶</span>
-              </div>
-
-              {/* Side Depth Wall Dimension */}
-              <div className="w-full flex justify-between items-center">
-                <div className="flex items-center gap-1 text-stone-800 font-bold text-[11px] bg-white/90 px-2 py-0.5 border border-black/40 shadow-sm rotate-[-90deg] origin-center">
-                  <span>◀ ── {roomDepth.toFixed(2)}m ── ▶</span>
-                </div>
-                <div className="flex items-center gap-1 text-stone-800 font-bold text-[11px] bg-white/90 px-2 py-0.5 border border-black/40 shadow-sm rotate-[90deg] origin-center">
-                  <span>◀ ── {(roomDepth * 3.28084).toFixed(1)}ft ── ▶</span>
-                </div>
-              </div>
-
-              {/* Bottom Center Reference */}
-              <div className="text-[10px] text-stone-500 bg-white/80 px-2 py-0.5 border border-black/20">
-                Grid Spacing: 0.5m × 0.5m precision snap • North orientation
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Blueprint Toolbar Indicator */}
-          <div className="flex items-center justify-between pointer-events-auto">
-            <div className="flex items-center gap-2 p-1.5 bg-black text-white font-mono text-[10.5px]">
-              <span className="text-[#FFE500] font-bold">2D ORTHO VIEW</span>
-              <span className="text-zinc-400">• Drag objects to reposition</span>
-              <span className="text-zinc-400">• R to Rotate</span>
-              <span className="text-zinc-400">• Click 3D for Perspective</span>
-            </div>
-
-            <button
-              onClick={() => usePlannerStore.getState().setViewMode('perspective')}
-              className="btn px-3 py-1 bg-[#FFE500] hover:bg-amber-300 text-black border-2 border-black font-black text-xs shadow-[2px_2px_0_#000]"
-            >
-              Switch to 3D Orbit View →
-            </button>
-          </div>
         </div>
       )}
 
       {/* Quick Camera Preset Angles Widget */}
       {viewMode === 'perspective' && !isZenMode && (
-        <div className="absolute top-3 right-3 z-30 flex items-center gap-1 p-1 bg-white/95 backdrop-blur-md border-2 border-black shadow-[3px_3px_0_#000] font-mono text-[10px]">
+        <div className="absolute top-3 right-3 z-30 flex items-center gap-1 p-1 bg-white/95 backdrop-blur-md border border-black shadow-[2px_2px_0_rgba(0,0,0,1)] font-mono text-[10px]">
           <span className="text-stone-500 font-bold px-1 hidden sm:inline">VIEW:</span>
           <button
             onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('iso')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
             title="Isometric 3D Room Vantage"
           >
             ISO
           </button>
           <button
             onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('north')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
             title="North Elevation (Desk & Background Wall)"
           >
             NORTH
           </button>
           <button
             onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('top')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
             title="Top-Down 3D Perspective"
           >
             TOP
           </button>
           <button
             onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('side')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
             title="Side Profile / Key Light Vantage"
           >
             SIDE
@@ -1242,11 +1349,11 @@ export default function PlannerCanvas() {
         </div>
       )}
 
-      {/* Interactive Laser Tape Measure Floating HUD */}
+      {/* High-Precision Laser Tape Measure Floating Snapping HUD */}
       {isMeasuring && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-2.5 px-3.5 py-2 bg-white/95 backdrop-blur-md border-2 border-black shadow-[4px_4px_0_#000] font-mono text-xs text-black max-w-[94vw]">
-          <div className="flex items-center gap-1.5 bg-black text-[#FFE500] px-2 py-0.5 font-black text-[10px] uppercase">
-            <span>RULER</span>
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap gap-2.5 px-3.5 py-2 bg-white/95 backdrop-blur-md border border-black shadow-[3px_3px_0_rgba(0,0,0,1)] font-mono text-xs text-black max-w-[94vw]">
+          <div className="flex items-center gap-1.5 bg-zinc-900 text-white px-2 py-0.5 font-bold text-[10px] uppercase">
+            <span>LASER RULER</span>
           </div>
 
           {measureStart && (measureEnd || hoverMeasurePoint) ? (
@@ -1254,22 +1361,52 @@ export default function PlannerCanvas() {
               const p1 = measureStart;
               const p2 = measureEnd || hoverMeasurePoint!;
               const dist3D = Math.hypot(p2.x - p1.x, (p2.y ?? 0) - (p1.y ?? 0), p2.z - p1.z);
+              const deltaX = Math.abs(p2.x - p1.x);
+              const deltaZ = Math.abs(p2.z - p1.z);
               return (
-                <div className="flex items-center gap-2">
-                  <strong className="text-sm font-black text-black">{dist3D.toFixed(2)} m</strong>
-                  <span className="text-stone-500 text-[11px] font-bold">({(dist3D * 3.28084).toFixed(2)} ft)</span>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] text-stone-500 font-bold">DISTANCE:</span>
+                    <strong className="text-sm font-black text-black">{dist3D.toFixed(2)} m</strong>
+                    <span className="text-stone-500 text-[11px] font-bold">({(dist3D * 3.28084).toFixed(2)} ft)</span>
+                  </div>
+                  <div className="text-[10px] text-stone-600 bg-stone-100 px-1.5 py-0.5 border border-stone-300">
+                    ΔWidth: <strong>{deltaX.toFixed(2)}m</strong> • ΔDepth: <strong>{deltaZ.toFixed(2)}m</strong>
+                  </div>
+                  {p2.name && (
+                    <div className="text-[10px] text-cyan-800 bg-cyan-50 px-1.5 py-0.5 border border-cyan-300 font-bold">
+                      {p2.name}
+                    </div>
+                  )}
                 </div>
               );
             })()
+          ) : hoverMeasurePoint ? (
+            <div className="flex items-center gap-2">
+              <span className="text-stone-700 font-medium text-[11px]">
+                Click point to anchor measurement • Snapped:
+              </span>
+              <span className="text-[10px] text-cyan-800 bg-cyan-50 px-1.5 py-0.5 border border-cyan-300 font-bold">
+                {hoverMeasurePoint.name}
+              </span>
+            </div>
           ) : (
             <span className="text-stone-700 font-medium text-[11px]">
-              Click any equipment or floor point to start measuring
+              Click any wall corner, edge, or equipment to anchor point
             </span>
           )}
 
           <div className="flex items-center gap-1.5 ml-auto">
+            {measureStart && (
+              <button
+                className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
+                onClick={() => setMeasurePoints(null, null)}
+              >
+                Reset Point
+              </button>
+            )}
             <button
-              className="px-2.5 py-1 bg-black hover:bg-stone-800 text-white font-bold text-[10px]"
+              className="px-2.5 py-1 bg-zinc-900 hover:bg-black text-white font-bold text-[10px]"
               onClick={() => toggleMeasuring()}
             >
               Done (M)

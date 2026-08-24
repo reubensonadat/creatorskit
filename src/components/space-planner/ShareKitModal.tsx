@@ -70,15 +70,15 @@ export default function ShareKitModal({ isOpen, onClose }: ShareKitModalProps) {
         <div className="flex items-start justify-between border-b-2 border-black pb-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1 bg-[#FFE500] border border-black font-black text-xs uppercase">
-                VIRAL KIT SHARING
+              <span className="p-1 bg-zinc-900 text-white border border-black font-bold text-xs uppercase">
+                3D STUDIO SHARE
               </span>
             </div>
             <h2 className="text-lg font-black text-black mt-1">
               Share Your 3D Studio Kit
             </h2>
             <p className="text-[11px] text-stone-600">
-              Anyone with this link can interactively walk through your 3D setup and buy your exact gear.
+              Anyone with this link can interactively walk through your 3D setup and inspect your exact gear.
             </p>
           </div>
           <button
@@ -103,7 +103,7 @@ export default function ShareKitModal({ isOpen, onClose }: ShareKitModalProps) {
             />
             <button
               onClick={handleCopyLink}
-              className="btn px-4 py-2 bg-black hover:bg-stone-800 text-[#FFE500] font-black text-xs border-2 border-black flex items-center gap-1.5 shadow-[2px_2px_0_#000]"
+              className="btn px-4 py-2 bg-zinc-900 hover:bg-black text-white font-bold text-xs border-2 border-black flex items-center gap-1.5 shadow-[2px_2px_0_#000]"
             >
               {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
               {copiedLink ? 'Copied!' : 'Copy Link'}

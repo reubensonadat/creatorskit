@@ -88,11 +88,11 @@ export default function EquipmentLibrary() {
               onClick={() => setSelectedCat(cat)}
               className={`px-2 py-1 whitespace-nowrap transition-all border font-bold flex items-center gap-1.5 ${
                 isSelected
-                  ? 'bg-black text-[#FFE500] border-black shadow-[1.5px_1.5px_0_#000]'
+                  ? 'bg-zinc-900 text-white border-black shadow-[1.5px_1.5px_0_#000]'
                   : 'bg-white text-stone-700 border-stone-300 hover:border-black hover:bg-stone-100'
               }`}
             >
-              <span className={`text-[8px] font-mono px-1 py-0.2 border ${isSelected ? 'bg-[#FFE500] text-black border-black font-black' : 'bg-stone-100 text-stone-600 border-stone-300'}`}>
+              <span className={`text-[8px] font-mono px-1 py-0.2 border ${isSelected ? 'bg-zinc-800 text-white border-zinc-700 font-bold' : 'bg-stone-100 text-stone-600 border-stone-300'}`}>
                 {meta.tag}
               </span>
               <span>{meta.label}</span>
@@ -139,17 +139,21 @@ export default function EquipmentLibrary() {
                         onClick={() => setPlacingEquipment(isActive ? null : id)}
                         className={`w-full text-left p-2 transition-all border flex items-center gap-2.5 ${
                           isActive
-                            ? 'bg-[#FFE500] border-2 border-black shadow-[2px_2px_0_#000] text-black font-bold'
+                            ? 'bg-zinc-900 border-2 border-black shadow-[2px_2px_0_#000] text-white font-bold'
                             : 'bg-white border-stone-200 hover:border-black hover:shadow-[1px_1px_0_#000] text-black'
                         }`}
                         title={eq.description}
                       >
-                        <div className="text-[9px] font-mono font-black px-1.5 py-1 bg-stone-100 border border-black/30 text-stone-800 flex-shrink-0">
+                        <div className={`text-[9px] font-mono font-bold px-1.5 py-1 border flex-shrink-0 ${
+                          isActive ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-stone-100 border-black/30 text-stone-800'
+                        }`}>
                           {eq.category.toUpperCase().slice(0, 3)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[11px] font-bold truncate leading-tight">{eq.name}</div>
-                          <div className="text-[9px] font-mono text-stone-500 mt-0.5 truncate flex items-center gap-1.5">
+                          <div className={`text-[9px] font-mono mt-0.5 truncate flex items-center gap-1.5 ${
+                            isActive ? 'text-zinc-300' : 'text-stone-500'
+                          }`}>
                             <span>{eq.watts > 0 ? `${eq.watts}W draw` : '0W passive'}</span>
                             <span>•</span>
                             <span>{eq.dimensions.width}×{eq.dimensions.depth}m</span>

@@ -101,7 +101,7 @@ export default function InspectorPanel() {
         <div className="font-black text-xs uppercase tracking-wider text-black flex items-center gap-1.5">
           <span>Inspector</span>
         </div>
-        <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-black text-[#FFE500] font-black">
+        <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-zinc-900 text-white font-bold">
           {eq.category}
         </span>
       </div>
@@ -248,7 +248,7 @@ export default function InspectorPanel() {
                       key={lens}
                       onClick={() => updateObjectLens(obj.id, lens)}
                       className={`btn justify-center text-[8.5px] py-1 px-0 font-mono font-bold border border-black ${
-                        currentLens === lens ? 'bg-black text-[#FFE500]' : 'bg-white hover:bg-amber-100 text-black'
+                        currentLens === lens ? 'bg-zinc-900 text-white' : 'bg-white hover:bg-stone-100 text-black'
                       }`}
                     >
                       {lens}
@@ -279,9 +279,9 @@ export default function InspectorPanel() {
               </div>
 
               {/* Framing Analysis Box */}
-              <div className="p-1.5 bg-white border border-amber-300 text-[9px] font-mono text-stone-700 space-y-1">
+              <div className="p-1.5 bg-stone-50 border border-stone-300 text-[9px] font-mono text-stone-700 space-y-1">
                 <div className="text-black font-bold">
-                  Classification: <span className="text-amber-800">{opticalMath.shotClassification}</span>
+                  Classification: <span className="text-stone-900 font-bold">{opticalMath.shotClassification}</span>
                 </div>
                 <div className="text-stone-600">
                   Optimal Distance: <strong className="text-black">{opticalMath.idealSubjectDistanceM.ideal}m</strong> (Range: {opticalMath.idealSubjectDistanceM.min}–{opticalMath.idealSubjectDistanceM.max}m)
@@ -292,7 +292,7 @@ export default function InspectorPanel() {
               <div className="flex gap-1.5 pt-0.5">
                 <button
                   className={`btn flex-1 justify-center text-[10px] py-1.5 font-bold border border-black ${
-                    obj.isMainCamera ? 'bg-black text-[#FFE500]' : 'bg-white text-black'
+                    obj.isMainCamera ? 'bg-zinc-900 text-white' : 'bg-white text-black'
                   }`}
                   onClick={() => {
                     setMainCamera(obj.id);
