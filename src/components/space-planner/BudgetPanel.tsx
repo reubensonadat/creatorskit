@@ -47,15 +47,18 @@ export default function BudgetPanel() {
   const bom = generateBillOfMaterials(placedObjects, userAffiliateTag);
 
   const handleCopySchedule = () => {
+    const totalUSD = bom.totalEstimatedUSD ?? bom.totalCostUSD ?? 0;
+    const totalWatts = bom.totalPowerWatts ?? bom.totalWatts ?? 0;
+    const totalUnits = bom.totalUnits ?? bom.itemCount ?? 0;
     const lines = [
       `# CREATOR STUDIO PROCUREMENT SCHEDULE`,
-      `Total Placed Equipment: ${bom.totalUnits} items | Total Draw: ${bom.totalPowerWatts}W | Est Budget: $${bom.totalEstimatedUSD.toLocaleString()} USD`,
+      `Total Placed Equipment: ${totalUnits} items | Total Draw: ${totalWatts}W | Est Budget: $${totalUSD.toLocaleString()} USD`,
       ``,
       `| Item & Brand | Model | Qty | Est. Unit Price | Total Price | Amazon Direct Buy |`,
       `| --- | --- | --- | --- | --- | --- |`,
       ...bom.items.map(
         (i) =>
-          `| ${i.brand} | ${i.model} | ${i.quantity} | $${i.typicalPriceUSD} | $${i.subtotalUSD} | [Buy on Amazon](${i.amazonUrl}) |`
+          `| ${i.brand} | ${i.model} | ${i.quantity} | $${i.typicalPriceUSD ?? i.unitPriceUSD ?? 0} | $${(i.subtotalUSD ?? i.totalPriceUSD ?? 0).toLocaleString()} | [Buy on Amazon](${i.amazonUrl}) |`
       ),
     ];
     navigator.clipboard.writeText(lines.join('\n'));
@@ -137,7 +140,7 @@ export default function BudgetPanel() {
                   Studio Bill of Materials & Procurement
                 </div>
                 <div className="text-[11px] font-mono text-stone-600">
-                  {bom.totalUnits} items • {bom.totalPowerWatts}W total draw • Est. ${bom.totalEstimatedUSD.toLocaleString()} USD
+                  {bom.totalUnits ?? bom.itemCount ?? 0} items • {bom.totalPowerWatts ?? bom.totalWatts ?? 0}W total draw • Est. ${(bom.totalEstimatedUSD ?? bom.totalCostUSD ?? 0).toLocaleString()} USD
                 </div>
               </div>
               <button
@@ -194,10 +197,10 @@ export default function BudgetPanel() {
                       </div>
                       <div className="text-right">
                         <div className="font-black text-sm text-black">
-                          ${item.subtotalUSD.toLocaleString()}
+                          ${(item.subtotalUSD ?? item.totalPriceUSD ?? 0).toLocaleString()}
                         </div>
                         <div className="text-[9px] text-stone-500">
-                          ${item.typicalPriceUSD} each
+                          ${item.typicalPriceUSD ?? item.unitPriceUSD ?? 0} each
                         </div>
                       </div>
                     </div>

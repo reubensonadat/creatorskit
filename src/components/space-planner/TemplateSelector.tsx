@@ -147,7 +147,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                     <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 border ${
                       isActive ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-stone-100 border-black/20 text-stone-800'
                     }`}>
-                      {tpl.category.toUpperCase().slice(0, 3)}
+                      {(tpl.category || 'Studio').toUpperCase().slice(0, 3)}
                     </span>
                     <span className={`text-[9px] font-mono font-bold border px-1 ${
                       isActive ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-white text-black border-black'
@@ -159,7 +159,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                     {tpl.name}
                   </div>
                   <div className={`text-[9px] font-mono mt-0.5 truncate ${isActive ? 'text-zinc-300' : 'text-stone-600'}`}>
-                    {tpl.items.length} gear items · {tpl.category}
+                    {tpl.items.length} gear items · {tpl.category || 'Studio'}
                   </div>
                 </button>
               );
@@ -192,7 +192,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-stone-100 border border-black/20 text-stone-800">
-                    {tpl.category.toUpperCase().slice(0, 3)}
+                    {(tpl.category || 'Studio').toUpperCase().slice(0, 3)}
                   </span>
                   <span className="text-[9px] font-mono font-bold text-black bg-stone-100 border border-black px-1.5 py-0.5">
                     {tpl.defaultRoom.width}×{tpl.defaultRoom.depth}m

@@ -97,8 +97,13 @@ interface StoreState {
   setActiveCameraId: (id: string | null) => void;
   optimizeStudioErgonomics: () => void;
   toggleZenMode: () => void;
-  setZenMode: (zen: boolean) => void;
-  placeObject: (equipmentId: EquipmentId, x: number, z: number, rotationY?: number, isMainCamera?: boolean) => string;
+  placeObject: (
+    equipmentOrObject: EquipmentId | (Partial<PlacedObject> & { equipmentId: EquipmentId }),
+    x?: number,
+    z?: number,
+    rotationY?: number,
+    isMainCamera?: boolean
+  ) => string;
   replacePlacedObjects: (objects: PlacedObject[]) => void;
   updateObjectPosition: (id: string, x: number, z: number) => void;
   updateObjectRotation: (id: string, rotationY: number) => void;
@@ -165,7 +170,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   measureStart: null,
   measureEnd: null,
   activeCameraId: null,
-  showLightBeams: true,
+  showLightBeams: false,
   showAcousticRays: false,
 
   showBudgetPanel: false,
@@ -235,18 +240,44 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
   toggleZenMode: () => set((s) => ({ isZenMode: !s.isZenMode })),
   setZenMode: (zen) => set({ isZenMode: zen }),
 
-  placeObject: (equipmentId, x, z, rotationY = 0, isMainCamera = false) => {
-    const id = uid();
-    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[equipmentId];
+  placeObject: (equipmentOrObject: any, argX?: number, argZ?: number, argRot = 0, argMainCam = false) => {
+    let eqId: EquipmentId;
+    let posX = 0;
+    let posZ = 0;
+    let rotY = 0;
+    let isMainCam = false;
+    let customId: string | undefined;
+    let customElevation: number | undefined;
+
+    if (typeof equipmentOrObject === 'object' && equipmentOrObject !== null) {
+      eqId = equipmentOrObject.equipmentId;
+      posX = equipmentOrObject.x ?? 0;
+      posZ = equipmentOrObject.z ?? 0;
+      rotY = equipmentOrObject.rotationY ?? 0;
+      isMainCam = equipmentOrObject.isMainCamera ?? false;
+      customId = equipmentOrObject.id;
+      customElevation = equipmentOrObject.elevationY;
+    } else {
+      eqId = equipmentOrObject;
+      posX = argX ?? 0;
+      posZ = argZ ?? 0;
+      rotY = argRot ?? 0;
+      isMainCam = argMainCam ?? false;
+    }
+
+    const id = customId || uid();
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[eqId];
+    const eqStr = typeof eqId === 'string' ? eqId.toLowerCase() : '';
     const newObj: PlacedObject = {
       id,
-      equipmentId,
-      x,
-      z,
-      rotationY,
-      isMainCamera,
+      equipmentId: eqId,
+      x: posX,
+      z: posZ,
+      rotationY: rotY,
+      isMainCamera: isMainCam,
+      elevationY: customElevation,
       lensPreset: def?.opticalSpecs?.defaultLens || '24mm',
-      sensorSize: def?.opticalSpecs?.defaultSensor || (equipmentId.includes('phone') ? 'smartphone' : 'full-frame'),
+      sensorSize: def?.opticalSpecs?.defaultSensor || (eqStr.includes('phone') ? 'smartphone' : 'full-frame'),
       aperture: def?.opticalSpecs?.defaultAperture || 'f/2.8',
       lightSettings: def?.category === 'lighting' ? {
         intensity: 80,
@@ -260,7 +291,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
       placedObjects: [...s.placedObjects, newObj],
       selectedObjectId: id,
       placingEquipmentId: null,
-      activeCameraId: isMainCamera ? id : s.activeCameraId,
+      activeCameraId: isMainCam ? id : s.activeCameraId,
     }));
     return id;
   },
@@ -274,11 +305,32 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     });
   },
 
-  updateObjectPosition: (id, x, z) => set((s) => ({
-    placedObjects: s.placedObjects.map((o) =>
-      o.id === id ? { ...o, x, z } : o
-    ),
-  })),
+  updateObjectPosition: (id, x, z) => set((s) => {
+    const target = s.placedObjects.find((o) => o.id === id);
+    if (!target) return s;
+    const dx = x - target.x;
+    const dz = z - target.z;
+
+    // Find all children recursively
+    const childIds = new Set<string>();
+    const findChildren = (pId: string) => {
+      s.placedObjects.forEach((o) => {
+        if (o.parentId === pId && !childIds.has(o.id)) {
+          childIds.add(o.id);
+          findChildren(o.id);
+        }
+      });
+    };
+    findChildren(id);
+
+    return {
+      placedObjects: s.placedObjects.map((o) => {
+        if (o.id === id) return { ...o, x, z };
+        if (childIds.has(o.id)) return { ...o, x: o.x + dx, z: o.z + dz };
+        return o;
+      }),
+    };
+  }),
 
   updateObjectRotation: (id, rotationY) => set((s) => ({
     placedObjects: s.placedObjects.map((o) =>
@@ -413,11 +465,18 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     const tpl = COMPREHENSIVE_TEMPLATES[templateId];
     if (!tpl) return;
 
+    const baseTimestamp = Date.now();
+    const generatedIds = tpl.items.map((_, idx) => `tpl-${baseTimestamp}-${idx}`);
+
     let mainCam: PlacedObject | null = null;
     const objects: PlacedObject[] = tpl.items.map((item, idx) => {
-      const id = `tpl-${Date.now()}-${idx}`;
+      const id = generatedIds[idx];
       const def = COMPREHENSIVE_EQUIPMENT_CATALOG[item.equipmentId];
       const isMain = Boolean(item.isMainCamera);
+      const parentId = typeof item.parentId === 'number' && generatedIds[item.parentId]
+        ? generatedIds[item.parentId]
+        : undefined;
+
       const obj: PlacedObject = {
         id,
         equipmentId: item.equipmentId,
@@ -425,8 +484,9 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
         z: item.z,
         rotationY: item.rotationY,
         isMainCamera: isMain,
+        parentId,
         lensPreset: item.lensPreset || def?.opticalSpecs?.defaultLens || '24mm',
-        sensorSize: def?.opticalSpecs?.defaultSensor || 'full-frame',
+        sensorSize: def?.opticalSpecs?.defaultSensor || (typeof item.equipmentId === 'string' && item.equipmentId.includes('phone') ? 'smartphone' : 'full-frame'),
         aperture: def?.opticalSpecs?.defaultAperture || 'f/2.8',
         lightSettings: item.lightSettings || (def?.category === 'lighting' ? {
           intensity: 80,
@@ -444,7 +504,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
       roomWidth: tpl.defaultRoom.width,
       roomDepth: tpl.defaultRoom.depth,
       placedObjects: objects,
-      activeCameraId: mainCam ? mainCam.id : (objects.find(o => o.equipmentId.includes('cam') || o.equipmentId.includes('phone'))?.id ?? null),
+      activeCameraId: mainCam ? (mainCam as PlacedObject).id : (objects.find(o => o.equipmentId.includes('cam') || o.equipmentId.includes('phone'))?.id ?? null),
       selectedObjectId: null,
       placingEquipmentId: null,
     });
@@ -485,8 +545,21 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     const hd = state.roomDepth / 2;
     const wallThreshold = 0.3;
 
-    // 1. Equipment too close to room walls
+    // 1. Equipment too close to room walls (exclude flush-mounted fixtures)
+    const WALL_CLEARANCE_EXCLUDED = new Set([
+      'acoustic-panel',
+      'closet-wardrobe',
+      'bed-furniture',
+      'backdrop',
+      'green-screen',
+      'furn-door-swing',
+    ]);
+
     objs.forEach((o) => {
+      const eqIdStr = String(o.equipmentId);
+      if (WALL_CLEARANCE_EXCLUDED.has(eqIdStr) || eqIdStr.includes('panel') || eqIdStr.includes('wall') || eqIdStr.includes('backdrop')) {
+        return;
+      }
       const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
       if (!def) return;
       const halfW = def.dimensions.width / 2;

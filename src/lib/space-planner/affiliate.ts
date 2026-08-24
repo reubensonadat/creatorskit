@@ -242,6 +242,7 @@ export function resolveEquipmentAffiliateInfo(
 
 export interface BillOfMaterialsItem {
   id: string;
+  equipmentId: string;
   placedObjectId: string;
   name: string;
   brand: string;
@@ -251,7 +252,9 @@ export interface BillOfMaterialsItem {
   watts: number;
   quantity: number;
   unitPriceUSD: number;
+  typicalPriceUSD: number;
   totalPriceUSD: number;
+  subtotalUSD: number;
   amazonUrl: string;
   bhPhotoUrl: string;
   sweetwaterUrl: string;
@@ -266,8 +269,11 @@ export function generateBillOfMaterials(
 ): {
   items: BillOfMaterialsItem[];
   totalCostUSD: number;
+  totalEstimatedUSD: number;
   totalWatts: number;
+  totalPowerWatts: number;
   itemCount: number;
+  totalUnits: number;
   categoryTotals: Record<string, number>;
 } {
   const aggregated = new Map<string, { count: number; firstObj: PlacedObject }>();
@@ -302,6 +308,7 @@ export function generateBillOfMaterials(
 
     items.push({
       id: eqId,
+      equipmentId: eqId,
       placedObjectId: firstObj.id,
       name: def.name,
       brand: aff.brand,
@@ -311,7 +318,9 @@ export function generateBillOfMaterials(
       watts: def.watts,
       quantity: count,
       unitPriceUSD: unitPrice,
+      typicalPriceUSD: unitPrice,
       totalPriceUSD: lineTotal,
+      subtotalUSD: lineTotal,
       amazonUrl: aff.amazonUrl,
       bhPhotoUrl: aff.bhPhotoUrl,
       sweetwaterUrl: aff.sweetwaterUrl,
@@ -321,8 +330,11 @@ export function generateBillOfMaterials(
   return {
     items,
     totalCostUSD,
+    totalEstimatedUSD: totalCostUSD,
     totalWatts,
+    totalPowerWatts: totalWatts,
     itemCount: placedObjects.length,
+    totalUnits: placedObjects.length,
     categoryTotals,
   };
 }

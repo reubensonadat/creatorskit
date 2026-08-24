@@ -801,7 +801,7 @@ function buildHumanModel(g: THREE.Group, def: EquipmentDefinition, id: string) {
     addCyl(g, 0.055, 0.045, 0.58, shirtCol, -0.23, 1.16, 0, 10, { rz: 0.1, roughness: 0.8 });
     addCyl(g, 0.055, 0.045, 0.58, shirtCol, 0.23, 1.16, 0, 10, { rz: -0.1, roughness: 0.8 });
     addBox(g, 0.06, 0.09, 0.06, skinCol, -0.26, 0.84, 0, { roughness: 0.6 });
-    addBox(g, 0.06, 0.09, 0.06, skinCol, 0.26, 0.84, 0, 0, { roughness: 0.6 });
+    addBox(g, 0.06, 0.09, 0.06, skinCol, 0.26, 0.84, 0, { roughness: 0.6 });
     addCyl(g, 0.055, 0.06, 0.09, skinCol, 0, 1.48, 0, 12, { roughness: 0.6 });
 
     const headMat = makeMat(skinCol, 0.6);

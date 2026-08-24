@@ -150,7 +150,7 @@ export default function SpacePlannerApp() {
           const store = usePlannerStore.getState();
           store.setRoomDimensions(sharedKit.roomWidth, sharedKit.roomDepth, sharedKit.roomHeight);
           if (sharedKit.floorFinish) store.setFloorFinish(sharedKit.floorFinish);
-          if (sharedKit.projectName) store.setProjectInfo({ name: sharedKit.projectName, creator: '', notes: '' });
+          if (sharedKit.projectName) store.setProjectInfo({ name: sharedKit.projectName, notes: '' });
           if (sharedKit.creatorTag) store.setUserAffiliateTag(sharedKit.creatorTag);
           store.replacePlacedObjects(sharedKit.placedObjects);
           return;
@@ -191,8 +191,15 @@ export default function SpacePlannerApp() {
   // Keyboard Shortcuts for Sidebar Toggling & Zen Mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+      if (isPdfModalOpen || isShareModalOpen || e.isComposing) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        !target ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) {
         return;
       }
       if (e.key === '[' || e.key === 'BracketLeft') {
@@ -205,7 +212,7 @@ export default function SpacePlannerApp() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleLeftPanel, toggleRightPanel, toggleZenMode]);
+  }, [toggleLeftPanel, toggleRightPanel, toggleZenMode, isPdfModalOpen, isShareModalOpen]);
 
   // Export handlers
   const handleExportPNG = useCallback(() => {
@@ -258,6 +265,35 @@ export default function SpacePlannerApp() {
 
         {/* Center / Right: Lighting, Share, PDF & Collapsible Sidebar Toggles */}
         <div className="flex items-center gap-1.5">
+          {/* Floorplanner-Style 2D / 3D Mode Toggle */}
+          <div className="flex items-center border-2 border-black bg-stone-100 p-0.5 shadow-[2px_2px_0_#000]">
+            <button
+              onClick={() => setViewMode('top')}
+              className={`px-2.5 py-1 text-xs font-black transition-all uppercase flex items-center gap-1 ${
+                viewMode === 'top'
+                  ? 'bg-sky-500 text-white shadow-sm'
+                  : 'bg-transparent text-stone-700 hover:bg-stone-200'
+              }`}
+              title="Switch to Architectural 2D Floor Plan (Key 2)"
+            >
+              2D
+            </button>
+            <div className="w-px h-4 bg-stone-300 mx-0.5" />
+            <button
+              onClick={() => setViewMode('perspective')}
+              className={`px-2.5 py-1 text-xs font-black transition-all uppercase flex items-center gap-1 ${
+                viewMode !== 'top'
+                  ? 'bg-zinc-900 text-white shadow-sm'
+                  : 'bg-transparent text-stone-700 hover:bg-stone-200'
+              }`}
+              title="Switch to 3D Perspective Studio (Key 1)"
+            >
+              3D
+            </button>
+          </div>
+
+          <div className="h-5 w-px bg-stone-300 hidden sm:block mx-0.5" />
+
           {/* Panel Toggle Shortcuts */}
           <div className="flex items-center border-2 border-black bg-stone-100 p-0.5 shadow-[1.5px_1.5px_0_#000]">
             <button

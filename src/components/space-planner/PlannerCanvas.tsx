@@ -39,8 +39,28 @@ export const isCamEquipment = (id?: any): boolean =>
     id.includes('prompter') ||
     id.includes('teleprompter'));
 
+export function disposeObject3D(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.Sprite) {
+      child.geometry?.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((mat) => {
+            mat.map?.dispose();
+            mat.dispose();
+          });
+        } else {
+          child.material.map?.dispose();
+          child.material.dispose();
+        }
+      }
+    }
+  });
+}
+
 export default function PlannerCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -95,6 +115,15 @@ export default function PlannerCanvas() {
   const isZenMode = usePlannerStore((s) => s.isZenMode);
 
   const [hoverMeasurePoint, setHoverMeasurePoint] = useState<{ x: number; y: number; z: number; name?: string } | null>(null);
+  const [cadProjection, setCadProjection] = useState<{
+    nw: { x: number; y: number };
+    ne: { x: number; y: number };
+    sw: { x: number; y: number };
+    se: { x: number; y: number };
+    center: { x: number; y: number };
+    widthPx: number;
+    heightPx: number;
+  } | null>(null);
 
   const placeObject = usePlannerStore((s) => s.placeObject);
   const updateObjectPosition = usePlannerStore((s) => s.updateObjectPosition);
@@ -131,6 +160,7 @@ export default function PlannerCanvas() {
     wins: typeof windows,
     finish = floorFinish
   ) => {
+    disposeObject3D(roomGroup);
     roomGroup.clear();
 
     // Procedural Floor with Selected Architectural Finish
@@ -222,6 +252,116 @@ export default function PlannerCanvas() {
     const bbRight = new THREE.Mesh(new THREE.BoxGeometry(0.015, baseboardH, d), baseboardMat);
     bbRight.position.set(w / 2 - 0.008, baseboardH / 2, 0);
     rightGroup.add(bbRight);
+
+    // Shared materials for architectural windows
+    const windowFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x1f2024,
+      roughness: 0.4,
+      metalness: 0.25,
+    });
+    const windowGlassMat = new THREE.MeshStandardMaterial({
+      color: 0x7eb8f5,
+      emissive: 0x1a3d60,
+      emissiveIntensity: 0.45,
+      roughness: 0.08,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+    });
+    const windowSillMat = new THREE.MeshStandardMaterial({
+      color: 0xe8e5de,
+      roughness: 0.7,
+      metalness: 0.05,
+    });
+    const windowSkyMat = new THREE.MeshBasicMaterial({
+      color: 0xd8edff,
+    });
+
+    const createWindowMesh = (winWidth: number, winHeight: number) => {
+      const winGroup = new THREE.Group();
+      const frameDepth = 0.12;
+      const frameBorder = 0.055;
+
+      // Outer Frame
+      const topFrame = new THREE.Mesh(new THREE.BoxGeometry(winWidth, frameBorder, frameDepth), windowFrameMat);
+      topFrame.position.set(0, winHeight / 2 - frameBorder / 2, 0);
+      winGroup.add(topFrame);
+
+      const btmFrame = new THREE.Mesh(new THREE.BoxGeometry(winWidth, frameBorder, frameDepth), windowFrameMat);
+      btmFrame.position.set(0, -winHeight / 2 + frameBorder / 2, 0);
+      winGroup.add(btmFrame);
+
+      const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameBorder, winHeight - frameBorder * 2, frameDepth), windowFrameMat);
+      leftFrame.position.set(-winWidth / 2 + frameBorder / 2, 0, 0);
+      winGroup.add(leftFrame);
+
+      const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameBorder, winHeight - frameBorder * 2, frameDepth), windowFrameMat);
+      rightFrame.position.set(winWidth / 2 - frameBorder / 2, 0, 0);
+      winGroup.add(rightFrame);
+
+      // Center Mullions
+      const vMullion = new THREE.Mesh(new THREE.BoxGeometry(0.024, winHeight - frameBorder * 2, frameDepth * 0.75), windowFrameMat);
+      vMullion.position.set(0, 0, 0);
+      winGroup.add(vMullion);
+      const hMullion = new THREE.Mesh(new THREE.BoxGeometry(winWidth - frameBorder * 2, 0.024, frameDepth * 0.75), windowFrameMat);
+      hMullion.position.set(0, 0, 0);
+      winGroup.add(hMullion);
+
+      // Glass Pane
+      const glass = new THREE.Mesh(new THREE.PlaneGeometry(winWidth - frameBorder * 2, winHeight - frameBorder * 2), windowGlassMat);
+      glass.position.set(0, 0, 0.01);
+      winGroup.add(glass);
+
+      // Sky Background Pane
+      const sky = new THREE.Mesh(new THREE.PlaneGeometry(winWidth - frameBorder * 2, winHeight - frameBorder * 2), windowSkyMat);
+      sky.position.set(0, 0, -frameDepth / 2 + 0.005);
+      winGroup.add(sky);
+
+      // Extended Interior Sill
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(winWidth + 0.12, 0.035, frameDepth + 0.09), windowSillMat);
+      sill.position.set(0, -winHeight / 2 - 0.015, 0.045);
+      sill.castShadow = true;
+      sill.receiveShadow = true;
+      winGroup.add(sill);
+
+      return winGroup;
+    };
+
+    // Attach placed windows to their respective walls
+    if (Array.isArray(wins)) {
+      wins.forEach((win) => {
+        const winWidth = Math.max(0.4, Math.min(w * 0.8, win.width || 1.2));
+        const winHeight = Math.max(0.4, Math.min(h * 0.8, win.height || 1.0));
+        const winY = Math.max(winHeight / 2 + 0.2, Math.min(h - winHeight / 2 - 0.1, win.heightOffset ?? (h * 0.55)));
+        const mesh = createWindowMesh(winWidth, winHeight);
+
+        if (win.wall === 'back') {
+          const maxOffset = (w / 2) - (winWidth / 2) - 0.15;
+          const posX = (win.xOffset ?? 0) * maxOffset;
+          mesh.position.set(posX, winY, -d / 2);
+          backGroup.add(mesh);
+        } else if (win.wall === 'front') {
+          const maxOffset = (w / 2) - (winWidth / 2) - 0.15;
+          const posX = (win.xOffset ?? 0) * maxOffset;
+          mesh.position.set(posX, winY, d / 2);
+          mesh.rotation.y = Math.PI;
+          frontGroup.add(mesh);
+        } else if (win.wall === 'left') {
+          const maxOffset = (d / 2) - (winWidth / 2) - 0.15;
+          const posZ = (win.xOffset ?? 0) * maxOffset;
+          mesh.position.set(-w / 2, winY, posZ);
+          mesh.rotation.y = Math.PI / 2;
+          leftGroup.add(mesh);
+        } else if (win.wall === 'right') {
+          const maxOffset = (d / 2) - (winWidth / 2) - 0.15;
+          const posZ = (win.xOffset ?? 0) * maxOffset;
+          mesh.position.set(w / 2, winY, posZ);
+          mesh.rotation.y = -Math.PI / 2;
+          rightGroup.add(mesh);
+        }
+      });
+    }
 
     roomGroup.add(backGroup);
     roomGroup.add(frontGroup);
@@ -317,6 +457,21 @@ export default function PlannerCanvas() {
     const subtleMat = new THREE.LineBasicMaterial({ color: 0x71717a, transparent: true, opacity: 0.45 });
     const floorMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.45 });
 
+    if (viewMode === 'top') {
+      // Clean subtle 2D footprint only in 2D blueprint mode (no tall 3D pyramid edges)
+      const floorMat = new THREE.LineBasicMaterial({ color: 0x09090b, transparent: true, opacity: 0.5 });
+      const fovPts = [
+        new THREE.Vector3(0, 0.01, 0),
+        new THREE.Vector3(-wFar * 0.6, 0.01, dFar * 0.6),
+        new THREE.Vector3(wFar * 0.6, 0.01, dFar * 0.6),
+        new THREE.Vector3(0, 0.01, 0),
+      ];
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(fovPts), floorMat));
+      scene.add(g);
+      cameraFrameRef.current = g;
+      return;
+    }
+
     // 1. Sightlines from apex to corners
     [fTL, fTR, fBR, fBL].forEach((corner) => {
       const geo = new THREE.BufferGeometry().setFromPoints([apex, corner]);
@@ -342,7 +497,7 @@ export default function PlannerCanvas() {
 
     scene.add(g);
     cameraFrameRef.current = g;
-  }, [placedObjects, getObjectY, getCameraLensPos]);
+  }, [placedObjects, getObjectY, getCameraLensPos, viewMode]);
 
   // ============ Lighting Beam Cone & Throw Visualizers ============
   const updateLightingVisualizers = useCallback(() => {
@@ -360,7 +515,7 @@ export default function PlannerCanvas() {
       lightingVisualizersRef.current = null;
     }
 
-    if (!showLightBeams) return;
+    if (!showLightBeams || viewMode === 'top') return;
 
     const lightObjects = placedObjects.filter((o) => {
       const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o?.equipmentId];
@@ -397,17 +552,18 @@ export default function PlannerCanvas() {
       }
 
       const intensity = (light.lightSettings?.intensity ?? 80) / 100;
-      const throwDist = 2.4 * Math.max(0.6, intensity);
-      const beamRadius = Math.tan((30 * Math.PI) / 180) * throwDist;
+      const throwDist = 2.2 * Math.max(0.6, intensity);
+      const beamRadius = Math.tan((26 * Math.PI) / 180) * throwDist;
 
       const coneGeo = new THREE.ConeGeometry(beamRadius, throwDist, 24, 1, true);
       coneGeo.translate(0, -throwDist / 2, 0);
       coneGeo.rotateX(-Math.PI / 2);
 
+      // Subtle atmospheric throw (soft 0.04 opacity instead of blinding cones)
       const coneMat = new THREE.MeshBasicMaterial({
         color: lightHex,
         transparent: true,
-        opacity: 0.18 * intensity,
+        opacity: 0.04 * intensity,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
@@ -418,7 +574,7 @@ export default function PlannerCanvas() {
 
     scene.add(masterGroup);
     lightingVisualizersRef.current = masterGroup;
-  }, [placedObjects, showLightBeams, getObjectY]);
+  }, [placedObjects, showLightBeams, viewMode, getObjectY]);
 
   // ============ Acoustic First-Reflection Tracing ============
   const updateAcousticRays = useCallback(() => {
@@ -436,7 +592,7 @@ export default function PlannerCanvas() {
       acousticRaysRef.current = null;
     }
 
-    if (!showAcousticRays) return;
+    if (!showAcousticRays || viewMode === 'top') return;
 
     const mic = placedObjects.find(
       (o) =>
@@ -713,38 +869,38 @@ export default function PlannerCanvas() {
 
   // ============ Scene Setup & Interaction Listeners ============
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const mount = mountRef.current;
+    if (!mount) return;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(BG_COLOR);
     scene.fog = new THREE.Fog(BG_COLOR, 18, 42);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(40, mount.clientWidth / (mount.clientHeight || 1), 0.1, 100);
     camera.position.set(4, 3.2, 4.5);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.22;
-    container.appendChild(renderer.domElement);
+    mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth, container.clientHeight),
+      new THREE.Vector2(mount.clientWidth, mount.clientHeight),
       0.04, 0.2, 0.96
     );
     composer.addPass(bloomPass);
     const fxaaPass = new ShaderPass(FXAAShader);
-    fxaaPass.uniforms['resolution'].value.set(1 / container.clientWidth, 1 / container.clientHeight);
+    fxaaPass.uniforms['resolution'].value.set(1 / (mount.clientWidth || 1), 1 / (mount.clientHeight || 1));
     composer.addPass(fxaaPass);
     composerRef.current = composer;
 
@@ -812,15 +968,47 @@ export default function PlannerCanvas() {
         }
       }
 
+      // Compute 2D CAD blueprint projection coordinates on screen
+      if (usePlannerStore.getState().viewMode === 'top' && mount) {
+        const w = mount.clientWidth;
+        const h = mount.clientHeight;
+        const hw = usePlannerStore.getState().roomWidth / 2;
+        const hd = usePlannerStore.getState().roomDepth / 2;
+
+        const proj = (px: number, py: number, pz: number) => {
+          const v = new THREE.Vector3(px, py, pz).project(camera);
+          return {
+            x: ((v.x + 1) / 2) * w,
+            y: ((-v.y + 1) / 2) * h,
+          };
+        };
+
+        const nw = proj(-hw, 0, -hd);
+        const ne = proj(hw, 0, -hd);
+        const sw = proj(-hw, 0, hd);
+        const se = proj(hw, 0, hd);
+        const center = proj(0, 0, 0);
+
+        setCadProjection({
+          nw,
+          ne,
+          sw,
+          se,
+          center,
+          widthPx: Math.hypot(ne.x - nw.x, ne.y - nw.y),
+          heightPx: Math.hypot(sw.x - nw.x, sw.y - nw.y),
+        });
+      }
+
       composer.render();
       animFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
 
     const onResize = () => {
-      if (!container || !renderer || !camera || !composer) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
+      if (!mount || !renderer || !camera || !composer) return;
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
       if (w === 0 || h === 0) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
@@ -832,7 +1020,7 @@ export default function PlannerCanvas() {
     const resizeObserver = new ResizeObserver(() => {
       onResize();
     });
-    resizeObserver.observe(container);
+    resizeObserver.observe(mount);
 
     // ============ Pointer Event Listeners for Raycast & Snapping ============
     const handlePointerDown = (e: PointerEvent) => {
@@ -978,6 +1166,8 @@ export default function PlannerCanvas() {
         }
 
         renderer.render(scene, camera);
+        const gl = renderer.getContext();
+        if (gl) gl.flush();
         return renderer.domElement.toDataURL('image/jpeg', 0.95);
       };
 
@@ -1042,21 +1232,29 @@ export default function PlannerCanvas() {
       window.removeEventListener('resize', onResize);
       resizeObserver.disconnect();
       cancelAnimationFrame(animFrameRef.current);
+      if (composerRef.current) {
+        composerRef.current.dispose();
+      }
       renderer.dispose();
-      container.innerHTML = '';
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
     };
   }, [buildRoom, roomWidth, roomDepth, roomHeight, windows, floorFinish, calculateMagneticSnap, getCameraLensPos]);
 
-  // Sync scene models
+  // Sync scene models with full Three.js geometry/material memory cleanup
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
 
-    objectMeshesRef.current.forEach((group) => scene.remove(group));
+    objectMeshesRef.current.forEach((group) => {
+      scene.remove(group);
+      disposeObject3D(group);
+    });
     objectMeshesRef.current.clear();
 
     placedObjects.forEach((obj) => {
-      const group = createEquipmentModel(obj.equipmentId, obj);
+      const group = createEquipmentModel(obj.equipmentId);
       const elevation = getObjectY(obj);
       group.position.set(obj.x, elevation, obj.z);
       group.rotation.y = obj.rotationY;
@@ -1094,11 +1292,43 @@ export default function PlannerCanvas() {
     const sensor = activeCamera.sensorSize || 'full-frame';
     const opt = calculateOpticalFov(lens, sensor);
 
-    const subject = placedObjects.find(
-      (o) => o.equipmentId.includes('chair') || o.equipmentId.includes('desk') || o.equipmentId.includes('human')
+    // Forward direction unit vector of camera on floor plane
+    const fwdX = Math.sin(activeCamera.rotationY);
+    const fwdZ = Math.cos(activeCamera.rotationY);
+
+    const candidates = placedObjects.filter(
+      (o) =>
+        o.id !== activeCamera.id &&
+        (o.equipmentId.includes('chair') ||
+          o.equipmentId.includes('desk') ||
+          o.equipmentId.includes('human') ||
+          o.equipmentId === 'content-table')
     );
-    const distM = subject ? Math.hypot(activeCamera.x - subject.x, activeCamera.z - subject.z) : 1.6;
-    const backdropDistM = Math.max(0.5, (subject ? subject.z : 0) - -roomDepth / 2);
+
+    let distM = 1.6;
+    if (candidates.length > 0) {
+      let closestInFov = Infinity;
+      let foundInFov = false;
+
+      for (const s of candidates) {
+        const dx = s.x - activeCamera.x;
+        const dz = s.z - activeCamera.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.05) {
+          // Check if candidate is in the forward hemisphere of the lens (dot product > 0.3)
+          const dot = (dx * fwdX + dz * fwdZ) / d;
+          if (dot > 0.3 && d < closestInFov) {
+            closestInFov = d;
+            foundInFov = true;
+          }
+        }
+      }
+      if (foundInFov && closestInFov < 12) {
+        distM = closestInFov;
+      }
+    }
+
+    const backdropDistM = Math.max(0.5, roomDepth / 2 - Math.abs(activeCamera.z));
     const framing = evaluateFramingQuality(distM, lens, sensor, backdropDistM);
 
     return {
@@ -1123,6 +1353,9 @@ export default function PlannerCanvas() {
         backgroundSize: '24px 24px, 24px 24px, 120px 120px, 120px 120px',
       }}
     >
+      {/* Dedicated Three.js WebGL canvas mount container */}
+      <div ref={mountRef} className="absolute inset-0 w-full h-full pointer-events-auto" />
+
       {/* Director POV Framing & Optical HUD Overlay */}
       {viewMode === 'camera-pov' && (
         <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-3">
@@ -1260,57 +1493,148 @@ export default function PlannerCanvas() {
         </div>
       )}
 
-      {/* 2D Blueprint Mode Architectural HUD */}
+      {/* 2D Blueprint Mode Floorplanner-Grade Architectural CAD HUD & On-Building Dimension Strings */}
       {viewMode === 'top' && (
-        <div className="absolute inset-0 pointer-events-none z-10 p-4 flex flex-col justify-between font-mono text-xs">
-          {/* Top Dimension Header Callout */}
-          <div className="flex items-center justify-between pointer-events-auto">
-            <div className="flex items-center gap-2 p-1.5 bg-white/95 backdrop-blur border border-black shadow-md text-black">
-              <span className="px-1.5 py-0.5 bg-black text-white font-bold text-[9.5px] uppercase">
-                2D Blueprint
-              </span>
-              <span className="font-bold text-[11px]">
-                Width: {roomWidth.toFixed(2)}m ({(roomWidth * 3.28084).toFixed(1)}ft) × Depth: {roomDepth.toFixed(2)}m ({(roomDepth * 3.28084).toFixed(1)}ft)
-              </span>
-              <span className="text-stone-400">|</span>
-              <span className="text-stone-600 text-[10px]">
-                Area: {(roomWidth * roomDepth).toFixed(1)}m² ({((roomWidth * roomDepth) * 10.7639).toFixed(0)} sq ft)
-              </span>
-            </div>
+        <div className="absolute inset-0 pointer-events-none z-10 font-mono text-xs select-none overflow-hidden">
+          {/* SVG CAD Layer for On-Wall Dimension Strings & Witness Marks */}
+          {cadProjection && (
+            <svg className="w-full h-full absolute inset-0 pointer-events-none">
+              {/* North Wall Dimension (Top) */}
+              {(() => {
+                const p1 = cadProjection.nw;
+                const p2 = cadProjection.ne;
+                const y = Math.min(p1.y, p2.y) - 24;
+                return (
+                  <g>
+                    <line x1={p1.x} y1={p1.y} x2={p1.x} y2={y - 6} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p2.x} y1={p2.y} x2={p2.x} y2={y - 6} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p1.x} y1={y} x2={p2.x} y2={y} stroke="#09090b" strokeWidth="1.6" />
+                    {/* Witness Ticks */}
+                    <line x1={p1.x - 4} y1={y + 4} x2={p1.x + 4} y2={y - 4} stroke="#09090b" strokeWidth="2.2" />
+                    <line x1={p2.x - 4} y1={y + 4} x2={p2.x + 4} y2={y - 4} stroke="#09090b" strokeWidth="2.2" />
+                  </g>
+                );
+              })()}
 
-            {/* Quick Room Scale Adjusters on Blueprint */}
-            <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur border border-black shadow-sm">
-              <span className="text-[10px] font-bold text-stone-600 px-1">DIMENSIONS:</span>
-              <button
-                onClick={() => usePlannerStore.getState().setRoomDimensions(Math.max(2, roomWidth - 0.5), roomDepth, roomHeight)}
-                className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
-                title="Decrease Room Width by 0.5m"
+              {/* South Wall Dimension (Bottom) */}
+              {(() => {
+                const p1 = cadProjection.sw;
+                const p2 = cadProjection.se;
+                const y = Math.max(p1.y, p2.y) + 24;
+                return (
+                  <g>
+                    <line x1={p1.x} y1={p1.y} x2={p1.x} y2={y + 6} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p2.x} y1={p2.y} x2={p2.x} y2={y + 6} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p1.x} y1={y} x2={p2.x} y2={y} stroke="#09090b" strokeWidth="1.6" />
+                    <line x1={p1.x - 4} y1={y + 4} x2={p1.x + 4} y2={y - 4} stroke="#09090b" strokeWidth="2.2" />
+                    <line x1={p2.x - 4} y1={y + 4} x2={p2.x + 4} y2={y - 4} stroke="#09090b" strokeWidth="2.2" />
+                  </g>
+                );
+              })()}
+
+              {/* West Wall Dimension (Left) */}
+              {(() => {
+                const p1 = cadProjection.nw;
+                const p2 = cadProjection.sw;
+                const x = Math.min(p1.x, p2.x) - 24;
+                return (
+                  <g>
+                    <line x1={p1.x} y1={p1.y} x2={x - 6} y2={p1.y} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p2.x} y1={p2.y} x2={x - 6} y2={p2.y} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={x} y1={p1.y} x2={x} y2={p2.y} stroke="#09090b" strokeWidth="1.6" />
+                    <line x1={x - 4} y1={p1.y + 4} x2={x + 4} y2={p1.y - 4} stroke="#09090b" strokeWidth="2.2" />
+                    <line x1={x - 4} y1={p2.y + 4} x2={x + 4} y2={p2.y - 4} stroke="#09090b" strokeWidth="2.2" />
+                  </g>
+                );
+              })()}
+
+              {/* East Wall Dimension (Right) */}
+              {(() => {
+                const p1 = cadProjection.ne;
+                const p2 = cadProjection.se;
+                const x = Math.max(p1.x, p2.x) + 24;
+                return (
+                  <g>
+                    <line x1={p1.x} y1={p1.y} x2={x + 6} y2={p1.y} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={p2.x} y1={p2.y} x2={x + 6} y2={p2.y} stroke="#09090b" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                    <line x1={x} y1={p1.y} x2={x} y2={p2.y} stroke="#09090b" strokeWidth="1.6" />
+                    <line x1={x - 4} y1={p1.y + 4} x2={x + 4} y2={p1.y - 4} stroke="#09090b" strokeWidth="2.2" />
+                    <line x1={x - 4} y1={p2.y + 4} x2={x + 4} y2={p2.y - 4} stroke="#09090b" strokeWidth="2.2" />
+                  </g>
+                );
+              })()}
+            </svg>
+          )}
+
+          {/* On-Wall Floating Dimension Labels (Matching Floorplanner.com Blueprint) */}
+          {cadProjection && (
+            <>
+              {/* North Wall Dimension Tag */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-white/95 px-2 py-0.5 border border-black shadow-[1.5px_1.5px_0_#000] text-[11px] font-bold text-black flex items-center gap-1 pointer-events-auto"
+                style={{
+                  left: (cadProjection.nw.x + cadProjection.ne.x) / 2,
+                  top: Math.min(cadProjection.nw.y, cadProjection.ne.y) - 24,
+                }}
               >
-                W -0.5m
-              </button>
-              <button
-                onClick={() => usePlannerStore.getState().setRoomDimensions(Math.min(15, roomWidth + 0.5), roomDepth, roomHeight)}
-                className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
-                title="Increase Room Width by 0.5m"
+                <span>{roomWidth.toFixed(2)} m</span>
+                <span className="text-[9px] text-stone-500 font-mono">({(roomWidth * 3.28084).toFixed(1)}ft)</span>
+              </div>
+
+              {/* South Wall Dimension Tag */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-white/95 px-2 py-0.5 border border-black shadow-[1.5px_1.5px_0_#000] text-[11px] font-bold text-black flex items-center gap-1 pointer-events-auto"
+                style={{
+                  left: (cadProjection.sw.x + cadProjection.se.x) / 2,
+                  top: Math.max(cadProjection.sw.y, cadProjection.se.y) + 24,
+                }}
               >
-                W +0.5m
-              </button>
-              <button
-                onClick={() => usePlannerStore.getState().setRoomDimensions(roomWidth, Math.max(2, roomDepth - 0.5), roomHeight)}
-                className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
-                title="Decrease Room Depth by 0.5m"
+                <span>{roomWidth.toFixed(2)} m</span>
+              </div>
+
+              {/* West Wall Dimension Tag */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-white/95 px-2 py-0.5 border border-black shadow-[1.5px_1.5px_0_#000] text-[11px] font-bold text-black flex items-center gap-1 -rotate-90 pointer-events-auto"
+                style={{
+                  left: Math.min(cadProjection.nw.x, cadProjection.sw.x) - 24,
+                  top: (cadProjection.nw.y + cadProjection.sw.y) / 2,
+                }}
               >
-                D -0.5m
-              </button>
-              <button
-                onClick={() => usePlannerStore.getState().setRoomDimensions(roomWidth, Math.min(15, roomDepth + 0.5), roomHeight)}
-                className="px-2 py-0.5 bg-stone-100 hover:bg-stone-200 border border-black font-bold text-[10px]"
-                title="Increase Room Depth by 0.5m"
+                <span>{roomDepth.toFixed(2)} m</span>
+                <span className="text-[9px] text-stone-500 font-mono">({(roomDepth * 3.28084).toFixed(1)}ft)</span>
+              </div>
+
+              {/* East Wall Dimension Tag */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-white/95 px-2 py-0.5 border border-black shadow-[1.5px_1.5px_0_#000] text-[11px] font-bold text-black flex items-center gap-1 rotate-90 pointer-events-auto"
+                style={{
+                  left: Math.max(cadProjection.ne.x, cadProjection.se.x) + 24,
+                  top: (cadProjection.ne.y + cadProjection.se.y) / 2,
+                }}
               >
-                D +0.5m
-              </button>
-            </div>
-          </div>
+                <span>{roomDepth.toFixed(2)} m</span>
+              </div>
+
+              {/* Floorplanner-Style Center Room Plaque Badge */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm px-3 py-1 border border-black/70 shadow-[2px_2px_0_rgba(0,0,0,0.15)] text-center rounded-sm pointer-events-none"
+                style={{
+                  left: cadProjection.center.x,
+                  top: cadProjection.center.y,
+                }}
+              >
+                <div className="text-[10px] font-black uppercase tracking-wider text-black">
+                  Studio Space
+                </div>
+                <div className="text-xs font-black text-black">
+                  {(roomWidth * roomDepth).toFixed(1)} m²
+                </div>
+                <div className="text-[8.5px] font-bold text-stone-500">
+                  {((roomWidth * roomDepth) * 10.7639).toFixed(0)} sq ft
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import type { CreatorTemplate, CreatorTemplateItem } from './types';
+import type { CreatorTemplate, TemplateItemPlacement as CreatorTemplateItem } from './types';
 import { EXTENDED_SCENARIOS } from './scenarios-data';
 
 // ============================================================

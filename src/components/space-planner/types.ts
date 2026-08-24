@@ -78,59 +78,9 @@ export interface TemplateItemPlacement {
 // 42 Equipment IDs — Comprehensive studio catalog
 // ============================================================
 
-export type EquipmentId =
-  // Batch 1 — Camera & Support
-  | 'camera'
-  | 'phone-gimbal'
-  | 'phone-tripod-mirror'
-  | 'ring-light'
-  | 'camera-slider'
-  | 'webcam'
-  | 'drone'
-  | 'overhead-rig'
-  | 'floor-monitor'
-  | 'multi-cam-switcher'
-  // Batch 2 — Lighting
-  | 'led-light'
-  | 'softbox'
-  | 'fresnel'
-  | 'rgb-tube'
-  | 'desk-lamp'
-  | 'clamp-desk-lamp'
-  | 'beauty-dish'
-  | 'barndoor-light'
-  | 'beauty-mirror'
-  | 'c-stand-flag'
-  // Batch 3 — Audio
-  | 'microphone'
-  | 'lavalier'
-  | 'budget-wireless-lav'
-  | 'audio-recorder'
-  | 'studio-monitor'
-  | 'podcast-mic'
-  | 'acoustic-panel'
-  | 'binaural-mic'
-  | 'vocal-booth-screen'
-  | 'shotgun-mic'
-  // Batch 4 — Furniture & Props
-  | 'tripod'
-  | 'content-table'
-  | 'chair'
-  | 'sofa'
-  | 'bed-furniture'
-  | 'closet-wardrobe'
-  | 'product-stand'
-  | 'backdrop'
-  | 'shelf-props'
-  | 'keyboard-synth'
-  | 'dj-deck'
-  | 'fog-machine'
-  // Batch 5 — Power & Accessories
-  | 'power-station'
-  | 'generator'
-  | 'power-strip'
-  | 'green-screen'
-  | 'teleprompter';
+export type EquipmentCategory = 'camera' | 'lighting' | 'audio' | 'furniture' | 'power' | 'props' | 'tech';
+
+export type EquipmentId = string;
 
 export interface EquipmentDefinition {
   id: EquipmentId;
@@ -138,7 +88,7 @@ export interface EquipmentDefinition {
   brand?: string;
   model?: string;
   icon: string;
-  category: 'camera' | 'lighting' | 'audio' | 'furniture' | 'power' | 'props';
+  category: EquipmentCategory;
   dimensions: { width: number; depth: number; height: number };
   watts: number;
   defaultPriceUSD?: number;
@@ -184,12 +134,15 @@ export type WarningType =
   | 'camera-too-close'
   | 'camera-lens-mismatch'
   | 'equipment-near-wall'
+  | 'chair-clearance'
   | 'no-walking-path'
   | 'lights-too-close'
   | 'shadow-spill-backdrop'
   | 'window-backlight-silhouette'
   | 'xlr-missing-interface'
   | 'acoustic-reverb-high'
+  | 'acoustic-echo'
+  | 'audio-noise'
   | 'heavy-camera-on-light-arm'
   | 'power-overload';
 

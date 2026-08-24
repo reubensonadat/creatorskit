@@ -815,7 +815,15 @@ export async function exportPDF(
       const name = def?.name || obj.equipmentId;
       const cat = (def?.category || 'other').toUpperCase();
       const watts = def?.watts || 0;
-      const price = (def?.priceUSD || 0) * (currency === 'EUR' ? 0.92 : currency === 'GBP' ? 0.79 : currency === 'GHS' ? 15.5 : currency === 'NGN' ? 1500 : 1);
+      const price = currency === 'USD'
+        ? (obj.customPriceUSD ?? def?.defaultPriceUSD ?? Math.round((def?.defaultPriceGHS || 0) / 15))
+        : currency === 'EUR'
+        ? (obj.customPriceEUR ?? def?.defaultPriceEUR ?? Math.round((def?.defaultPriceGHS || 0) / 16))
+        : currency === 'GBP'
+        ? (obj.customPriceGBP ?? def?.defaultPriceGBP ?? Math.round((def?.defaultPriceGHS || 0) / 19))
+        : currency === 'GHS'
+        ? (obj.customPriceGHS ?? def?.defaultPriceGHS ?? 0)
+        : (obj.customPriceNGN ?? def?.defaultPriceNGN ?? 0);
 
       doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
       doc.rect(14, bomY - 3, bomW, 4.5, 'F');

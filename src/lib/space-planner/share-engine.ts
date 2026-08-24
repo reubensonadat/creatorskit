@@ -3,7 +3,7 @@
 // URL state compression with LZ-string for instant studio setup sharing
 // ============================================================
 
-import LZString from 'lz-string';
+import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import type { PlannerState, PlacedObject, ProjectInfo, FloorFinish, Currency } from '@/components/space-planner/types';
 
 export interface SharedStudioKitPayload {
@@ -71,7 +71,7 @@ export function compressStudioKit(
   };
 
   const jsonStr = JSON.stringify(payload);
-  const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+  const compressed = compressToEncodedURIComponent(jsonStr);
   return compressed;
 }
 
@@ -90,7 +90,7 @@ export function decompressStudioKit(
   placedObjects: PlacedObject[];
 } | null {
   try {
-    let jsonStr = LZString.decompressFromEncodedURIComponent(compressedStr);
+    let jsonStr = decompressFromEncodedURIComponent(compressedStr);
     if (!jsonStr) {
       // Fallback to base64 decode if uncompressed
       try {
