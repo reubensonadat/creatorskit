@@ -6,7 +6,21 @@ export type Currency = 'USD' | 'EUR' | 'GBP' | 'GHS' | 'NGN';
 
 export type ViewMode = 'perspective' | 'top' | 'camera-pov' | 'walkthrough';
 
-export type CameraLensPreset = '16mm' | '24mm' | '35mm' | '50mm' | '85mm';
+export type CameraLensPreset = '16mm' | '24mm' | '35mm' | '50mm' | '85mm' | '105mm';
+
+export type CameraSensorSize = 'full-frame' | 'aps-c' | 'micro-four-thirds' | 'smartphone';
+
+export type CameraAperture = 'f/1.4' | 'f/1.8' | 'f/2.8' | 'f/4.0' | 'f/5.6';
+
+export type FloorFinish = 'oak-parquet' | 'dark-epoxy' | 'acoustic-carpet' | 'concrete-loft';
+
+export interface AffiliateLinks {
+  amazon?: string;
+  bhPhoto?: string;
+  sweetwater?: string;
+  brandUrl?: string;
+  affiliateTag?: string;
+}
 
 export interface LightSettings {
   intensity: number; // 0 to 100%
@@ -121,6 +135,8 @@ export type EquipmentId =
 export interface EquipmentDefinition {
   id: EquipmentId;
   name: string;
+  brand?: string;
+  model?: string;
   icon: string;
   category: 'camera' | 'lighting' | 'audio' | 'furniture' | 'power' | 'props';
   dimensions: { width: number; depth: number; height: number };
@@ -133,6 +149,14 @@ export interface EquipmentDefinition {
   color: number;
   description: string;
   surfaceHeight?: number; // If set, objects can be placed on top at this Y offset
+  isMountableOnTable?: boolean;
+  affiliateLinks?: AffiliateLinks;
+  compatibilityType?: 'xlr-mic' | 'usb-mic' | 'audio-interface' | 'heavy-camera' | 'desk-arm' | 'high-power-light' | 'acoustic-treatment';
+  opticalSpecs?: {
+    defaultSensor?: CameraSensorSize;
+    defaultLens?: CameraLensPreset;
+    defaultAperture?: CameraAperture;
+  };
 }
 
 export interface PlacedObject {
@@ -142,7 +166,9 @@ export interface PlacedObject {
   z: number;
   rotationY: number;
   isMainCamera?: boolean;
-  lensPreset?: CameraLensPreset; // 16mm, 24mm, 35mm, 50mm, 85mm
+  lensPreset?: CameraLensPreset; // 16mm, 24mm, 35mm, 50mm, 85mm, 105mm
+  sensorSize?: CameraSensorSize; // full-frame, aps-c, micro-four-thirds, smartphone
+  aperture?: CameraAperture; // f/1.4 to f/5.6
   lightSettings?: LightSettings; // intensity, kelvin, color
   parentId?: string; // If set, object is placed on top of this parent object
   elevationY?: number; // Custom Y elevation offset (if any)
@@ -151,13 +177,20 @@ export interface PlacedObject {
   customPriceGBP?: number;
   customPriceGHS?: number;
   customPriceNGN?: number;
+  customAffiliateUrl?: string;
 }
 
 export type WarningType =
   | 'camera-too-close'
+  | 'camera-lens-mismatch'
   | 'equipment-near-wall'
   | 'no-walking-path'
   | 'lights-too-close'
+  | 'shadow-spill-backdrop'
+  | 'window-backlight-silhouette'
+  | 'xlr-missing-interface'
+  | 'acoustic-reverb-high'
+  | 'heavy-camera-on-light-arm'
   | 'power-overload';
 
 export interface SpacingWarning {
@@ -165,6 +198,8 @@ export interface SpacingWarning {
   severity: 'info' | 'warning' | 'danger';
   message: string;
   objectIds?: string[];
+  actionLabel?: string;
+  actionEquipmentId?: EquipmentId;
 }
 
 export interface ProjectInfo {
@@ -192,11 +227,13 @@ export interface PlannerState {
   templateId: CreatorTemplateId;
   viewMode: ViewMode;
   wallDisplayMode: WallDisplayMode;
+  floorFinish: FloorFinish;
   placedObjects: PlacedObject[];
   selectedObjectId: string | null;
   placingEquipmentId: EquipmentId | null;
   currency: Currency;
   projectInfo: ProjectInfo;
+  userAffiliateTag: string;
   windows: WindowPlacement[];
   timeOfDay: 'daylight' | 'golden-hour' | 'overcast' | 'night';
   showBudgetPanel: boolean;
@@ -204,6 +241,7 @@ export interface PlannerState {
   showWarnings: boolean;
   showCameraPreview: boolean;
   showLuxHeatmap: boolean;
+  showAcousticRays: boolean;
   isOrbitPanning: boolean;
   isZenMode: boolean;
   leftPanelOpen: boolean;
@@ -211,6 +249,8 @@ export interface PlannerState {
 
   setRoomDimensions: (width: number, depth: number, height?: number) => void;
   setWallDisplayMode: (mode: WallDisplayMode) => void;
+  setFloorFinish: (finish: FloorFinish) => void;
+  setUserAffiliateTag: (tag: string) => void;
   setTemplateId: (id: CreatorTemplateId) => void;
   setViewMode: (mode: ViewMode) => void;
   setTimeOfDay: (time: 'daylight' | 'golden-hour' | 'overcast' | 'night') => void;
@@ -223,6 +263,8 @@ export interface PlannerState {
   updateObjectPosition: (id: string, x: number, z: number) => void;
   updateObjectRotation: (id: string, rotationY: number) => void;
   updateObjectLens: (id: string, lens: CameraLensPreset) => void;
+  updateObjectSensor: (id: string, sensor: CameraSensorSize) => void;
+  updateObjectAperture: (id: string, aperture: CameraAperture) => void;
   updateObjectLight: (id: string, settings: Partial<LightSettings>) => void;
   setSelectedObject: (id: string | null) => void;
   setMainCamera: (id: string) => void;
@@ -238,6 +280,7 @@ export interface PlannerState {
   toggleWarnings: () => void;
   toggleCameraPreview: () => void;
   toggleLuxHeatmap: () => void;
+  toggleAcousticRays: () => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
   loadTemplate: (templateId: CreatorTemplateId) => void;

@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
+import { generateBillOfMaterials, resolveEquipmentAffiliateInfo } from '@/lib/space-planner/affiliate';
 import type { Currency } from './types';
+import { ShoppingCart, ExternalLink, Download, Check, Copy } from 'lucide-react';
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -17,8 +20,12 @@ export default function BudgetPanel() {
   const currency = usePlannerStore((s) => s.currency);
   const setCurrency = usePlannerStore((s) => s.setCurrency);
   const setCustomPrice = usePlannerStore((s) => s.setCustomPrice);
+  const userAffiliateTag = usePlannerStore((s) => s.userAffiliateTag);
+  const setUserAffiliateTag = usePlannerStore((s) => s.setUserAffiliateTag);
   const showBudgetPanel = usePlannerStore((s) => s.showBudgetPanel);
   const toggleBudgetPanel = usePlannerStore((s) => s.toggleBudgetPanel);
+
+  const [copiedSchedule, setCopiedSchedule] = useState(false);
 
   const getPrice = (obj: typeof placedObjects[0]) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
@@ -30,146 +37,214 @@ export default function BudgetPanel() {
     return obj.customPriceNGN ?? def.defaultPriceNGN;
   };
 
-  const powerTotal = placedObjects.reduce((sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0), 0);
+  const powerTotal = placedObjects.reduce(
+    (sum, o) => sum + (COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId]?.watts ?? 0),
+    0
+  );
   const budgetTotal = placedObjects.reduce((sum, o) => sum + getPrice(o), 0);
   const sym = CURRENCY_SYMBOLS[currency] || '$';
 
-  // Group items by type
-  const grouped = new Map<string, typeof placedObjects>();
-  placedObjects.forEach((o) => {
-    const existing = grouped.get(o.equipmentId) || [];
-    existing.push(o);
-    grouped.set(o.equipmentId, existing);
-  });
+  const bom = generateBillOfMaterials(placedObjects, userAffiliateTag);
+
+  const handleCopySchedule = () => {
+    const lines = [
+      `# CREATOR STUDIO PROCUREMENT SCHEDULE`,
+      `Total Placed Equipment: ${bom.totalUnits} items | Total Draw: ${bom.totalPowerWatts}W | Est Budget: $${bom.totalEstimatedUSD.toLocaleString()} USD`,
+      ``,
+      `| Item & Brand | Model | Qty | Est. Unit Price | Total Price | Amazon Direct Buy |`,
+      `| --- | --- | --- | --- | --- | --- |`,
+      ...bom.items.map(
+        (i) =>
+          `| ${i.brand} | ${i.model} | ${i.quantity} | $${i.typicalPriceUSD} | $${i.subtotalUSD} | [Buy on Amazon](${i.amazonUrl}) |`
+      ),
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedSchedule(true);
+    setTimeout(() => setCopiedSchedule(false), 2500);
+  };
 
   return (
     <>
-      {/* Budget summary in right panel */}
-      <div className="panel-section">
-        <div className="panel-title">
-          <span>Power & Budget</span>
+      {/* Budget Summary In Right Sidebar */}
+      <div className="panel-section space-y-3">
+        <div className="panel-title flex items-center justify-between">
+          <span>Power & Procurement</span>
+          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-black text-[#FFE500] font-black">
+            BOM
+          </span>
         </div>
 
-        {/* Currency toggle */}
-        <div className="grid grid-cols-5 gap-1 mb-3">
+        {/* Currency Switcher */}
+        <div className="grid grid-cols-5 gap-1">
           {(['USD', 'EUR', 'GBP', 'GHS', 'NGN'] as Currency[]).map((c) => (
             <button
               key={c}
               onClick={() => setCurrency(c)}
-              className={`btn justify-center text-[10px] px-1 py-1 font-mono ${currency === c ? 'active bg-black text-white' : 'bg-white'}`}
+              className={`btn justify-center text-[9.5px] px-1 py-1 font-mono font-bold ${
+                currency === c ? 'bg-black text-[#FFE500]' : 'bg-white text-stone-800'
+              }`}
             >
               {CURRENCY_SYMBOLS[c]}
             </button>
           ))}
         </div>
 
-        {/* Power */}
-        <div className="flex justify-between text-[11px] mb-1.5">
-          <span className="text-[var(--charcoal-3)]">Power Draw</span>
-          <span className="font-mono font-semibold">{powerTotal}W</span>
-        </div>
-        <div className="meter mb-3">
-          <div
-            className="meter-fill"
-            style={{ width: `${Math.min(100, (powerTotal / 2860) * 100)}%` }}
-          />
-        </div>
-        <div className="text-[9px] text-[var(--charcoal-3)] mb-3">
-          Typical socket: ~2,860W (13A × 220V). Planning guidance only.
+        {/* Studio Power Draw Meter */}
+        <div className="p-2 bg-stone-50 border border-black/20 space-y-1.5">
+          <div className="flex justify-between text-[10.5px] font-bold font-mono">
+            <span className="text-stone-600">Total Power Draw</span>
+            <span className="text-black">{powerTotal}W</span>
+          </div>
+          <div className="w-full bg-stone-200 h-2 border border-black/20 overflow-hidden">
+            <div
+              className={`h-full transition-all ${
+                powerTotal > 2000 ? 'bg-red-600' : powerTotal > 1000 ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${Math.min(100, (powerTotal / 2860) * 100)}%` }}
+            />
+          </div>
+          <div className="text-[8.5px] font-mono text-stone-500 leading-tight">
+            13A @ 220V breaker capacity: 2,860W max.
+          </div>
         </div>
 
-        {/* Budget total */}
-        <div className="flex items-baseline justify-between mb-3">
-          <span className="text-[11px] text-[var(--charcoal-3)]">Est. Total</span>
-          <span className="font-display font-black text-lg">
+        {/* Budget Total */}
+        <div className="flex items-baseline justify-between p-2 bg-[#FFE500]/20 border-2 border-black">
+          <span className="text-[10px] font-mono font-bold uppercase text-stone-700">Studio BOM Est.</span>
+          <span className="font-mono font-black text-lg text-black">
             {sym}{budgetTotal.toLocaleString()}
           </span>
         </div>
 
         <button
-          className="btn w-full justify-center"
+          className="btn w-full justify-center py-1.5 font-bold bg-black text-[#FFE500] hover:bg-stone-800 shadow-[2px_2px_0_#000]"
           onClick={toggleBudgetPanel}
         >
-          View Breakdown
+          <ShoppingCart size={13} className="mr-1" />
+          Procurement Schedule ({placedObjects.length})
         </button>
       </div>
 
-      {/* Full breakdown slide-out */}
+      {/* Bill of Materials Full Slide-Out Modal */}
       {showBudgetPanel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/20" onClick={toggleBudgetPanel} />
-          <div className="cost-panel open relative z-10">
-            <div className="p-5 border-b border-[var(--line)]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-display font-bold text-[17px]">Equipment Budget</div>
-                  <div className="text-[11px] text-[var(--charcoal-3)]">Edit prices to match your local market</div>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={toggleBudgetPanel} />
+          <div className="w-full max-w-xl bg-white border-l-4 border-black z-10 flex flex-col h-full shadow-2xl animate-in slide-in-from-right duration-200">
+            {/* Header */}
+            <div className="p-4 border-b-2 border-black bg-stone-100 flex items-center justify-between">
+              <div>
+                <div className="font-mono font-black text-base uppercase tracking-wider text-black">
+                  Studio Bill of Materials & Procurement
                 </div>
-                <button className="btn btn-icon" onClick={toggleBudgetPanel}>✕</button>
+                <div className="text-[11px] font-mono text-stone-600">
+                  {bom.totalUnits} items • {bom.totalPowerWatts}W total draw • Est. ${bom.totalEstimatedUSD.toLocaleString()} USD
+                </div>
               </div>
+              <button
+                className="w-7 h-7 bg-black text-white font-bold flex items-center justify-center hover:bg-stone-800"
+                onClick={toggleBudgetPanel}
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
-              {grouped.size === 0 ? (
-                <div className="text-center py-12 text-[var(--charcoal-3)]">
-                  <div className="text-3xl mb-2">📋</div>
-                  <div className="text-sm font-semibold">No equipment placed</div>
-                  <div className="text-[11px]">Add items to see cost breakdown.</div>
+            {/* Custom Affiliate Tag Input */}
+            <div className="p-3 bg-amber-50 border-b-2 border-black flex items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex-1">
+                <span className="font-bold text-black block text-[11px]">Your Amazon Associate Tag:</span>
+                <span className="text-[9.5px] text-stone-600">
+                  Share this studio kit to earn affiliate commissions when others buy this gear.
+                </span>
+              </div>
+              <input
+                type="text"
+                value={userAffiliateTag}
+                placeholder="e.g. yourtag-20"
+                onChange={(e) => setUserAffiliateTag(e.target.value)}
+                className="w-36 p-1 bg-white border-2 border-black text-[11px] font-mono font-bold"
+              />
+            </div>
+
+            {/* Schedule Items List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 font-mono">
+              {bom.items.length === 0 ? (
+                <div className="text-center py-16 text-stone-500">
+                  <div className="font-bold text-sm text-black">No equipment placed yet</div>
+                  <div className="text-xs mt-1">Add cameras, lights, and desks from the library into your studio.</div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {Array.from(grouped.entries()).map(([eqId, items]) => {
-                    const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[eqId];
-                    if (!eq) return null;
-                    return (
-                      <div key={eqId} className="border-b border-[var(--line-soft)] pb-3">
-                        <div className="flex items-center gap-2.5 mb-2">
-                          <span className="text-base">{eq.icon}</span>
-                          <div className="flex-1">
-                            <div className="text-[12px] font-semibold">{eq.name} ×{items.length}</div>
+                bom.items.map((item) => (
+                  <div
+                    key={item.equipmentId}
+                    className="p-3 border-2 border-black bg-stone-50 shadow-[2px_2px_0_#000] space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-black px-1.5 py-1 bg-white border border-black/30 text-stone-800">
+                          {item.category.toUpperCase().slice(0, 3)}
+                        </span>
+                        <div>
+                          <div className="font-black text-[13px] text-black">
+                            {item.brand} {item.model} <span className="text-stone-500 font-normal">×{item.quantity}</span>
                           </div>
-                          <div className="font-display font-bold text-[13px]">
-                            {sym}{items.reduce((s, o) => s + getPrice(o), 0).toLocaleString()}
+                          <div className="text-[9.5px] text-stone-600 uppercase font-bold">
+                            {item.category} • {item.watts > 0 ? `${item.watts * item.quantity}W draw` : 'Passive'}
                           </div>
                         </div>
-                        {items.map((item) => {
-                          const price = getPrice(item);
-                          return (
-                            <div key={item.id} className="flex items-center gap-2 pl-7 mb-1">
-                              <input
-                                type="number"
-                                value={price}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setCustomPrice(item.id, currency, val);
-                                }}
-                                className="w-24 px-2 py-1 text-[11px] font-mono border border-[var(--line)] rounded bg-white"
-                              />
-                              <span className="text-[10px] text-[var(--charcoal-3)]">{sym}</span>
-                              <span className="text-[10px] text-[var(--charcoal-3)] flex-1">
-                                @{eq.watts > 0 ? `${eq.watts}W` : 'passive'}
-                              </span>
-                            </div>
-                          );
-                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="text-right">
+                        <div className="font-black text-sm text-black">
+                          ${item.subtotalUSD.toLocaleString()}
+                        </div>
+                        <div className="text-[9px] text-stone-500">
+                          ${item.typicalPriceUSD} each
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-black/10 text-[10px]">
+                      <span className="text-stone-600 truncate max-w-[240px]">
+                        Catalog: {item.name}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          href={item.amazonUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-[#FF9900] hover:bg-[#e88b00] text-black font-black border border-black flex items-center gap-1 shadow-[1px_1px_0_#000]"
+                        >
+                          Amazon <ExternalLink size={10} />
+                        </a>
+                        <a
+                          href={item.bhPhotoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-white hover:bg-stone-100 text-black font-bold border border-black flex items-center gap-1 shadow-[1px_1px_0_#000]"
+                        >
+                          B&H <ExternalLink size={10} />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
 
-            <div className="p-5 border-t border-[var(--line)] bg-[var(--surface-2)]">
-              <div className="flex justify-between items-baseline">
-                <span className="font-display font-semibold text-[13px]">Total</span>
-                <span className="font-display font-black text-2xl text-[var(--accent)]">
-                  {sym}{budgetTotal.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between text-[11px] text-[var(--charcoal-3)] mt-1">
-                <span>Power draw</span>
-                <span className="font-mono">{powerTotal}W</span>
-              </div>
+            {/* Modal Footer */}
+            <div className="p-4 border-t-2 border-black bg-stone-100 flex items-center justify-between gap-3 font-mono">
+              <button
+                onClick={handleCopySchedule}
+                className="btn flex-1 justify-center py-2 bg-white hover:bg-stone-200 border-2 border-black text-black font-bold text-xs shadow-[2px_2px_0_#000]"
+              >
+                {copiedSchedule ? <Check size={14} className="mr-1 text-emerald-600" /> : <Copy size={14} className="mr-1" />}
+                {copiedSchedule ? 'Copied Markdown!' : 'Copy Procurement Markdown'}
+              </button>
+              <button
+                onClick={toggleBudgetPanel}
+                className="btn py-2 px-5 bg-black hover:bg-stone-800 text-white font-bold text-xs"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

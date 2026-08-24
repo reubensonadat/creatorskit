@@ -1,7 +1,16 @@
 'use client';
 
+import { useState } from 'react';
+import { ChevronDown, ChevronRight, Sliders, ExternalLink, Trash2, Camera, Sun, Move, ShoppingCart } from 'lucide-react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
+import {
+  calculateOpticalFov,
+  SENSOR_PROFILES,
+  FOCAL_LENGTH_VALUES,
+} from '@/lib/space-planner/optical-engine';
+import { resolveEquipmentAffiliateInfo } from '@/lib/space-planner/affiliate';
+import type { CameraLensPreset, CameraSensorSize, CameraAperture } from './types';
 
 export default function InspectorPanel() {
   const selectedObjectId = usePlannerStore((s) => s.selectedObjectId);
@@ -10,22 +19,40 @@ export default function InspectorPanel() {
   const deleteObject = usePlannerStore((s) => s.deleteObject);
   const setMainCamera = usePlannerStore((s) => s.setMainCamera);
   const setObjectParent = usePlannerStore((s) => s.setObjectParent);
-  const setObjectElevation = usePlannerStore((s) => s.setObjectElevation);
   const getObjectY = usePlannerStore((s) => s.getObjectY);
 
   const updateObjectLens = usePlannerStore((s) => s.updateObjectLens);
+  const updateObjectSensor = usePlannerStore((s) => s.updateObjectSensor);
+  const updateObjectAperture = usePlannerStore((s) => s.updateObjectAperture);
   const updateObjectLight = usePlannerStore((s) => s.updateObjectLight);
+  const setCustomPrice = usePlannerStore((s) => s.setCustomPrice);
+  const currency = usePlannerStore((s) => s.currency);
+  const userAffiliateTag = usePlannerStore((s) => s.userAffiliateTag);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
   const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
+
+  // Section collapse states
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    optics: true,
+    lighting: true,
+    transform: true,
+    procurement: true,
+  });
+
+  const toggleSection = (sec: string) => {
+    setOpenSections((prev) => ({ ...prev, [sec]: !prev[sec] }));
+  };
 
   const obj = placedObjects.find((o) => o.id === selectedObjectId);
   if (!obj) {
     return (
-      <div className="panel-section">
-        <div className="panel-title"><span>Inspector</span></div>
-        <div className="text-[11px] text-center py-4 leading-relaxed text-[var(--charcoal-3)]">
-          Click an object in the
-          3D scene to inspect it.
+      <div className="panel-section p-3 border-b border-black">
+        <div className="flex items-center justify-between font-black text-xs uppercase tracking-wider text-black mb-2">
+          <span>Inspector</span>
+          <span className="text-[9px] font-mono text-stone-400">Idle</span>
+        </div>
+        <div className="text-[11px] text-center py-6 px-2 leading-relaxed text-stone-500 font-mono bg-stone-50 border border-stone-200">
+          Click any 3D equipment or camera in the scene to inspect optical specs, lighting controls, and procurement links.
         </div>
       </div>
     );
@@ -43,7 +70,7 @@ export default function InspectorPanel() {
   const parentDef = parentObj ? COMPREHENSIVE_EQUIPMENT_CATALOG[parentObj.equipmentId] : null;
 
   const eqId = typeof obj.equipmentId === 'string' ? obj.equipmentId : '';
-  const isCamera = eq.category === 'camera' || eqId.startsWith('cam') || eqId === 'camera';
+  const isCamera = eq.category === 'camera' || eqId.startsWith('cam') || eqId === 'camera' || eqId.includes('phone') || eqId.includes('webcam');
   const isLight = eq.category === 'lighting' || eqId.includes('light') || eqId.includes('softbox') || eqId.includes('fresnel') || eqId.includes('tube') || eqId.includes('lamp');
 
   const light = obj.lightSettings || {
@@ -53,239 +80,365 @@ export default function InspectorPanel() {
     beamAngle: 60,
   };
 
-  const currentLens = obj.lensPreset || '24mm';
+  const currentLens: CameraLensPreset = obj.lensPreset || '24mm';
+  const currentSensor: CameraSensorSize = obj.sensorSize || (eqId.includes('phone') ? 'smartphone' : 'full-frame');
+  const currentAperture: CameraAperture = obj.aperture || 'f/2.8';
+
+  const opticalMath = isCamera ? calculateOpticalFov(currentLens, currentSensor) : null;
+  const affInfo = resolveEquipmentAffiliateInfo(obj.equipmentId, userAffiliateTag);
 
   const KELVIN_PRESETS = [
-    { k: 2700, label: 'Warm 2700K', desc: 'Candle / Amber' },
-    { k: 3200, label: 'Tungsten 3200K', desc: 'Warm Halogen' },
-    { k: 4500, label: 'Studio 4500K', desc: 'Neutral Balance' },
-    { k: 5600, label: 'Daylight 5600K', desc: 'Cinema Standard' },
-    { k: 6500, label: 'Cool Sky 6500K', desc: 'Overcast Day' },
+    { k: 2700, label: 'Warm 2700K' },
+    { k: 3200, label: 'Tungsten 3200K' },
+    { k: 4500, label: 'Studio 4500K' },
+    { k: 5600, label: 'Daylight 5600K' },
+    { k: 6500, label: 'Cool Sky 6500K' },
   ];
 
   return (
-    <div className="panel-section">
-      <div className="panel-title"><span>Inspector</span></div>
-      <div className="flex items-center gap-2.5 mb-3">
-        <div className="item-icon text-base">{eq.icon}</div>
-        <div>
-          <div className="text-[12px] font-semibold">{eq.name}</div>
-          <div className="text-[10px] text-[var(--charcoal-3)]">{eq.description}</div>
+    <div className="panel-section p-3 border-b border-black space-y-3 font-mono text-xs">
+      <div className="flex items-center justify-between">
+        <div className="font-black text-xs uppercase tracking-wider text-black flex items-center gap-1.5">
+          <span>Inspector</span>
+        </div>
+        <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-black text-[#FFE500] font-black">
+          {eq.category}
+        </span>
+      </div>
+
+      {/* Item Headline & Real Brand */}
+      <div className="flex items-start gap-2.5 p-2 bg-stone-50 border-2 border-black shadow-[2px_2px_0_#000]">
+        <div className="text-[10px] font-mono font-black p-1 bg-white border border-black/30 flex-shrink-0 flex items-center justify-center min-w-10 text-center">
+          {eq.category.toUpperCase().slice(0, 4)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] font-black text-black leading-snug truncate">
+            {affInfo.brand} {affInfo.model}
+          </div>
+          <div className="text-[10px] text-stone-600 line-clamp-2 leading-relaxed">
+            {eq.description}
+          </div>
+          <div className="text-[9px] font-mono text-emerald-800 font-bold mt-0.5">
+            ${affInfo.typicalPriceUSD} USD • {eq.watts > 0 ? `${eq.watts}W draw` : '0W passive'}
+          </div>
         </div>
       </div>
 
-      {/* Position & Height */}
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
-        <div className="p-1.5 bg-[#f5f2ed] border border-[#e5dfd5]">
-          <label className="text-[9px] uppercase tracking-wider text-[var(--charcoal-3)] block font-mono">X Pos</label>
-          <div className="text-[11px] font-mono font-bold">{obj.x.toFixed(2)}m</div>
-        </div>
-        <div className="p-1.5 bg-[#f5f2ed] border border-[#e5dfd5]">
-          <label className="text-[9px] uppercase tracking-wider text-[var(--charcoal-3)] block font-mono">Z Pos</label>
-          <div className="text-[11px] font-mono font-bold">{obj.z.toFixed(2)}m</div>
-        </div>
-        <div className="p-1.5 bg-[#f5f2ed] border border-[#e5dfd5]">
-          <label className="text-[9px] uppercase tracking-wider text-[var(--charcoal-3)] block font-mono">Elevation</label>
-          <div className="text-[11px] font-mono font-bold">{currentY.toFixed(2)}m</div>
-        </div>
-      </div>
-
-      {/* Camera Specific Controls */}
-      {isCamera && (
-        <div className="mb-3 p-2 bg-[#fff8eb] border border-[#f5d08a]">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-[#8a5d00] font-mono uppercase">📷 Lens Focal Length</span>
-            <span className="text-[9px] font-mono px-1 bg-[#f0c050] text-black font-black">{currentLens}</span>
+      {/* Transform & Coordinates Accordion */}
+      <div className="border border-black bg-white overflow-hidden shadow-[1.5px_1.5px_0_#000]">
+        <button
+          onClick={() => toggleSection('transform')}
+          className="w-full flex items-center justify-between p-1.5 bg-stone-100 hover:bg-stone-200 text-left border-b border-black/20"
+        >
+          <div className="flex items-center gap-1 font-bold text-[10px] uppercase text-black">
+            <Move size={12} />
+            <span>Position & Rotation</span>
           </div>
+          {openSections.transform ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
 
-          <div className="grid grid-cols-5 gap-1 mb-2">
-            {(['16mm', '24mm', '35mm', '50mm', '85mm'] as const).map((lens) => (
-              <button
-                key={lens}
-                onClick={() => updateObjectLens(obj.id, lens)}
-                className={`btn justify-center text-[9px] py-0.5 px-0 font-mono ${currentLens === lens ? 'bg-black text-white' : 'bg-white'}`}
-              >
-                {lens}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-1">
-            <button
-              className={`btn flex-1 justify-center text-[10px] py-1 ${
-                obj.isMainCamera ? 'bg-[#000] text-white' : 'bg-white border-black'
-              }`}
-              onClick={() => {
-                setMainCamera(obj.id);
-                toggleCameraPreview();
-              }}
-            >
-              {obj.isMainCamera ? '★ Active Main Cam' : 'Set as Main Cam'}
-            </button>
-            <button
-              className="btn flex-1 justify-center text-[10px] py-1 bg-white border-black font-bold"
-              onClick={() => {
-                setMainCamera(obj.id);
-                setViewMode('camera-pov');
-              }}
-            >
-              Director POV ➔
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Studio Lighting Controls */}
-      {isLight && (
-        <div className="mb-3 p-2 bg-[#f0f8ff] border border-[#b8dcff]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-[#004a8f] font-mono uppercase">💡 Light Specs</span>
-            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-[#004a8f] text-white font-bold">{light.intensity}%</span>
-          </div>
-
-          {/* Dimmer Slider */}
-          <div className="mb-2">
-            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
-              <span>Dimmer / Output</span>
-              <span>{light.intensity}%</span>
+        {openSections.transform && (
+          <div className="p-2 space-y-2 bg-white">
+            <div className="grid grid-cols-3 gap-1.5">
+              <div className="p-1 bg-stone-50 border border-black/20 text-center">
+                <label className="text-[8px] uppercase tracking-wider text-stone-500 block font-mono">X Pos</label>
+                <div className="text-[10.5px] font-mono font-bold">{obj.x.toFixed(2)}m</div>
+              </div>
+              <div className="p-1 bg-stone-50 border border-black/20 text-center">
+                <label className="text-[8px] uppercase tracking-wider text-stone-500 block font-mono">Z Pos</label>
+                <div className="text-[10.5px] font-mono font-bold">{obj.z.toFixed(2)}m</div>
+              </div>
+              <div className="p-1 bg-stone-50 border border-black/20 text-center">
+                <label className="text-[8px] uppercase tracking-wider text-stone-500 block font-mono">Elevation</label>
+                <div className="text-[10.5px] font-mono font-bold">{currentY.toFixed(2)}m</div>
+              </div>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={light.intensity}
-              onChange={(e) => updateObjectLight(obj.id, { intensity: parseInt(e.target.value, 10) })}
-              className="w-full accent-black cursor-pointer"
-            />
-          </div>
 
-          {/* Kelvin Temperature */}
-          <div className="mb-2">
-            <div className="flex justify-between text-[9px] font-mono text-[#555] mb-0.5">
-              <span>Color Temperature</span>
-              <span className="font-bold">{light.colorTempKelvin ?? 5600}K</span>
-            </div>
-            <input
-              type="range"
-              min={2700}
-              max={6500}
-              step={100}
-              value={light.colorTempKelvin ?? 5600}
-              onChange={(e) => updateObjectLight(obj.id, { colorTempKelvin: parseInt(e.target.value, 10) })}
-              className="w-full cursor-pointer"
-              style={{
-                background: 'linear-gradient(to right, #ffb154, #ffe4ce, #ffffff, #d3e8ff)',
-                height: 6,
-                borderRadius: 3,
-              }}
-            />
-            <div className="grid grid-cols-3 gap-1 mt-1">
-              {KELVIN_PRESETS.slice(1, 4).map((kp) => (
+            {/* Rotation Buttons */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-stone-600 block">Rotate Y-Axis</label>
+              <div className="flex gap-1">
                 <button
-                  key={kp.k}
-                  onClick={() => updateObjectLight(obj.id, { colorTempKelvin: kp.k })}
-                  className={`btn justify-center text-[8px] py-0.5 px-1 font-mono ${light.colorTempKelvin === kp.k ? 'bg-black text-white' : 'bg-white'}`}
+                  className="btn flex-1 justify-center py-1 text-[9.5px] font-mono font-bold bg-white hover:bg-stone-100 border border-black"
+                  onClick={() => updateObjectRotation(obj.id, obj.rotationY - Math.PI / 4)}
                 >
-                  {kp.k}K
+                  ↺ 45°
                 </button>
-              ))}
+                <button
+                  className="btn flex-1 justify-center py-1 text-[9.5px] font-mono font-bold bg-white hover:bg-stone-100 border border-black"
+                  onClick={() => updateObjectRotation(obj.id, obj.rotationY + Math.PI / 4)}
+                >
+                  ↻ 45°
+                </button>
+                <button
+                  className="btn flex-1 justify-center py-1 text-[9.5px] font-mono font-bold bg-white hover:bg-stone-100 border border-black"
+                  onClick={() => updateObjectRotation(obj.id, obj.rotationY + Math.PI)}
+                >
+                  180°
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* RGB Accent Color (for tubes / mood lights) */}
-          {typeof obj.equipmentId === 'string' && (obj.equipmentId.includes('tube') || obj.equipmentId.includes('rgb')) && (
-            <div className="flex items-center justify-between pt-1 border-t border-[#d0e4f7]">
-              <span className="text-[9px] font-mono text-[#555]">RGB Gel Color</span>
-              <input
-                type="color"
-                value={light.colorHex || '#FF0055'}
-                onChange={(e) => updateObjectLight(obj.id, { colorHex: e.target.value })}
-                className="w-8 h-6 border border-black cursor-pointer p-0"
-              />
+            {/* Surface Placement */}
+            {!eq.surfaceHeight && (
+              <div className="p-1.5 bg-stone-50 border border-stone-300 space-y-1">
+                <div className="flex items-center justify-between text-[9.5px]">
+                  <span className="font-bold text-stone-700">Mount Surface:</span>
+                  <span className="font-mono px-1 bg-stone-200 font-bold">
+                    {parentDef ? parentDef.name : 'Floor'}
+                  </span>
+                </div>
+                {surfaceObjects.length > 0 && (
+                  <select
+                    className="w-full text-[9.5px] font-mono p-1 border border-black bg-white"
+                    value={obj.parentId ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setObjectParent(obj.id, val === '' ? undefined : val);
+                    }}
+                  >
+                    <option value="">Floor Level (0.00m)</option>
+                    {surfaceObjects.map((sObj) => {
+                      const sDef = COMPREHENSIVE_EQUIPMENT_CATALOG[sObj.equipmentId];
+                      if (!sDef) return null;
+                      return (
+                        <option key={sObj.id} value={sObj.id}>
+                          {sDef.name} ({sDef.surfaceHeight?.toFixed(2)}m)
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Optical Precision Camera Simulator Accordion */}
+      {isCamera && opticalMath && (
+        <div className="border-2 border-amber-400 bg-amber-50/60 overflow-hidden shadow-[2px_2px_0_#000]">
+          <button
+            onClick={() => toggleSection('optics')}
+            className="w-full flex items-center justify-between p-1.5 bg-amber-100 hover:bg-amber-200/70 text-left border-b border-amber-400"
+          >
+            <div className="flex items-center gap-1 font-black text-[10.5px] uppercase text-amber-950">
+              <Camera size={13} />
+              <span>Camera Optics & FOV</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] font-mono px-1 py-0.5 bg-amber-400 text-black font-black">
+                {opticalMath.horizontalFovDegrees}° H-FOV
+              </span>
+              {openSections.optics ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </div>
+          </button>
+
+          {openSections.optics && (
+            <div className="p-2 space-y-2 bg-amber-50/30">
+              {/* Focal Length Selector */}
+              <div>
+                <div className="flex justify-between text-[9px] font-mono text-stone-600 mb-1">
+                  <span>Focal Length</span>
+                  <span className="font-bold text-black">{currentLens} ({opticalMath.effectiveFocalLengthMm.toFixed(0)}mm Eq.)</span>
+                </div>
+                <div className="grid grid-cols-6 gap-1">
+                  {(['16mm', '24mm', '35mm', '50mm', '85mm', '105mm'] as CameraLensPreset[]).map((lens) => (
+                    <button
+                      key={lens}
+                      onClick={() => updateObjectLens(obj.id, lens)}
+                      className={`btn justify-center text-[8.5px] py-1 px-0 font-mono font-bold border border-black ${
+                        currentLens === lens ? 'bg-black text-[#FFE500]' : 'bg-white hover:bg-amber-100 text-black'
+                      }`}
+                    >
+                      {lens}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sensor Size Profile */}
+              <div>
+                <div className="flex justify-between text-[9px] font-mono text-stone-600 mb-1">
+                  <span>Sensor Format</span>
+                  <span className="font-bold text-black">{SENSOR_PROFILES[currentSensor]?.name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-[9px] font-mono">
+                  {(Object.keys(SENSOR_PROFILES) as CameraSensorSize[]).map((sensor) => (
+                    <button
+                      key={sensor}
+                      onClick={() => updateObjectSensor(obj.id, sensor)}
+                      className={`btn justify-center py-1 px-1 text-[8.5px] font-bold border border-black truncate ${
+                        currentSensor === sensor ? 'bg-black text-white' : 'bg-white text-stone-800'
+                      }`}
+                    >
+                      {sensor === 'full-frame' ? 'Full-Frame (1.0x)' : sensor === 'aps-c' ? 'APS-C (1.5x)' : sensor === 'micro-four-thirds' ? 'MFT (2.0x)' : 'Phone (5.5x)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Framing Analysis Box */}
+              <div className="p-1.5 bg-white border border-amber-300 text-[9px] font-mono text-stone-700 space-y-1">
+                <div className="text-black font-bold">
+                  Classification: <span className="text-amber-800">{opticalMath.shotClassification}</span>
+                </div>
+                <div className="text-stone-600">
+                  Optimal Distance: <strong className="text-black">{opticalMath.idealSubjectDistanceM.ideal}m</strong> (Range: {opticalMath.idealSubjectDistanceM.min}–{opticalMath.idealSubjectDistanceM.max}m)
+                </div>
+              </div>
+
+              {/* Camera POV Buttons */}
+              <div className="flex gap-1.5 pt-0.5">
+                <button
+                  className={`btn flex-1 justify-center text-[10px] py-1.5 font-bold border border-black ${
+                    obj.isMainCamera ? 'bg-black text-[#FFE500]' : 'bg-white text-black'
+                  }`}
+                  onClick={() => {
+                    setMainCamera(obj.id);
+                    toggleCameraPreview();
+                  }}
+                >
+                  {obj.isMainCamera ? 'Active Cam' : 'Set Active'}
+                </button>
+                <button
+                  className="btn flex-1 justify-center text-[10px] py-1.5 bg-black hover:bg-stone-800 text-white font-bold border border-black shadow-[1.5px_1.5px_0_#000]"
+                  onClick={() => {
+                    setMainCamera(obj.id);
+                    setViewMode('camera-pov');
+                  }}
+                >
+                  Director POV
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Surface / Table Stacking */}
-      {!eq.surfaceHeight && (
-        <div className="mb-3 p-2 bg-[#fbf9f5] border border-[#e8e2d8]">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-semibold text-[#333]">Surface Placement</span>
-            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-[#eee] font-bold">
-              {parentDef ? `On: ${parentDef.name}` : 'Floor Level'}
-            </span>
-          </div>
+      {/* Studio Lighting Controls Accordion */}
+      {isLight && (
+        <div className="border-2 border-blue-400 bg-blue-50/60 overflow-hidden shadow-[2px_2px_0_#000]">
+          <button
+            onClick={() => toggleSection('lighting')}
+            className="w-full flex items-center justify-between p-1.5 bg-blue-100 hover:bg-blue-200/70 text-left border-b border-blue-400"
+          >
+            <div className="flex items-center gap-1 font-black text-[10.5px] uppercase text-blue-950">
+              <Sun size={13} />
+              <span>Lighting & Kelvin CCT</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] font-mono px-1 py-0.5 bg-blue-600 text-white font-bold">
+                {light.intensity}% • {light.colorTempKelvin ?? 5600}K
+              </span>
+              {openSections.lighting ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </div>
+          </button>
 
-          <div className="space-y-1.5">
-            {surfaceObjects.length > 0 && (
-              <select
-                className="w-full text-[10px] font-mono p-1 border border-black bg-white"
-                value={obj.parentId ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setObjectParent(obj.id, val === '' ? undefined : val);
-                }}
-              >
-                <option value="">Floor Level (0.00m)</option>
-                {surfaceObjects.map((sObj) => {
-                  const sDef = COMPREHENSIVE_EQUIPMENT_CATALOG[sObj.equipmentId];
-                  if (!sDef) return null;
-                  return (
-                    <option key={sObj.id} value={sObj.id}>
-                      {sDef.icon} {sDef.name} ({sDef.surfaceHeight?.toFixed(2)}m)
-                    </option>
-                  );
-                })}
-              </select>
-            )}
+          {openSections.lighting && (
+            <div className="p-2 space-y-2 bg-blue-50/30">
+              <div>
+                <div className="flex justify-between text-[9px] font-mono text-stone-600 mb-0.5">
+                  <span>Dimmer Output</span>
+                  <span className="font-bold text-black">{light.intensity}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={light.intensity}
+                  onChange={(e) => updateObjectLight(obj.id, { intensity: parseInt(e.target.value, 10) })}
+                  className="w-full accent-black cursor-pointer"
+                />
+              </div>
 
-            {obj.parentId && (
-              <button
-                className="btn w-full text-[10px] justify-center py-1 bg-white border border-[#ccc]"
-                onClick={() => setObjectParent(obj.id, undefined)}
-              >
-                Drop to Floor
-              </button>
-            )}
-          </div>
+              <div>
+                <div className="flex justify-between text-[9px] font-mono text-stone-600 mb-0.5">
+                  <span>Color Temperature (CCT)</span>
+                  <span className="font-bold text-black">{light.colorTempKelvin ?? 5600}K</span>
+                </div>
+                <input
+                  type="range"
+                  min={2700}
+                  max={6500}
+                  step={100}
+                  value={light.colorTempKelvin ?? 5600}
+                  onChange={(e) => updateObjectLight(obj.id, { colorTempKelvin: parseInt(e.target.value, 10) })}
+                  className="w-full cursor-pointer"
+                  style={{
+                    background: 'linear-gradient(to right, #ffb154, #ffe4ce, #ffffff, #d3e8ff)',
+                    height: 6,
+                    borderRadius: 3,
+                  }}
+                />
+                <div className="grid grid-cols-3 gap-1 mt-1">
+                  {KELVIN_PRESETS.slice(1, 4).map((kp) => (
+                    <button
+                      key={kp.k}
+                      onClick={() => updateObjectLight(obj.id, { colorTempKelvin: kp.k })}
+                      className={`btn justify-center text-[8px] py-0.5 px-1 font-mono border border-black ${
+                        light.colorTempKelvin === kp.k ? 'bg-black text-white font-bold' : 'bg-white'
+                      }`}
+                    >
+                      {kp.k}K
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Rotation */}
-      <div className="mb-3">
-        <label className="text-[10px] text-[var(--charcoal-3)] block mb-1">Rotation Angle</label>
-        <div className="flex gap-1">
-          <button
-            className="btn flex-1 justify-center py-1 text-[10px]"
-            onClick={() => updateObjectRotation(obj.id, obj.rotationY - Math.PI / 4)}
-          >
-            ↺ 45°
-          </button>
-          <button
-            className="btn flex-1 justify-center py-1 text-[10px]"
-            onClick={() => updateObjectRotation(obj.id, obj.rotationY + Math.PI / 4)}
-          >
-            ↻ 45°
-          </button>
-          <button
-            className="btn flex-1 justify-center py-1 text-[10px]"
-            onClick={() => updateObjectRotation(obj.id, obj.rotationY + Math.PI)}
-          >
-            180°
-          </button>
-        </div>
-        <div className="text-[9px] font-mono text-[var(--charcoal-3)] mt-1">
-          Current: {((((obj.rotationY * 180) / Math.PI) % 360) + 360) % 360}°
-        </div>
+      {/* Procurement & Buy Links Accordion */}
+      <div className="border-2 border-emerald-500 bg-emerald-50/60 overflow-hidden shadow-[2px_2px_0_#000]">
+        <button
+          onClick={() => toggleSection('procurement')}
+          className="w-full flex items-center justify-between p-1.5 bg-emerald-100 hover:bg-emerald-200/70 text-left border-b border-emerald-500"
+        >
+          <div className="flex items-center gap-1 font-black text-[10.5px] uppercase text-emerald-950">
+            <ShoppingCart size={13} />
+            <span>Procurement & Hardware Buy</span>
+          </div>
+          {openSections.procurement ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
+
+        {openSections.procurement && (
+          <div className="p-2 space-y-1.5 bg-emerald-50/30">
+            <div className="text-[9.5px] text-stone-600 leading-snug">
+              Verified {affInfo.brand} equipment listings from certified creator retailers:
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              <a
+                href={affInfo.amazonUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn justify-center text-[9.5px] py-1 bg-[#FF9900] hover:bg-[#e88b00] text-black font-black border border-black shadow-[1px_1px_0_#000] flex items-center gap-1"
+              >
+                <span>Amazon</span>
+                <ExternalLink size={10} />
+              </a>
+              <a
+                href={affInfo.bhPhotoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn justify-center text-[9.5px] py-1 bg-white hover:bg-stone-100 text-black font-bold border border-black shadow-[1px_1px_0_#000] flex items-center gap-1"
+              >
+                <span>B&H Photo</span>
+                <ExternalLink size={10} />
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Delete */}
+      {/* Delete Item */}
       <button
-        className="btn w-full justify-center text-red-600 border-red-200 hover:bg-red-50 py-1 text-[11px]"
+        className="btn w-full justify-center text-red-600 border-2 border-red-400 bg-red-50 hover:bg-red-100 py-1.5 text-[11px] font-bold flex items-center gap-1.5 shadow-[1px_1px_0_#000]"
         onClick={() => deleteObject(obj.id)}
       >
-        ✕ Delete Item
+        <Trash2 size={13} />
+        <span>Delete Placed Item</span>
       </button>
     </div>
   );

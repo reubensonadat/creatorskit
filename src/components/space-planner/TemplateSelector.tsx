@@ -125,8 +125,8 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
       {!search && selectedCat === 'All' && (
         <div className="flex flex-col gap-1.5 pt-1">
           <div className="flex items-center justify-between text-[10px] font-mono font-bold text-stone-600">
-            <span>⭐ TOP PRO STARTER SETUPS</span>
-            <span className="text-[9px] text-stone-400">Click to instantly load</span>
+            <span>PRO STARTER SETUPS</span>
+            <span className="text-[9px] text-stone-400">Click to load</span>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             {CURATED_FEATURED_IDS.map((id) => {
@@ -144,7 +144,9 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-base">{tpl.icon}</span>
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-stone-100 border border-black/20 text-stone-800">
+                      {tpl.category.toUpperCase().slice(0, 3)}
+                    </span>
                     <span className="text-[9px] font-mono font-black text-black bg-white border border-black px-1">
                       {tpl.defaultRoom.width}×{tpl.defaultRoom.depth}m
                     </span>
@@ -185,7 +187,9 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
                 title={tpl.description}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-lg">{tpl.icon}</span>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-stone-100 border border-black/20 text-stone-800">
+                    {tpl.category.toUpperCase().slice(0, 3)}
+                  </span>
                   <span className="text-[9px] font-mono font-bold text-black bg-stone-100 border border-black px-1.5 py-0.5">
                     {tpl.defaultRoom.width}×{tpl.defaultRoom.depth}m
                   </span>
