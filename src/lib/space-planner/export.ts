@@ -36,11 +36,11 @@ export async function generate2DBlueprintSchematic(
   if (!ctx) return '';
 
   // Background: Deep architectural blueprint slate
-  ctx.fillStyle = '#090d16';
+  ctx.fillStyle = '#080d1a';
   ctx.fillRect(0, 0, w, h);
 
   // Blueprint Grid
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.09)';
   ctx.lineWidth = 1;
   const gridSize = 40;
   for (let x = 0; x < w; x += gridSize) {
@@ -155,129 +155,85 @@ export async function generate2DBlueprintSchematic(
 
     // Category Color Coding
     let strokeColor = '#38bdf8'; // Sky cyan
-    let fillColor = 'rgba(56, 189, 248, 0.15)';
+    let fillColor = 'rgba(56, 189, 248, 0.2)';
     if (cat === 'camera') {
       strokeColor = '#ec4899'; // Pink / Magenta
-      fillColor = 'rgba(236, 72, 153, 0.2)';
+      fillColor = 'rgba(236, 72, 153, 0.25)';
     } else if (cat === 'lighting') {
-      strokeColor = '#eab308'; // Amber
-      fillColor = 'rgba(234, 179, 8, 0.2)';
+      strokeColor = '#f59e0b'; // Amber Gold
+      fillColor = 'rgba(245, 158, 11, 0.25)';
     } else if (cat === 'audio') {
-      strokeColor = '#06b6d4'; // Cyan
-      fillColor = 'rgba(6, 182, 212, 0.2)';
+      strokeColor = '#a855f7'; // Purple
+      fillColor = 'rgba(168, 85, 247, 0.25)';
     } else if (cat === 'furniture') {
       strokeColor = '#10b981'; // Emerald
-      fillColor = 'rgba(16, 185, 129, 0.15)';
+      fillColor = 'rgba(16, 185, 129, 0.25)';
     }
 
-    // Draw Camera FOV Wedge
+    // Equipment footprint box
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(-objW / 2, -objD / 2, objW, objD);
+    ctx.strokeRect(-objW / 2, -objD / 2, objW, objD);
+
+    // If Camera: Draw FOV Vision Cone
     if (cat === 'camera' || obj.equipmentId.includes('cam')) {
-      const fovRad = (60 * Math.PI) / 180;
-      const throwDist = 2.4 * scale;
+      ctx.strokeStyle = 'rgba(236, 72, 153, 0.6)';
       ctx.fillStyle = 'rgba(236, 72, 153, 0.12)';
-      ctx.strokeStyle = '#ec4899';
       ctx.lineWidth = 1.5;
+      const fovLen = 220;
+      const fovAngle = 0.55; // ~63 deg
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.arc(0, 0, throwDist, Math.PI / 2 - fovRad / 2, Math.PI / 2 + fovRad / 2);
+      ctx.lineTo(Math.sin(-fovAngle) * fovLen, Math.cos(-fovAngle) * fovLen);
+      ctx.lineTo(Math.sin(fovAngle) * fovLen, Math.cos(fovAngle) * fovLen);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Optical Axis Centerline
+      // Optical focal center ray
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.lineTo(0, throwDist * 1.15);
+      ctx.lineTo(0, fovLen * 1.15);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // Draw Light Throw Beam Cone
-    if (cat === 'lighting' || obj.equipmentId.includes('softbox') || obj.equipmentId.includes('light') || obj.equipmentId.includes('fresnel')) {
-      const beamAngleDeg = obj.lightSettings?.beamAngle || 65;
-      const beamRad = (beamAngleDeg * Math.PI) / 180;
-      const throwDist = 2.6 * scale;
-      ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
-      ctx.strokeStyle = '#eab308';
+    // If Light: Draw Volumetric Light Wedge
+    if (cat === 'lighting' || obj.equipmentId.includes('light') || obj.equipmentId.includes('softbox')) {
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
       ctx.lineWidth = 1.5;
+      const beamLen = 180;
+      const beamAngle = 0.6;
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.arc(0, 0, throwDist, Math.PI / 2 - beamRad / 2, Math.PI / 2 + beamRad / 2);
+      ctx.lineTo(Math.sin(-beamAngle) * beamLen, Math.cos(-beamAngle) * beamLen);
+      ctx.lineTo(Math.sin(beamAngle) * beamLen, Math.cos(beamAngle) * beamLen);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     }
 
-    // Bounding Box
-    ctx.strokeStyle = strokeColor;
-    ctx.fillStyle = fillColor;
-    ctx.lineWidth = 2;
-    ctx.fillRect(-objW / 2, -objD / 2, objW, objD);
-    ctx.strokeRect(-objW / 2, -objD / 2, objW, objD);
+    ctx.restore();
 
-    // Pin Badge with Index Number
+    // Pin Identifier Circle Badge
     ctx.fillStyle = '#090d16';
     ctx.beginPath();
-    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${idx + 1}`, 0, 0);
-
-    ctx.restore();
-  });
-
-  // CAD Blueprint Legend Schedule (Bottom-Left)
-  const legW = 380;
-  const legH = 210;
-  const legX = 35;
-  const legY = h - legH - 35;
-  ctx.fillStyle = 'rgba(9, 13, 22, 0.95)';
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 2.5;
-  ctx.fillRect(legX, legY, legW, legH);
-  ctx.strokeRect(legX, legY, legW, legH);
-
-  ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 14px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(`EQUIPMENT SCHEDULE (${placedObjects.length} TOTAL)`, legX + 15, legY + 24);
-
-  placedObjects.slice(0, 6).forEach((obj, i) => {
-    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
-    const name = def?.name || obj.equipmentId;
-    const cat = (def?.category || 'gear').toUpperCase();
-    const itemY = legY + 48 + i * 24;
-
-    // Badge
-    ctx.fillStyle = '#38bdf8';
-    ctx.beginPath();
-    ctx.arc(legX + 22, itemY - 4, 9, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#090d16';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${i + 1}`, legX + 22, itemY - 0.5);
-
-    // Name & Category
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'left';
-    const truncatedName = name.length > 28 ? name.substring(0, 26) + '…' : name;
-    ctx.fillText(truncatedName, legX + 38, itemY);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '9px monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(`[${cat}]`, legX + legW - 15, itemY);
+    ctx.fillText(`${idx + 1}`, cx, cy);
   });
 
   // Architectural Title Block (Bottom-Right)
@@ -361,24 +317,24 @@ export async function exportPDF(
   if (typeof window !== 'undefined' && typeof (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ === 'function') {
     try {
       angles = (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__();
-    } catch {}
+    } catch (err) {
+      console.warn('Angle capture fallback:', err);
+    }
   }
 
   const hero3D = angles?.hero3D || canvas.toDataURL('image/jpeg', 0.96);
   const north = angles?.north || hero3D;
-  const south = angles?.south || hero3D;
   const left45 = angles?.left45 || hero3D;
-  const right45 = angles?.right45 || hero3D;
   const top3D = angles?.top3D || hero3D;
   const directorPOV = angles?.directorPOV || hero3D;
 
   const blueprintTop = await generate2DBlueprintSchematic(placedObjects, roomWidth, roomDepth, projectInfo, top3D);
 
   const drawHeader = (title: string, subtitle: string, pageNum: number) => {
-    doc.setFillColor(15, 23, 42); // slate-900
+    doc.setFillColor(11, 15, 25); // Slate 950
     doc.rect(0, 0, pageW, 22, 'F');
 
-    // Cyan accent bar at the bottom of the header
+    // Sky cyan accent bar at header base
     doc.setFillColor(56, 189, 248); // sky-400
     doc.rect(0, 21.2, pageW, 0.8, 'F');
 
@@ -404,8 +360,8 @@ export async function exportPDF(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
-    doc.text(`CreatorKit Studio Planner · Master Technical Specification · Page ${pageNum} of ${TOTAL_PAGES}`, 14, pageH - 4);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} · Calibrated Rev 2.0`, pageW - 14, pageH - 4, { align: 'right' });
+    doc.text(`CreatorKit Studio Planner · Master Architectural Specification · Page ${pageNum} of ${TOTAL_PAGES}`, 14, pageH - 4);
+    doc.text(`Calibrated Pre-Vis Engine · Export Date: ${new Date().toLocaleDateString()}`, pageW - 14, pageH - 4, { align: 'right' });
   };
 
   let currentPage = 1;
@@ -423,7 +379,7 @@ export async function exportPDF(
     // Large Hero 3D Viewport on Page 1 (Left / Center)
     const coverHeroW = 168;
     const coverHeroH = 126;
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, 26, coverHeroW, coverHeroH, 'F');
     if (hero3D) {
       doc.addImage(hero3D, 'JPEG', 14, 26, coverHeroW, coverHeroH);
@@ -433,7 +389,7 @@ export async function exportPDF(
     doc.setLineWidth(0.4);
     doc.rect(14, 26, coverHeroW, coverHeroH, 'S');
 
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, 26 + coverHeroH - 7, coverHeroW, 7, 'F');
     doc.setTextColor(56, 189, 248);
     doc.setFontSize(7.5);
@@ -581,7 +537,7 @@ export async function exportPDF(
 
     // Pin Placement Index Legend
     let pinY = 64;
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(rightX, pinY, rightW, 5.5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(7.5);
@@ -627,7 +583,7 @@ export async function exportPDF(
     if (currentPage > 1) doc.addPage('a4', 'landscape');
     drawHeader(
       `3. 3D MULTI-PERSPECTIVE 4-WALL ELEVATIONS & DIRECTOR POV`,
-      `Hero Isometric · North Elevation (Back Wall) · South Elevation (Entry) · Director 16:9 POV`,
+      `Hero Isometric · North Elevation (Back Wall) · 45° Key Rigging · Director 16:9 POV`,
       currentPage
     );
 
@@ -641,7 +597,7 @@ export async function exportPDF(
     if (hero3D) {
       doc.addImage(hero3D, 'JPEG', quadPadX, quadPadY, quadW, quadH);
     }
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(quadPadX, quadPadY + quadH - 6.5, quadW, 6.5, 'F');
     doc.setTextColor(56, 189, 248);
     doc.setFontSize(7.2);
@@ -652,7 +608,7 @@ export async function exportPDF(
     if (north) {
       doc.addImage(north, 'JPEG', quadPadX + quadW + quadGap, quadPadY, quadW, quadH);
     }
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(quadPadX + quadW + quadGap, quadPadY + quadH - 6.5, quadW, 6.5, 'F');
     doc.setTextColor(56, 189, 248);
     doc.setFontSize(7.2);
@@ -667,7 +623,7 @@ export async function exportPDF(
     if (left45) {
       doc.addImage(left45, 'JPEG', quadPadX, btmQuadY, quadW, btmQuadH);
     }
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(quadPadX, btmQuadY + btmQuadH - 6.5, quadW, 6.5, 'F');
     doc.setTextColor(56, 189, 248);
     doc.setFontSize(7.2);
@@ -696,7 +652,7 @@ export async function exportPDF(
     doc.setDrawColor(52, 211, 153);
     doc.circle(cX, cY, 3, 'S');
 
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(povX, btmQuadY + btmQuadH - 6.5, quadW, 6.5, 'F');
     doc.setTextColor(245, 158, 11);
     doc.setFontSize(7.2);
@@ -735,7 +691,7 @@ export async function exportPDF(
     });
 
     let camRowY = camY + 11;
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, camRowY - 4, pageW - 28, 5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(7);
@@ -785,7 +741,7 @@ export async function exportPDF(
     });
 
     let lRowY = lightY + 11;
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, lRowY - 4, pageW - 28, 5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(7);
@@ -841,7 +797,7 @@ export async function exportPDF(
     // Left Column: Bill of Materials
     const bomW = 165;
     let bomY = 26;
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, bomY, bomW, 5.5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(7);
@@ -878,7 +834,7 @@ export async function exportPDF(
     });
 
     // Total Row
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(11, 15, 25);
     doc.rect(14, bomY - 1, bomW, 6, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');

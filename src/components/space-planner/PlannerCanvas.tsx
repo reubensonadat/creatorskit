@@ -99,6 +99,7 @@ export default function PlannerCanvas() {
   const setMeasurePoints = usePlannerStore((s) => s.setMeasurePoints);
   const toggleMeasuring = usePlannerStore((s) => s.toggleMeasuring);
   const showLightBeams = usePlannerStore((s) => s.showLightBeams);
+  const isZenMode = usePlannerStore((s) => s.isZenMode);
 
   const measureGroupRef = useRef<THREE.Group | null>(null);
   const [hoverMeasurePoint, setHoverMeasurePoint] = useState<{ x: number; y: number; z: number; name?: string } | null>(null);
@@ -689,15 +690,193 @@ export default function PlannerCanvas() {
 
     const onResize = () => {
       if (!container || !renderer || !camera || !composer) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w === 0 || h === 0) return;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      composer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setSize(w, h);
+      composer.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
+    const resizeObserver = new ResizeObserver(() => {
+      onResize();
+    });
+    resizeObserver.observe(container);
+
+    // Register Multi-Angle Capture Engine for High-Definition PDF Generation
+    (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__ = () => {
+      const origPos = camera.position.clone();
+      const origTarget = controls.target.clone();
+      const origFov = camera.fov;
+      const walls = wallGroupsRef.current;
+      const rW = usePlannerStore.getState().roomWidth;
+      const rD = usePlannerStore.getState().roomDepth;
+      const maxDim = Math.max(rW, rD);
+
+      const captureFrame = (
+        posX: number,
+        posY: number,
+        posZ: number,
+        tX: number,
+        tY: number,
+        tZ: number,
+        fov: number,
+        wallVisibility?: { back: boolean; front: boolean; left: boolean; right: boolean }
+      ) => {
+        camera.position.set(posX, posY, posZ);
+        controls.target.set(tX, tY, tZ);
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+        controls.update();
+
+        if (walls && wallVisibility) {
+          walls.back.visible = wallVisibility.back;
+          walls.front.visible = wallVisibility.front;
+          walls.left.visible = wallVisibility.left;
+          walls.right.visible = wallVisibility.right;
+        }
+
+        renderer.render(scene, camera);
+        return renderer.domElement.toDataURL('image/jpeg', 0.95);
+      };
+
+      // 1. Hero 3D Isometric View
+      const hero3D = captureFrame(
+        maxDim * 0.85,
+        maxDim * 0.72,
+        maxDim * 0.95,
+        0,
+        0.5,
+        0,
+        38,
+        { back: true, left: true, right: true, front: false }
+      );
+
+      // 2. North Elevation (Facing Desk & Background Wall)
+      const north = captureFrame(
+        0,
+        1.5,
+        maxDim * 0.9,
+        0,
+        1.2,
+        -rD * 0.2,
+        42,
+        { back: true, left: true, right: true, front: false }
+      );
+
+      // 3. South Elevation (Reverse Angle / Entryway)
+      const south = captureFrame(
+        0,
+        1.6,
+        -maxDim * 0.85,
+        0,
+        1.1,
+        0,
+        44,
+        { back: false, left: true, right: true, front: true }
+      );
+
+      // 4. Left 45° Key Light Vantage
+      const left45 = captureFrame(
+        -maxDim * 0.8,
+        maxDim * 0.6,
+        maxDim * 0.65,
+        0,
+        0.6,
+        0,
+        40,
+        { back: true, left: false, right: true, front: false }
+      );
+
+      // 5. Right 45° Fill / Depth Vantage
+      const right45 = captureFrame(
+        maxDim * 0.8,
+        maxDim * 0.6,
+        maxDim * 0.65,
+        0,
+        0.6,
+        0,
+        40,
+        { back: true, left: true, right: false, front: false }
+      );
+
+      // 6. Top Orthographic 2D/3D Plan
+      const top3D = captureFrame(
+        0,
+        maxDim * 1.85,
+        0.001,
+        0,
+        0,
+        0,
+        32,
+        { back: true, left: true, right: true, front: true }
+      );
+
+      // 7. Director Through-The-Lens POV
+      const activeCam =
+        usePlannerStore.getState().placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
+        usePlannerStore.getState().placedObjects.find((o) => isCamEquipment(o.equipmentId));
+      let directorPOV = hero3D;
+
+      if (activeCam) {
+        const lens = getCameraLensPos(activeCam);
+        const posX = activeCam.x + Math.sin(activeCam.rotationY) * lens.localZ;
+        const posY = lens.y;
+        const posZ = activeCam.z + Math.cos(activeCam.rotationY) * lens.localZ;
+        const fwdX = Math.sin(activeCam.rotationY);
+        const fwdZ = Math.cos(activeCam.rotationY);
+
+        directorPOV = captureFrame(
+          posX,
+          posY,
+          posZ,
+          posX + fwdX * 3.5,
+          posY,
+          posZ + fwdZ * 3.5,
+          lens.fov,
+          { back: true, left: true, right: true, front: true }
+        );
+      }
+
+      // Restore original state
+      camera.position.copy(origPos);
+      controls.target.copy(origTarget);
+      camera.fov = origFov;
+      camera.updateProjectionMatrix();
+      controls.update();
+
+      return { hero3D, north, south, left45, right45, top3D, directorPOV };
+    };
+
+    (window as any).__SPACE_PLANNER_SNAP_CAMERA__ = (preset: 'iso' | 'north' | 'top' | 'side') => {
+      const rW = usePlannerStore.getState().roomWidth;
+      const rD = usePlannerStore.getState().roomDepth;
+      const maxDim = Math.max(rW, rD);
+
+      if (preset === 'iso') {
+        camera.position.set(maxDim * 0.85, maxDim * 0.72, maxDim * 0.95);
+        controls.target.set(0, 0.5, 0);
+      } else if (preset === 'north') {
+        camera.position.set(0, 1.8, maxDim * 0.9);
+        controls.target.set(0, 1.1, -rD * 0.2);
+      } else if (preset === 'top') {
+        camera.position.set(0, maxDim * 1.8, 0.001);
+        controls.target.set(0, 0, 0);
+      } else if (preset === 'side') {
+        camera.position.set(-maxDim * 0.9, 1.8, 0);
+        controls.target.set(0, 1.0, 0);
+      }
+      camera.updateProjectionMatrix();
+      controls.update();
+    };
+
     return () => {
+      delete (window as any).__SPACE_PLANNER_CAPTURE_ANGLES__;
+      delete (window as any).__SPACE_PLANNER_SNAP_CAMERA__;
       window.removeEventListener('resize', onResize);
+      resizeObserver.disconnect();
       cancelAnimationFrame(animFrameRef.current);
       renderer.dispose();
       container.innerHTML = '';
@@ -1025,6 +1204,41 @@ export default function PlannerCanvas() {
               Switch to 3D Orbit View →
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Quick Camera Preset Angles Widget */}
+      {viewMode === 'perspective' && !isZenMode && (
+        <div className="absolute top-3 right-3 z-30 flex items-center gap-1 p-1 bg-white/95 backdrop-blur-md border-2 border-black shadow-[3px_3px_0_#000] font-mono text-[10px]">
+          <span className="text-stone-500 font-bold px-1 hidden sm:inline">VIEW:</span>
+          <button
+            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('iso')}
+            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            title="Isometric 3D Room Vantage"
+          >
+            ISO
+          </button>
+          <button
+            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('north')}
+            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            title="North Elevation (Desk & Background Wall)"
+          >
+            NORTH
+          </button>
+          <button
+            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('top')}
+            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            title="Top-Down 3D Perspective"
+          >
+            TOP
+          </button>
+          <button
+            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('side')}
+            className="px-2 py-0.5 bg-stone-100 hover:bg-[#FFE500] hover:text-black border border-black font-bold transition-all"
+            title="Side Profile / Key Light Vantage"
+          >
+            SIDE
+          </button>
         </div>
       )}
 
