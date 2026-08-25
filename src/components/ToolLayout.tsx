@@ -24,6 +24,7 @@ import {
   Sun,
   Zap,
   X,
+  PanelLeftOpen,
 } from "lucide-react";
 
 import { ALL_TOOLS } from "@/data/tools";
@@ -54,10 +55,11 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const currentTool = ALL_TOOLS.find((t) => pathname === t.href);
   const [hovered, setHovered] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sideAdOpen, setSideAdOpen] = useState(true);
 
   return (
-    <div style={{ display: "grid", gridTemplateRows: "52px 1fr", height: "100vh", background: "#f4f4f5", overflow: "hidden" }}>
+    <div className="tool-layout-root" style={{ display: "grid", gridTemplateRows: "52px 1fr", height: "100vh", background: "#f4f4f5", overflow: "hidden" }}>
       {/* Topbar */}
       <header
         style={{
@@ -71,8 +73,28 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Mobile sidebar toggle */}
+          <button
+            className="tool-layout-mobile-sidebar-toggle"
+            onClick={() => setMobileSidebarOpen((v) => !v)}
+            style={{
+              display: "none",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              background: mobileSidebarOpen ? "#000" : "transparent",
+              border: "2px solid #000",
+              cursor: "pointer",
+              color: mobileSidebarOpen ? "#fff" : "#000",
+              flexShrink: 0,
+            }}
+          >
+            <PanelLeftOpen size={16} />
+          </button>
           <Link
             href="/"
+            className="tool-layout-topbar-home"
             style={{
               display: "flex",
               alignItems: "center",
@@ -92,7 +114,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             <ChevronLeft size={14} />
             HOME
           </Link>
-          <div>
+          <div className="tool-layout-title-group">
             <h1 style={{ fontSize: "0.95rem", fontWeight: 900, letterSpacing: "-0.03em", color: "#000", margin: 0 }}>
               {currentTool?.label || "Tool"}
             </h1>
@@ -103,6 +125,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
         </div>
         <Link
           href="/"
+          className="tool-layout-topbar-ck"
           style={{
             fontSize: "0.7rem",
             padding: "6px 14px",
@@ -123,8 +146,9 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
 
       {/* Main area with clean workspace */}
       <div style={{ display: "flex", overflow: "hidden", height: "calc(100vh - 52px)", position: "relative" }}>
-        {/* Sidebar */}
+        {/* Desktop Sidebar */}
         <aside
+          className="tool-layout-desktop-sidebar"
           style={{
             width: hovered ? 220 : 52,
             background: "#ffffff",
@@ -205,105 +229,190 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
           </div>
         </aside>
 
+        {/* Mobile Sidebar Overlay */}
+        {mobileSidebarOpen && (
+          <div
+            className="tool-layout-mobile-sidebar-overlay"
+            onClick={() => setMobileSidebarOpen(false)}
+            style={{
+              position: "fixed",
+              top: 52,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.3)",
+              zIndex: 45,
+            }}
+          />
+        )}
+
+        {/* Mobile Sidebar Drawer */}
+        <aside
+          className="tool-layout-mobile-sidebar"
+          style={{
+            position: "fixed",
+            top: 52,
+            left: mobileSidebarOpen ? 0 : "-280px",
+            width: 260,
+            bottom: 0,
+            background: "#ffffff",
+            borderRight: "2px solid #000000",
+            display: "none",
+            flexDirection: "column",
+            overflowY: "auto",
+            overflowX: "hidden",
+            transition: "left 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            zIndex: 46,
+          }}
+        >
+          <div style={{ padding: "12px 12px 8px", borderBottom: "1.5px solid #eee", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#000", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace" }}>
+              TOOLS NAVIGATION
+            </div>
+            <button
+              onClick={() => setMobileSidebarOpen(false)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#000", padding: 4, display: "flex", alignItems: "center" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div style={{ padding: "6px 8px" }}>
+            {ALL_TOOLS.map((tool) => {
+              const isActive = pathname === tool.href;
+              const Icon = TOOL_ICONS[tool.href] || Layers;
+              return (
+                <Link
+                  key={tool.href}
+                  href={tool.href}
+                  title={tool.label}
+                  onClick={() => setMobileSidebarOpen(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    width: "100%",
+                    textDecoration: "none",
+                    background: isActive ? "#000000" : "transparent",
+                    color: isActive ? "#FFE500" : "#444",
+                    fontWeight: isActive ? 900 : 600,
+                    fontSize: "0.82rem",
+                    borderRadius: 4,
+                    marginBottom: 2,
+                  }}
+                >
+                  <Icon size={16} style={{ flexShrink: 0 }} />
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tool.label}</span>
+                  <span style={{ marginLeft: "auto", fontSize: "0.52rem", fontFamily: "monospace", opacity: 0.7, flexShrink: 0 }}>
+                    {tool.hint}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </aside>
+
         {/* Clean Workspace */}
-        <main style={{ flex: 1, overflowY: "auto", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
+        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
           {children}
 
           {/* NON-INTRUSIVE SIDE POPUP AD (For In-House Tools) */}
-          {sideAdOpen ? (
-            <aside
-              aria-label="Sponsored placement"
-              style={{
-                position: "fixed",
-                bottom: 16,
-                right: 16,
-                width: 300,
-                background: "#ffffff",
-                border: "3px solid #000000",
-                boxShadow: "5px 5px 0 #000000",
-                zIndex: 90,
-                padding: "10px 12px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span
-                  style={{
-                    fontSize: "0.6rem",
-                    fontWeight: 900,
-                    background: "#000",
-                    color: "#fff",
-                    padding: "2px 6px",
-                    fontFamily: "monospace",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  ADVERTISEMENT
-                </span>
-                <button
-                  onClick={() => setSideAdOpen(false)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    color: "#000",
-                  }}
-                  title="Close side ad"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* 300x250 Medium Rectangle Google Ad Container */}
-              <div
-                id="side-popup-ad-slot"
+          <div className="tool-layout-ad-wrapper">
+            {sideAdOpen ? (
+              <aside
+                aria-label="Sponsored placement"
                 style={{
-                  width: "100%",
-                  height: 140,
-                  border: "2px dashed #000000",
-                  background: "#fafafa",
+                  position: "fixed",
+                  bottom: 16,
+                  right: 16,
+                  width: 300,
+                  background: "#ffffff",
+                  border: "3px solid #000000",
+                  boxShadow: "5px 5px 0 #000000",
+                  zIndex: 90,
+                  padding: "10px 12px",
                   display: "flex",
                   flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  padding: 8,
+                  gap: 8,
                 }}
               >
-                <span style={{ fontSize: "0.68rem", fontWeight: 800, fontFamily: "monospace", color: "#555" }}>
-                  Google AdSense Side Unit
-                </span>
-                <span style={{ fontSize: "0.58rem", fontFamily: "monospace", color: "#888", marginTop: 2 }}>
-                  [ 300x250 Responsive Side Placement ]
-                </span>
-              </div>
-            </aside>
-          ) : (
-            <button
-              onClick={() => setSideAdOpen(true)}
-              style={{
-                position: "fixed",
-                bottom: 16,
-                right: 16,
-                background: "#FFDD00",
-                border: "2px solid #000",
-                boxShadow: "2px 2px 0 #000",
-                padding: "4px 8px",
-                fontSize: "0.62rem",
-                fontWeight: 900,
-                fontFamily: "monospace",
-                cursor: "pointer",
-                zIndex: 90,
-              }}
-            >
-              SPONSOR AD
-            </button>
-          )}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span
+                    style={{
+                      fontSize: "0.6rem",
+                      fontWeight: 900,
+                      background: "#000",
+                      color: "#fff",
+                      padding: "2px 6px",
+                      fontFamily: "monospace",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    ADVERTISEMENT
+                  </span>
+                  <button
+                    onClick={() => setSideAdOpen(false)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      color: "#000",
+                    }}
+                    title="Close side ad"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* 300x250 Medium Rectangle Google Ad Container */}
+                <div
+                  id="side-popup-ad-slot"
+                  style={{
+                    width: "100%",
+                    height: 140,
+                    border: "2px dashed #000000",
+                    background: "#fafafa",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    padding: 8,
+                  }}
+                >
+                  <span style={{ fontSize: "0.68rem", fontWeight: 800, fontFamily: "monospace", color: "#555" }}>
+                    Google AdSense Side Unit
+                  </span>
+                  <span style={{ fontSize: "0.58rem", fontFamily: "monospace", color: "#888", marginTop: 2 }}>
+                    [ 300x250 Responsive Side Placement ]
+                  </span>
+                </div>
+              </aside>
+            ) : (
+              <button
+                onClick={() => setSideAdOpen(true)}
+                style={{
+                  position: "fixed",
+                  bottom: 16,
+                  right: 16,
+                  background: "#FFDD00",
+                  border: "2px solid #000",
+                  boxShadow: "2px 2px 0 #000",
+                  padding: "4px 8px",
+                  fontSize: "0.62rem",
+                  fontWeight: 900,
+                  fontFamily: "monospace",
+                  cursor: "pointer",
+                  zIndex: 90,
+                }}
+              >
+                SPONSOR AD
+              </button>
+            )}
+          </div>
         </main>
       </div>
     </div>

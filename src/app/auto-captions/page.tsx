@@ -1015,7 +1015,7 @@ export default function AutoCaptionsPage() {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "100vh", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div className="grid-bg" />
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 24px 96px", position: "relative", zIndex: 1 }}>
         {/* Header */}
@@ -1256,7 +1256,7 @@ export default function AutoCaptionsPage() {
 
         {/* Studio Workspace */}
         {file && (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 480px) 1fr", gap: 24, alignItems: "start" }}>
+          <div className="tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 480px) 1fr", gap: 24, alignItems: "start" }}>
             {/* Left Column: Video & Subtitle Preview Canvas */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="brutalist-card" style={{ padding: 18, background: "#fff", gap: 14 }}>

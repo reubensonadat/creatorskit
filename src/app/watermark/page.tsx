@@ -181,7 +181,7 @@ export default function WatermarkPage() {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "100vh", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div className="grid-bg" />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 24px 96px", position: "relative", zIndex: 1 }}>
         {/* Top Title Section */}

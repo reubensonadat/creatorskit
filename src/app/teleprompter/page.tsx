@@ -1243,6 +1243,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
     >
       {/* ── Top Brutalist Studio Header HUD Bar ── */}
       <header
+        className="fs-header"
         style={{
           height: 48,
           background: '#ffffff',
@@ -1256,7 +1257,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           color: '#000000',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Link
             href="/"
             className="brutalist-button"
@@ -1276,6 +1277,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
 
           <span
+            className="fs-header-badge"
             style={{
               fontSize: '0.68rem',
               fontFamily: 'monospace',
@@ -1387,7 +1389,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         </div>
 
         {/* Center Speech AI & VU Meter Telemetry */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900 }}>
+        <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900 }}>
           {speechFollowEnabled ? (
             <div
               style={{
@@ -1455,7 +1457,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         </div>
 
         {/* Right Action Icons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             onClick={() => setShowShortcutsModal(true)}
             className="brutalist-button"
@@ -1478,7 +1480,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
       </header>
 
       {/* ── Main Prompter Screen + Sidebar Layout ── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+      <div className="fs-workspace" style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
         {/* Prompter Canvas Viewport */}
         <div
           style={{

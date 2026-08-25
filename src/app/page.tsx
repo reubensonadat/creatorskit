@@ -6,21 +6,21 @@ import { NATIVE_TOOLS, CURATED_DIRECTORY } from '@/data/tools';
 
 export default function Home() {
   return (
-    <div style={{ background: "#f4f4f5", minHeight: "100vh", color: "#000" }}>
+    <div style={{ background: "#f4f4f5", minHeight: "100vh", color: "#000", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
       {/* Hero */}
-      <section style={{ padding: "90px 24px 70px", maxWidth: 1200, margin: "0 auto" }}>
+      <section style={{ padding: "clamp(40px, 10vw, 90px) clamp(16px, 5vw, 24px) clamp(30px, 8vw, 70px)", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
           <div style={{ width: 8, height: 8, background: "#000" }} />
           <span style={{ fontSize: "0.68rem", fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", color: "#888" }}>
             v0.3.0
           </span>
         </div>
-        <h1 style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, color: "#000", marginBottom: 24 }}>
+        <h1 style={{ fontSize: "clamp(2.4rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, color: "#000", marginBottom: 24 }}>
           Tools for
           <br />
           Creators<span style={{ color: "#ccc" }}>.</span>
         </h1>
-        <p style={{ fontSize: "1.1rem", color: "#666", maxWidth: 540, lineHeight: 1.7, marginBottom: 48, fontWeight: 500 }}>
+        <p style={{ fontSize: "clamp(0.95rem, 2.5vw, 1.1rem)", color: "#666", maxWidth: 540, lineHeight: 1.7, marginBottom: 48, fontWeight: 500 }}>
           Brutalist tools for video editors, YouTubers, audio & design.
           <br />
           No subscriptions. Runs 100% locally in your browser.
@@ -123,12 +123,12 @@ export default function Home() {
       </section>
 
       {/* Divider */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(16px, 5vw, 24px)" }}>
         <div style={{ height: 2, background: "#ddd" }} />
       </div>
 
       {/* SECTION 1: IN-HOUSE CREATORKIT TOOLS */}
-      <section id="in-house-tools" style={{ padding: "60px 24px 50px", maxWidth: 1200, margin: "0 auto" }}>
+      <section id="in-house-tools" style={{ padding: "clamp(30px, 6vw, 60px) clamp(16px, 5vw, 24px) clamp(25px, 5vw, 50px)", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ marginBottom: 36, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -137,7 +137,7 @@ export default function Home() {
                 IN-HOUSE STUDIO SUITE
               </span>
             </div>
-            <h2 style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "-0.02em", color: "#000", margin: 0 }}>
+            <h2 style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000", margin: 0 }}>
               CreatorKit In-House Tools
             </h2>
           </div>
@@ -146,14 +146,14 @@ export default function Home() {
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))", gap: 8 }}>
           {NATIVE_TOOLS.map((tool) => (
             <Link
               key={tool.href}
               href={tool.href}
               style={{
                 display: "block",
-                padding: 24,
+                padding: "clamp(16px, 3vw, 24px)",
                 background: "#fff",
                 border: "2px solid #000",
                 boxShadow: tool.isFlagship ? "3px 3px 0 #000" : "none",
@@ -189,7 +189,7 @@ export default function Home() {
       </section>
 
       {/* High-Converting Google Ad Slot Banner */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px 40px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(16px, 5vw, 24px) 40px" }}>
         <div
           id="google-ad-slot-middle"
           style={{
@@ -210,12 +210,12 @@ export default function Home() {
           <span style={{ fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#000" }}>
             ADVERTISEMENT
           </span>
-          <span style={{ fontSize: "0.68rem", marginTop: 4 }}>High-Viewability Google AdSense Leaderboard Slot</span>
+          <span style={{ fontSize: "0.68rem", marginTop: 4, textAlign: "center" }}>High-Viewability Google AdSense Leaderboard Slot</span>
         </div>
       </div>
 
       {/* SECTION 2: CURATED EXTERNAL TOOLS (Routed Through Ad Interstitial) */}
-      <section id="external-tools" style={{ padding: "20px 24px 80px", maxWidth: 1200, margin: "0 auto" }}>
+      <section id="external-tools" style={{ padding: "clamp(10px, 3vw, 20px) clamp(16px, 5vw, 24px) clamp(40px, 8vw, 80px)", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <div style={{ width: 8, height: 8, background: "#FFDD00", border: "1px solid #000" }} />
@@ -223,7 +223,7 @@ export default function Home() {
               CURATED PARTNER & EXTERNAL WEB TOOLS
             </span>
           </div>
-          <h2 style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.02em", color: "#000", margin: 0 }}>
+          <h2 style={{ fontSize: "clamp(1.3rem, 4vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000", margin: 0 }}>
             Recommended External Tools
           </h2>
           <p style={{ color: "#666", fontSize: "0.88rem", margin: "4px 0 0", fontWeight: 500 }}>
@@ -231,14 +231,14 @@ export default function Home() {
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))", gap: 8 }}>
           {CURATED_DIRECTORY.map((tool) => (
             <Link
               key={tool.label}
               href={tool.href}
               style={{
                 display: "block",
-                padding: 22,
+                padding: "clamp(16px, 3vw, 22px)",
                 background: "#fff",
                 border: "2px dashed #666",
                 textDecoration: "none",
@@ -277,11 +277,11 @@ export default function Home() {
       </section>
 
       {/* Footer CTA */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px 80px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(16px, 5vw, 24px) 80px" }}>
         <div style={{ height: 2, background: "#ddd", marginBottom: 60 }} />
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 32 }}>
           <div>
-            <h2 style={{ fontSize: "2rem", fontWeight: 900, color: "#000", marginBottom: 8, letterSpacing: "-0.02em" }}>
+            <h2 style={{ fontSize: "clamp(1.5rem, 4vw, 2rem)", fontWeight: 900, color: "#000", marginBottom: 8, letterSpacing: "-0.02em" }}>
               Ready to create?
             </h2>
             <p style={{ fontSize: "0.9rem", color: "#888" }}>

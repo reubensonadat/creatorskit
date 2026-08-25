@@ -99,6 +99,27 @@ export default function TextHighlighterPage() {
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
 
+  // Canvas Environment
+  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image' | 'custom'>('paper');
+  const [showTopColumns, setShowTopColumns] = useState(true);
+  const [showMasthead, setShowMasthead] = useState(true);
+  const [showSubhead, setShowSubhead] = useState(true);
+  const [showByline, setShowByline] = useState(true);
+  const [showBottomColumns, setShowBottomColumns] = useState(true);
+  const [showDividerRules, setShowDividerRules] = useState(true);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadedImageEl, setUploadedImageEl] = useState<HTMLImageElement | null>(null);
+  const [imageOpacity, setImageOpacity] = useState(0.4);
+  const [customBgColor, setCustomBgColor] = useState('#ffffff');
+
+  // Camera Zoom
+  const [zoomEnabled, setZoomEnabled] = useState(false);
+  const [zoomDirection, setZoomDirection] = useState<'in' | 'out'>('in');
+  const [zoomIntensity, setZoomIntensity] = useState(0.10);
+
+  // Typography Scale
+  const [headlineScale, setHeadlineScale] = useState(1.0);
+
   // Export State
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
@@ -189,6 +210,20 @@ export default function TextHighlighterPage() {
     highlightDirection,
     highlightSector,
     fontFamily,
+    canvasEnvironment,
+    showTopColumns,
+    showMasthead,
+    showSubhead,
+    showByline,
+    showBottomColumns,
+    showDividerRules,
+    uploadedImage: uploadedImageEl,
+    imageOpacity,
+    customBgColor,
+    zoomEnabled,
+    zoomDirection,
+    zoomIntensity,
+    headlineScale,
   };
 
   // Redraw Canvas Frame
@@ -265,6 +300,29 @@ export default function TextHighlighterPage() {
     setHighlightProgress(0);
     setIsPlaying(true);
     if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume);
+  };
+
+  // Environment Switch Handler
+  const handleEnvironmentSwitch = (env: 'paper' | 'dark' | 'image' | 'custom') => {
+    setCanvasEnvironment(env);
+    if (env === 'paper') {
+      setShowTopColumns(true); setShowMasthead(true); setShowSubhead(true);
+      setShowByline(true); setShowBottomColumns(true); setShowDividerRules(true);
+    } else {
+      setShowTopColumns(false); setShowMasthead(false); setShowSubhead(false);
+      setShowByline(false); setShowBottomColumns(false); setShowDividerRules(false);
+    }
+  };
+
+  // Image Upload Handler
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setUploadedImageUrl(url);
+    const img = new Image();
+    img.onload = () => setUploadedImageEl(img);
+    img.src = url;
   };
 
   // Single Frame PNG Copy
@@ -517,7 +575,7 @@ export default function TextHighlighterPage() {
       : GOOGLE_FONTS_LIST.filter((f) => f.category === selectedFontCategory);
 
   return (
-    <div style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000', padding: '24px 20px 80px' }}>
+    <div className="tool-page-padding" style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000', padding: '24px 20px 80px', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       {/* Top Breadcrumb & Title Bar */}
       <div style={{ maxWidth: 1280, margin: '0 auto 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -587,6 +645,7 @@ export default function TextHighlighterPage() {
 
       {/* Main 2-Column Grid */}
       <div
+        className="tool-inner-grid"
         style={{
           maxWidth: 1280,
           margin: '0 auto',
@@ -1377,6 +1436,222 @@ export default function TextHighlighterPage() {
                   </span>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Canvas Environment Card */}
+          <div
+            className="brutalist-card"
+            style={{
+              padding: 14,
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              borderRadius: 4,
+            }}
+          >
+            <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', display: 'block', marginBottom: 2 }}>
+              Canvas Environment
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+              {[
+                { id: 'paper' as const, label: 'Newspaper', icon: '📰' },
+                { id: 'dark' as const, label: 'Dark', icon: '⬛' },
+                { id: 'image' as const, label: 'Image', icon: '🖼' },
+                { id: 'custom' as const, label: 'Custom', icon: '🎨' },
+              ].map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => handleEnvironmentSwitch(e.id)}
+                  style={{
+                    padding: '8px 6px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: canvasEnvironment === e.id ? '#000' : '#fff',
+                    color: canvasEnvironment === e.id ? '#fff' : '#000',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.66rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                  }}
+                >
+                  {e.icon} {e.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Image Upload (only when image env selected) */}
+            {canvasEnvironment === 'image' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                  Upload Screenshot
+                </label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleImageUpload}
+                  style={{ fontSize: '0.62rem', fontFamily: 'monospace' }}
+                />
+                {uploadedImageUrl && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444', minWidth: 48 }}>OPACITY</span>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="1.0"
+                        step="0.05"
+                        value={imageOpacity}
+                        onChange={(e) => setImageOpacity(parseFloat(e.target.value))}
+                        style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                        {Math.round(imageOpacity * 100)}%
+                      </span>
+                    </div>
+                    <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #ccc', borderRadius: 2 }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Custom Color Picker (only when custom env selected) */}
+            {canvasEnvironment === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>BG COLOR</span>
+                <input
+                  type="color"
+                  value={customBgColor}
+                  onChange={(e) => setCustomBgColor(e.target.value)}
+                  style={{ width: 32, height: 28, border: '2px solid #000', borderRadius: 4, cursor: 'pointer', padding: 0 }}
+                />
+                <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>{customBgColor}</span>
+              </div>
+            )}
+
+            {/* Element Visibility Toggles */}
+            <div>
+              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
+                Show Elements
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                {[
+                  { key: 'showTopColumns', label: 'Top Columns', val: showTopColumns, set: setShowTopColumns },
+                  { key: 'showMasthead', label: 'Masthead', val: showMasthead, set: setShowMasthead },
+                  { key: 'showSubhead', label: 'Subhead', val: showSubhead, set: setShowSubhead },
+                  { key: 'showByline', label: 'Byline', val: showByline, set: setShowByline },
+                  { key: 'showBottomColumns', label: 'Bottom Cols', val: showBottomColumns, set: setShowBottomColumns },
+                  { key: 'showDividerRules', label: 'Dividers', val: showDividerRules, set: setShowDividerRules },
+                ].map((t) => (
+                  <label
+                    key={t.key}
+                    style={{
+                      fontSize: '0.6rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      color: '#000',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '3px 0',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={t.val}
+                      onChange={(e) => t.set(e.target.checked)}
+                      style={{ width: 12, height: 12, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Camera Zoom */}
+            <div>
+              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
+                Camera Zoom
+              </label>
+              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={zoomEnabled}
+                  onChange={(e) => setZoomEnabled(e.target.checked)}
+                  style={{ width: 12, height: 12, accentColor: '#000', cursor: 'pointer' }}
+                />
+                Enable Zoom
+              </label>
+              {zoomEnabled && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['in', 'out'] as const).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setZoomDirection(d)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          border: '1.5px solid #000',
+                          borderRadius: 3,
+                          background: zoomDirection === d ? '#000' : '#fff',
+                          color: zoomDirection === d ? '#fff' : '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.58rem',
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {d === 'in' ? 'Zoom In' : 'Zoom Out'}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>Intensity</span>
+                    <input
+                      type="range"
+                      min="0.03"
+                      max="0.25"
+                      step="0.01"
+                      value={zoomIntensity}
+                      onChange={(e) => setZoomIntensity(parseFloat(e.target.value))}
+                      style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                      {Math.round(zoomIntensity * 100)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Headline Scale */}
+            <div>
+              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
+                Headline Scale
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>0.5x</span>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.05"
+                  value={headlineScale}
+                  onChange={(e) => setHeadlineScale(parseFloat(e.target.value))}
+                  style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                  {headlineScale.toFixed(1)}x
+                </span>
+              </div>
             </div>
           </div>
 

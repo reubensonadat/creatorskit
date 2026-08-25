@@ -1064,6 +1064,7 @@ export default function BeatSyncPage() {
     >
       {/* ── Studio Top Header HUD ── */}
       <header
+        className="fs-header"
         style={{
           height: 44,
           background: '#000000',
@@ -1076,11 +1077,12 @@ export default function BeatSyncPage() {
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Unified Tools Dropdown */}
           <StudioToolsDropdown currentHref="/beat-sync" theme="dark" />
 
           <span
+            className="fs-header-badge"
             style={{
               fontSize: '0.66rem',
               fontFamily: 'monospace',
@@ -1105,7 +1107,7 @@ export default function BeatSyncPage() {
         </div>
 
         {/* Top Header Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label
             style={{
               background: '#FFE500',
@@ -1154,9 +1156,10 @@ export default function BeatSyncPage() {
       </header>
 
       {/* ── Top Workspace: Left Preview Player + Right Control Deck ── */}
-      <div style={{ flex: '1 1 50%', display: 'flex', borderBottom: '1px solid #1f1f23', minHeight: 0, overflow: 'hidden' }}>
+      <div className="fs-workspace" style={{ flex: '1 1 50%', display: 'flex', borderBottom: '1px solid #1f1f23', minHeight: 0, overflow: 'hidden' }}>
         {/* Left Video Player Preview (Strict Overflow Hidden & Pro Aspect Containment) */}
         <div
+          className="fs-panel-left"
           style={{
             flex: '0 0 42%',
             background: '#0a0a0c',
@@ -1306,7 +1309,7 @@ export default function BeatSyncPage() {
         </div>
 
         {/* Right Rhythm & Retention Control Deck */}
-        <div style={{ flex: '0 0 58%', background: '#111114', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="fs-panel-right" style={{ flex: '0 0 58%', background: '#111114', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Deck Nav Tabs */}
           <div style={{ height: 36, borderBottom: '1px solid #1f1f23', display: 'flex', background: '#0a0a0c', flexShrink: 0 }}>
             {[
@@ -1575,7 +1578,7 @@ export default function BeatSyncPage() {
         </div>
 
         {/* Track A1: Audio Waveform Canvas */}
-        <div style={{ flex: 1, position: 'relative', background: '#0c0c0e', display: 'flex', minHeight: 0 }}>
+        <div className="fs-timeline" style={{ flex: 1, position: 'relative', background: '#0c0c0e', display: 'flex', minHeight: 0 }}>
           <div style={{ position: 'absolute', left: 4, top: 4, zIndex: 10, fontSize: '0.52rem', fontFamily: 'monospace', color: '#4ade80', background: '#000', padding: '1px 4px', borderRadius: 2 }}>
             A1
           </div>
@@ -1590,6 +1593,7 @@ export default function BeatSyncPage() {
 
         {/* Transport Toolbar */}
         <div
+          className="fs-bottom-bar"
           style={{
             height: 42,
             background: '#000000',

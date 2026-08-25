@@ -496,7 +496,7 @@ export default function ColorGradientPage() {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column" }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div className="grid-bg" />
 
       <div style={{ maxWidth: 1200, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -658,7 +658,7 @@ export default function ColorGradientPage() {
             </div>
 
             {/* Layout grids */}
-            <div style={{ display: "grid", gridTemplateColumns: "310px 1fr", gap: 32, alignItems: "start" }}>
+            <div className="gradient-workspace-grid tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "310px 1fr", gap: 32, alignItems: "start" }}>
               {/* Left panel specs */}
               <div
                 className="brutalist-card"
@@ -815,7 +815,7 @@ export default function ColorGradientPage() {
 
         {/* Tab 2: Mesh Gradient Designer (Photogradient replica - compact grid layout) */}
         {activeTab === "mesh" && (
-          <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 32, alignItems: "start" }}>
+          <div className="gradient-workspace-grid tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 32, alignItems: "start" }}>
             
             {/* Left: Compact fixed aspect ratio preview */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

@@ -3,24 +3,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, LayoutGrid } from "lucide-react";
+import { ChevronDown, LayoutGrid, Menu, X } from "lucide-react";
 import { ALL_TOOLS } from "@/data/tools";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const mobileRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
+      if (mobileRootRef.current && !mobileRootRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false);
+      }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setMobileMenuOpen(false);
+      }
     };
-    const onPopState = () => setMenuOpen(false);
+    const onPopState = () => {
+      setMenuOpen(false);
+      setMobileMenuOpen(false);
+    };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("popstate", onPopState);
@@ -30,6 +41,15 @@ export default function Navbar() {
       window.removeEventListener("popstate", onPopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileMenuOpen]);
 
   return (
     <header
@@ -41,7 +61,9 @@ export default function Navbar() {
         zIndex: 50,
       }}
     >
+      {/* Desktop Nav */}
       <nav
+        className="navbar-desktop"
         style={{
           maxWidth: 1200,
           margin: "0 auto",
@@ -220,6 +242,151 @@ export default function Navbar() {
           >
             All Tools
           </Link>
+        </div>
+      </nav>
+
+      {/* Mobile Nav */}
+      <nav
+        className="navbar-mobile"
+        style={{
+          padding: "0 12px",
+          height: 52,
+          display: "none",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            textDecoration: "none",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              overflow: "hidden",
+              border: "2px solid #000",
+              background: "#fff",
+            }}
+          >
+            <img src="/logo.png" alt="CK" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
+          <span style={{ fontWeight: 900, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#000", fontFamily: "monospace" }}>
+            CK<span style={{ color: "#888" }}>.win</span>
+          </span>
+        </Link>
+
+        <div ref={mobileRootRef} style={{ position: "relative" }}>
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 40,
+              height: 40,
+              background: mobileMenuOpen ? "#000" : "transparent",
+              border: "2px solid #000",
+              cursor: "pointer",
+              color: mobileMenuOpen ? "#fff" : "#000",
+            }}
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
+          {mobileMenuOpen && (
+            <div
+              style={{
+                position: "fixed",
+                top: 52,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 99,
+                background: "#fff",
+                overflowY: "auto",
+                padding: 16,
+              }}
+            >
+              <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#888", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 12 }}>
+                ALL TOOLS ({ALL_TOOLS.length})
+              </div>
+              {ALL_TOOLS.map((tool) => {
+                const isActive = pathname === tool.href;
+                const isExt = tool.isExternal && (tool.externalUrl || tool.href).startsWith('http');
+                const target = tool.externalUrl || tool.href;
+
+                if (isExt) {
+                  return (
+                    <a
+                      key={tool.label}
+                      href={target}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setMobileMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "12px 14px",
+                        textDecoration: "none",
+                        borderBottom: "1px solid #f0f0f0",
+                        color: "#000",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>{tool.label}</div>
+                        <div style={{ fontSize: "0.65rem", fontFamily: "monospace", color: "#888", marginTop: 2 }}>
+                          {tool.hint} · EXTERNAL ↗
+                        </div>
+                      </div>
+                    </a>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={tool.href}
+                    href={tool.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "12px 14px",
+                      textDecoration: "none",
+                      borderBottom: "1px solid #f0f0f0",
+                      background: isActive ? "#000" : "transparent",
+                      color: isActive ? "#fff" : "#000",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>{tool.label}</div>
+                      <div style={{ fontSize: "0.65rem", fontFamily: "monospace", color: isActive ? "#999" : "#888", marginTop: 2 }}>
+                        {tool.hint}
+                      </div>
+                    </div>
+                    {tool.badge && (
+                      <span style={{ fontSize: "0.55rem", fontFamily: "monospace", fontWeight: 900, background: isActive ? "#FFE500" : "#000", color: isActive ? "#000" : "#fff", padding: "2px 6px" }}>
+                        {tool.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       </nav>
     </header>

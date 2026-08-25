@@ -286,7 +286,7 @@ export default function ResizerPage() {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "100%", padding: "20px 24px 80px", maxWidth: 1200, margin: "0 auto" }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "100%", padding: "20px 24px 80px", maxWidth: 1200, margin: "0 auto", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       {/* Top Title Section */}
       <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -375,7 +375,7 @@ export default function ResizerPage() {
           />
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "start" }}>
+        <div className="tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "start" }}>
           {/* Preview Stage */}
           <div className="brutalist-card" style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 14, background: "#fff", border: "3px solid #000", boxShadow: "6px 6px 0 #000" }}>
             <canvas

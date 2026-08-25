@@ -578,7 +578,7 @@ export default function ExposureMonitorPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f4f5', color: '#000000', padding: '16px 20px 80px' }}>
+    <div className="tool-page-padding" style={{ minHeight: '100vh', background: '#f4f4f5', color: '#000000', padding: '16px 20px 80px', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       
       {/* Hidden Source Elements */}
       <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
@@ -693,6 +693,7 @@ export default function ExposureMonitorPage() {
 
       {/* Main 2-Column Studio Deck */}
       <div
+        className="tool-inner-grid"
         style={{
           maxWidth: 1360,
           margin: '0 auto',

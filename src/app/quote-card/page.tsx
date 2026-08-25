@@ -532,7 +532,7 @@ export default function QuoteCardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0] text-black flex flex-col font-sans">
+    <div className="tool-page-padding min-h-screen bg-[#F5F5F0] text-black flex flex-col font-sans" style={{ overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       {/* Toast Notification */}
       {exportSuccessMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#FFE500] text-black border-2 border-black px-5 py-3 font-mono font-bold shadow-[4px_4px_0px_#000] flex items-center gap-3">

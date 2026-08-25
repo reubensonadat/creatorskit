@@ -580,6 +580,7 @@ Tested on YouTube Simulator.`;
 
       {/* ── Single Ultra-Compact Studio Top HUD Bar (Zero Redundant Header) ── */}
       <header
+        className="fs-header"
         style={{
           height: 44,
           background: '#000000',
@@ -592,7 +593,7 @@ Tested on YouTube Simulator.`;
           flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Link
             href="/"
             style={{
@@ -616,6 +617,7 @@ Tested on YouTube Simulator.`;
           <StudioToolsDropdown currentHref="/thumbnail-lab" theme="dark" />
 
           <span
+            className="fs-header-badge"
             style={{
               fontSize: '0.64rem',
               fontFamily: 'monospace',
@@ -783,7 +785,7 @@ Tested on YouTube Simulator.`;
         </div>
 
         {/* 1-Click Upload Button Directly in Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label
             style={{
               background: contentFormat === 'longform' ? '#FFE500' : '#ff0000',
@@ -866,7 +868,7 @@ Tested on YouTube Simulator.`;
       </header>
 
       {/* ── Main Canvas Viewport (Starts Immediately from Pixel 44) ── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="fs-workspace" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {/* Center Live Simulation Area */}
         <div
           style={{

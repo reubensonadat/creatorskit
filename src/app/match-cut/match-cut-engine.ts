@@ -35,6 +35,26 @@ export interface RenderOptions {
   highlightSector?: 'top-masthead' | 'center-headline' | 'body-paragraph';
   fontFamily?: string;
   fontCycleList?: string[]; // 5 fonts for rapid match cuts
+
+  // Canvas Environment
+  canvasEnvironment?: 'paper' | 'dark' | 'image' | 'custom';
+  showTopColumns?: boolean;
+  showMasthead?: boolean;
+  showSubhead?: boolean;
+  showByline?: boolean;
+  showBottomColumns?: boolean;
+  showDividerRules?: boolean;
+  uploadedImage?: HTMLImageElement | null;
+  imageOpacity?: number;
+  customBgColor?: string;
+
+  // Camera Zoom
+  zoomEnabled?: boolean;
+  zoomDirection?: 'in' | 'out';
+  zoomIntensity?: number;
+
+  // Typography
+  headlineScale?: number;
 }
 
 export const AVAILABLE_FONTS = [
@@ -316,40 +336,66 @@ export function renderNewspaperMatchCut(
 ) {
   const theme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.vintage;
   const isDark = options.paperTheme === 'noir';
+  const env = options.canvasEnvironment || 'paper';
 
-  // Use offscreen canvas buffer if depth of field is active
-  const useDof = options.depthOfField && typeof document !== 'undefined';
+  // Use offscreen canvas buffer if depth of field is active (paper env only)
+  const useDof = options.depthOfField && env === 'paper' && typeof document !== 'undefined';
   const renderBuffer = useDof ? getBufferCanvas(width, height, 'main') : null;
   const ctx = renderBuffer ? renderBuffer.getContext('2d')! : targetCanvasCtx;
 
   ctx.save();
 
-  // 1. Draw Paper Sheet Background
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, width, height);
+  // 1. Draw Canvas Background based on environment
 
-  // Subtle radial vignette
-  const vignette = ctx.createRadialGradient(
-    width / 2,
-    height / 2,
-    Math.min(width, height) * 0.35,
-    width / 2,
-    height / 2,
-    Math.max(width, height) * 0.88
-  );
-  vignette.addColorStop(0, 'rgba(0,0,0,0)');
-  vignette.addColorStop(0.7, isDark ? 'rgba(0,0,0,0.25)' : 'rgba(80,60,30,0.04)');
-  vignette.addColorStop(1, isDark ? 'rgba(0,0,0,0.55)' : 'rgba(70,50,20,0.12)');
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, width, height);
-
-  // Grain pattern
-  if (options.filmGrain) {
-    const noise = getNoisePattern();
-    const pattern = ctx.createPattern(noise, 'repeat');
-    if (pattern) {
-      ctx.fillStyle = pattern;
-      ctx.fillRect(0, 0, width, height);
+  if (env === 'dark') {
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, width, height);
+    const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.8);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+  } else if (env === 'image' && options.uploadedImage) {
+    ctx.globalAlpha = options.imageOpacity ?? 0.4;
+    const img = options.uploadedImage;
+    const imgAspect = img.width / img.height;
+    const canvasAspect = width / height;
+    let sw: number, sh: number, sx: number, sy: number;
+    if (imgAspect > canvasAspect) {
+      sh = img.height;
+      sw = sh * canvasAspect;
+      sx = (img.width - sw) / 2;
+      sy = 0;
+    } else {
+      sw = img.width;
+      sh = sw / canvasAspect;
+      sx = 0;
+      sy = (img.height - sh) / 2;
+    }
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, width, height);
+  } else if (env === 'custom') {
+    ctx.fillStyle = options.customBgColor || '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    // Paper (default)
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, width, height);
+    const vignette = ctx.createRadialGradient(
+      width / 2, height / 2, Math.min(width, height) * 0.35,
+      width / 2, height / 2, Math.max(width, height) * 0.88
+    );
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(0.7, isDark ? 'rgba(0,0,0,0.25)' : 'rgba(80,60,30,0.04)');
+    vignette.addColorStop(1, isDark ? 'rgba(0,0,0,0.55)' : 'rgba(70,50,20,0.12)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+    if (options.filmGrain) {
+      const noise = getNoisePattern();
+      const pattern = ctx.createPattern(noise, 'repeat');
+      if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
     }
   }
 
@@ -381,7 +427,7 @@ export function renderNewspaperMatchCut(
   }
 
   // Headline Typography (where anchor word lives)
-  const headlineFontSize = Math.max(26, Math.round(width * 0.038));
+  const headlineFontSize = Math.max(26, Math.round(width * 0.038)) * (options.headlineScale ?? 1);
   const headlineLineHeight = headlineFontSize * 1.35;
   const headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
 
@@ -458,6 +504,16 @@ export function renderNewspaperMatchCut(
     ctx.translate(-docAnchorCenterX, -docAnchorCenterY);
   }
 
+  // Camera Zoom (cinematic slow zoom during highlight sweep)
+  if (options.zoomEnabled) {
+    const progress = options.highlightProgress ?? 1;
+    const dir = options.zoomDirection === 'out' ? -1 : 1;
+    const zoomScale = 1 + dir * (options.zoomIntensity ?? 0.1) * progress;
+    ctx.translate(docAnchorCenterX, docAnchorCenterY);
+    ctx.scale(zoomScale, zoomScale);
+    ctx.translate(-docAnchorCenterX, -docAnchorCenterY);
+  }
+
   const bodyParas = (cut.bodyParagraphs && cut.bodyParagraphs.length > 0)
     ? cut.bodyParagraphs
     : BACKGROUND_BODY_PARAGRAPHS;
@@ -465,6 +521,7 @@ export function renderNewspaperMatchCut(
   // ------------------------------------------------------------
   // SECTION A: Dense Top Columns (Stage text above the headline)
   // ------------------------------------------------------------
+  if (options.showTopColumns !== false) {
   const topColumnsY = 40;
   const topColumnsBottomY = docHeadlineY - 140;
   drawDenseColumns(
@@ -479,10 +536,12 @@ export function renderNewspaperMatchCut(
     bodyLineHeight,
     theme
   );
+  }
 
   // ------------------------------------------------------------
   // SECTION B: Masthead & Dateline
   // ------------------------------------------------------------
+  if (options.showMasthead !== false) {
   const mastheadY = docHeadlineY - 75;
   ctx.save();
   ctx.textAlign = 'center';
@@ -497,6 +556,7 @@ export function renderNewspaperMatchCut(
   }
 
   // Thin double divider rules above headline
+  if (options.showDividerRules !== false) {
   ctx.strokeStyle = theme.ruleColor;
   ctx.lineWidth = 1.8;
   ctx.beginPath();
@@ -509,7 +569,9 @@ export function renderNewspaperMatchCut(
   ctx.moveTo(pageLeftX, mastheadY + 34);
   ctx.lineTo(pageLeftX + pageWidth, mastheadY + 34);
   ctx.stroke();
+  }
   ctx.restore();
+  }
 
   // ------------------------------------------------------------
   // SECTION C: The Headline & Highlighted Anchor Sentence
@@ -525,7 +587,8 @@ export function renderNewspaperMatchCut(
   drawAnchorHighlight(ctx, anchorDrawX, docHeadlineY, matchW, headlineFontSize, options);
 
   // 1. Draw Prefix Words (Exact same font size)
-  ctx.fillStyle = theme.ink;
+  const isNonPaper = env === 'dark' || env === 'image' || env === 'custom';
+  ctx.fillStyle = isNonPaper ? '#ffffff' : theme.ink;
   ctx.textAlign = 'left';
   if (prefix) {
     ctx.fillText(prefix, docHeadlineX, docHeadlineY);
@@ -533,25 +596,27 @@ export function renderNewspaperMatchCut(
 
   // 2. Draw Anchor Words (Exact same font size)
   if (options.highlightStyle === 'box') {
-    ctx.fillStyle = '#ffffff'; // Knockout on solid box
+    ctx.fillStyle = isNonPaper ? '#000000' : '#ffffff'; // Knockout on solid box
   } else {
-    ctx.fillStyle = isDark ? '#ffffff' : theme.ink;
+    ctx.fillStyle = isNonPaper ? '#ffffff' : (isDark ? '#ffffff' : theme.ink);
   }
   ctx.fillText(matchText, anchorDrawX, docHeadlineY);
 
   // 3. Draw Suffix Words (Exact same font size)
-  ctx.fillStyle = theme.ink;
+  ctx.fillStyle = isNonPaper ? '#ffffff' : theme.ink;
   if (suffix) {
     ctx.fillText(suffix, anchorDrawX + matchW, docHeadlineY);
   }
 
   // Thin rule below headline
-  ctx.strokeStyle = theme.ruleColor;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pageLeftX, docHeadlineY + headlineFontSize * 0.85);
-  ctx.lineTo(pageLeftX + pageWidth, docHeadlineY + headlineFontSize * 0.85);
-  ctx.stroke();
+  if (options.showDividerRules !== false) {
+    ctx.strokeStyle = isNonPaper ? 'rgba(255,255,255,0.2)' : theme.ruleColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pageLeftX, docHeadlineY + headlineFontSize * 0.85);
+    ctx.lineTo(pageLeftX + pageWidth, docHeadlineY + headlineFontSize * 0.85);
+    ctx.stroke();
+  }
   ctx.restore();
 
   // ------------------------------------------------------------
@@ -559,20 +624,20 @@ export function renderNewspaperMatchCut(
   // ------------------------------------------------------------
   let afterHeadlineY = docHeadlineY + headlineFontSize + 20;
 
-  if (cut.subhead) {
+  if (options.showSubhead !== false && cut.subhead) {
     ctx.save();
     ctx.font = `italic ${Math.max(13, Math.round(width * 0.017))}px Georgia, serif`;
-    ctx.fillStyle = theme.inkMuted;
+    ctx.fillStyle = isNonPaper ? 'rgba(255,255,255,0.7)' : theme.inkMuted;
     ctx.textAlign = 'left';
     ctx.fillText(cut.subhead, pageLeftX, afterHeadlineY);
     afterHeadlineY += 22;
     ctx.restore();
   }
 
-  if (cut.byline || cut.location) {
+  if (options.showByline !== false && (cut.byline || cut.location)) {
     ctx.save();
     ctx.font = `bold italic ${Math.max(12, Math.round(width * 0.0155))}px Georgia, serif`;
-    ctx.fillStyle = theme.inkMuted;
+    ctx.fillStyle = isNonPaper ? 'rgba(255,255,255,0.5)' : theme.inkMuted;
     ctx.textAlign = 'left';
     const bylineStr = [cut.location, cut.byline].filter(Boolean).join(' — ') || 'From Our Special Correspondent';
     ctx.fillText(bylineStr, pageLeftX, afterHeadlineY);
@@ -583,6 +648,7 @@ export function renderNewspaperMatchCut(
   // ------------------------------------------------------------
   // SECTION E: Dense Bottom Columns (Stage text below the headline)
   // ------------------------------------------------------------
+  if (options.showBottomColumns !== false) {
   const bottomColumnsH = 1600;
   drawDenseColumns(
     ctx,
@@ -597,6 +663,7 @@ export function renderNewspaperMatchCut(
     theme,
     3
   );
+  }
 
   ctx.restore(); // Restore camera tracking transform
 

@@ -717,7 +717,7 @@ export default function SilenceTrimmerPage() {
   const timeSavedPercent = origDurationMs > 0 ? Math.round((timeSavedMs / origDurationMs) * 100) : 0;
 
   return (
-    <div style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000000', padding: '36px 24px 96px' }}>
+    <div className="tool-page-padding" style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000000', padding: '36px 24px 96px', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
         {/* Top Studio Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
@@ -888,7 +888,7 @@ export default function SilenceTrimmerPage() {
 
         {/* Studio Workspace After Upload */}
         {file && audioBuffer && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24 }}>
+          <div className="tool-inner-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24 }}>
             {/* Left Column: Player, Timeline & Telemetry */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Media Player Card */}

@@ -614,9 +614,9 @@ export default function TextMatchCutStudioPage() {
   };
 
   return (
-    <div style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto' }}>
+    <div className="tool-page-padding" style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto', boxSizing: 'border-box', overflow: 'hidden', width: '100%' }}>
       {/* Top Title Section */}
-      <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span
             style={{
@@ -676,6 +676,7 @@ export default function TextMatchCutStudioPage() {
 
       {/* Main Workspace 2-Column Grid */}
       <div
+        className="matchcut-workspace-grid"
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1.28fr) minmax(360px, 440px)',
@@ -688,7 +689,7 @@ export default function TextMatchCutStudioPage() {
           
           {/* Main Stage Viewport Frame */}
           <div
-            className="brutalist-card"
+            className="brutalist-card tool-canvas-frame"
             style={{
               padding: 14,
               background: '#ffffff',
@@ -697,10 +698,14 @@ export default function TextMatchCutStudioPage() {
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              width: '100%',
             }}
           >
             {/* Viewport Meta Bar */}
             <div
+              className="tool-viewport-meta"
               style={{
                 width: '100%',
                 display: 'flex',
@@ -733,7 +738,7 @@ export default function TextMatchCutStudioPage() {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="tool-viewport-meta-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
                   onClick={() => setShowCrosshairGuide(!showCrosshairGuide)}
                   style={{
@@ -781,6 +786,7 @@ export default function TextMatchCutStudioPage() {
 
             {/* Stage Canvas */}
             <div
+              className="tool-canvas-viewport"
               style={{
                 position: 'relative',
                 width: '100%',
@@ -812,6 +818,7 @@ export default function TextMatchCutStudioPage() {
 
             {/* Transport & Scrubber Bar */}
             <div
+              className="tool-transport-bar"
               style={{
                 width: '100%',
                 marginTop: 12,
@@ -854,7 +861,7 @@ export default function TextMatchCutStudioPage() {
               </div>
 
               {/* Speed Controls: 1 to 30 cuts/second */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
                   SPEED: <span style={{ color: '#d97706' }}>{cutsPerSecond} CUTS/SEC</span>
                 </span>
@@ -868,7 +875,7 @@ export default function TextMatchCutStudioPage() {
                   style={{ width: 90, accentColor: '#000', cursor: 'pointer' }}
                   title="Adjust cut speed from 1 to 30 cuts per second"
                 />
-                <div style={{ display: 'flex', border: '2px solid #000', background: '#fff' }}>
+                <div className="tool-transport-speed-presets" style={{ display: 'flex', border: '2px solid #000', background: '#fff' }}>
                   {[5, 10, 15, 20, 30].map((spd) => (
                     <button
                       key={spd}
@@ -941,6 +948,7 @@ export default function TextMatchCutStudioPage() {
 
             {/* Under-canvas Aspect Ratio bar */}
             <div
+              className="tool-aspect-bar tool-aspect-export-row"
               style={{
                 width: '100%',
                 marginTop: 10,
@@ -974,7 +982,7 @@ export default function TextMatchCutStudioPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="brutalist-button"
                   onClick={handleDownloadSingleFrame}
@@ -1046,6 +1054,7 @@ export default function TextMatchCutStudioPage() {
 
           {/* Quick Export Cards Row */}
           <div
+            className="tool-export-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
@@ -1114,7 +1123,7 @@ export default function TextMatchCutStudioPage() {
         </div>
 
         {/* Right Column: Control Sidebar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           
           {/* Pinned Anchor Phrase Master Box with 23 Character Limit */}
           <div
@@ -1235,7 +1244,7 @@ export default function TextMatchCutStudioPage() {
           </div>
 
           {/* Tab Navigation */}
-          <div style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)' }}>
+          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)' }}>
             {[
               { id: 'headlines' as const, label: `Cuts (${cuts.length})`, icon: Layers },
               { id: 'style' as const, label: 'Highlighter', icon: Type },
@@ -1405,7 +1414,7 @@ export default function TextMatchCutStudioPage() {
                 <label style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000' }}>
                   Highlighter Ink Color
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="tool-page-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   {HIGHLIGHT_COLORS.map((c) => (
                     <button
                       key={c.hex}

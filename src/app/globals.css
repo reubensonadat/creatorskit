@@ -547,3 +547,149 @@
   font-size: 0.68rem;
   font-weight: 900;
 }
+
+/* ============================================= */
+/* Mobile Responsive Utilities                   */
+/* ============================================= */
+
+.navbar-desktop { display: flex; }
+.navbar-mobile { display: none !important; }
+
+.tool-layout-desktop-sidebar { display: flex; }
+.tool-layout-mobile-sidebar-toggle { display: none !important; }
+.tool-layout-mobile-sidebar { display: none !important; }
+.tool-layout-mobile-sidebar-overlay { display: none !important; }
+.tool-layout-ad-wrapper { display: block; }
+.tool-layout-title-group { display: block; }
+.tool-layout-topbar-home { display: flex; }
+.tool-layout-topbar-ck { display: flex; }
+
+.matchcut-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(360px, 440px);
+  gap: 20px;
+  align-items: start;
+}
+
+.tool-inner-grid {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  /* === NO HORIZONTAL SCROLL EVER === */
+  html, body { overflow-x: hidden !important; }
+  .tool-layout-root, main { overflow-x: hidden !important; }
+
+  /* === NAV === */
+  .navbar-desktop { display: none !important; }
+  .navbar-mobile { display: flex !important; }
+
+  /* === SIDEBAR: completely gone === */
+  .tool-layout-desktop-sidebar { display: none !important; }
+  .tool-layout-mobile-sidebar-toggle { display: flex !important; }
+  .tool-layout-mobile-sidebar { display: flex !important; }
+  .tool-layout-ad-wrapper { display: none !important; }
+
+  /* === TOPBAR: compact === */
+  .tool-layout-topbar-home { padding: 4px 8px !important; font-size: 0 !important; gap: 0 !important; min-width: 32px !important; height: 32px !important; justify-content: center !important; }
+  .tool-layout-topbar-home svg { margin: 0 !important; }
+  .tool-layout-topbar-ck { padding: 4px 8px !important; font-size: 0.6rem !important; }
+  .tool-layout-title-group h1 { font-size: 0.78rem !important; margin: 0 !important; }
+  .tool-layout-title-group div { display: none !important; }
+
+  /* === ALL 2-COL GRIDS: single column, no overflow === */
+  .matchcut-workspace-grid, .tool-inner-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .carousel-slices-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
+  .gradient-workspace-grid { grid-template-columns: 1fr !important; }
+
+  /* === TOOL PAGE: generous padding, no overflow === */
+  .tool-page-padding { padding: 8px 16px 40px !important; overflow: hidden !important; }
+
+  /* === TOOL PAGE HEADER: minimal === */
+  .tool-page-header { margin-bottom: 6px !important; }
+  .tool-page-header h1 { font-size: 1rem !important; margin-bottom: 2px !important; line-height: 1.2 !important; }
+  .tool-page-header p { display: none !important; }
+  .tool-page-header .tool-page-badge-row span:last-child { display: none !important; }
+
+  /* === CANVAS: fit viewport === */
+  .tool-canvas-frame { padding: 8px !important; overflow: hidden !important; }
+  .tool-canvas-viewport { min-height: 200px !important; max-height: 40vh !important; }
+  .tool-canvas-viewport canvas { max-height: 38vh !important; }
+
+  /* === VIEWPORT META BAR: hide right controls === */
+  .tool-viewport-meta { margin-bottom: 6px !important; font-size: 0.6rem !important; }
+  .tool-viewport-meta-right { display: none !important; }
+
+  /* === TRANSPORT BAR: stack on mobile === */
+  .tool-transport-bar { flex-direction: column !important; gap: 8px !important; padding: 6px 8px !important; }
+  .tool-transport-speed { width: 100% !important; justify-content: center !important; }
+  .tool-transport-speed-presets { display: none !important; }
+
+  /* === ASPECT + EXPORT ROW: wrap everything, no overflow === */
+  .tool-aspect-bar { flex-wrap: wrap !important; gap: 6px !important; justify-content: center !important; }
+  .tool-aspect-bar button { flex-shrink: 1 !important; padding: 4px 8px !important; font-size: 0.62rem !important; }
+  .tool-aspect-export-row { flex-direction: column !important; gap: 8px !important; }
+  .tool-aspect-export-row > div { width: 100% !important; justify-content: center !important; }
+
+  /* === EXPORT GRID: full width === */
+  .tool-export-grid { grid-template-columns: 1fr !important; gap: 8px !important; }
+  .tool-export-grid button { padding: 10px 14px !important; font-size: 0.75rem !important; }
+
+  /* === TAB BAR: scrollable === */
+  .tool-tab-bar { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
+  /* === BRUTALIST CARD: tighter shadow === */
+  .brutalist-card { box-shadow: 2px 2px 0 #000 !important; }
+
+  /* === RIGHT PANEL CONTENT: no fixed widths === */
+  .tool-right-panel { min-width: 0 !important; max-width: 100% !important; }
+
+  /* === INPUT + BUTTON ROWS: wrap on mobile === */
+  .tool-anchor-row { flex-wrap: wrap !important; }
+  .tool-anchor-row input { min-width: 0 !important; flex: 1 1 100% !important; }
+  .tool-anchor-row button { width: 100% !important; justify-content: center !important; }
+
+  /* === ANY flex row without wrap: force wrap === */
+  .tool-control-row { flex-wrap: wrap !important; gap: 8px !important; }
+  .tool-control-row > * { min-width: 0 !important; }
+
+  /* === Selects: full width === */
+  select { max-width: 100% !important; }
+
+  /* === Textareas: full width === */
+  textarea { width: 100% !important; box-sizing: border-box !important; }
+
+  /* === Input fields: full width === */
+  input[type="text"], input[type="number"], input[type="range"] { max-width: 100% !important; }
+
+  /* === Brutalist buttons in rows: allow shrink === */
+  .brutalist-button { min-width: 0 !important; }
+
+  /* === FULLSCREEN APP HEADERS: wrap on mobile === */
+  .fs-header { flex-wrap: wrap !important; height: auto !important; min-height: 44px !important; padding: 6px 8px !important; gap: 6px !important; }
+  .fs-header-left { flex-wrap: wrap !important; gap: 6px !important; max-width: 100% !important; overflow: hidden !important; }
+  .fs-header-left > .brutalist-button { font-size: 0 !important; padding: 4px 8px !important; }
+  .fs-header-left > .brutalist-button::after { content: '‹'; font-size: 0.75rem; }
+  .fs-header-badge { display: none !important; }
+  .fs-header-center { display: none !important; }
+  .fs-header-right { flex-wrap: wrap !important; gap: 6px !important; }
+  .fs-header-right > label { font-size: 0 !important; padding: 4px 8px !important; }
+  .fs-header-right > label::after { content: '⬆'; font-size: 0.8rem; }
+  .fs-header-right > select { font-size: 0.6rem !important; padding: 3px 6px !important; max-width: 120px !important; }
+  .fs-header-actions-row { display: none !important; }
+
+  /* === FULLSCREEN WORKSPACE: stack on mobile === */
+  .fs-workspace { flex-direction: column !important; }
+  .fs-panel-left { flex: 0 0 auto !important; max-height: 40vh !important; border-right: none !important; border-bottom: 1px solid #1f1f23 !important; }
+  .fs-panel-right { flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
+
+  /* === FULLSCREEN BOTTOM BAR: stack === */
+  .fs-bottom-bar { flex-wrap: wrap !important; gap: 6px !important; padding: 6px 8px !important; }
+  .fs-bottom-bar > div { width: 100% !important; justify-content: center !important; }
+
+  /* === FULLSCREEN CONTROLS: compact === */
+  .fs-timeline { height: 80px !important; }
+  .fs-waveform { height: 60px !important; }
+}

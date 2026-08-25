@@ -582,6 +582,7 @@ export default function ProductionSyncSlatePage() {
 
   return (
     <div
+      className="tool-page-padding"
       style={{
         minHeight: '100vh',
         background: isNight ? '#09090b' : isHighContrast ? '#000000' : '#f4f4f5',
@@ -589,6 +590,9 @@ export default function ProductionSyncSlatePage() {
         padding: isFullscreen ? 0 : '20px 24px 80px',
         position: 'relative',
         transition: 'background 0.2s ease',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        width: '100%',
       }}
     >
       {/* Optical White Flash Overlay */}
@@ -746,6 +750,7 @@ export default function ProductionSyncSlatePage() {
 
       {/* Main Workspace Grid */}
       <div
+        className="tool-inner-grid"
         style={{
           maxWidth: isFullscreen ? '100vw' : 1380,
           margin: '0 auto',

@@ -93,7 +93,7 @@ export default function CarouselSlicerPage() {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column" }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div className="grid-bg" />
 
       <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -279,6 +279,7 @@ export default function CarouselSlicerPage() {
 
                 {/* Slices row layout */}
                 <div
+                  className="carousel-slices-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: `repeat(${Math.min(slices.length, 5)}, 1fr)`,
