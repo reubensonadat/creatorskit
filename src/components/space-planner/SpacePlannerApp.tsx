@@ -26,8 +26,6 @@ import {
   Grid,
   Home,
   Footprints,
-  Maximize2,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { usePlannerStore } from './store';
@@ -52,21 +50,9 @@ import type { Currency, ViewMode } from './types';
 
 export default function SpacePlannerApp() {
   const hasHydratedRef = useRef(false);
-  const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates' | 'room-ai' | 'openings'>('equipment');
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'equipment' | 'templates' | 'room-ai'>('equipment');
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-
-  // Right sidebar accordion states
-  const [rightAccordion, setRightAccordion] = useState({
-    inspector: true,
-    budget: true,
-    warnings: true,
-    placedList: true,
-  });
-
-  const toggleRightAccordion = (key: keyof typeof rightAccordion) => {
-    setRightAccordion((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
 
   // Store subscriptions
   const viewMode = usePlannerStore((s) => s.viewMode);
@@ -167,22 +153,30 @@ export default function SpacePlannerApp() {
       store.setViewMode(saved.viewMode);
       store.setTemplateId(saved.templateId);
 
-      const unique = new Map<string, (typeof saved.placedObjects)[number]>();
-      saved.placedObjects.forEach((obj) => {
-        const key = [
-          obj.equipmentId,
-          obj.x.toFixed(3),
-          obj.z.toFixed(3),
-          obj.rotationY.toFixed(3),
-          obj.parentId ?? '',
-          obj.isMainCamera ? '1' : '0',
-          obj.customPriceGHS ?? '',
-          obj.customPriceNGN ?? '',
-        ].join('|');
-        if (!unique.has(key)) unique.set(key, obj);
-      });
+      // Legacy rescue: older builds could duplicate objects into localStorage
+      // during hydration. Only de-duplicate obviously corrupted saves — normal
+      // saves pass through untouched so intentionally stacked identical items
+      // (e.g. two panels on the same wall spot) are preserved.
+      const needsRescue = saved.placedObjects.length > 60;
+      const objects = needsRescue
+        ? Array.from(
+          new Map(
+            saved.placedObjects.map((obj) => [
+              [
+                obj.equipmentId,
+                obj.x.toFixed(3),
+                obj.z.toFixed(3),
+                obj.rotationY.toFixed(3),
+                obj.parentId ?? '',
+                obj.isMainCamera ? '1' : '0',
+              ].join('|'),
+              obj,
+            ])
+          ).values()
+        )
+        : saved.placedObjects;
 
-      store.replacePlacedObjects(Array.from(unique.values()));
+      store.replacePlacedObjects(objects);
     } else {
       loadTemplate('bedroom-studio');
     }
@@ -265,42 +259,14 @@ export default function SpacePlannerApp() {
 
         {/* Center / Right: Lighting, Share, PDF & Collapsible Sidebar Toggles */}
         <div className="flex items-center gap-1.5">
-          {/* Floorplanner-Style 2D / 3D Mode Toggle */}
-          <div className="flex items-center border-2 border-black bg-stone-100 p-0.5 shadow-[2px_2px_0_#000]">
-            <button
-              onClick={() => setViewMode('top')}
-              className={`px-2.5 py-1 text-xs font-black transition-all uppercase flex items-center gap-1 ${
-                viewMode === 'top'
-                  ? 'bg-sky-500 text-white shadow-sm'
-                  : 'bg-transparent text-stone-700 hover:bg-stone-200'
-              }`}
-              title="Switch to Architectural 2D Floor Plan (Key 2)"
-            >
-              2D
-            </button>
-            <div className="w-px h-4 bg-stone-300 mx-0.5" />
-            <button
-              onClick={() => setViewMode('perspective')}
-              className={`px-2.5 py-1 text-xs font-black transition-all uppercase flex items-center gap-1 ${
-                viewMode !== 'top'
-                  ? 'bg-zinc-900 text-white shadow-sm'
-                  : 'bg-transparent text-stone-700 hover:bg-stone-200'
-              }`}
-              title="Switch to 3D Perspective Studio (Key 1)"
-            >
-              3D
-            </button>
-          </div>
-
           <div className="h-5 w-px bg-stone-300 hidden sm:block mx-0.5" />
 
           {/* Panel Toggle Shortcuts */}
           <div className="flex items-center border-2 border-black bg-stone-100 p-0.5 shadow-[1.5px_1.5px_0_#000]">
             <button
               onClick={toggleLeftPanel}
-              className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${
-                leftPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
-              }`}
+              className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${leftPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
+                }`}
               title="Toggle Left Library Panel (Shortcut: [)"
             >
               {leftPanelOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
@@ -309,9 +275,8 @@ export default function SpacePlannerApp() {
             <div className="w-px h-4 bg-stone-300 mx-0.5" />
             <button
               onClick={toggleRightPanel}
-              className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${
-                rightPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
-              }`}
+              className={`p-1 text-xs font-bold transition-all flex items-center gap-1 ${rightPanelOpen ? 'bg-zinc-900 text-white' : 'bg-transparent text-stone-700 hover:bg-stone-200'
+                }`}
               title="Toggle Right Inspector & BOM Panel (Shortcut: ])"
             >
               <span className="text-[9px] hidden lg:inline">Inspector</span>
@@ -375,17 +340,6 @@ export default function SpacePlannerApp() {
               <span>PDF</span>
             </button>
           </div>
-
-          {/* Clean 3D Zen Mode */}
-          <button
-            onClick={toggleZenMode}
-            className={`p-1.5 border-2 border-black text-xs font-bold transition-all shadow-[1.5px_1.5px_0_#000] ${
-              isZenMode ? 'bg-[#00FF66] text-black font-black' : 'bg-white hover:bg-stone-100 text-black'
-            }`}
-            title="Clean View / Zen Mode (Shortcut: H) — Hide all UI overlays"
-          >
-            <Maximize2 size={13} />
-          </button>
         </div>
       </header>
 
@@ -400,76 +354,50 @@ export default function SpacePlannerApp() {
             <div className="flex border-b-2 border-black bg-stone-100 p-1 gap-1">
               <button
                 onClick={() => setLeftSidebarTab('equipment')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
-                  leftSidebarTab === 'equipment'
-                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
-                    : 'bg-white text-stone-700 hover:bg-stone-200'
-                }`}
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${leftSidebarTab === 'equipment'
+                  ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
+                  : 'bg-white text-stone-700 hover:bg-stone-200'
+                  }`}
               >
                 <Package size={12} />
                 <span>Gear</span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('templates')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
-                  leftSidebarTab === 'templates'
-                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
-                    : 'bg-white text-stone-700 hover:bg-stone-200'
-                }`}
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${leftSidebarTab === 'templates'
+                  ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
+                  : 'bg-white text-stone-700 hover:bg-stone-200'
+                  }`}
               >
                 <LayoutTemplate size={12} />
                 <span>Presets</span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('room-ai')}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${
-                  leftSidebarTab === 'room-ai'
-                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
-                    : 'bg-white text-stone-700 hover:bg-stone-200'
-                }`}
+                className={`flex-1 py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-black transition-all ${leftSidebarTab === 'room-ai'
+                  ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
+                  : 'bg-white text-stone-700 hover:bg-stone-200'
+                  }`}
               >
                 <Building size={12} />
                 <span>Room</span>
-              </button>
-              <button
-                onClick={() => setLeftSidebarTab('openings')}
-                className={`py-1.5 px-2 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center border border-black transition-all ${
-                  leftSidebarTab === 'openings'
-                    ? 'bg-zinc-900 text-white shadow-[1.5px_1.5px_0_#000]'
-                    : 'bg-white text-stone-700 hover:bg-stone-200'
-                }`}
-                title="Doors & Windows"
-              >
-                <span>Doors/Windows</span>
               </button>
             </div>
 
             {/* Tab Body */}
             <div className="flex-1 overflow-y-auto p-2.5">
-              {leftSidebarTab === 'equipment' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-stone-100 border-2 border-black shadow-[2px_2px_0_#000]">
-                    <span className="text-[11px] font-bold text-black truncate">
-                      Active: {COMPREHENSIVE_TEMPLATES[templateId]?.name || 'Studio Layout'}
-                    </span>
-                    <button
-                      onClick={() => setLeftSidebarTab('templates')}
-                      className="px-2 py-0.5 bg-stone-900 border border-black font-bold text-[9px] text-white hover:bg-black shadow-[1px_1px_0_#000]"
-                    >
-                      SWITCH
-                    </button>
-                  </div>
-                  <EquipmentLibrary />
-                </div>
-              )}
+              {leftSidebarTab === 'equipment' && <EquipmentLibrary />}
 
               {leftSidebarTab === 'templates' && (
                 <TemplateSelector onSelectTemplate={() => setLeftSidebarTab('equipment')} />
               )}
 
-              {leftSidebarTab === 'room-ai' && <RoomGeometryPanel />}
-
-              {leftSidebarTab === 'openings' && <WindowsPanel />}
+              {leftSidebarTab === 'room-ai' && (
+                <div className="space-y-4">
+                  <RoomGeometryPanel />
+                  <WindowsPanel />
+                </div>
+              )}
             </div>
 
             {/* Left Sidebar Collapse Button Strip */}
@@ -638,17 +566,15 @@ export default function SpacePlannerApp() {
                       return (
                         <div
                           key={obj.id}
-                          className={`flex items-center justify-between p-1.5 cursor-pointer transition-all border ${
-                            isSelected
-                              ? 'bg-zinc-900 border-2 border-black shadow-[2px_2px_0_#000] text-white font-bold'
-                              : 'bg-white border-stone-200 hover:border-black'
-                          }`}
+                          className={`flex items-center justify-between p-1.5 cursor-pointer transition-all border ${isSelected
+                            ? 'bg-zinc-900 border-2 border-black shadow-[2px_2px_0_#000] text-white font-bold'
+                            : 'bg-white border-stone-200 hover:border-black'
+                            }`}
                           onClick={() => setSelectedObject(obj.id)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[8.5px] font-mono font-bold px-1 py-0.5 border flex-shrink-0 ${
-                              isSelected ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-stone-100 border-black/20 text-stone-700'
-                            }`}>
+                            <span className={`text-[8.5px] font-mono font-bold px-1 py-0.5 border flex-shrink-0 ${isSelected ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-stone-100 border-black/20 text-stone-700'
+                              }`}>
                               {eq.category.toUpperCase().slice(0, 3)}
                             </span>
                             <div className="min-w-0">

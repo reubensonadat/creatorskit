@@ -29,7 +29,6 @@ export default function InspectorPanel() {
   const currency = usePlannerStore((s) => s.currency);
   const userAffiliateTag = usePlannerStore((s) => s.userAffiliateTag);
   const setViewMode = usePlannerStore((s) => s.setViewMode);
-  const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
 
   // Section collapse states
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -247,9 +246,8 @@ export default function InspectorPanel() {
                     <button
                       key={lens}
                       onClick={() => updateObjectLens(obj.id, lens)}
-                      className={`btn justify-center text-[8.5px] py-1 px-0 font-mono font-bold border border-black ${
-                        currentLens === lens ? 'bg-zinc-900 text-white' : 'bg-white hover:bg-stone-100 text-black'
-                      }`}
+                      className={`btn justify-center text-[8.5px] py-1 px-0 font-mono font-bold border border-black ${currentLens === lens ? 'bg-zinc-900 text-white' : 'bg-white hover:bg-stone-100 text-black'
+                        }`}
                     >
                       {lens}
                     </button>
@@ -268,9 +266,8 @@ export default function InspectorPanel() {
                     <button
                       key={sensor}
                       onClick={() => updateObjectSensor(obj.id, sensor)}
-                      className={`btn justify-center py-1 px-1 text-[8.5px] font-bold border border-black truncate ${
-                        currentSensor === sensor ? 'bg-black text-white' : 'bg-white text-stone-800'
-                      }`}
+                      className={`btn justify-center py-1 px-1 text-[8.5px] font-bold border border-black truncate ${currentSensor === sensor ? 'bg-black text-white' : 'bg-white text-stone-800'
+                        }`}
                     >
                       {sensor === 'full-frame' ? 'Full-Frame (1.0x)' : sensor === 'aps-c' ? 'APS-C (1.5x)' : sensor === 'micro-four-thirds' ? 'MFT (2.0x)' : 'Phone (5.5x)'}
                     </button>
@@ -291,13 +288,9 @@ export default function InspectorPanel() {
               {/* Camera POV Buttons */}
               <div className="flex gap-1.5 pt-0.5">
                 <button
-                  className={`btn flex-1 justify-center text-[10px] py-1.5 font-bold border border-black ${
-                    obj.isMainCamera ? 'bg-zinc-900 text-white' : 'bg-white text-black'
-                  }`}
-                  onClick={() => {
-                    setMainCamera(obj.id);
-                    toggleCameraPreview();
-                  }}
+                  className={`btn flex-1 justify-center text-[10px] py-1.5 font-bold border border-black ${obj.isMainCamera ? 'bg-zinc-900 text-white' : 'bg-white text-black'
+                    }`}
+                  onClick={() => setMainCamera(obj.id)}
                 >
                   {obj.isMainCamera ? 'Active Cam' : 'Set Active'}
                 </button>
@@ -376,9 +369,8 @@ export default function InspectorPanel() {
                     <button
                       key={kp.k}
                       onClick={() => updateObjectLight(obj.id, { colorTempKelvin: kp.k })}
-                      className={`btn justify-center text-[8px] py-0.5 px-1 font-mono border border-black ${
-                        light.colorTempKelvin === kp.k ? 'bg-black text-white font-bold' : 'bg-white'
-                      }`}
+                      className={`btn justify-center text-[8px] py-0.5 px-1 font-mono border border-black ${light.colorTempKelvin === kp.k ? 'bg-black text-white font-bold' : 'bg-white'
+                        }`}
                     >
                       {kp.k}K
                     </button>

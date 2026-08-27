@@ -142,61 +142,88 @@ export function calculateRoomAcoustics(
 }
 
 /**
- * Evaluates 3-Point Lighting Rig & Shadow Spill Risk
+ * Evaluates 3-Point Lighting Rig & Shadow Spill Risk.
+ * Angle math is relative to the subject's actual facing direction (rotationY),
+ * so rotating the desk/chair re-evaluates key/fill/rim roles correctly.
  */
 export function analyzeStudioLighting(
   placedObjects: PlacedObject[],
+  roomWidth: number,
   roomDepth: number
 ): LightingAnalysis {
-  // Find subject / talent or main desk
-  const subject = placedObjects.find(
-    (o) =>
-      o.equipmentId.includes('human') ||
-      o.equipmentId.includes('chair') ||
-      o.equipmentId.includes('desk') ||
-      o.equipmentId === 'content-table'
-  ) || { x: 0, z: 0, rotationY: 0 };
+  // Find subject / talent or main desk (most human-like anchor wins)
+  const subject =
+    placedObjects.find((o) => o.equipmentId.includes('human')) ||
+    placedObjects.find((o) => o.equipmentId.includes('chair')) ||
+    placedObjects.find((o) => o.equipmentId.includes('desk')) ||
+    placedObjects.find((o) => o.equipmentId === 'content-table') ||
+    { x: 0, z: 0, rotationY: 0 };
 
   const lights = placedObjects.filter((o) => {
     const def = COMPREHENSIVE_EQUIPMENT_CATALOG[o.equipmentId];
     return def?.category === 'lighting' || o.lightSettings !== undefined;
   });
 
+  // Subject forward vector (matches the 3D scene: rotationY = 0 faces +Z)
+  const fwdX = Math.sin(subject.rotationY ?? 0);
+  const fwdZ = Math.cos(subject.rotationY ?? 0);
+  // Right vector perpendicular to forward
+  const rightX = fwdZ;
+  const rightZ = -fwdX;
+
   let hasKey = false;
   let hasFill = false;
   let hasRim = false;
   let hasBg = false;
   let keyDistance = 1.8;
+  let keySide = 0;
 
   lights.forEach((l) => {
     const dx = l.x - subject.x;
     const dz = l.z - subject.z;
     const dist = Math.hypot(dx, dz);
-    const angleRad = Math.atan2(dx, dz);
-    const angleDeg = (angleRad * 180) / Math.PI;
+    if (dist < 0.05) return;
 
-    // Frontal Key/Fill vs Back Rim
-    if (dz > 0.3) {
-      if (Math.abs(angleDeg) > 15 && Math.abs(angleDeg) < 70) {
+    const forwardness = (dx * fwdX + dz * fwdZ) / dist; // 1 = directly in front
+    const sideness = (dx * rightX + dz * rightZ) / dist; // ±1 = hard right/left
+
+    if (forwardness > 0.35) {
+      // Frontal hemisphere: key or fill depending on side balance
+      if (Math.abs(sideness) > 0.15 && Math.abs(sideness) < 0.95) {
+        const side = Math.sign(sideness);
         if (!hasKey) {
           hasKey = true;
+          keySide = side;
           keyDistance = Math.round(dist * 10) / 10;
-        } else {
+        } else if (side === -keySide) {
           hasFill = true;
         }
-      } else {
+      } else if (!hasKey) {
+        // Near-axis frontal light also acts as a key
         hasKey = true;
+        keySide = 0;
+        keyDistance = Math.round(dist * 10) / 10;
       }
-    } else if (dz < -0.3) {
-      if (Math.abs(dx) < 1.0) {
-        hasRim = true; // Behind subject pointing forward
+    } else if (forwardness < -0.35) {
+      if (Math.abs(sideness) < 0.6) {
+        hasRim = true; // Behind subject, near the spine → rim/hair light
       } else {
-        hasBg = true; // Side background accent
+        hasBg = true; // Behind and off to the side → background accent
       }
     }
   });
 
-  const subjectToBackdropDist = Math.max(0.2, subject.z - -roomDepth / 2);
+  // Distance from subject to the wall BEHIND them (along their facing ray)
+  const bx = -fwdX;
+  const bz = -fwdZ;
+  let tMax = Infinity;
+  if (bx > 1e-6) tMax = Math.min(tMax, (roomWidth / 2 - subject.x) / bx);
+  if (bx < -1e-6) tMax = Math.min(tMax, (-roomWidth / 2 - subject.x) / bx);
+  if (bz > 1e-6) tMax = Math.min(tMax, (roomDepth / 2 - subject.z) / bz);
+  if (bz < -1e-6) tMax = Math.min(tMax, (-roomDepth / 2 - subject.z) / bz);
+  const subjectToBackdropDist =
+    isFinite(tMax) && tMax > 0 ? tMax : Math.max(0.2, subject.z + roomDepth / 2);
+
   let shadowSpillRisk: LightingAnalysis['shadowSpillRisk'] = 'low';
   if (subjectToBackdropDist < 0.9 && hasKey) {
     shadowSpillRisk = 'high';

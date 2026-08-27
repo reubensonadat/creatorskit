@@ -604,11 +604,11 @@ export const CREATOR_TEMPLATES: Record<CreatorTemplateId, CreatorTemplate> = {
   },
 };
 
-import { ALL_STUDIO_SCENARIOS } from './scenarios-library';
-
+// Curated catalog only: the 20 hand-built templates above are the presets we
+// stand behind. The mass-generated scenario catalog (100+ near-duplicates)
+// was removed from the picker — it drowned the usable setups.
 export const COMPREHENSIVE_TEMPLATES: Record<string, CreatorTemplate> = {
   ...CREATOR_TEMPLATES,
-  ...ALL_STUDIO_SCENARIOS,
 };
 
 export const COMPREHENSIVE_TEMPLATE_IDS: string[] = Object.keys(COMPREHENSIVE_TEMPLATES);

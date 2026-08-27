@@ -8,13 +8,8 @@ import {
   Footprints,
   Ruler,
   Sun,
-  Flame,
-  Eye,
   Wand2,
   Minimize2,
-  RotateCcw,
-  RotateCw,
-  Trash2,
   Box,
   CheckCircle2,
 } from 'lucide-react';
@@ -30,10 +25,6 @@ export default function PlannerToolbar() {
   const updateObjectRotation = usePlannerStore((s) => s.updateObjectRotation);
   const deleteObject = usePlannerStore((s) => s.deleteObject);
   const placedObjects = usePlannerStore((s) => s.placedObjects);
-  const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
-  const toggleCameraPreview = usePlannerStore((s) => s.toggleCameraPreview);
-  const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
-  const toggleLuxHeatmap = usePlannerStore((s) => s.toggleLuxHeatmap);
   const isMeasuring = usePlannerStore((s) => s.isMeasuring);
   const toggleMeasuring = usePlannerStore((s) => s.toggleMeasuring);
   const showLightBeams = usePlannerStore((s) => s.showLightBeams);
@@ -91,10 +82,6 @@ export default function PlannerToolbar() {
         toggleMeasuring();
       } else if (e.key === 'b' || e.key === 'B') {
         toggleLightBeams();
-      } else if (e.key === 'l' || e.key === 'L') {
-        toggleLuxHeatmap();
-      } else if (e.key === 'p' || e.key === 'P') {
-        if (hasCamera) toggleCameraPreview();
       } else if ((e.key === 'r' || e.key === 'R') && selectedObjectId) {
         const obj = placedObjects.find((o) => o.id === selectedObjectId);
         if (obj) {
@@ -117,8 +104,6 @@ export default function PlannerToolbar() {
     hasCamera,
     toggleMeasuring,
     toggleLightBeams,
-    toggleLuxHeatmap,
-    toggleCameraPreview,
     selectedObjectId,
     placedObjects,
     selectedDef,
@@ -138,7 +123,7 @@ export default function PlannerToolbar() {
 
       {/* Main Architectural CAD Studio Dock */}
       <div className="bg-white/95 backdrop-blur-md border border-black shadow-[3px_3px_0_rgba(0,0,0,1)] p-1 flex items-center gap-1.5 max-w-full overflow-x-auto no-scrollbar select-none font-mono text-xs">
-        
+
         {/* SECTION 1: View Modes Segmented Control */}
         <div className="flex items-center border border-black divide-x divide-black bg-stone-100 flex-shrink-0">
           {/* 3D Orbit View */}
@@ -151,11 +136,10 @@ export default function PlannerToolbar() {
                 toggleOrbitPanning();
               }
             }}
-            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${
-              viewMode === 'perspective'
+            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${viewMode === 'perspective'
                 ? 'bg-zinc-900 text-white'
                 : 'bg-white text-stone-700 hover:bg-stone-100 hover:text-stone-900'
-            }`}
+              }`}
             title="3D Orbit View (Key 1) · Click again to toggle continuous orbit"
           >
             <Box size={13} />
@@ -169,11 +153,10 @@ export default function PlannerToolbar() {
           {/* 2D CAD Blueprint */}
           <button
             onClick={() => setViewMode('top')}
-            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${
-              viewMode === 'top'
+            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${viewMode === 'top'
                 ? 'bg-zinc-900 text-white'
                 : 'bg-white text-stone-700 hover:bg-stone-100 hover:text-stone-900'
-            }`}
+              }`}
             title="2D CAD Top Blueprint (Key 2)"
           >
             <Grid size={13} />
@@ -185,13 +168,12 @@ export default function PlannerToolbar() {
           <button
             onClick={() => hasCamera && setViewMode('camera-pov')}
             disabled={!hasCamera}
-            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${
-              viewMode === 'camera-pov'
+            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${viewMode === 'camera-pov'
                 ? 'bg-zinc-900 text-white'
                 : hasCamera
-                ? 'bg-white text-stone-700 hover:bg-stone-100 hover:text-stone-900'
-                : 'bg-stone-100 text-stone-400 cursor-not-allowed'
-            }`}
+                  ? 'bg-white text-stone-700 hover:bg-stone-100 hover:text-stone-900'
+                  : 'bg-stone-100 text-stone-400 cursor-not-allowed'
+              }`}
             title={hasCamera ? "Director Lens POV View (Key 3)" : "Add a camera from the library to enable Director POV"}
           >
             <Camera size={13} />
@@ -202,11 +184,10 @@ export default function PlannerToolbar() {
           {/* Walk-In */}
           <button
             onClick={() => setViewMode('walkthrough')}
-            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${
-              viewMode === 'walkthrough'
+            className={`px-2.5 py-1 text-[11px] font-bold uppercase flex items-center gap-1.5 transition-all ${viewMode === 'walkthrough'
                 ? 'bg-zinc-900 text-white'
                 : 'bg-white text-stone-700 hover:bg-stone-100 hover:text-stone-900'
-            }`}
+              }`}
             title="First-Person Studio Walk-In (Key 4)"
           >
             <Footprints size={13} />
@@ -229,9 +210,8 @@ export default function PlannerToolbar() {
                     setMainCamera(c.id);
                     showToast(`Active camera set to Angle ${label}`);
                   }}
-                  className={`w-5 h-5 border border-black flex items-center justify-center text-[10px] font-bold transition-all ${
-                    isMain ? 'bg-zinc-900 text-white shadow-sm' : 'bg-white text-stone-800 hover:bg-stone-200'
-                  }`}
+                  className={`w-5 h-5 border border-black flex items-center justify-center text-[10px] font-bold transition-all ${isMain ? 'bg-zinc-900 text-white shadow-sm' : 'bg-white text-stone-800 hover:bg-stone-200'
+                    }`}
                   title={`Switch to Camera Angle ${label}`}
                 >
                   {label}
@@ -249,11 +229,10 @@ export default function PlannerToolbar() {
           {/* Laser Ruler with Snap Indicator */}
           <button
             onClick={toggleMeasuring}
-            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${
-              isMeasuring
+            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${isMeasuring
                 ? 'bg-zinc-900 text-white shadow-sm ring-1 ring-black'
                 : 'bg-white text-stone-800 hover:bg-stone-100 shadow-[1px_1px_0_#000]'
-            }`}
+              }`}
             title="Laser Ruler (Key M) · Snap to room walls, corners & equipment for exact dimensions"
           >
             <Ruler size={13} className={isMeasuring ? "text-cyan-300" : ""} />
@@ -264,49 +243,15 @@ export default function PlannerToolbar() {
           {/* Light Beams */}
           <button
             onClick={toggleLightBeams}
-            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${
-              showLightBeams
+            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${showLightBeams
                 ? 'bg-zinc-900 text-white shadow-sm'
                 : 'bg-white text-stone-800 hover:bg-stone-100 shadow-[1px_1px_0_#000]'
-            }`}
+              }`}
             title="3D Light Cones & Beam Spreads (Key B)"
           >
             <Sun size={13} />
             <span className="hidden lg:inline">Beams</span>
             <span className="text-[9px] opacity-60 font-mono hidden sm:inline">[B]</span>
-          </button>
-
-          {/* Lux Heatmap */}
-          <button
-            onClick={toggleLuxHeatmap}
-            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${
-              showLuxHeatmap
-                ? 'bg-zinc-900 text-white shadow-sm'
-                : 'bg-white text-stone-800 hover:bg-stone-100 shadow-[1px_1px_0_#000]'
-            }`}
-            title="Volumetric Lighting Lux Heatmap (Key L)"
-          >
-            <Flame size={13} />
-            <span className="hidden lg:inline">Lux</span>
-            <span className="text-[9px] opacity-60 font-mono hidden sm:inline">[L]</span>
-          </button>
-
-          {/* PiP Viewport */}
-          <button
-            onClick={toggleCameraPreview}
-            disabled={!hasCamera}
-            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${
-              showCameraPreview
-                ? 'bg-zinc-900 text-white shadow-sm'
-                : hasCamera
-                ? 'bg-white text-stone-800 hover:bg-stone-100 shadow-[1px_1px_0_#000]'
-                : 'bg-stone-100 text-stone-400 border-stone-300 cursor-not-allowed shadow-none'
-            }`}
-            title={hasCamera ? "Toggle Live Director's Viewport PiP (Key P)" : "Add a camera to enable PiP Viewport"}
-          >
-            <Eye size={13} />
-            <span className="hidden lg:inline">PiP</span>
-            <span className="text-[9px] opacity-60 font-mono hidden sm:inline">[P]</span>
           </button>
         </div>
 
@@ -331,11 +276,10 @@ export default function PlannerToolbar() {
           {/* Zen View Mode */}
           <button
             onClick={toggleZenMode}
-            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${
-              isZenMode
+            className={`px-2 py-1 border border-black text-[11px] font-bold uppercase flex items-center gap-1 transition-all ${isZenMode
                 ? 'bg-zinc-900 text-white'
                 : 'bg-white text-stone-800 hover:bg-stone-100 shadow-[1px_1px_0_#000]'
-            }`}
+              }`}
             title="Zen Mode (Key H) · Hide all overlays for clean inspection"
           >
             <Minimize2 size={13} />
@@ -343,49 +287,6 @@ export default function PlannerToolbar() {
             <span className="text-[9px] opacity-60 font-mono hidden sm:inline">[H]</span>
           </button>
         </div>
-
-        {/* SECTION 4: Contextual Selected Item Transform HUD */}
-        {selectedObj && (
-          <>
-            <div className="w-px h-5 bg-stone-300 flex-shrink-0 mx-0.5" />
-            <div className="flex items-center gap-1 bg-stone-100 p-0.5 border border-black flex-shrink-0">
-              <span className="text-[10px] font-bold text-stone-900 max-w-[90px] truncate px-1" title={selectedDef?.name || selectedObj.equipmentId}>
-                {selectedDef?.name || selectedObj.equipmentId}
-              </span>
-              <button
-                onClick={() => {
-                  updateObjectRotation(selectedObj.id, selectedObj.rotationY - Math.PI / 4);
-                  showToast('Rotated -45°');
-                }}
-                className="p-1 bg-white hover:bg-stone-200 border border-black text-black"
-                title="Rotate -45°"
-              >
-                <RotateCcw size={11} />
-              </button>
-              <button
-                onClick={() => {
-                  updateObjectRotation(selectedObj.id, selectedObj.rotationY + Math.PI / 4);
-                  showToast('Rotated +45° (Key R)');
-                }}
-                className="p-1 bg-white hover:bg-stone-200 border border-black text-black"
-                title="Rotate +45° (Key R)"
-              >
-                <RotateCw size={11} />
-              </button>
-              <button
-                onClick={() => {
-                  deleteObject(selectedObj.id);
-                  showToast('Item deleted');
-                }}
-                className="p-1 bg-rose-600 hover:bg-rose-700 border border-black text-white"
-                title="Delete Selected Item (Del)"
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          </>
-        )}
-
       </div>
     </div>
   );

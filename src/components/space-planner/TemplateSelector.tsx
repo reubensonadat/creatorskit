@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, RotateCcw, Check, Sparkles as SparklesIcon, Wand2 } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_TEMPLATES, COMPREHENSIVE_TEMPLATE_IDS } from './templates';
 import type { CreatorTemplateId } from './types';
@@ -16,19 +16,6 @@ const CATEGORIES = [
   'Budget & DIY',
 ] as const;
 
-const CURATED_FEATURED_IDS = [
-  'bedroom-studio',
-  'podcast',
-  'tech-review',
-  'streaming-battlestation',
-  'product-photography',
-  'culinary-kitchen',
-  'music-vocal-booth',
-  'diy-bedroom-phone',
-  'interview',
-  'fashion-lookbook',
-];
-
 interface TemplateSelectorProps {
   onSelectTemplate?: (id: CreatorTemplateId) => void;
   compact?: boolean;
@@ -37,7 +24,6 @@ interface TemplateSelectorProps {
 export default function TemplateSelector({ onSelectTemplate, compact = false }: TemplateSelectorProps) {
   const templateId = usePlannerStore((s) => s.templateId);
   const loadTemplate = usePlannerStore((s) => s.loadTemplate);
-  const optimizeStudioErgonomics = usePlannerStore((s) => s.optimizeStudioErgonomics);
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState<string>('All');
   const [justLoadedId, setJustLoadedId] = useState<string | null>(null);
@@ -67,21 +53,13 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Header & Quick Optimization */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <span className="text-[11px] font-mono font-black uppercase tracking-wider text-black">
             Studio Setups ({COMPREHENSIVE_TEMPLATE_IDS.length})
           </span>
         </div>
-        <button
-          onClick={optimizeStudioErgonomics}
-          className="flex items-center gap-1.5 px-2 py-1 bg-white hover:bg-zinc-100 text-black border-2 border-black font-mono text-[10px] font-bold shadow-[2px_2px_0_#000] active:translate-x-0.5 active:translate-y-0.5"
-          title="Auto-align cameras, 3-point lighting, and furniture for maximum studio ergonomics"
-        >
-          <Wand2 className="w-3 h-3 text-black" />
-          <span>Auto-Align Set</span>
-        </button>
       </div>
 
       {/* Search Bar */}
@@ -120,53 +98,6 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
           </button>
         ))}
       </div>
-
-      {/* Curated Pro Starters (shown when not searching) */}
-      {!search && selectedCat === 'All' && (
-        <div className="flex flex-col gap-1.5 pt-1">
-          <div className="flex items-center justify-between text-[10px] font-mono font-bold text-stone-600">
-            <span>PRO STARTER SETUPS</span>
-            <span className="text-[9px] text-stone-400">Click to load</span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {CURATED_FEATURED_IDS.map((id) => {
-              const tpl = COMPREHENSIVE_TEMPLATES[id];
-              if (!tpl) return null;
-              const isActive = templateId === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => handleSelect(id)}
-                  className={`p-2 text-left border-2 transition-all flex flex-col justify-between ${
-                    isActive
-                      ? 'bg-zinc-900 text-white border-black shadow-[3px_3px_0_#000]'
-                      : 'bg-white border-black hover:bg-stone-50 text-black shadow-[2px_2px_0_#000]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 border ${
-                      isActive ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-stone-100 border-black/20 text-stone-800'
-                    }`}>
-                      {(tpl.category || 'Studio').toUpperCase().slice(0, 3)}
-                    </span>
-                    <span className={`text-[9px] font-mono font-bold border px-1 ${
-                      isActive ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-white text-black border-black'
-                    }`}>
-                      {tpl.defaultRoom.width}×{tpl.defaultRoom.depth}m
-                    </span>
-                  </div>
-                  <div className={`text-[11px] font-bold mt-1 leading-tight truncate ${isActive ? 'text-white' : 'text-black'}`}>
-                    {tpl.name}
-                  </div>
-                  <div className={`text-[9px] font-mono mt-0.5 truncate ${isActive ? 'text-zinc-300' : 'text-stone-600'}`}>
-                    {tpl.items.length} gear items · {tpl.category || 'Studio'}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Grid of All Setup Templates */}
       <div className="flex flex-col gap-1.5 pt-2">

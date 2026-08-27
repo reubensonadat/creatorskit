@@ -72,9 +72,6 @@ interface StoreState {
   // UI state
   showBudgetPanel: boolean;
   showProjectInfo: boolean;
-  showWarnings: boolean;
-  showCameraPreview: boolean;
-  showLuxHeatmap: boolean;
   isOrbitPanning: boolean;
   isZenMode: boolean;
   leftPanelOpen: boolean;
@@ -124,9 +121,6 @@ interface StoreState {
   updateWindow: (id: string, updates: Partial<WindowPlacement>) => void;
   toggleBudgetPanel: () => void;
   toggleProjectInfo: () => void;
-  toggleWarnings: () => void;
-  toggleCameraPreview: () => void;
-  toggleLuxHeatmap: () => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
   toggleOrbitPanning: () => void;
@@ -175,9 +169,6 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   showBudgetPanel: false,
   showProjectInfo: false,
-  showWarnings: false,
-  showCameraPreview: false,
-  showLuxHeatmap: false,
   isOrbitPanning: false,
   isZenMode: false,
   leftPanelOpen: true,
@@ -360,15 +351,15 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     placedObjects: s.placedObjects.map((o) =>
       o.id === id
         ? {
-            ...o,
-            lightSettings: {
-              intensity: o.lightSettings?.intensity ?? 80,
-              colorTempKelvin: o.lightSettings?.colorTempKelvin ?? 5600,
-              colorHex: o.lightSettings?.colorHex ?? '#FFFFFF',
-              beamAngle: o.lightSettings?.beamAngle ?? 60,
-              ...settings,
-            },
-          }
+          ...o,
+          lightSettings: {
+            intensity: o.lightSettings?.intensity ?? 80,
+            colorTempKelvin: o.lightSettings?.colorTempKelvin ?? 5600,
+            colorHex: o.lightSettings?.colorHex ?? '#FFFFFF',
+            beamAngle: o.lightSettings?.beamAngle ?? 60,
+            ...settings,
+          },
+        }
         : o
     ),
   })),
@@ -453,9 +444,6 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
 
   toggleBudgetPanel: () => set((s) => ({ showBudgetPanel: !s.showBudgetPanel })),
   toggleProjectInfo: () => set((s) => ({ showProjectInfo: !s.showProjectInfo })),
-  toggleWarnings: () => set((s) => ({ showWarnings: !s.showWarnings })),
-  toggleCameraPreview: () => set((s) => ({ showCameraPreview: !s.showCameraPreview })),
-  toggleLuxHeatmap: () => set((s) => ({ showLuxHeatmap: !s.showLuxHeatmap })),
   toggleOrbitPanning: () => set((s) => ({ isOrbitPanning: !s.isOrbitPanning })),
   setOrbitPanning: (panning: boolean) => set({ isOrbitPanning: panning }),
   toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
@@ -597,7 +585,7 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
     });
 
     // 3. 3-Point Lighting & Shadow Spill Evaluation
-    const lightingDiag = analyzeStudioLighting(objs, state.roomDepth);
+    const lightingDiag = analyzeStudioLighting(objs, state.roomWidth, state.roomDepth);
     if (lightingDiag.shadowSpillRisk === 'high') {
       warnings.push({
         type: 'shadow-spill-backdrop',

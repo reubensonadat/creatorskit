@@ -5,7 +5,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { usePlannerStore } from './store';
@@ -18,7 +17,6 @@ import {
   SENSOR_PROFILES,
   FOCAL_LENGTH_VALUES,
 } from '@/lib/space-planner/optical-engine';
-import { analyzeStudioLighting } from '@/lib/space-planner/acoustics-lighting-engine';
 import type { PlacedObject, ViewMode, CameraLensPreset, CameraSensorSize, CameraAperture } from './types';
 
 // Scene colors - Architectural & Neutral Palette
@@ -67,7 +65,7 @@ export default function PlannerCanvas() {
   const controlsRef = useRef<OrbitControls | null>(null);
   const floorRef = useRef<THREE.Mesh | null>(null);
   const roomGroupRef = useRef<THREE.Group | null>(null);
-  const objectMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
+  const objectMeshesRef = useRef<Map<string, { group: THREE.Group; equipmentId: string }>>(new Map());
   const cameraFrameRef = useRef<THREE.Group | null>(null);
   const lightingVisualizersRef = useRef<THREE.Group | null>(null);
   const acousticRaysRef = useRef<THREE.Group | null>(null);
@@ -75,8 +73,19 @@ export default function PlannerCanvas() {
   const animFrameRef = useRef<number>(0);
   const composerRef = useRef<EffectComposer | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const hemisphereLightRef = useRef<THREE.HemisphereLight | null>(null);
   const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
   const cameraAnimRef = useRef<{ cancel: () => void } | null>(null);
+  const fxaaPassRef = useRef<ShaderPass | null>(null);
+  const selectionRingRef = useRef<THREE.Mesh | null>(null);
+  const snapFnRef = useRef<(rawX: number, rawZ: number) => { x: number; z: number; name: string }>(
+    () => ({ x: 0, z: 0, name: '' })
+  );
+  const lensFnRef = useRef<
+    ((cam: PlacedObject) => { y: number; localY: number; localZ: number; fov: number; opt: ReturnType<typeof calculateOpticalFov> }) | null
+  >(null);
+  const dragLatestRef = useRef<{ x: number; z: number } | null>(null);
+  const dragChildrenRef = useRef<THREE.Group[]>([]);
 
   // Overlay state for Director Camera POV View
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '4:5' | '1:1' | '2.39:1'>('16:9');
@@ -102,8 +111,6 @@ export default function PlannerCanvas() {
   const placingEquipmentId = usePlannerStore((s) => s.placingEquipmentId);
   const viewMode = usePlannerStore((s) => s.viewMode);
   const isOrbitPanning = usePlannerStore((s) => s.isOrbitPanning);
-  const showCameraPreview = usePlannerStore((s) => s.showCameraPreview);
-  const showLuxHeatmap = usePlannerStore((s) => s.showLuxHeatmap);
   const showAcousticRays = usePlannerStore((s) => s.showAcousticRays);
   const windows = usePlannerStore((s) => s.windows);
   const isMeasuring = usePlannerStore((s) => s.isMeasuring);
@@ -113,6 +120,7 @@ export default function PlannerCanvas() {
   const toggleMeasuring = usePlannerStore((s) => s.toggleMeasuring);
   const showLightBeams = usePlannerStore((s) => s.showLightBeams);
   const isZenMode = usePlannerStore((s) => s.isZenMode);
+  const timeOfDay = usePlannerStore((s) => s.timeOfDay);
 
   const [hoverMeasurePoint, setHoverMeasurePoint] = useState<{ x: number; y: number; z: number; name?: string } | null>(null);
   const [cadProjection, setCadProjection] = useState<{
@@ -172,7 +180,8 @@ export default function PlannerCanvas() {
       map: floorTexture,
       roughness: finish === 'dark-epoxy' ? 0.15 : finish === 'acoustic-carpet' ? 0.95 : 0.42,
       metalness: finish === 'dark-epoxy' ? 0.3 : 0.05,
-      envMapIntensity: 0.6,
+      envMapIntensity: 0.8,
+      envMap: scene.environment,
     });
 
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMat);
@@ -198,14 +207,18 @@ export default function PlannerCanvas() {
     const baseboardH = 0.09;
     const wallMat = new THREE.MeshStandardMaterial({
       color: WALL_COLOR,
-      roughness: 0.88,
+      roughness: 0.92,
       metalness: 0.02,
       side: THREE.DoubleSide,
+      envMapIntensity: 0.3,
+      envMap: scene.environment,
     });
     const baseboardMat = new THREE.MeshStandardMaterial({
       color: BASEBOARD_COLOR,
       roughness: 0.5,
       metalness: 0.1,
+      envMapIntensity: 0.5,
+      envMap: scene.environment,
     });
 
     const backGroup = new THREE.Group();
@@ -424,12 +437,13 @@ export default function PlannerCanvas() {
     if (!mainCam) return;
 
     const g = new THREE.Group();
-    const camBaseY = getObjectY(mainCam);
-    g.position.set(mainCam.x, camBaseY, mainCam.z);
+    const lens = getCameraLensPos(mainCam);
+    // Position group at the actual lens position, not the camera base
+    g.position.set(mainCam.x, lens.y, mainCam.z);
     g.rotation.y = mainCam.rotationY;
 
-    const lens = getCameraLensPos(mainCam);
-    const apex = new THREE.Vector3(0, lens.localY, lens.localZ);
+    // Apex is now at origin since group is positioned at lens height
+    const apex = new THREE.Vector3(0, 0, lens.localZ);
 
     const opt = lens.opt;
     const hFovRad = (opt.horizontalFovDegrees * Math.PI) / 180;
@@ -439,19 +453,19 @@ export default function PlannerCanvas() {
     const wNear = Math.tan(hFovRad / 2) * dNear;
     const hNear = Math.tan(vFovRad / 2) * dNear;
 
-    const nTL = new THREE.Vector3(-wNear, lens.localY + hNear, lens.localZ + dNear);
-    const nTR = new THREE.Vector3(wNear, lens.localY + hNear, lens.localZ + dNear);
-    const nBR = new THREE.Vector3(wNear, lens.localY - hNear, lens.localZ + dNear);
-    const nBL = new THREE.Vector3(-wNear, lens.localY - hNear, lens.localZ + dNear);
+    const nTL = new THREE.Vector3(-wNear, hNear, lens.localZ + dNear);
+    const nTR = new THREE.Vector3(wNear, hNear, lens.localZ + dNear);
+    const nBR = new THREE.Vector3(wNear, -hNear, lens.localZ + dNear);
+    const nBL = new THREE.Vector3(-wNear, -hNear, lens.localZ + dNear);
 
     const dFar = 2.8;
     const wFar = Math.tan(hFovRad / 2) * dFar;
     const hFar = Math.tan(vFovRad / 2) * dFar;
 
-    const fTL = new THREE.Vector3(-wFar, lens.localY + hFar, lens.localZ + dFar);
-    const fTR = new THREE.Vector3(wFar, lens.localY + hFar, lens.localZ + dFar);
-    const fBR = new THREE.Vector3(wFar, lens.localY - hFar, lens.localZ + dFar);
-    const fBL = new THREE.Vector3(-wFar, lens.localY - hFar, lens.localZ + dFar);
+    const fTL = new THREE.Vector3(-wFar, hFar, lens.localZ + dFar);
+    const fTR = new THREE.Vector3(wFar, hFar, lens.localZ + dFar);
+    const fBR = new THREE.Vector3(wFar, -hFar, lens.localZ + dFar);
+    const fBL = new THREE.Vector3(-wFar, -hFar, lens.localZ + dFar);
 
     const frustumMat = new THREE.LineBasicMaterial({ color: 0x09090b, transparent: true, opacity: 0.85 });
     const subtleMat = new THREE.LineBasicMaterial({ color: 0x71717a, transparent: true, opacity: 0.45 });
@@ -483,11 +497,11 @@ export default function PlannerCanvas() {
     g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([nTL, nTR, nBR, nBL, nTL]), subtleMat));
 
     // 3. Center Sightline
-    const centerFar = new THREE.Vector3(0, lens.localY, lens.localZ + dFar);
+    const centerFar = new THREE.Vector3(0, 0, lens.localZ + dFar);
     g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([apex, centerFar]), subtleMat));
 
     // 4. Floor footprint
-    const floorY = -camBaseY + 0.005;
+    const floorY = -lens.y + 0.005;
     const floorFarBL = new THREE.Vector3(fBL.x * 0.9, floorY, fBL.z);
     const floorFarBR = new THREE.Vector3(fBR.x * 0.9, floorY, fBR.z);
     const floorNearBL = new THREE.Vector3(nBL.x * 0.9, floorY, nBL.z);
@@ -529,7 +543,10 @@ export default function PlannerCanvas() {
     lightObjects.forEach((light) => {
       const g = new THREE.Group();
       const baseY = getObjectY(light);
-      const emitterLocalY = 1.65;
+      const lightDef = COMPREHENSIVE_EQUIPMENT_CATALOG[light.equipmentId];
+      const emitterLocalY = lightDef?.dimensions.height
+        ? Math.max(0.45, lightDef.dimensions.height * 0.92)
+        : 1.65;
       const emitterForwardZ = 0.12;
 
       g.position.set(
@@ -798,6 +815,15 @@ export default function PlannerCanvas() {
     return { x: snappedX, z: snappedZ, name: snapName };
   }, [roomWidth, roomDepth, placedObjects]);
 
+  // Keep the latest snap/lens callbacks reachable from the mount-only scene
+  // listeners without ever re-initializing the WebGL context.
+  useEffect(() => {
+    snapFnRef.current = calculateMagneticSnap;
+  }, [calculateMagneticSnap]);
+  useEffect(() => {
+    lensFnRef.current = getCameraLensPos;
+  }, [getCameraLensPos]);
+
   // ============ View transition ============
   const transitionView = useCallback((mode: ViewMode) => {
     const camera = cameraRef.current;
@@ -810,9 +836,9 @@ export default function PlannerCanvas() {
     let targetFov = 40;
 
     if (mode === 'top') {
-      targetPos = new THREE.Vector3(0, maxDim * 1.8, 0.01);
+      targetPos = new THREE.Vector3(0, maxDim * 1.5, 0.01);
       targetCenter = new THREE.Vector3(0, 0, 0);
-      targetFov = 34;
+      targetFov = 36;
     } else if (mode === 'camera-pov') {
       const activeCam =
         placedObjects.find((o) => o.isMainCamera && isCamEquipment(o.equipmentId)) ||
@@ -840,6 +866,8 @@ export default function PlannerCanvas() {
       targetFov = 52;
     }
 
+    if (cameraAnimRef.current) cameraAnimRef.current.cancel();
+
     const startPos = camera.position.clone();
     const startTarget = controls.target.clone();
     const startFov = camera.fov;
@@ -847,7 +875,17 @@ export default function PlannerCanvas() {
     const startTime = performance.now();
     controls.enabled = false;
 
+    let cancelled = false;
+    cameraAnimRef.current = {
+      cancel: () => {
+        cancelled = true;
+        controls.enabled = true;
+        cameraAnimRef.current = null;
+      },
+    };
+
     const tick = () => {
+      if (cancelled) return;
       const t = Math.min(1, (performance.now() - startTime) / duration);
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       camera.position.lerpVectors(startPos, targetPos, eased);
@@ -856,14 +894,12 @@ export default function PlannerCanvas() {
       camera.updateProjectionMatrix();
       controls.update();
       if (t < 1) {
-        cameraAnimRef.current = { cancel: () => {} };
         requestAnimationFrame(tick);
       } else {
         controls.enabled = true;
         cameraAnimRef.current = null;
       }
     };
-    if (cameraAnimRef.current) cameraAnimRef.current.cancel();
     tick();
   }, [roomWidth, roomDepth, placedObjects, getCameraLensPos]);
 
@@ -874,7 +910,6 @@ export default function PlannerCanvas() {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(BG_COLOR);
-    scene.fog = new THREE.Fog(BG_COLOR, 18, 42);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(40, mount.clientWidth / (mount.clientHeight || 1), 0.1, 100);
@@ -885,23 +920,25 @@ export default function PlannerCanvas() {
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.22;
+    renderer.toneMappingExposure = 1.05;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(mount.clientWidth, mount.clientHeight),
-      0.04, 0.2, 0.96
-    );
-    composer.addPass(bloomPass);
     const fxaaPass = new ShaderPass(FXAAShader);
-    fxaaPass.uniforms['resolution'].value.set(1 / (mount.clientWidth || 1), 1 / (mount.clientHeight || 1));
+    const pixelRatio = renderer.getPixelRatio();
+    fxaaPass.uniforms['resolution'].value.set(
+      1 / ((mount.clientWidth || 1) * pixelRatio),
+      1 / ((mount.clientHeight || 1) * pixelRatio)
+    );
     composer.addPass(fxaaPass);
+    fxaaPassRef.current = fxaaPass;
     composerRef.current = composer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -914,20 +951,69 @@ export default function PlannerCanvas() {
     controls.target.set(0, 0.5, 0);
     controlsRef.current = controls;
 
-    const ambient = new THREE.AmbientLight(0xfff8ee, 0.72);
+    // Create a simple studio environment map for realistic reflections
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0x888888);
+
+    // Add lights to the environment scene
+    const envAmbient = new THREE.AmbientLight(0xffffff, 1);
+    envScene.add(envAmbient);
+
+    const envLight1 = new THREE.DirectionalLight(0xffffff, 1);
+    envLight1.position.set(1, 1, 1);
+    envScene.add(envLight1);
+
+    const envLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    envLight2.position.set(-1, 0.5, -1);
+    envScene.add(envLight2);
+
+    // Generate environment map
+    const envMap = pmremGenerator.fromScene(envScene).texture;
+    scene.environment = envMap;
+    scene.background = null; // Use transparent background for better integration
+
+    const ambient = new THREE.AmbientLight(0xfff8ee, 0.62);
     scene.add(ambient);
     ambientLightRef.current = ambient;
 
-    const sun = new THREE.DirectionalLight(0xfffaf0, 1.15);
+    // Gentle sky/ground falloff restores depth cues between floor and walls
+    const hemi = new THREE.HemisphereLight(0xfff8ee, 0x8a8478, 0.35);
+    scene.add(hemi);
+    hemisphereLightRef.current = hemi;
+
+    const sun = new THREE.DirectionalLight(0xfffaf0, 1.1);
     sun.position.set(4.5, 9.5, 3.5);
     sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.00035;
+    sun.shadow.normalBias = 0.02;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 30;
     scene.add(sun);
     sunLightRef.current = sun;
 
     const roomGroup = new THREE.Group();
     scene.add(roomGroup);
     roomGroupRef.current = roomGroup;
-    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight, windows, floorFinish);
+
+    // Selection feedback ring — visible 3D confirmation of the current selection
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.34, 0.42, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.012;
+    ring.renderOrder = 96;
+    ring.visible = false;
+    scene.add(ring);
+    selectionRingRef.current = ring;
 
     const tick = () => {
       controls.update();
@@ -1014,6 +1100,8 @@ export default function PlannerCanvas() {
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
       composer.setSize(w, h);
+      const pr = renderer.getPixelRatio();
+      fxaaPassRef.current?.uniforms['resolution'].value.set(1 / (w * pr), 1 / (h * pr));
     };
     window.addEventListener('resize', onResize);
 
@@ -1039,7 +1127,7 @@ export default function PlannerCanvas() {
       if (state.isMeasuring) {
         const floorIntersection = new THREE.Vector3();
         if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
-          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const snap = snapFnRef.current(floorIntersection.x, floorIntersection.z);
           const pt = { x: snap.x, y: 0, z: snap.z, name: snap.name };
 
           if (!state.measureStart) {
@@ -1058,7 +1146,7 @@ export default function PlannerCanvas() {
       if (state.placingEquipmentId) {
         const floorIntersection = new THREE.Vector3();
         if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
-          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const snap = snapFnRef.current(floorIntersection.x, floorIntersection.z);
           state.placeObject(state.placingEquipmentId, snap.x, snap.z);
           state.setPlacingEquipment(null);
         }
@@ -1067,7 +1155,7 @@ export default function PlannerCanvas() {
 
       // 3. Object Selection & Dragging
       const objectGroups: THREE.Object3D[] = [];
-      objectMeshesRef.current.forEach((g) => objectGroups.push(g));
+      objectMeshesRef.current.forEach((entry) => objectGroups.push(entry.group));
       const hits = raycasterRef.current.intersectObjects(objectGroups, true);
 
       if (hits.length > 0) {
@@ -1081,7 +1169,24 @@ export default function PlannerCanvas() {
           state.setSelectedObject(targetId);
           dragTargetRef.current = targetId;
           isDraggingRef.current = true;
+          dragLatestRef.current = null;
           controls.enabled = false; // Disable orbit during object drag
+
+          // Track descendant meshes so mounted accessories follow the drag visually
+          const descendants = new Set<string>();
+          const collect = (pid: string) => {
+            state.placedObjects.forEach((o) => {
+              if (o.parentId === pid && !descendants.has(o.id)) {
+                descendants.add(o.id);
+                collect(o.id);
+              }
+            });
+          };
+          collect(targetId);
+          dragChildrenRef.current = state.placedObjects
+            .filter((o) => descendants.has(o.id))
+            .map((o) => objectMeshesRef.current.get(o.id)?.group)
+            .filter((g): g is THREE.Group => Boolean(g));
         }
       } else {
         // Click on empty space
@@ -1101,29 +1206,52 @@ export default function PlannerCanvas() {
       if (state.isMeasuring) {
         const floorIntersection = new THREE.Vector3();
         if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
-          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const snap = snapFnRef.current(floorIntersection.x, floorIntersection.z);
           setHoverMeasurePoint({ x: snap.x, y: 0, z: snap.z, name: snap.name });
         }
         return;
       }
 
-      // Object Dragging
+      // Object Dragging — transform meshes directly at pointer speed; the final
+      // position is committed to the store once, on pointerup.
       if (isDraggingRef.current && dragTargetRef.current) {
         const floorIntersection = new THREE.Vector3();
         if (raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, floorIntersection)) {
-          const snap = calculateMagneticSnap(floorIntersection.x, floorIntersection.z);
+          const snap = snapFnRef.current(floorIntersection.x, floorIntersection.z);
           const halfW = state.roomWidth / 2 - 0.15;
           const halfD = state.roomDepth / 2 - 0.15;
           const clampedX = Math.max(-halfW, Math.min(halfW, snap.x));
           const clampedZ = Math.max(-halfD, Math.min(halfD, snap.z));
-          state.updateObjectPosition(dragTargetRef.current, clampedX, clampedZ);
+
+          const entry = objectMeshesRef.current.get(dragTargetRef.current);
+          if (entry) {
+            const dx = clampedX - entry.group.position.x;
+            const dz = clampedZ - entry.group.position.z;
+            entry.group.position.x = clampedX;
+            entry.group.position.z = clampedZ;
+            dragChildrenRef.current.forEach((g) => {
+              g.position.x += dx;
+              g.position.z += dz;
+            });
+            if (selectionRingRef.current?.visible) {
+              selectionRingRef.current.position.set(clampedX, 0.012, clampedZ);
+            }
+            dragLatestRef.current = { x: clampedX, z: clampedZ };
+          }
         }
       }
     };
 
     const handlePointerUp = () => {
+      if (isDraggingRef.current && dragTargetRef.current && dragLatestRef.current) {
+        usePlannerStore
+          .getState()
+          .updateObjectPosition(dragTargetRef.current, dragLatestRef.current.x, dragLatestRef.current.z);
+      }
       isDraggingRef.current = false;
       dragTargetRef.current = null;
+      dragLatestRef.current = null;
+      dragChildrenRef.current = [];
       controls.enabled = true;
     };
 
@@ -1182,14 +1310,16 @@ export default function PlannerCanvas() {
       let directorPOV = hero3D;
 
       if (activeCam) {
-        const lens = getCameraLensPos(activeCam);
-        const posX = activeCam.x + Math.sin(activeCam.rotationY) * lens.localZ;
-        const posY = lens.y;
-        const posZ = activeCam.z + Math.cos(activeCam.rotationY) * lens.localZ;
-        const fwdX = Math.sin(activeCam.rotationY);
-        const fwdZ = Math.cos(activeCam.rotationY);
+        const lens = lensFnRef.current?.(activeCam);
+        if (lens) {
+          const posX = activeCam.x + Math.sin(activeCam.rotationY) * lens.localZ;
+          const posY = lens.y;
+          const posZ = activeCam.z + Math.cos(activeCam.rotationY) * lens.localZ;
+          const fwdX = Math.sin(activeCam.rotationY);
+          const fwdZ = Math.cos(activeCam.rotationY);
 
-        directorPOV = captureFrame(posX, posY, posZ, posX + fwdX * 3.5, posY, posZ + fwdZ * 3.5, lens.fov, { back: true, left: true, right: true, front: true });
+          directorPOV = captureFrame(posX, posY, posZ, posX + fwdX * 3.5, posY, posZ + fwdZ * 3.5, lens.fov, { back: true, left: true, right: true, front: true });
+        }
       }
 
       camera.position.copy(origPos);
@@ -1240,27 +1370,72 @@ export default function PlannerCanvas() {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [buildRoom, roomWidth, roomDepth, roomHeight, windows, floorFinish, calculateMagneticSnap, getCameraLensPos]);
+    // Mount-only: the WebGL world is created exactly once. Room geometry changes
+    // are handled by the dedicated room effect below; interaction callbacks are
+    // reached through refs so dragging never re-initializes the renderer.
+  }, []);
 
-  // Sync scene models with full Three.js geometry/material memory cleanup
+  // Rebuild the room shell only when room geometry / windows / finish change
+  // (never on object moves) and keep orbit range + shadow frustum fitted to it.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const roomGroup = roomGroupRef.current;
+    if (!scene || !roomGroup) return;
+    buildRoom(scene, roomGroup, roomWidth, roomDepth, roomHeight, windows, floorFinish);
+
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.maxDistance = Math.max(20, Math.max(roomWidth, roomDepth) * 2.2);
+    }
+    const sun = sunLightRef.current;
+    if (sun) {
+      const s = Math.max(roomWidth, roomDepth) * 0.75 + 2;
+      sun.shadow.camera.left = -s;
+      sun.shadow.camera.right = s;
+      sun.shadow.camera.top = s;
+      sun.shadow.camera.bottom = -s;
+      sun.shadow.camera.updateProjectionMatrix();
+    }
+  }, [buildRoom, roomWidth, roomDepth, roomHeight, windows, floorFinish]);
+
+  // Sync scene models diff-based: add new, remove gone, update transforms of the
+  // rest. Meshes are only reconstructed when an object's equipment type changes.
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
 
-    objectMeshesRef.current.forEach((group) => {
-      scene.remove(group);
-      disposeObject3D(group);
-    });
-    objectMeshesRef.current.clear();
+    const meshes = objectMeshesRef.current;
+    const seen = new Set<string>();
 
     placedObjects.forEach((obj) => {
-      const group = createEquipmentModel(obj.equipmentId);
-      const elevation = getObjectY(obj);
-      group.position.set(obj.x, elevation, obj.z);
-      group.rotation.y = obj.rotationY;
-      group.userData.placedId = obj.id;
-      scene.add(group);
-      objectMeshesRef.current.set(obj.id, group);
+      seen.add(obj.id);
+      let entry = meshes.get(obj.id);
+
+      if (entry && entry.equipmentId !== obj.equipmentId) {
+        scene.remove(entry.group);
+        disposeObject3D(entry.group);
+        meshes.delete(obj.id);
+        entry = undefined;
+      }
+
+      if (!entry) {
+        const group = createEquipmentModel(obj.equipmentId);
+        group.userData.placedId = obj.id;
+        scene.add(group);
+        entry = { group, equipmentId: obj.equipmentId };
+        meshes.set(obj.id, entry);
+      }
+
+      entry.group.position.set(obj.x, getObjectY(obj), obj.z);
+      entry.group.rotation.y = obj.rotationY;
+    });
+
+    meshes.forEach((entry, id) => {
+      if (!seen.has(id)) {
+        scene.remove(entry.group);
+        disposeObject3D(entry.group);
+        meshes.delete(id);
+      }
     });
 
     updateCameraFrame();
@@ -1268,13 +1443,88 @@ export default function PlannerCanvas() {
     updateAcousticRays();
   }, [placedObjects, getObjectY, updateCameraFrame, updateLightingVisualizers, updateAcousticRays]);
 
+  // 3D selection feedback: amber ring on the floor under the selected object
+  useEffect(() => {
+    const ring = selectionRingRef.current;
+    if (!ring) return;
+    const obj = placedObjects.find((o) => o.id === selectedObjectId);
+    if (!obj) {
+      ring.visible = false;
+      return;
+    }
+    const def = COMPREHENSIVE_EQUIPMENT_CATALOG[obj.equipmentId];
+    const footprint = Math.max(def?.dimensions.width ?? 0.5, def?.dimensions.depth ?? 0.5) / 2 + 0.1;
+    ring.scale.setScalar(footprint / 0.38);
+    ring.position.set(obj.x, 0.012, obj.z);
+    ring.visible = true;
+  }, [selectedObjectId, placedObjects]);
+
+  // Time-of-Day lighting adjustment
+  useEffect(() => {
+    const ambient = ambientLightRef.current;
+    const hemi = hemisphereLightRef.current;
+    const sun = sunLightRef.current;
+    if (!ambient || !hemi || !sun) return;
+
+    switch (timeOfDay) {
+      case 'daylight':
+        // Bright 5600K clean daylight
+        ambient.color.setHex(0xfff8ee);
+        ambient.intensity = 0.62;
+        hemi.color.setHex(0xfff8ee);
+        hemi.groundColor.setHex(0x8a8478);
+        hemi.intensity = 0.35;
+        sun.color.setHex(0xfffaf0);
+        sun.intensity = 1.1;
+        sun.position.set(4.5, 9.5, 3.5);
+        break;
+      case 'golden-hour':
+        // Warm 3200K golden hour sun
+        ambient.color.setHex(0xffd6a5);
+        ambient.intensity = 0.55;
+        hemi.color.setHex(0xffd6a5);
+        hemi.groundColor.setHex(0x8b6f47);
+        hemi.intensity = 0.4;
+        sun.color.setHex(0xffaa55);
+        sun.intensity = 0.9;
+        sun.position.set(6.0, 3.5, 5.0);
+        break;
+      case 'night':
+        // Moody night studio
+        ambient.color.setHex(0x4a5568);
+        ambient.intensity = 0.35;
+        hemi.color.setHex(0x2d3748);
+        hemi.groundColor.setHex(0x1a202c);
+        hemi.intensity = 0.25;
+        sun.color.setHex(0x63b3ed);
+        sun.intensity = 0.4;
+        sun.position.set(-3.0, 8.0, -2.0);
+        break;
+      case 'overcast':
+        // Soft overcast light
+        ambient.color.setHex(0xe2e8f0);
+        ambient.intensity = 0.7;
+        hemi.color.setHex(0xe2e8f0);
+        hemi.groundColor.setHex(0xa0aec0);
+        hemi.intensity = 0.45;
+        sun.color.setHex(0xf7fafc);
+        sun.intensity = 0.6;
+        sun.position.set(2.0, 6.0, 2.0);
+        break;
+    }
+  }, [timeOfDay]);
+
   // Sync laser ruler 3D visualizer
   useEffect(() => {
     updateLaserRulerVisualizer();
   }, [updateLaserRulerVisualizer]);
 
-  // Sync viewMode changes
+  // Sync viewMode changes — only when the mode actually changes, so object
+  // edits never yank the camera back to a preset mid-work.
+  const lastViewModeRef = useRef<ViewMode | null>(null);
   useEffect(() => {
+    if (lastViewModeRef.current === viewMode) return;
+    lastViewModeRef.current = viewMode;
     transitionView(viewMode);
   }, [viewMode, transitionView]);
 
@@ -1342,7 +1592,7 @@ export default function PlannerCanvas() {
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full bg-[#EAE7DF] overflow-hidden ${placingEquipmentId || isMeasuring ? 'cursor-crosshair' : ''}`}
+      className={`relative w-full h-full bg-white overflow-hidden ${placingEquipmentId || isMeasuring ? 'cursor-crosshair' : ''}`}
       style={{
         backgroundImage: `
           linear-gradient(${GRID_COLOR_A} 1px, transparent 1px),
@@ -1376,33 +1626,29 @@ export default function PlannerCanvas() {
             {/* Framing Guides Switcher */}
             <div className="flex items-center gap-1 p-1 bg-black/90 text-white backdrop-blur border border-white/20 font-mono text-[11px]">
               <button
-                className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '16:9' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
-                }`}
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${aspectRatio === '16:9' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
+                  }`}
                 onClick={() => setAspectRatio('16:9')}
               >
                 16:9 YT
               </button>
               <button
-                className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '9:16' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
-                }`}
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${aspectRatio === '9:16' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
+                  }`}
                 onClick={() => setAspectRatio('9:16')}
               >
                 9:16 Shorts
               </button>
               <button
-                className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  aspectRatio === '4:5' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
-                }`}
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${aspectRatio === '4:5' ? 'bg-white text-black' : 'hover:bg-white/10 text-white'
+                  }`}
                 onClick={() => setAspectRatio('4:5')}
               >
                 4:5 IG
               </button>
               <button
-                className={`px-2 py-0.5 text-xs font-bold transition-all ${
-                  showTikTokUIOverlay ? 'bg-cyan-400 text-black' : 'text-zinc-400 hover:text-white'
-                }`}
+                className={`px-2 py-0.5 text-xs font-bold transition-all ${showTikTokUIOverlay ? 'bg-cyan-400 text-black' : 'text-zinc-400 hover:text-white'
+                  }`}
                 onClick={() => setShowTikTokUIOverlay(!showTikTokUIOverlay)}
                 title="Toggle TikTok UI Safe Zones"
               >
@@ -1414,15 +1660,14 @@ export default function PlannerCanvas() {
           {/* Aspect Ratio Frame & Grid Guide */}
           <div className="relative flex-1 flex items-center justify-center my-2">
             <div
-              className={`relative border-2 border-white/80 transition-all duration-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ${
-                aspectRatio === '16:9'
-                  ? 'w-[90%] aspect-[16/9]'
-                  : aspectRatio === '9:16'
+              className={`relative border-2 border-white/80 transition-all duration-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ${aspectRatio === '16:9'
+                ? 'w-[90%] aspect-[16/9]'
+                : aspectRatio === '9:16'
                   ? 'h-[92%] aspect-[9/16]'
                   : aspectRatio === '4:5'
-                  ? 'h-[92%] aspect-[4/5]'
-                  : 'h-[92%] aspect-square'
-              }`}
+                    ? 'h-[92%] aspect-[4/5]'
+                    : 'h-[92%] aspect-square'
+                }`}
             >
               {/* Rule of Thirds Crosshairs */}
               {showGrid && (
@@ -1472,11 +1717,10 @@ export default function PlannerCanvas() {
               {(['16mm', '24mm', '35mm', '50mm', '85mm'] as CameraLensPreset[]).map((lens) => (
                 <button
                   key={lens}
-                  className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-all ${
-                    activeCamera?.lensPreset === lens
-                      ? 'bg-white text-black'
-                      : 'bg-white/15 hover:bg-white/25 text-white'
-                  }`}
+                  className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-all ${activeCamera?.lensPreset === lens
+                    ? 'bg-white text-black'
+                    : 'bg-white/15 hover:bg-white/25 text-white'
+                    }`}
                   onClick={() => activeCamera && updateObjectLens(activeCamera.id, lens)}
                 >
                   {lens}
@@ -1638,40 +1882,6 @@ export default function PlannerCanvas() {
         </div>
       )}
 
-      {/* Quick Camera Preset Angles Widget */}
-      {viewMode === 'perspective' && !isZenMode && (
-        <div className="absolute top-3 right-3 z-30 flex items-center gap-1 p-1 bg-white/95 backdrop-blur-md border border-black shadow-[2px_2px_0_rgba(0,0,0,1)] font-mono text-[10px]">
-          <span className="text-stone-500 font-bold px-1 hidden sm:inline">VIEW:</span>
-          <button
-            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('iso')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
-            title="Isometric 3D Room Vantage"
-          >
-            ISO
-          </button>
-          <button
-            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('north')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
-            title="North Elevation (Desk & Background Wall)"
-          >
-            NORTH
-          </button>
-          <button
-            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('top')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
-            title="Top-Down 3D Perspective"
-          >
-            TOP
-          </button>
-          <button
-            onClick={() => (window as any).__SPACE_PLANNER_SNAP_CAMERA__?.('side')}
-            className="px-2 py-0.5 bg-stone-100 hover:bg-zinc-900 hover:text-white border border-stone-300 font-bold transition-all"
-            title="Side Profile / Key Light Vantage"
-          >
-            SIDE
-          </button>
-        </div>
-      )}
 
       {/* High-Precision Laser Tape Measure Floating Snapping HUD */}
       {isMeasuring && (

@@ -134,3 +134,28 @@ n   - exposure
 ## Current repository state note
 
 As of this snapshot, the working tree has many modified files and should not be pushed until rollback strategy is chosen and validated.
+
+## Resolution update (2026-08-24)
+
+Root causes above have been fixed in code (no rollback needed):
+
+1. **Scene re-init on every object change** — the WebGL scene/renderer/controls
+   are now created exactly once (mount-only effect). Snap/lens callbacks are
+   reached through refs, and room geometry rebuilds live in a dedicated effect.
+2. **Full mesh rebuild per change** — mesh sync is now diff-based (add/remove/
+   transform). Meshes are only reconstructed when an object's equipment type
+   changes.
+3. **Drag jank** — dragging now transforms meshes directly at pointer speed and
+   commits the final position to the store once on pointerup.
+4. **Washed-out rendering** — bloom and fog removed, exposure 1.22 → 1.05,
+   PCFSoft shadows with a room-fitted 2048px shadow frustum, hemisphere fill.
+5. **Camera lock feel** — view transitions are now truly cancellable; view mode
+   only re-triggers when the mode actually changes; maxDistance scales with room.
+6. **Invisible selection** — an amber footprint ring now marks the selected
+   object in 3D.
+7. **Fake analysis numbers** — lighting analysis is subject-facing aware
+   (rotationY), backdrop distance is measured along the subject's facing ray,
+   and beam cones emit from real fixture heights.
+8. **Hydration data loss** — dedupe now only runs as a legacy rescue for
+   obviously corrupted saves (>60 items), so intentionally stacked identical
+   items are preserved.
