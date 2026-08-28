@@ -205,6 +205,96 @@ Format constraints (my teleprompter app parses these exactly):
 5. Plain text only: no markdown, no headings, no emojis - just lines and the bracket cues above.
 6. The cue lines are stage directions - they are never read aloud.`;
 
+/**
+ * Brutalist custom player for the recorded voice take — replaces the
+ * inconsistent native <audio controls> element with design-matched
+ * play/pause, scrubbable progress bar and monospace time readout.
+ */
+function RecordedAudioPlayer({ url }: { url: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..1
+  const [duration, setDuration] = useState(0);
+  const [current, setCurrent] = useState(0);
+
+  const fmt = (t: number) => {
+    if (!isFinite(t) || t < 0) t = 0;
+    const m = Math.floor(t / 60).toString().padStart(2, '0');
+    const s = Math.floor(t % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) {
+      a.play();
+      setPlaying(true);
+    } else {
+      a.pause();
+      setPlaying(false);
+    }
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audioRef.current;
+    if (!a || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    a.currentTime = ratio * duration;
+    setProgress(ratio);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onTimeUpdate={(e) => {
+          const a = e.currentTarget;
+          if (a.duration) setProgress(a.currentTime / a.duration);
+          setCurrent(a.currentTime);
+        }}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onEnded={() => {
+          setPlaying(false);
+          setProgress(0);
+        }}
+      />
+      <button
+        onClick={toggle}
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: '50%',
+          border: '2px solid #000',
+          background: playing ? '#FFE500' : '#000',
+          color: playing ? '#000' : '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+        title={playing ? 'Pause take' : 'Play take'}
+      >
+        {playing ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      <div
+        onClick={seek}
+        style={{ flex: 1, height: 14, background: '#fff', border: '1.5px solid #000', borderRadius: 99, cursor: 'pointer', overflow: 'hidden' }}
+        title="Seek"
+      >
+        <div style={{ width: `${progress * 100}%`, height: '100%', background: '#d97706' }} />
+      </div>
+      <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.62rem', color: '#92400e', whiteSpace: 'nowrap' }}>
+        {fmt(current)} / {fmt(duration)}
+      </span>
+    </div>
+  );
+}
+
 export default function TeleprompterPage() {
   // Core Prompter State
   const [script, setScript] = useState(
@@ -2200,7 +2290,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                   {/* Recorded Audio Download / Preview Player (If available) */}
                   {recordedAudioUrl && (
                     <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <audio src={recordedAudioUrl} controls style={{ height: 28, flex: 1 }} />
+                      <RecordedAudioPlayer url={recordedAudioUrl} />
                       <a
                         href={recordedAudioUrl}
                         download={`creatorkit-voice-${Date.now()}.webm`}
