@@ -283,7 +283,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [activeWordIndex, setActiveWordIndex] = useState<number>(-1);
   const [lastHeardWord, setLastHeardWord] = useState<string>('');
   const [speechDamping, setSpeechDamping] = useState<number>(0.07);
-  const [autoPauseThresholdMs, setAutoPauseThresholdMs] = useState(750);
+  const [autoPauseThresholdMs, setAutoPauseThresholdMs] = useState(2000);
 
   // 2. Live Web Audio VU Meter & Real-time Decibel Monitor State
   const [, setAudioMeterActive] = useState(false);
@@ -388,7 +388,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const audioChunksRef = useRef<Blob[]>([]);
 
   // Adaptive Velocity & Cadence Learner Refs
-  const learnedWpmRef = useRef<number>(130); // Default natural speaking pace (130 WPM)
+  const learnedWpmRef = useRef<number>(150); // Default natural speaking pace (150 WPM)
   const lastMatchTimestampRef = useRef<number>(Date.now());
   const lastMatchIndexRef = useRef<number>(0);
   const speechVelocityPxPerSecRef = useRef<number>(0);
@@ -501,8 +501,9 @@ Control your speed, adjust your font size, and download your voice recording in 
   const updateTargetScrollForWord = useCallback((wordIdx: number) => {
     if (!readerRef.current) return;
     const wordSpans = readerRef.current.querySelectorAll('[data-word="1"]');
-    if (wordSpans && wordSpans[wordIdx]) {
-      const targetSpan = wordSpans[wordIdx] as HTMLElement;
+    if (wordSpans && wordSpans.length > 0) {
+      const clamped = Math.max(0, Math.min(wordIdx, wordSpans.length - 1));
+      const targetSpan = wordSpans[clamped] as HTMLElement;
       // On mobile, position active reading line comfortably at 45% screen height
       const targetRatio = isMobile ? 0.45 : (eyelinePercent / 100);
       const targetY = targetSpan.offsetTop - readerRef.current.clientHeight * targetRatio;
@@ -635,7 +636,10 @@ Control your speed, adjust your font size, and download your voice recording in 
           // Snap the karaoke timeline to the confirmed match
           virtualWordFloatRef.current = phraseMatch.matchIndex;
           lastDisplayedWordRef.current = phraseMatch.matchIndex;
-          updateTargetScrollForWord(phraseMatch.matchIndex);
+          // Predictive lead: aim where the speaker will be in ~0.6s to
+          // compensate for the inherent ASR transcription latency
+          const leadWords = Math.min(4, Math.max(1, Math.round((phraseMatch.learnedWpm / 60) * 0.6)));
+          updateTargetScrollForWord(phraseMatch.matchIndex + leadWords);
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
       };
@@ -715,7 +719,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
           // 1. Anchor Word Spring Easing: If there is a target position difference, ease into it smoothly
           if (Math.abs(diff) > 0.5) {
-            let decay = 1 - Math.exp(-4.5 * (Math.min(delta, 50) / 1000));
+            let decay = 1 - Math.exp(-9.0 * (Math.min(delta, 50) / 1000));
             let appliedDiff = diff;
 
             // Dampen backwards snapping (text moving down) to prevent erratic "going down down" behavior
@@ -726,7 +730,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                 appliedDiff = 0;
               } else {
                 // If it's a huge jump backwards, ease it much slower so it's not jarring
-                decay = 1 - Math.exp(-1.5 * (Math.min(delta, 50) / 1000));
+                decay = 1 - Math.exp(-4.0 * (Math.min(delta, 50) / 1000));
               }
             }
 
@@ -738,7 +742,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           // 2. Word-Timeline Karaoke Glide: advance a virtual word position
           // at the learned WPM between anchors so the highlight moves
           // word-by-word and the scroll follows the actual word positions.
-          else if (timeSinceLastMatch < 1200 && isSpeakingCadenceActiveRef.current) {
+          else if (timeSinceLastMatch < 2500 && isSpeakingCadenceActiveRef.current) {
             const wordsPerSec = learnedWpmRef.current / 60;
             const maxLead = 8; // never drift far ahead of the last confirmed match
             const nextVirtual = Math.min(
@@ -769,7 +773,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
               const glideDiff = targetScrollYRef.current - currentScroll;
               if (Math.abs(glideDiff) > 0.5) {
-                const glideDecay = 1 - Math.exp(-3.2 * (Math.min(delta, 50) / 1000));
+                const glideDecay = 1 - Math.exp(-7.0 * (Math.min(delta, 50) / 1000));
                 el.scrollTop = currentScroll + glideDiff * glideDecay;
                 scrollPosRef.current = el.scrollTop;
               }
