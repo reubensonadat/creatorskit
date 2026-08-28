@@ -34,6 +34,11 @@ import {
 } from 'lucide-react';
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
+import {
+  cleanWordForMatch,
+  createVoiceMatchEngine,
+  type VoiceMatchEngine,
+} from '@/lib/teleprompter/voice-matching-engine';
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | '4:5' | '4:3';
 export type CameraLayoutMode = 'corner-pip' | 'full-bg' | 'off';
@@ -174,16 +179,6 @@ Introducing CreatorKit — the all-in-one browser suite for modern storytellers.
 Get started today for free at CreatorKit.win!`,
   },
 ];
-
-const STOP_WORDS = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 'the', 'to', 'was', 'were', 'will', 'with']);
-
-function cleanWordForMatch(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .trim();
-}
-
 
 export default function TeleprompterPage() {
   // Core Prompter State
@@ -397,6 +392,13 @@ Control your speed, adjust your font size, and download your voice recording in 
   const lastMatchIndexRef = useRef<number>(0);
   const speechVelocityPxPerSecRef = useRef<number>(0);
   const isSpeakingCadenceActiveRef = useRef<boolean>(false);
+  // Ghanaian-optimized voice matching engine (src/lib/teleprompter/voice-matching-engine.ts)
+  const voiceEngineRef = useRef<VoiceMatchEngine | null>(null);
+  // Word-timeline karaoke tracking: a float word position that advances at
+  // the learned WPM between confirmed speech matches, so highlighting and
+  // scrolling progress word-by-word on a smooth timeline instead of jumping.
+  const virtualWordFloatRef = useRef<number>(0);
+  const lastDisplayedWordRef = useRef<number>(-1);
 
   isPlayingRef.current = isPlaying;
   loopRef.current = loop;
@@ -427,6 +429,8 @@ Control your speed, adjust your font size, and download your voice recording in 
     targetScrollYRef.current = 0;
     setActiveWordIndex(-1);
     activeWordIndexRef.current = -1;
+    virtualWordFloatRef.current = 0;
+    lastDisplayedWordRef.current = -1;
     setLastHeardWord('');
     setScrollProgress(0);
     if (readerRef.current) readerRef.current.scrollTop = 0;
@@ -462,10 +466,10 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullscreen(false);
     }
   }, []);
@@ -510,7 +514,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       try {
         speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.abort();
-      } catch {}
+      } catch { }
       speechRecognitionRef.current = null;
     }
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
@@ -530,12 +534,25 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     stopSpeechRecognition();
 
+    // (Re)initialize the accent-aware matching engine with the persisted cadence
+    if (!voiceEngineRef.current) {
+      voiceEngineRef.current = createVoiceMatchEngine({ initialWpm: learnedWpmRef.current });
+    } else {
+      voiceEngineRef.current.reset(Math.max(0, activeWordIndexRef.current), learnedWpmRef.current);
+    }
+
+    // Sync the karaoke word timeline to the current reading position
+    virtualWordFloatRef.current = Math.max(0, activeWordIndexRef.current);
+    lastDisplayedWordRef.current = activeWordIndexRef.current;
+
     try {
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
-      recognition.lang = 'en-US';
+      // Ghanaian English is non-rhotic like British English, so the en-GB
+      // acoustic model transcribes Ghanaian accents noticeably better.
+      recognition.lang = 'en-GB';
 
       recognition.onstart = () => {
         setSpeechStatus('listening');
@@ -564,119 +581,41 @@ Control your speed, adjust your font size, and download your voice recording in 
 
         if (spokenWords.length === 0) return;
 
-        const recentSpoken = spokenWords.slice(-4);
+        // Use more recent words for better matching (up to 6 words)
+        const recentSpoken = spokenWords.slice(-6);
         const lastSpoken = recentSpoken[recentSpoken.length - 1];
         setLastHeardWord(lastSpoken);
 
-        const curIdx = activeWordIndexRef.current;
         const total = cleanWordsList.length;
         if (total === 0) return;
 
-        let foundNextIdx = -1;
-
-        // Levenshtein / Fuzzy Similarity Helper for Accent Tolerance
-        const isFuzzyMatch = (scriptWord: string, spokenWord: string): boolean => {
-          if (!scriptWord || !spokenWord) return false;
-          if (scriptWord === spokenWord) return true;
-          
-          // Prefix match (e.g., 'back' matches 'background' or vice versa)
-          if (spokenWord.length >= 3 && scriptWord.startsWith(spokenWord.slice(0, 3))) return true;
-          if (scriptWord.length >= 3 && spokenWord.startsWith(scriptWord.slice(0, 3))) return true;
-          
-          // Substring inclusion for compound/long words
-          if (spokenWord.length >= 4 && scriptWord.includes(spokenWord)) return true;
-          if (scriptWord.length >= 4 && spokenWord.includes(scriptWord)) return true;
-
-          // Simple Levenshtein distance check (1-2 character variation for accents/dropping consonants)
-          const s1 = scriptWord;
-          const s2 = spokenWord;
-          if (Math.abs(s1.length - s2.length) <= 2) {
-            let matches = 0;
-            for (let i = 0; i < Math.min(s1.length, s2.length); i++) {
-              if (s1[i] === s2[i]) matches++;
-            }
-            if (matches >= Math.max(2, Math.floor(Math.min(s1.length, s2.length) * 0.65))) {
-              return true;
-            }
-          }
-          return false;
-        };
-
-        // 1. Contextual Multi-Word (Bi-gram) Matching: Check if 2 spoken words match consecutive script words
-        if (recentSpoken.length >= 2) {
-          const w1 = recentSpoken[recentSpoken.length - 2];
-          const w2 = recentSpoken[recentSpoken.length - 1];
-
-          for (let offset = 1; offset <= 8; offset++) {
-            const checkIdx = curIdx + offset;
-            if (checkIdx < 0 || checkIdx + 1 >= total) continue;
-
-            const script1 = cleanWordsList[checkIdx];
-            const script2 = cleanWordsList[checkIdx + 1];
-
-            if (isFuzzyMatch(script1, w1) && isFuzzyMatch(script2, w2)) {
-              foundNextIdx = checkIdx + 1;
-              break;
-            }
-          }
+        // Ghanaian-optimized, context-aware voice matching engine.
+        // Tracks reading position, adapts its search window to speed,
+        // tolerates re-reads, and learns the speaker's natural WPM.
+        const engine = voiceEngineRef.current;
+        if (engine && Math.abs(engine.currentIndex - activeWordIndexRef.current) > 20) {
+          // Follow manual navigation (chapter jumps / scrubbing)
+          engine.seek(Math.max(0, activeWordIndexRef.current));
         }
+        const phraseMatch = engine ? engine.process(recentSpoken, cleanWordsList) : null;
 
-        // 2. Closest-Proximity Single-Word Matching (Selects closest upcoming word first)
-        if (foundNextIdx === -1) {
-          const candidates: number[] = [];
+        if (phraseMatch && phraseMatch.matched) {
+          // Sync the engine's learned cadence into the persisted ref that
+          // drives the scroll-prediction animation loop
+          learnedWpmRef.current = phraseMatch.learnedWpm;
+          localStorage.setItem('creatorKit_learnedWpm', phraseMatch.learnedWpm.toString());
 
-          for (let offset = 1; offset <= 5; offset++) {
-            const checkIdx = curIdx + offset;
-            if (checkIdx < 0 || checkIdx >= total) continue;
-
-            const targetScriptWord = cleanWordsList[checkIdx];
-            if (!targetScriptWord) continue;
-
-            for (let s = 0; s < recentSpoken.length; s++) {
-              const spoken = recentSpoken[s];
-              if (!spoken || spoken.length < 2) continue;
-
-              const isStopWord = STOP_WORDS.has(spoken) || spoken.length <= 2;
-              if (isStopWord && offset > 1) continue;
-
-              if (isFuzzyMatch(targetScriptWord, spoken)) {
-                candidates.push(checkIdx);
-                break;
-              }
-            }
-          }
-
-          // If multiple occurrences match (e.g. multiple "your"), ALWAYS pick the closest one (minimum positive offset)
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => a - b);
-            foundNextIdx = candidates[0];
-          }
-        }
-
-        // STRICT PROGRESSION: Advance only if found and within sensible sequential distance
-        if (foundNextIdx !== -1 && (curIdx < 0 || (foundNextIdx >= curIdx && foundNextIdx <= curIdx + 8))) {
-          const now = Date.now();
-          const wordsSpoken = foundNextIdx - Math.max(0, lastMatchIndexRef.current);
-          const timeElapsedSec = (now - lastMatchTimestampRef.current) / 1000;
-
-          // Real-time Adaptive Cadence Calculation (Learns your natural WPM)
-          if (timeElapsedSec > 0.3 && timeElapsedSec < 6.0 && wordsSpoken > 0) {
-            const instantWpm = Math.round((wordsSpoken / timeElapsedSec) * 60);
-            if (instantWpm >= 50 && instantWpm <= 280) {
-              // Exponential Moving Average filter to learn speaking rhythm
-              learnedWpmRef.current = Math.round(learnedWpmRef.current * 0.7 + instantWpm * 0.3);
-              localStorage.setItem('creatorKit_learnedWpm', learnedWpmRef.current.toString());
-            }
-          }
-
-          lastMatchTimestampRef.current = now;
-          lastMatchIndexRef.current = foundNextIdx;
+          lastMatchTimestampRef.current = Date.now();
+          lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          setActiveWordIndex(foundNextIdx);
-          activeWordIndexRef.current = foundNextIdx;
-          updateTargetScrollForWord(foundNextIdx);
-          setScrollProgress(Math.round(((foundNextIdx + 1) / total) * 100));
+          setActiveWordIndex(phraseMatch.matchIndex);
+          activeWordIndexRef.current = phraseMatch.matchIndex;
+          // Snap the karaoke timeline to the confirmed match
+          virtualWordFloatRef.current = phraseMatch.matchIndex;
+          lastDisplayedWordRef.current = phraseMatch.matchIndex;
+          updateTargetScrollForWord(phraseMatch.matchIndex);
+          setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
       };
 
@@ -691,7 +630,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               if (speechFollowRef.current && isPlayingRef.current) {
                 recognition.start();
               }
-            } catch {}
+            } catch { }
           }, 300);
         }
       };
@@ -703,7 +642,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               if (speechFollowRef.current && isPlayingRef.current) {
                 recognition.start();
               }
-            } catch {}
+            } catch { }
           }, 200);
         } else {
           setSpeechStatus('idle');
@@ -757,13 +696,13 @@ Control your speed, adjust your font size, and download your voice recording in 
           if (Math.abs(diff) > 0.5) {
             let decay = 1 - Math.exp(-4.5 * (Math.min(delta, 50) / 1000));
             let appliedDiff = diff;
-            
+
             // Dampen backwards snapping (text moving down) to prevent erratic "going down down" behavior
             if (diff < -2) {
               // If the overshoot is small (less than roughly one line height), don't snap back at all.
               // Just pause and wait for the natural scroll target to catch up.
               if (diff > -(fontSize * 1.5)) {
-                appliedDiff = 0; 
+                appliedDiff = 0;
               } else {
                 // If it's a huge jump backwards, ease it much slower so it's not jarring
                 decay = 1 - Math.exp(-1.5 * (Math.min(delta, 50) / 1000));
@@ -774,19 +713,46 @@ Control your speed, adjust your font size, and download your voice recording in 
               el.scrollTop = currentScroll + (appliedDiff * decay);
               scrollPosRef.current = el.scrollTop;
             }
-          } 
-          // 2. Continuous Cadence Glide: If speaking actively between anchors, glide smoothly at learned WPM
+          }
+          // 2. Word-Timeline Karaoke Glide: advance a virtual word position
+          // at the learned WPM between anchors so the highlight moves
+          // word-by-word and the scroll follows the actual word positions.
           else if (timeSinceLastMatch < 1200 && isSpeakingCadenceActiveRef.current) {
-            // Words per line estimate: line char width / ~5 chars per word
-            const estimatedWordsPerLine = characterWidth / 5.2;
-            const linesPerSec = (learnedWpmRef.current / 60) / estimatedWordsPerLine;
-            // pixels per second = lines per sec * estimated line height in px (fontSize * 1.35)
-            const pixelsPerSec = linesPerSec * (fontSize * 1.35);
-            
-            const baseWpmSpeed = pixelsPerSec * (delta / 1000);
-            el.scrollTop = currentScroll + baseWpmSpeed;
-            scrollPosRef.current = el.scrollTop;
-            targetScrollYRef.current = el.scrollTop;
+            const wordsPerSec = learnedWpmRef.current / 60;
+            const maxLead = 8; // never drift far ahead of the last confirmed match
+            const nextVirtual = Math.min(
+              virtualWordFloatRef.current + wordsPerSec * (delta / 1000),
+              lastMatchIndexRef.current + maxLead
+            );
+            virtualWordFloatRef.current = Math.max(virtualWordFloatRef.current, nextVirtual);
+
+            // Karaoke highlight: advance the active word along the timeline
+            const displayWord = Math.round(virtualWordFloatRef.current);
+            if (displayWord !== lastDisplayedWordRef.current) {
+              lastDisplayedWordRef.current = displayWord;
+              setActiveWordIndex(displayWord);
+              activeWordIndexRef.current = displayWord;
+            }
+
+            // Timeline scroll: interpolate pixels between actual word anchors
+            const wordSpans = readerRef.current?.querySelectorAll('[data-word="1"]');
+            if (wordSpans && wordSpans.length > 0) {
+              const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
+              const ceilIdx = Math.min(floorIdx + 1, wordSpans.length - 1);
+              const frac = virtualWordFloatRef.current - floorIdx;
+              const targetRatio = isMobile ? 0.45 : eyelinePercent / 100;
+              const anchorY = (readerRef.current?.clientHeight || 0) * targetRatio;
+              const y0 = Math.max(0, (wordSpans[floorIdx] as HTMLElement).offsetTop - anchorY);
+              const y1 = Math.max(0, (wordSpans[ceilIdx] as HTMLElement).offsetTop - anchorY);
+              targetScrollYRef.current = y0 + (y1 - y0) * frac;
+
+              const glideDiff = targetScrollYRef.current - currentScroll;
+              if (Math.abs(glideDiff) > 0.5) {
+                const glideDecay = 1 - Math.exp(-3.2 * (Math.min(delta, 50) / 1000));
+                el.scrollTop = currentScroll + glideDiff * glideDecay;
+                scrollPosRef.current = el.scrollTop;
+              }
+            }
           }
         } else if (!speechFollowRef.current && isPlayingRef.current) {
           const baseSpeed = (speed * fontSize * delta) / 3800;
@@ -819,7 +785,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [speed, fontSize]);
+  }, [speed, fontSize, isMobile, eyelinePercent]);
 
   // ─────────────────────────────────────────────────────────────
   // 3. LIVE WEB AUDIO VU METER & REAL-TIME DECIBEL MONITOR
@@ -829,7 +795,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     if (audioContextRef.current) {
       try {
         audioContextRef.current.close();
-      } catch {}
+      } catch { }
       audioContextRef.current = null;
     }
     if (micStreamRef.current) {
@@ -1009,7 +975,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
         if (videoDevs.length > 0 && !selectedCameraId) setSelectedCameraId(videoDevs[0].deviceId);
         if (audioDevs.length > 0 && !selectedAudioDeviceId) setSelectedAudioDeviceId(audioDevs[0].deviceId);
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [selectedAudioDeviceId, selectedCameraId]);
 
@@ -1018,7 +984,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     const unlockAudio = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(() => {});
+        audioContextRef.current.resume().catch(() => { });
       }
     };
     window.addEventListener('touchstart', unlockAudio, { once: true });
@@ -1050,11 +1016,11 @@ Control your speed, adjust your font size, and download your voice recording in 
   useEffect(() => {
     if (videoPreviewRef.current && cameraStream && cameraActive) {
       videoPreviewRef.current.srcObject = cameraStream;
-      videoPreviewRef.current.play().catch(() => {});
+      videoPreviewRef.current.play().catch(() => { });
     }
     if (bgVideoPreviewRef.current && cameraStream && cameraActive) {
       bgVideoPreviewRef.current.srcObject = cameraStream;
-      bgVideoPreviewRef.current.play().catch(() => {});
+      bgVideoPreviewRef.current.play().catch(() => { });
     }
   }, [cameraStream, cameraActive, cameraLayout]);
 
@@ -1268,12 +1234,12 @@ Control your speed, adjust your font size, and download your voice recording in 
     cameraAspectRatio === '9:16'
       ? '9/16'
       : cameraAspectRatio === '16:9'
-      ? '16/9'
-      : cameraAspectRatio === '1:1'
-      ? '1/1'
-      : cameraAspectRatio === '4:5'
-      ? '4/5'
-      : '4/3';
+        ? '16/9'
+        : cameraAspectRatio === '1:1'
+          ? '1/1'
+          : cameraAspectRatio === '4:5'
+            ? '4/5'
+            : '4/3';
 
   const pipPositionStyle: React.CSSProperties = useMemo(() => {
     const margin = 20;
@@ -1371,221 +1337,221 @@ Control your speed, adjust your font size, and download your voice recording in 
     >
       {/* ── Top Floating Studio Header HUD Bar (Desktop Only) ── */}
       {!isMobile && (
-      <header
-        className="fs-header prompter-desktop-header"
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: 1120,
-          height: 46,
-          background: 'rgba(255, 255, 255, 0.94)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '2.5px solid #000000',
-          borderRadius: 12,
-          boxShadow: '0 6px 25px rgba(0,0,0,0.45)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 12px',
-          zIndex: 50,
-          flexShrink: 0,
-          color: '#000000',
-          transition: 'opacity 0.4s ease',
-          opacity: isPlaying ? 0.35 : 1,
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-        onMouseLeave={(e) => { if (isPlaying) e.currentTarget.style.opacity = '0.35'; }}
-      >
-        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Link
-            href="/"
-            className="brutalist-button"
-            style={{
-              padding: '5px 10px',
-              fontSize: '0.72rem',
-              borderRadius: 6,
-              textDecoration: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            ‹ HOME
-          </Link>
-
-          <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
-
-          <button
-            onClick={() => setShowScriptModal(true)}
-            style={{
-              padding: '5px 10px',
-              background: '#FFE500',
-              color: '#000000',
-              border: '2px solid #000000',
-              borderRadius: 6,
-              fontFamily: 'monospace',
-              fontWeight: 900,
-              fontSize: '0.68rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <FileText size={12} />
-            SCRIPT
-          </button>
-
-          {/* Quick Chapter Markers */}
-          {chapters.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, overflowX: 'auto', maxWidth: 180 }} className="no-scrollbar">
-              {chapters.map((ch, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleJumpToChapter(ch.title)}
-                  style={{
-                    padding: '2px 6px',
-                    background: '#f4f4f5',
-                    border: '1px solid #000',
-                    borderRadius: 3,
-                    fontFamily: 'monospace',
-                    fontSize: '0.6rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={`Jump to [${ch.title}]`}
-                >
-                  {ch.title}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Center Read Telemetry & Audio Meter */}
-        <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'monospace', fontSize: '0.74rem', fontWeight: 900 }}>
-          {/* AI Voice Sync / Timed Scroll Toggle Badge (Strict Single Line) */}
-          <button
-            onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              border: '1.5px solid #000',
-              borderRadius: 6,
-              background: speechFollowEnabled
-                ? speechStatus === 'speaking'
-                  ? '#dcfce7'
-                  : speechStatus === 'listening'
-                  ? '#fef3c7'
-                  : '#fee2e2'
-                : '#ffffff',
-              color: speechFollowEnabled
-                ? speechStatus === 'speaking'
-                  ? '#15803d'
-                  : speechStatus === 'listening'
-                  ? '#b45309'
-                  : '#b91c1c'
-                : '#000000',
-              fontFamily: 'monospace',
-              fontWeight: 900,
-              fontSize: '0.68rem',
-              whiteSpace: 'nowrap',
-              cursor: 'pointer',
-              boxShadow: '1.5px 1.5px 0 #000',
-            }}
-            title="Click to toggle AI Voice Sync vs Timed Scroll (S)"
-          >
-            <span
+        <header
+          className="fs-header prompter-desktop-header"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: 1120,
+            height: 46,
+            background: 'rgba(255, 255, 255, 0.94)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '2.5px solid #000000',
+            borderRadius: 12,
+            boxShadow: '0 6px 25px rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 12px',
+            zIndex: 50,
+            flexShrink: 0,
+            color: '#000000',
+            transition: 'opacity 0.4s ease',
+            opacity: isPlaying ? 0.35 : 1,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { if (isPlaying) e.currentTarget.style.opacity = '0.35'; }}
+        >
+          <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Link
+              href="/"
+              className="brutalist-button"
               style={{
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                background: speechFollowEnabled
-                  ? speechStatus === 'speaking'
-                    ? '#22c55e'
-                    : speechStatus === 'listening'
-                    ? '#f59e0b'
-                    : '#ef4444'
-                  : '#71717a',
+                padding: '5px 10px',
+                fontSize: '0.72rem',
+                borderRadius: 6,
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
               }}
-              className={speechStatus === 'speaking' && speechFollowEnabled ? 'animate-pulse' : ''}
-            />
-            <span style={{ whiteSpace: 'nowrap' }}>
-              {speechFollowEnabled
-                ? speechStatus === 'speaking'
-                  ? `AI: "${lastHeardWord || 'SPEAKING'}"`
-                  : speechStatus === 'listening'
-                  ? 'AI LISTENING'
-                  : 'PAUSED'
-                : `TIMED SCROLL (${speed.toFixed(1)}x)`}
-            </span>
-          </button>
+            >
+              ‹ HOME
+            </Link>
 
-          {/* Desktop Decibel & Waveform Box */}
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: '#ffffff',
-              padding: '3px 8px',
-              border: '1.5px solid #000',
-              borderRadius: 6,
-              boxShadow: '1.5px 1.5px 0 #000',
-            }}
-          >
-            <canvas ref={hudWaveformCanvasRef} width={50} height={15} style={{ background: '#000', borderRadius: 2 }} />
-            <span style={{ fontSize: '0.68rem', color: isClipping ? '#dc2626' : '#000', whiteSpace: 'nowrap' }}>
-              {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
-            </span>
+            <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
+
+            <button
+              onClick={() => setShowScriptModal(true)}
+              style={{
+                padding: '5px 10px',
+                background: '#FFE500',
+                color: '#000000',
+                border: '2px solid #000000',
+                borderRadius: 6,
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.68rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <FileText size={12} />
+              SCRIPT
+            </button>
+
+            {/* Quick Chapter Markers */}
+            {chapters.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, overflowX: 'auto', maxWidth: 180 }} className="no-scrollbar">
+                {chapters.map((ch, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleJumpToChapter(ch.title)}
+                    style={{
+                      padding: '2px 6px',
+                      background: '#f4f4f5',
+                      border: '1px solid #000',
+                      borderRadius: 3,
+                      fontFamily: 'monospace',
+                      fontSize: '0.6rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`Jump to [${ch.title}]`}
+                  >
+                    {ch.title}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {isRecording && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '3px 8px', borderRadius: 6, color: '#b91c1c', boxShadow: '1.5px 1.5px 0 #000' }}>
-              <Radio size={12} className="animate-pulse" />
-              <span>REC {formatTime(recordingSeconds)}</span>
+          {/* Center Read Telemetry & Audio Meter */}
+          <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'monospace', fontSize: '0.74rem', fontWeight: 900 }}>
+            {/* AI Voice Sync / Timed Scroll Toggle Badge (Strict Single Line) */}
+            <button
+              onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                border: '1.5px solid #000',
+                borderRadius: 6,
+                background: speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? '#dcfce7'
+                    : speechStatus === 'listening'
+                      ? '#fef3c7'
+                      : '#fee2e2'
+                  : '#ffffff',
+                color: speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? '#15803d'
+                    : speechStatus === 'listening'
+                      ? '#b45309'
+                      : '#b91c1c'
+                  : '#000000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.68rem',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+                boxShadow: '1.5px 1.5px 0 #000',
+              }}
+              title="Click to toggle AI Voice Sync vs Timed Scroll (S)"
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: speechFollowEnabled
+                    ? speechStatus === 'speaking'
+                      ? '#22c55e'
+                      : speechStatus === 'listening'
+                        ? '#f59e0b'
+                        : '#ef4444'
+                    : '#71717a',
+                }}
+                className={speechStatus === 'speaking' && speechFollowEnabled ? 'animate-pulse' : ''}
+              />
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? `AI: "${lastHeardWord || 'SPEAKING'}"`
+                    : speechStatus === 'listening'
+                      ? 'AI LISTENING'
+                      : 'PAUSED'
+                  : `TIMED SCROLL (${speed.toFixed(1)}x)`}
+              </span>
+            </button>
+
+            {/* Desktop Decibel & Waveform Box */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#ffffff',
+                padding: '3px 8px',
+                border: '1.5px solid #000',
+                borderRadius: 6,
+                boxShadow: '1.5px 1.5px 0 #000',
+              }}
+            >
+              <canvas ref={hudWaveformCanvasRef} width={50} height={15} style={{ background: '#000', borderRadius: 2 }} />
+              <span style={{ fontSize: '0.68rem', color: isClipping ? '#dc2626' : '#000', whiteSpace: 'nowrap' }}>
+                {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
+              </span>
             </div>
-          )}
-        </div>
 
-        {/* Right Action Icons */}
-        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            onClick={handleToggleFullscreen}
-            className="brutalist-button"
-            style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-          </button>
+            {isRecording && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '3px 8px', borderRadius: 6, color: '#b91c1c', boxShadow: '1.5px 1.5px 0 #000' }}>
+                <Radio size={12} className="animate-pulse" />
+                <span>REC {formatTime(recordingSeconds)}</span>
+              </div>
+            )}
+          </div>
 
-          <button
-            onClick={() => setShowShortcutsModal(true)}
-            className="brutalist-button"
-            style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
-            title="View Keyboard Shortcuts (Shift + ?)"
-          >
-            <HelpCircle size={13} />
-            Shortcuts
-          </button>
+          {/* Right Action Icons */}
+          <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={handleToggleFullscreen}
+              className="brutalist-button"
+              style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
 
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`brutalist-button ${showSettings ? 'brutalist-button-primary' : ''}`}
-            style={{ padding: '5px 10px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5 }}
-          >
-            <SlidersHorizontal size={13} />
-            {showSettings ? 'Hide' : 'Controls'}
-          </button>
-        </div>
-      </header>
+            <button
+              onClick={() => setShowShortcutsModal(true)}
+              className="brutalist-button"
+              style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+              title="View Keyboard Shortcuts (Shift + ?)"
+            >
+              <HelpCircle size={13} />
+              Shortcuts
+            </button>
+
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className={`brutalist-button ${showSettings ? 'brutalist-button-primary' : ''}`}
+              style={{ padding: '5px 10px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              <SlidersHorizontal size={13} />
+              {showSettings ? 'Hide' : 'Controls'}
+            </button>
+          </div>
+        </header>
       )}
 
       {/* ── Main Prompter Screen + Sidebar Layout ── */}
@@ -1637,15 +1603,15 @@ Control your speed, adjust your font size, and download your voice recording in 
                   ? speechStatus === 'speaking'
                     ? '#dcfce7'
                     : speechStatus === 'listening'
-                    ? '#fef3c7'
-                    : '#fee2e2'
+                      ? '#fef3c7'
+                      : '#fee2e2'
                   : '#ffffff',
                 color: speechFollowEnabled
                   ? speechStatus === 'speaking'
                     ? '#15803d'
                     : speechStatus === 'listening'
-                    ? '#b45309'
-                    : '#b91c1c'
+                      ? '#b45309'
+                      : '#b91c1c'
                   : '#000000',
                 fontFamily: 'monospace',
                 fontWeight: 900,
@@ -1669,8 +1635,8 @@ Control your speed, adjust your font size, and download your voice recording in 
                     ? speechStatus === 'speaking'
                       ? '#22c55e'
                       : speechStatus === 'listening'
-                      ? '#f59e0b'
-                      : '#ef4444'
+                        ? '#f59e0b'
+                        : '#ef4444'
                     : '#71717a',
                   flexShrink: 0,
                 }}
@@ -1681,8 +1647,8 @@ Control your speed, adjust your font size, and download your voice recording in 
                   ? speechStatus === 'speaking'
                     ? `AI: "${lastHeardWord || 'SPEAKING'}"`
                     : speechStatus === 'listening'
-                    ? 'AI LISTENING'
-                    : 'PAUSED'
+                      ? 'AI LISTENING'
+                      : 'PAUSED'
                   : 'TIMED SCROLL'}
               </span>
             </button>
@@ -1918,301 +1884,301 @@ Control your speed, adjust your font size, and download your voice recording in 
 
           {/* ── Transport Controls: Mobile Floating Pill + Bottom Sheet + Desktop Studio Dock ── */}
           <>
-              {/* ── MOBILE: Bottom Floating Control Pill ── */}
-              <div
-                className={mobileControlsOpen ? '' : 'prompter-mobile-pill'}
-                style={{
-                  position: 'fixed',
-                  bottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 60,
-                  display: 'none',
-                  alignItems: 'center',
-                  gap: 0,
-                  background: 'rgba(0, 0, 0, 0.78)',
-                  backdropFilter: 'blur(20px)',
-                  WebkitBackdropFilter: 'blur(20px)',
-                  border: '1.5px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: 50,
-                  padding: '3px',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                  transition: 'opacity 0.5s ease',
-                  opacity: isPlaying ? 0.65 : 1,
+            {/* ── MOBILE: Bottom Floating Control Pill ── */}
+            <div
+              className={mobileControlsOpen ? '' : 'prompter-mobile-pill'}
+              style={{
+                position: 'fixed',
+                bottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 60,
+                display: 'none',
+                alignItems: 'center',
+                gap: 0,
+                background: 'rgba(0, 0, 0, 0.78)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                border: '1.5px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: 50,
+                padding: '3px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                transition: 'opacity 0.5s ease',
+                opacity: isPlaying ? 0.65 : 1,
+              }}
+              onTouchStart={(e) => { e.currentTarget.style.opacity = '1'; }}
+              onTouchEnd={(e) => { const el = e.currentTarget; if (isPlaying) setTimeout(() => { try { el.style.opacity = '0.65'; } catch { } }, 2000); }}
+            >
+              {/* Play / Pause button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPlaying) {
+                    setIsPlaying(false);
+                    showTapToast('PAUSE');
+                  } else {
+                    triggerPlaybackWithCountdown();
+                  }
                 }}
-                onTouchStart={(e) => { e.currentTarget.style.opacity = '1'; }}
-                onTouchEnd={(e) => { const el = e.currentTarget; if (isPlaying) setTimeout(() => { try { el.style.opacity = '0.65'; } catch {} }, 2000); }}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: isPlaying ? '#FFE500' : '#ffffff',
+                  color: '#000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
               >
-                {/* Play / Pause button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isPlaying) {
-                      setIsPlaying(false);
-                      showTapToast('PAUSE');
-                    } else {
-                      triggerPlaybackWithCountdown();
-                    }
-                  }}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: '50%',
-                    border: 'none',
-                    background: isPlaying ? '#FFE500' : '#ffffff',
-                    color: '#000',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                >
-                  {isPlaying ? <Pause size={20} strokeWidth={3} /> : <Play size={20} strokeWidth={3} />}
-                </button>
+                {isPlaying ? <Pause size={20} strokeWidth={3} /> : <Play size={20} strokeWidth={3} />}
+              </button>
 
-                {/* Speed indicator */}
-                <div style={{ padding: '0 10px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', color: '#fff', whiteSpace: 'nowrap' }}>
-                  {speed.toFixed(1)}x
-                </div>
-
-                {/* Settings Gear */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMobileControlsOpen(true);
-                  }}
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: '50%',
-                    border: 'none',
-                    background: 'rgba(255, 255, 255, 0.12)',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                >
-                  <SlidersHorizontal size={18} />
-                </button>
+              {/* Speed indicator */}
+              <div style={{ padding: '0 10px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', color: '#fff', whiteSpace: 'nowrap' }}>
+                {speed.toFixed(1)}x
               </div>
 
-              {/* ── MOBILE: Bottom Sheet Controls ── */}
-              {mobileControlsOpen && (
-                <>
-                  <div onClick={() => setMobileControlsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70, backdropFilter: 'blur(4px)' }} />
-                  <div
-                    style={{
-                      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 71,
-                      background: '#ffffff', borderRadius: '24px 24px 0 0',
-                      padding: `16px 16px max(20px, env(safe-area-inset-bottom, 20px))`,
-                      color: '#000', display: 'flex', flexDirection: 'column', gap: 12,
-                      maxHeight: '75dvh', overflowY: 'auto',
-                      boxShadow: '0 -10px 40px rgba(0,0,0,0.4)',
-                    }}
-                  >
-                    {/* Drag Handle */}
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: -4 }}>
-                      <div style={{ width: 36, height: 4, borderRadius: 2, background: '#d4d4d8' }} />
-                    </div>
+              {/* Settings Gear */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMobileControlsOpen(true);
+                }}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <SlidersHorizontal size={18} />
+              </button>
+            </div>
 
-                    {/* Header */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Studio Controls
-                      </span>
-                      <button
-                        onClick={() => setMobileControlsOpen(false)}
-                        style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid #000', background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
+            {/* ── MOBILE: Bottom Sheet Controls ── */}
+            {mobileControlsOpen && (
+              <>
+                <div onClick={() => setMobileControlsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70, backdropFilter: 'blur(4px)' }} />
+                <div
+                  style={{
+                    position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 71,
+                    background: '#ffffff', borderRadius: '24px 24px 0 0',
+                    padding: `16px 16px max(20px, env(safe-area-inset-bottom, 20px))`,
+                    color: '#000', display: 'flex', flexDirection: 'column', gap: 12,
+                    maxHeight: '75dvh', overflowY: 'auto',
+                    boxShadow: '0 -10px 40px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  {/* Drag Handle */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: -4 }}>
+                    <div style={{ width: 36, height: 4, borderRadius: 2, background: '#d4d4d8' }} />
+                  </div>
 
-                    {/* 1. Voice Recording & AI Voice Follow Controls */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {/* Voice Recording Action */}
-                      <div>
-                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
-                          Voice Recorder
-                        </label>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isRecording) {
-                              stopVoiceRecording();
-                            } else {
-                              startVoiceRecording();
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            minHeight: 44,
-                            border: '2px solid #000',
-                            borderRadius: 8,
-                            background: isRecording ? '#ef4444' : '#ffffff',
-                            color: isRecording ? '#ffffff' : '#000000',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.72rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 6,
-                            boxShadow: isRecording ? '0 0 12px rgba(239,68,68,0.5)' : 'none',
-                          }}
-                        >
-                          <Mic size={16} />
-                          {isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}
-                        </button>
-                      </div>
-
-                      {/* AI Speech Voice Follow Toggle */}
-                      <div>
-                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
-                          Scroll Mode
-                        </label>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSpeechFollowEnabled(!speechFollowEnabled);
-                          }}
-                          style={{
-                            width: '100%',
-                            minHeight: 44,
-                            border: '2px solid #000',
-                            borderRadius: 8,
-                            background: speechFollowEnabled ? '#FFE500' : '#fff',
-                            color: '#000',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.72rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          {speechFollowEnabled ? 'AI VOICE SYNC' : 'TIMED SCROLL'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Recorded Audio Download / Preview Player (If available) */}
-                    {recordedAudioUrl && (
-                      <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <audio src={recordedAudioUrl} controls style={{ height: 28, flex: 1 }} />
-                        <a
-                          href={recordedAudioUrl}
-                          download={`creatorkit-voice-${Date.now()}.webm`}
-                          style={{
-                            padding: '6px 10px',
-                            background: '#000',
-                            color: '#FFE500',
-                            border: '1.5px solid #000',
-                            borderRadius: 6,
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.65rem',
-                            textDecoration: 'none',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          DOWNLOAD
-                        </a>
-                      </div>
-                    )}
-
-                    {/* 2. Speed Stepper */}
-                    <div>
-                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Speed</label>
-                      <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
-                        <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.max(0.5, parseFloat((s - 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
-                        <span style={{ flex: 1.6, textAlign: 'center', fontSize: '1rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{speed.toFixed(1)}x</span>
-                        <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.min(8.0, parseFloat((s + 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
-                      </div>
-                    </div>
-
-                    {/* 3. Font Size & Family */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
-                      <div>
-                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Text Size</label>
-                        <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
-                          <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.max(22, f - 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
-                          <span style={{ flex: 1.4, textAlign: 'center', fontSize: '0.95rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{fontSize}px</span>
-                          <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.min(72, f + 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Font Family</label>
-                        <select
-                          value={fontFamily}
-                          onChange={(e) => setFontFamily(e.target.value)}
-                          style={{
-                            width: '100%',
-                            height: 44,
-                            border: '2px solid #000',
-                            borderRadius: 8,
-                            padding: '0 8px',
-                            fontFamily: 'monospace',
-                            fontWeight: 800,
-                            fontSize: '0.72rem',
-                            background: '#fff',
-                            color: '#000',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <option value='"Inter", sans-serif'>Inter (Default)</option>
-                          <option value='"Roboto", sans-serif'>Roboto</option>
-                          <option value='"Outfit", sans-serif'>Outfit</option>
-                          <option value='"Montserrat", sans-serif'>Montserrat</option>
-                          <option value='"Cinzel", serif'>Cinzel (Cinematic)</option>
-                          <option value='"Space Mono", monospace'>Space Mono</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* 4. Secondary Action Buttons: Safe Zone, Script, Reset */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                      <button onClick={(e) => { e.stopPropagation(); setShowSafeAreas((s) => !s); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: showSafeAreas ? '#FFE500' : '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Shield size={14} /> {showSafeAreas ? '9:16 ON' : 'Safe Area'}
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); setShowScriptModal(true); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <FileText size={14} /> Script
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleResetScroll(); setMobileControlsOpen(false); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#f4f4f5', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <RotateCcw size={14} /> Reset
-                      </button>
-                    </div>
-
-                    {/* Telemetry info */}
-                    <div style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 700, color: '#a1a1aa' }}>
-                      {totalWords} words · ~{Math.max(10, Math.ceil((totalWords / Math.max(60, speed * 120)) * 60))}s read time
-                    </div>
-
-                    {/* Big Start / Pause Reading Action */}
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Studio Controls
+                    </span>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); if (isPlaying) { setIsPlaying(false); } else { triggerPlaybackWithCountdown(); } }}
-                      style={{
-                        width: '100%', minHeight: 50, border: '2.5px solid #000', borderRadius: 10,
-                        background: isPlaying ? '#000' : '#FFE500', color: isPlaying ? '#FFE500' : '#000',
-                        fontFamily: 'monospace', fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.06em',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        boxShadow: '2px 2px 0 #000',
-                      }}
+                      onClick={() => setMobileControlsOpen(false)}
+                      style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid #000', background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                     >
-                      {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                      {isPlaying ? 'PAUSE PROMPTER' : 'START READING'}
+                      <X size={14} />
                     </button>
                   </div>
-                </>
-              )}
+
+                  {/* 1. Voice Recording & AI Voice Follow Controls */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {/* Voice Recording Action */}
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
+                        Voice Recorder
+                      </label>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isRecording) {
+                            stopVoiceRecording();
+                          } else {
+                            startVoiceRecording();
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          minHeight: 44,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: isRecording ? '#ef4444' : '#ffffff',
+                          color: isRecording ? '#ffffff' : '#000000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          boxShadow: isRecording ? '0 0 12px rgba(239,68,68,0.5)' : 'none',
+                        }}
+                      >
+                        <Mic size={16} />
+                        {isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}
+                      </button>
+                    </div>
+
+                    {/* AI Speech Voice Follow Toggle */}
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
+                        Scroll Mode
+                      </label>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSpeechFollowEnabled(!speechFollowEnabled);
+                        }}
+                        style={{
+                          width: '100%',
+                          minHeight: 44,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: speechFollowEnabled ? '#FFE500' : '#fff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        {speechFollowEnabled ? 'AI VOICE SYNC' : 'TIMED SCROLL'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Recorded Audio Download / Preview Player (If available) */}
+                  {recordedAudioUrl && (
+                    <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <audio src={recordedAudioUrl} controls style={{ height: 28, flex: 1 }} />
+                      <a
+                        href={recordedAudioUrl}
+                        download={`creatorkit-voice-${Date.now()}.webm`}
+                        style={{
+                          padding: '6px 10px',
+                          background: '#000',
+                          color: '#FFE500',
+                          border: '1.5px solid #000',
+                          borderRadius: 6,
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.65rem',
+                          textDecoration: 'none',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        DOWNLOAD
+                      </a>
+                    </div>
+                  )}
+
+                  {/* 2. Speed Stepper */}
+                  <div>
+                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Speed</label>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
+                      <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.max(0.5, parseFloat((s - 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
+                      <span style={{ flex: 1.6, textAlign: 'center', fontSize: '1rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{speed.toFixed(1)}x</span>
+                      <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.min(8.0, parseFloat((s + 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
+                    </div>
+                  </div>
+
+                  {/* 3. Font Size & Family */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Text Size</label>
+                      <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.max(22, f - 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
+                        <span style={{ flex: 1.4, textAlign: 'center', fontSize: '0.95rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{fontSize}px</span>
+                        <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.min(72, f + 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Font Family</label>
+                      <select
+                        value={fontFamily}
+                        onChange={(e) => setFontFamily(e.target.value)}
+                        style={{
+                          width: '100%',
+                          height: 44,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          padding: '0 8px',
+                          fontFamily: 'monospace',
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          background: '#fff',
+                          color: '#000',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value='"Inter", sans-serif'>Inter (Default)</option>
+                        <option value='"Roboto", sans-serif'>Roboto</option>
+                        <option value='"Outfit", sans-serif'>Outfit</option>
+                        <option value='"Montserrat", sans-serif'>Montserrat</option>
+                        <option value='"Cinzel", serif'>Cinzel (Cinematic)</option>
+                        <option value='"Space Mono", monospace'>Space Mono</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* 4. Secondary Action Buttons: Safe Zone, Script, Reset */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                    <button onClick={(e) => { e.stopPropagation(); setShowSafeAreas((s) => !s); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: showSafeAreas ? '#FFE500' : '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <Shield size={14} /> {showSafeAreas ? '9:16 ON' : 'Safe Area'}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); setShowScriptModal(true); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <FileText size={14} /> Script
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleResetScroll(); setMobileControlsOpen(false); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#f4f4f5', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <RotateCcw size={14} /> Reset
+                    </button>
+                  </div>
+
+                  {/* Telemetry info */}
+                  <div style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 700, color: '#a1a1aa' }}>
+                    {totalWords} words · ~{Math.max(10, Math.ceil((totalWords / Math.max(60, speed * 120)) * 60))}s read time
+                  </div>
+
+                  {/* Big Start / Pause Reading Action */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); if (isPlaying) { setIsPlaying(false); } else { triggerPlaybackWithCountdown(); } }}
+                    style={{
+                      width: '100%', minHeight: 50, border: '2.5px solid #000', borderRadius: 10,
+                      background: isPlaying ? '#000' : '#FFE500', color: isPlaying ? '#FFE500' : '#000',
+                      fontFamily: 'monospace', fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.06em',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      boxShadow: '2px 2px 0 #000',
+                    }}
+                  >
+                    {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                    {isPlaying ? 'PAUSE PROMPTER' : 'START READING'}
+                  </button>
+                </div>
+              </>
+            )}
           </>
 
           {/* ── Desktop Studio Floating Transport Dock ── */}
@@ -2516,483 +2482,526 @@ Control your speed, adjust your font size, and download your voice recording in 
                 ))}
               </div>
 
-            {/* Drawer Body Contents */}
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Drawer Body Contents */}
+              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
 
-              {/* TAB 2: SPEECH AI AUTO-SCROLL */}
-              {activeSidebarTab === 'speech' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: speechFollowEnabled ? '#fef08a' : '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Zap size={15} />
-                        AI Speech-Sync Glide Engine
-                      </label>
-                      <button
-                        onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
-                        style={{
-                          padding: '4px 10px',
-                          border: '2px solid #000',
-                          borderRadius: 4,
-                          background: speechFollowEnabled ? '#000' : '#fff',
-                          color: speechFollowEnabled ? '#fff' : '#000',
-                          fontFamily: 'monospace',
-                          fontWeight: 900,
-                          fontSize: '0.68rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {speechFollowEnabled ? 'ACTIVE (ON)' : 'DISABLED'}
-                      </button>
-                    </div>
-
-                    <p style={{ fontSize: '0.68rem', color: '#222', lineHeight: 1.4 }}>
-                      Follows your voice with <strong>continuous smooth easing</strong>, preventing abrupt jumps and <strong>freezing automatically the exact instant you pause</strong>.
-                    </p>
-
-                    {/* Live Word Feedback Badge */}
-                    <div style={{ padding: '8px 10px', background: '#fff', border: '2px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
-                        <span>FOLLOWING SPOKEN WORD:</span>
-                        <span>STATUS: {speechStatus.toUpperCase()}</span>
-                      </div>
-                      <div style={{ fontSize: '0.86rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ background: '#FFE500', padding: '2px 8px', border: '1.5px solid #000', borderRadius: 4 }}>
-                          {lastHeardWord ? `"${lastHeardWord}"` : 'Listening for your voice...'}
-                        </span>
-                        {activeWordIndex >= 0 && (
-                          <span style={{ fontSize: '0.65rem', color: '#666' }}>
-                            ({activeWordIndex + 1}/{totalWords} words)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Pacing Smoothness Presets */}
-                    <div>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
-                        Glide Smoothness & Responsiveness
-                      </span>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                        {[
-                          { val: 0.05, label: '🧈 Butter Smooth' },
-                          { val: 0.08, label: '⚡ Natural Paced' },
-                          { val: 0.12, label: '🎯 Tight Lock' },
-                        ].map((m) => (
-                          <button
-                            key={m.val}
-                            onClick={() => setSpeechDamping(m.val)}
-                            style={{
-                              padding: '6px 2px',
-                              border: '1.5px solid #000',
-                              borderRadius: 4,
-                              background: Math.abs(speechDamping - m.val) < 0.01 ? '#000' : '#fff',
-                              color: Math.abs(speechDamping - m.val) < 0.01 ? '#FFE500' : '#000',
-                              fontFamily: 'monospace',
-                              fontWeight: 900,
-                              fontSize: '0.62rem',
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {m.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Silence Auto-Pause Sensitivity */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                        <span>PAUSE FREEZE TIME:</span>
-                        <span>{autoPauseThresholdMs}ms</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="400"
-                        max="1500"
-                        step="50"
-                        value={autoPauseThresholdMs}
-                        onChange={(e) => setAutoPauseThresholdMs(parseInt(e.target.value))}
-                        style={{ width: '100%', accentColor: '#000' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* TAB 3: TEXT WIDTH & READING SPACE CONTROL */}
-              {activeSidebarTab === 'width' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <MoveHorizontal size={15} />
-                      Text Width & Spacing Control
-                    </label>
-
-                    {/* Unit Switcher */}
-                    <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
-                      {[
-                        { id: 'ch', label: 'Characters (ch)' },
-                        { id: '%', label: 'Percentage (%)' },
-                        { id: 'px', label: 'Exact Pixels (px)' },
-                      ].map((u) => (
+                {/* TAB 2: SPEECH AI AUTO-SCROLL */}
+                {activeSidebarTab === 'speech' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: speechFollowEnabled ? '#fef08a' : '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Zap size={15} />
+                          AI Speech-Sync Glide Engine
+                        </label>
                         <button
-                          key={u.id}
-                          onClick={() => setWidthUnit(u.id as any)}
+                          onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
                           style={{
-                            flex: 1,
-                            padding: '5px 2px',
-                            border: 'none',
-                            borderRight: u.id !== 'px' ? '1px solid #000' : 'none',
-                            background: widthUnit === u.id ? '#000' : '#fff',
-                            color: widthUnit === u.id ? '#FFE500' : '#000',
+                            padding: '4px 10px',
+                            border: '2px solid #000',
+                            borderRadius: 4,
+                            background: speechFollowEnabled ? '#000' : '#fff',
+                            color: speechFollowEnabled ? '#fff' : '#000',
                             fontFamily: 'monospace',
-                            fontSize: '0.62rem',
                             fontWeight: 900,
+                            fontSize: '0.68rem',
                             cursor: 'pointer',
                           }}
                         >
-                          {u.label}
+                          {speechFollowEnabled ? 'ACTIVE (ON)' : 'DISABLED'}
                         </button>
-                      ))}
-                    </div>
-
-                    {/* Width Preset Chips */}
-                    <div>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 4 }}>
-                        QUICK WIDTH PRESETS
-                      </span>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
-                        {[
-                          { chars: 25, label: '🎯 25ch (Eye Lock)' },
-                          { chars: 30, label: '🎯 30ch (Lens)' },
-                          { chars: 45, label: '📱 45ch (Phone)' },
-                          { chars: 65, label: '💻 65ch (Wide)' },
-                        ].map((p) => (
-                          <button
-                            key={p.chars}
-                            onClick={() => {
-                              setWidthUnit('ch');
-                              setColumnCharWidth(p.chars);
-                            }}
-                            style={{
-                              padding: '6px 2px',
-                              border: '1.5px solid #000',
-                              borderRadius: 4,
-                              background: widthUnit === 'ch' && columnCharWidth === p.chars ? '#000' : '#fff',
-                              color: widthUnit === 'ch' && columnCharWidth === p.chars ? '#FFE500' : '#000',
-                              fontFamily: 'monospace',
-                              fontWeight: 900,
-                              fontSize: '0.62rem',
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {p.chars} Chars
-                          </button>
-                        ))}
                       </div>
-                    </div>
 
-                    {/* Width Slider */}
-                    {widthUnit === 'ch' && (
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>CHARACTER COLUMN WIDTH:</span>
-                          <span style={{ color: '#d97706' }}>{columnCharWidth} characters</span>
+                      <p style={{ fontSize: '0.68rem', color: '#222', lineHeight: 1.4 }}>
+                        Follows your voice with <strong>continuous smooth easing</strong>, preventing abrupt jumps and <strong>freezing automatically the exact instant you pause</strong>.
+                      </p>
+
+                      {/* Live Word Feedback Badge */}
+                      <div style={{ padding: '8px 10px', background: '#fff', border: '2px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
+                          <span>FOLLOWING SPOKEN WORD:</span>
+                          <span>STATUS: {speechStatus.toUpperCase()}</span>
                         </div>
-                        <input
-                          type="range"
-                          min="15"
-                          max="80"
-                          step="1"
-                          value={columnCharWidth}
-                          onChange={(e) => setColumnCharWidth(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: '#000' }}
-                        />
-                      </div>
-                    )}
-
-                    {widthUnit === '%' && (
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>PERCENTAGE COLUMN WIDTH:</span>
-                          <span style={{ color: '#d97706' }}>{columnPercentWidth}%</span>
+                        <div style={{ fontSize: '0.86rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ background: '#FFE500', padding: '2px 8px', border: '1.5px solid #000', borderRadius: 4 }}>
+                            {lastHeardWord ? `"${lastHeardWord}"` : 'Listening for your voice...'}
+                          </span>
+                          {activeWordIndex >= 0 && (
+                            <span style={{ fontSize: '0.65rem', color: '#666' }}>
+                              ({activeWordIndex + 1}/{totalWords} words)
+                            </span>
+                          )}
                         </div>
-                        <input
-                          type="range"
-                          min="20"
-                          max="100"
-                          step="2"
-                          value={columnPercentWidth}
-                          onChange={(e) => setColumnPercentWidth(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: '#000' }}
-                        />
                       </div>
-                    )}
 
-                    {widthUnit === 'px' && (
+                      {/* Pacing Smoothness Presets */}
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>PIXEL COLUMN WIDTH:</span>
-                          <span style={{ color: '#d97706' }}>{columnPixelWidth}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="240"
-                          max="1200"
-                          step="20"
-                          value={columnPixelWidth}
-                          onChange={(e) => setColumnPixelWidth(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: '#000' }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Alignment & Eyeline */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900 }}>TEXT ALIGNMENT:</span>
-                        <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
+                        <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                          Glide Smoothness & Responsiveness
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
                           {[
-                            { id: 'left', icon: AlignLeft },
-                            { id: 'center', icon: AlignCenter },
-                            { id: 'right', icon: AlignRight },
-                          ].map((a) => (
+                            { val: 0.05, label: '🧈 Butter Smooth' },
+                            { val: 0.08, label: '⚡ Natural Paced' },
+                            { val: 0.12, label: '🎯 Tight Lock' },
+                          ].map((m) => (
                             <button
-                              key={a.id}
-                              onClick={() => setTextAlign(a.id as any)}
+                              key={m.val}
+                              onClick={() => setSpeechDamping(m.val)}
                               style={{
-                                padding: '4px 8px',
-                                border: 'none',
-                                borderRight: a.id !== 'right' ? '1px solid #000' : 'none',
-                                background: textAlign === a.id ? '#000' : '#fff',
-                                color: textAlign === a.id ? '#fff' : '#000',
+                                padding: '6px 2px',
+                                border: '1.5px solid #000',
+                                borderRadius: 4,
+                                background: Math.abs(speechDamping - m.val) < 0.01 ? '#000' : '#fff',
+                                color: Math.abs(speechDamping - m.val) < 0.01 ? '#FFE500' : '#000',
+                                fontFamily: 'monospace',
+                                fontWeight: 900,
+                                fontSize: '0.62rem',
                                 cursor: 'pointer',
+                                textAlign: 'center',
                               }}
                             >
-                              <a.icon size={13} />
+                              {m.label}
                             </button>
                           ))}
                         </div>
                       </div>
 
+                      {/* Silence Auto-Pause Sensitivity */}
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>EYELINE HORIZON HEIGHT:</span>
-                          <span>{eyelinePercent}%</span>
+                          <span>PAUSE FREEZE TIME:</span>
+                          <span>{autoPauseThresholdMs}ms</span>
                         </div>
                         <input
                           type="range"
-                          min="15"
-                          max="65"
-                          step="1"
-                          value={eyelinePercent}
-                          onChange={(e) => setEyelinePercent(parseInt(e.target.value))}
+                          min="400"
+                          max="1500"
+                          step="50"
+                          value={autoPauseThresholdMs}
+                          onChange={(e) => setAutoPauseThresholdMs(parseInt(e.target.value))}
                           style={{ width: '100%', accentColor: '#000' }}
                         />
                       </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
 
-              {/* TAB 4: VU METER & AUDIO TELEMETRY */}
-              {activeSidebarTab === 'audio' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* TAB 3: TEXT WIDTH & READING SPACE CONTROL */}
+                {activeSidebarTab === 'width' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={15} />
-                        Web Audio VU Meter & Waveform
+                        <MoveHorizontal size={15} />
+                        Text Width & Spacing Control
                       </label>
-                      <span
-                        style={{
-                          fontSize: '0.64rem',
-                          fontFamily: 'monospace',
-                          fontWeight: 900,
-                          background: isClipping ? '#fee2e2' : '#dcfce7',
-                          color: isClipping ? '#dc2626' : '#15803d',
-                          padding: '2px 8px',
-                          border: '1px solid #000',
-                          borderRadius: 4,
-                        }}
-                      >
-                        {isClipping ? 'CLIPPING WARN' : 'INPUT OK'}
-                      </span>
-                    </div>
 
-                    {/* Waveform Canvas */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                        <span>LIVE AUDIO WAVEFORM:</span>
-                        <span>{rmsDecibels} dBFS (Peak {peakDecibels} dBFS)</span>
-                      </div>
-                      <canvas
-                        ref={waveformCanvasRef}
-                        width={330}
-                        height={60}
-                        style={{
-                          width: '100%',
-                          height: 60,
-                          background: '#000000',
-                          border: '2px solid #000000',
-                          borderRadius: 4,
-                          display: 'block',
-                        }}
-                      />
-                    </div>
-
-                    {/* Studio Segmented VU Meter */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                        <span>DECIBEL LEVEL METER:</span>
-                        <span style={{ color: isClipping ? '#dc2626' : rmsDecibels > -18 ? '#15803d' : '#d97706' }}>
-                          {rmsDecibels} dBFS
-                        </span>
-                      </div>
-
-                      <div style={{ height: 20, background: '#111', border: '2px solid #000', borderRadius: 4, position: 'relative', overflow: 'hidden', padding: '2px 3px', display: 'flex', gap: 2 }}>
-                        {Array.from({ length: 24 }).map((_, i) => {
-                          const segDb = -60 + i * 2.5;
-                          const isActive = rmsDecibels >= segDb;
-                          const isPeakHold = Math.abs(peakDecibels - segDb) < 2.5;
-                          const segColor = segDb >= -3 ? '#ef4444' : segDb >= -18 ? '#22c55e' : '#eab308';
-
-                          return (
-                            <div
-                              key={i}
-                              style={{
-                                flex: 1,
-                                height: '100%',
-                                background: isActive ? segColor : isPeakHold ? '#ffffff' : 'rgba(255,255,255,0.08)',
-                                borderRadius: 1,
-                                boxShadow: isActive ? `0 0 4px ${segColor}` : 'none',
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', fontFamily: 'monospace', color: '#777', marginTop: 3 }}>
-                        <span>-60 dB</span>
-                        <span>-36 dB</span>
-                        <span style={{ color: '#15803d', fontWeight: 900 }}>-18 dB (TARGET)</span>
-                        <span style={{ color: '#dc2626', fontWeight: 900 }}>0 dB (CLIP)</span>
-                      </div>
-                    </div>
-
-                    {/* Noise Floor Auto-Calibration */}
-                    <div style={{ padding: '8px 10px', background: '#f4f4f5', border: '1.5px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900 }}>
-                          ROOM NOISE FLOOR: {noiseFloorDb} dB
-                        </span>
-                        <button
-                          onClick={calibrateNoiseFloor}
-                          disabled={isCalibratingNoise}
-                          className="brutalist-button"
-                          style={{ padding: '3px 8px', fontSize: '0.62rem', borderRadius: 3 }}
-                        >
-                          {isCalibratingNoise ? 'Sampling...' : '⚡ Calibrate'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* TAB 5: FONTS & TYPOGRAPHY */}
-              {activeSidebarTab === 'fonts' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                        <span>FONT SIZE:</span>
-                        <span>{fontSize}px</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="20"
-                        max="96"
-                        step="2"
-                        value={fontSize}
-                        onChange={(e) => setFontSize(parseInt(e.target.value))}
-                        style={{ width: '100%', accentColor: '#000' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
-                        Font Family (52 Google Fonts)
-                      </label>
-                      <select
-                        value={fontFamily}
-                        onChange={(e) => setFontFamily(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          border: '2px solid #000',
-                          borderRadius: 4,
-                          background: '#fff',
-                          color: '#000',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {filteredFonts.map((f) => (
-                          <option key={f.id} value={f.fontFamily}>
-                            {f.name} ({f.category})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Text Colors */}
-                    <div>
-                      <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
-                        Text Color Swatch
-                      </label>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {TEXT_COLORS.map((c) => (
+                      {/* Unit Switcher */}
+                      <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
+                        {[
+                          { id: 'ch', label: 'Characters (ch)' },
+                          { id: '%', label: 'Percentage (%)' },
+                          { id: 'px', label: 'Exact Pixels (px)' },
+                        ].map((u) => (
                           <button
-                            key={c.hex}
-                            onClick={() => setTextColor(c.hex)}
+                            key={u.id}
+                            onClick={() => setWidthUnit(u.id as any)}
                             style={{
-                              width: 24,
-                              height: 24,
-                              background: c.hex,
-                              border: textColor === c.hex ? '3px solid #000' : '1.5px solid #000',
-                              borderRadius: 4,
+                              flex: 1,
+                              padding: '5px 2px',
+                              border: 'none',
+                              borderRight: u.id !== 'px' ? '1px solid #000' : 'none',
+                              background: widthUnit === u.id ? '#000' : '#fff',
+                              color: widthUnit === u.id ? '#FFE500' : '#000',
+                              fontFamily: 'monospace',
+                              fontSize: '0.62rem',
+                              fontWeight: 900,
                               cursor: 'pointer',
                             }}
-                            title={c.name}
-                          />
+                          >
+                            {u.label}
+                          </button>
                         ))}
                       </div>
+
+                      {/* Width Preset Chips */}
+                      <div>
+                        <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', display: 'block', marginBottom: 4 }}>
+                          QUICK WIDTH PRESETS
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
+                          {[
+                            { chars: 25, label: '🎯 25ch (Eye Lock)' },
+                            { chars: 30, label: '🎯 30ch (Lens)' },
+                            { chars: 45, label: '📱 45ch (Phone)' },
+                            { chars: 65, label: '💻 65ch (Wide)' },
+                          ].map((p) => (
+                            <button
+                              key={p.chars}
+                              onClick={() => {
+                                setWidthUnit('ch');
+                                setColumnCharWidth(p.chars);
+                              }}
+                              style={{
+                                padding: '6px 2px',
+                                border: '1.5px solid #000',
+                                borderRadius: 4,
+                                background: widthUnit === 'ch' && columnCharWidth === p.chars ? '#000' : '#fff',
+                                color: widthUnit === 'ch' && columnCharWidth === p.chars ? '#FFE500' : '#000',
+                                fontFamily: 'monospace',
+                                fontWeight: 900,
+                                fontSize: '0.62rem',
+                                cursor: 'pointer',
+                                textAlign: 'center',
+                              }}
+                            >
+                              {p.chars} Chars
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Width Slider */}
+                      {widthUnit === 'ch' && (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                            <span>CHARACTER COLUMN WIDTH:</span>
+                            <span style={{ color: '#d97706' }}>{columnCharWidth} characters</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="15"
+                            max="80"
+                            step="1"
+                            value={columnCharWidth}
+                            onChange={(e) => setColumnCharWidth(parseInt(e.target.value))}
+                            style={{ width: '100%', accentColor: '#000' }}
+                          />
+                        </div>
+                      )}
+
+                      {widthUnit === '%' && (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                            <span>PERCENTAGE COLUMN WIDTH:</span>
+                            <span style={{ color: '#d97706' }}>{columnPercentWidth}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="20"
+                            max="100"
+                            step="2"
+                            value={columnPercentWidth}
+                            onChange={(e) => setColumnPercentWidth(parseInt(e.target.value))}
+                            style={{ width: '100%', accentColor: '#000' }}
+                          />
+                        </div>
+                      )}
+
+                      {widthUnit === 'px' && (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                            <span>PIXEL COLUMN WIDTH:</span>
+                            <span style={{ color: '#d97706' }}>{columnPixelWidth}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="240"
+                            max="1200"
+                            step="20"
+                            value={columnPixelWidth}
+                            onChange={(e) => setColumnPixelWidth(parseInt(e.target.value))}
+                            style={{ width: '100%', accentColor: '#000' }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Alignment & Eyeline */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900 }}>TEXT ALIGNMENT:</span>
+                          <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
+                            {[
+                              { id: 'left', icon: AlignLeft },
+                              { id: 'center', icon: AlignCenter },
+                              { id: 'right', icon: AlignRight },
+                            ].map((a) => (
+                              <button
+                                key={a.id}
+                                onClick={() => setTextAlign(a.id as any)}
+                                style={{
+                                  padding: '4px 8px',
+                                  border: 'none',
+                                  borderRight: a.id !== 'right' ? '1px solid #000' : 'none',
+                                  background: textAlign === a.id ? '#000' : '#fff',
+                                  color: textAlign === a.id ? '#fff' : '#000',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <a.icon size={13} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                            <span>EYELINE HORIZON HEIGHT:</span>
+                            <span>{eyelinePercent}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="15"
+                            max="65"
+                            step="1"
+                            value={eyelinePercent}
+                            onChange={(e) => setEyelinePercent(parseInt(e.target.value))}
+                            style={{ width: '100%', accentColor: '#000' }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
 
-              {/* TAB 6: CHAPTERS & CUES */}
-              {activeSidebarTab === 'cues' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Bookmark size={14} />
-                      Script Chapters & Cues ({chapters.length})
-                    </label>
+                {/* TAB 4: VU METER & AUDIO TELEMETRY */}
+                {activeSidebarTab === 'audio' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Activity size={15} />
+                          Web Audio VU Meter & Waveform
+                        </label>
+                        <span
+                          style={{
+                            fontSize: '0.64rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            background: isClipping ? '#fee2e2' : '#dcfce7',
+                            color: isClipping ? '#dc2626' : '#15803d',
+                            padding: '2px 8px',
+                            border: '1px solid #000',
+                            borderRadius: 4,
+                          }}
+                        >
+                          {isClipping ? 'CLIPPING WARN' : 'INPUT OK'}
+                        </span>
+                      </div>
 
-                    {chapters.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {chapters.map((ch, idx) => (
+                      {/* Waveform Canvas */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                          <span>LIVE AUDIO WAVEFORM:</span>
+                          <span>{rmsDecibels} dBFS (Peak {peakDecibels} dBFS)</span>
+                        </div>
+                        <canvas
+                          ref={waveformCanvasRef}
+                          width={330}
+                          height={60}
+                          style={{
+                            width: '100%',
+                            height: 60,
+                            background: '#000000',
+                            border: '2px solid #000000',
+                            borderRadius: 4,
+                            display: 'block',
+                          }}
+                        />
+                      </div>
+
+                      {/* Studio Segmented VU Meter */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                          <span>DECIBEL LEVEL METER:</span>
+                          <span style={{ color: isClipping ? '#dc2626' : rmsDecibels > -18 ? '#15803d' : '#d97706' }}>
+                            {rmsDecibels} dBFS
+                          </span>
+                        </div>
+
+                        <div style={{ height: 20, background: '#111', border: '2px solid #000', borderRadius: 4, position: 'relative', overflow: 'hidden', padding: '2px 3px', display: 'flex', gap: 2 }}>
+                          {Array.from({ length: 24 }).map((_, i) => {
+                            const segDb = -60 + i * 2.5;
+                            const isActive = rmsDecibels >= segDb;
+                            const isPeakHold = Math.abs(peakDecibels - segDb) < 2.5;
+                            const segColor = segDb >= -3 ? '#ef4444' : segDb >= -18 ? '#22c55e' : '#eab308';
+
+                            return (
+                              <div
+                                key={i}
+                                style={{
+                                  flex: 1,
+                                  height: '100%',
+                                  background: isActive ? segColor : isPeakHold ? '#ffffff' : 'rgba(255,255,255,0.08)',
+                                  borderRadius: 1,
+                                  boxShadow: isActive ? `0 0 4px ${segColor}` : 'none',
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', fontFamily: 'monospace', color: '#777', marginTop: 3 }}>
+                          <span>-60 dB</span>
+                          <span>-36 dB</span>
+                          <span style={{ color: '#15803d', fontWeight: 900 }}>-18 dB (TARGET)</span>
+                          <span style={{ color: '#dc2626', fontWeight: 900 }}>0 dB (CLIP)</span>
+                        </div>
+                      </div>
+
+                      {/* Noise Floor Auto-Calibration */}
+                      <div style={{ padding: '8px 10px', background: '#f4f4f5', border: '1.5px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900 }}>
+                            ROOM NOISE FLOOR: {noiseFloorDb} dB
+                          </span>
                           <button
-                            key={idx}
-                            onClick={() => handleJumpToChapter(ch.title)}
+                            onClick={calibrateNoiseFloor}
+                            disabled={isCalibratingNoise}
+                            className="brutalist-button"
+                            style={{ padding: '3px 8px', fontSize: '0.62rem', borderRadius: 3 }}
+                          >
+                            {isCalibratingNoise ? 'Sampling...' : '⚡ Calibrate'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAB 5: FONTS & TYPOGRAPHY */}
+                {activeSidebarTab === 'fonts' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                          <span>FONT SIZE:</span>
+                          <span>{fontSize}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="20"
+                          max="96"
+                          step="2"
+                          value={fontSize}
+                          onChange={(e) => setFontSize(parseInt(e.target.value))}
+                          style={{ width: '100%', accentColor: '#000' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                          Font Family (52 Google Fonts)
+                        </label>
+                        <select
+                          value={fontFamily}
+                          onChange={(e) => setFontFamily(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            border: '2px solid #000',
+                            borderRadius: 4,
+                            background: '#fff',
+                            color: '#000',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {filteredFonts.map((f) => (
+                            <option key={f.id} value={f.fontFamily}>
+                              {f.name} ({f.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Text Colors */}
+                      <div>
+                        <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                          Text Color Swatch
+                        </label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {TEXT_COLORS.map((c) => (
+                            <button
+                              key={c.hex}
+                              onClick={() => setTextColor(c.hex)}
+                              style={{
+                                width: 24,
+                                height: 24,
+                                background: c.hex,
+                                border: textColor === c.hex ? '3px solid #000' : '1.5px solid #000',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                              }}
+                              title={c.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAB 6: CHAPTERS & CUES */}
+                {activeSidebarTab === 'cues' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Bookmark size={14} />
+                        Script Chapters & Cues ({chapters.length})
+                      </label>
+
+                      {chapters.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {chapters.map((ch, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleJumpToChapter(ch.title)}
+                              style={{
+                                padding: '8px 10px',
+                                border: '1.5px solid #000',
+                                borderRadius: 4,
+                                background: '#f4f4f5',
+                                color: '#000',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace' }}>[{ch.title}]</span>
+                              <ChevronRight size={13} />
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.68rem', color: '#666', lineHeight: 1.4 }}>
+                          Add bracketed cues like <code style={{ background: '#eee', padding: '1px 4px' }}>[HOOK]</code>, <code style={{ background: '#eee', padding: '1px 4px' }}>[POINT 1]</code>, <code style={{ background: '#eee', padding: '1px 4px' }}>[CTA]</code> into your script to generate 1-click jump markers.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* TAB 7: SCRIPT TEMPLATES */}
+                {activeSidebarTab === 'templates' && (
+                  <>
+                    <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
+                        Creator Script Templates
+                      </label>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {CREATOR_SCRIPT_TEMPLATES.map((tmpl) => (
+                          <button
+                            key={tmpl.id}
+                            onClick={() => {
+                              setScript(tmpl.text);
+                              handleResetScroll();
+                            }}
                             style={{
                               padding: '8px 10px',
                               border: '1.5px solid #000',
@@ -3002,65 +3011,22 @@ Control your speed, adjust your font size, and download your voice recording in 
                               textAlign: 'left',
                               cursor: 'pointer',
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
+                              flexDirection: 'column',
+                              gap: 2,
                             }}
                           >
-                            <span style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace' }}>[{ch.title}]</span>
-                            <ChevronRight size={13} />
+                            <span style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace' }}>{tmpl.name}</span>
+                            <span style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace' }}>{tmpl.category}</span>
                           </button>
                         ))}
                       </div>
-                    ) : (
-                      <p style={{ fontSize: '0.68rem', color: '#666', lineHeight: 1.4 }}>
-                        Add bracketed cues like <code style={{ background: '#eee', padding: '1px 4px' }}>[HOOK]</code>, <code style={{ background: '#eee', padding: '1px 4px' }}>[POINT 1]</code>, <code style={{ background: '#eee', padding: '1px 4px' }}>[CTA]</code> into your script to generate 1-click jump markers.
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* TAB 7: SCRIPT TEMPLATES */}
-              {activeSidebarTab === 'templates' && (
-                <>
-                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
-                      Creator Script Templates
-                    </label>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {CREATOR_SCRIPT_TEMPLATES.map((tmpl) => (
-                        <button
-                          key={tmpl.id}
-                          onClick={() => {
-                            setScript(tmpl.text);
-                            handleResetScroll();
-                          }}
-                          style={{
-                            padding: '8px 10px',
-                            border: '1.5px solid #000',
-                            borderRadius: 4,
-                            background: '#f4f4f5',
-                            color: '#000',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 2,
-                          }}
-                        >
-                          <span style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace' }}>{tmpl.name}</span>
-                          <span style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace' }}>{tmpl.category}</span>
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </aside>
-        </>
-      )}
+                  </>
+                )}
+              </div>
+            </aside>
+          </>
+        )}
       </div>
 
       {/* ── Quick Script Paste & Template Modal (Grandma Simple Mode) ── */}
@@ -3160,7 +3126,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                   try {
                     const text = await navigator.clipboard.readText();
                     if (text) setScript(text);
-                  } catch (err) {}
+                  } catch (err) { }
                 }}
                 style={{
                   padding: '8px 12px',
