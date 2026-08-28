@@ -105,8 +105,31 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Right Section: Tools Dropdown & All Tools */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Right Section: Invoices & Deals + Tools Dropdown */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link
+            href="/business"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              fontSize: "0.75rem",
+              fontWeight: 900,
+              cursor: "pointer",
+              background: "#FFE500",
+              color: "#000000",
+              border: "2px solid #000",
+              fontFamily: "monospace",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              textDecoration: "none",
+              boxShadow: "2px 2px 0 #000",
+            }}
+          >
+            Invoices &amp; Deals
+          </Link>
+
           {/* Tools Dropdown */}
           <div ref={rootRef} style={{ position: "relative" }}>
             <button

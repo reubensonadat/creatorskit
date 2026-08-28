@@ -25,11 +25,16 @@ import {
   Zap,
   X,
   PanelLeftOpen,
+  FileText,
 } from "lucide-react";
 
 import { ALL_TOOLS } from "@/data/tools";
 
 const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+  "/business": FileText,
+  "/invoice": FileText,
+  "/receipt": FileText,
+  "/agreement": FileText,
   "/auto-captions": Captions,
   "/background-replace": Eraser,
   "/beat-sync": Zap,

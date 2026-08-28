@@ -8,6 +8,7 @@ import AdBlockDetector from "@/components/AdBlockDetector";
 import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
 
 const toolPaths = [
+  "/business",
   "/match-cut",
   "/text-highlighter",
   "/sync-slate",

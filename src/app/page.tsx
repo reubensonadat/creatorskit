@@ -12,22 +12,47 @@ export default function Home() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
           <div style={{ width: 8, height: 8, background: "#000" }} />
           <span style={{ fontSize: "0.68rem", fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", color: "#888" }}>
-            v0.3.0
+            v0.4.0 · GH & NG READY
           </span>
         </div>
         <h1 style={{ fontSize: "clamp(2.4rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, color: "#000", marginBottom: 24 }}>
           Tools for
           <br />
-          Creators<span style={{ color: "#ccc" }}>.</span>
+          Creators &amp; Influencers<span style={{ color: "#FFE500" }}>.</span>
         </h1>
-        <p style={{ fontSize: "clamp(0.95rem, 2.5vw, 1.1rem)", color: "#666", maxWidth: 540, lineHeight: 1.7, marginBottom: 48, fontWeight: 500 }}>
-          Brutalist tools for video editors, YouTubers, audio & design.
+        <p style={{ fontSize: "clamp(0.95rem, 2.5vw, 1.1rem)", color: "#666", maxWidth: 580, lineHeight: 1.7, marginBottom: 40, fontWeight: 500 }}>
+          Brutalist tools to bill brands with MoMo/Bank, protect your content with deal agreements, and produce viral video assets.
           <br />
           No subscriptions. Runs 100% locally in your browser.
         </p>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link
-            href="#in-house-tools"
+            href="/business"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "14px 28px",
+              background: "#FFE500",
+              color: "#000",
+              border: "2px solid #000",
+              fontWeight: 900,
+              fontSize: "0.85rem",
+              fontFamily: "monospace",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              textDecoration: "none",
+              boxShadow: "3px 3px 0 #000",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
+          >
+            Invoices &amp; Deals
+            <ChevronRight size={16} />
+          </Link>
+          <Link
+            href="/teleprompter"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -44,11 +69,10 @@ export default function Home() {
               textDecoration: "none",
               transition: "all 0.15s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#333"; e.currentTarget.style.borderColor = "#333"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#000"; e.currentTarget.style.borderColor = "#000"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#333"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#000"; }}
           >
-            In-House Tools
-            <ChevronRight size={16} />
+            Teleprompter
           </Link>
           <Link
             href="/match-cut"
@@ -56,7 +80,7 @@ export default function Home() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "14px 28px",
+              padding: "14px 24px",
               background: "transparent",
               color: "#000",
               border: "2px solid #ccc",
@@ -71,7 +95,7 @@ export default function Home() {
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#000"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#ccc"; }}
           >
-            Text Match CUT
+            Match CUT
           </Link>
           <Link
             href="/text-highlighter"
@@ -79,7 +103,7 @@ export default function Home() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "14px 28px",
+              padding: "14px 24px",
               background: "transparent",
               color: "#000",
               border: "2px solid #ccc",
@@ -94,15 +118,15 @@ export default function Home() {
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#000"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#ccc"; }}
           >
-            Text Highlighter
+            Highlighter
           </Link>
           <Link
-            href="/space-planner"
+            href="/thumbnail-lab"
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "14px 28px",
+              padding: "14px 24px",
               background: "transparent",
               color: "#000",
               border: "2px solid #ccc",
@@ -117,7 +141,7 @@ export default function Home() {
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#000"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#ccc"; }}
           >
-            Space Planner
+            Thumbnail Lab
           </Link>
         </div>
       </section>

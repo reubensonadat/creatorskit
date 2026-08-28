@@ -191,7 +191,6 @@ function SafeAreaGuideOverlay({
   aspectRatio: AspectRatioType;
   mirrored: boolean;
 }) {
-  const config = SMART_SAFE_AREAS[aspectRatio] || SMART_SAFE_AREAS['9:16'];
   const is916 = aspectRatio === '9:16';
   const is169 = aspectRatio === '16:9';
 
@@ -203,69 +202,154 @@ function SafeAreaGuideOverlay({
         pointerEvents: 'none',
         transform: mirrored ? 'scaleX(-1)' : 'none',
         transformOrigin: '50% 50%',
-        zIndex: 20,
+        zIndex: 10,
+        overflow: 'hidden',
       }}
     >
       {is916 ? (
         <>
-          {/* Top Danger */}
+          {/* 1. Top Bar UI Ghost Mockup (Search, Live, Following/For You tabs) */}
           <div
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
               right: 0,
-              height: `${config.top}%`,
-              background: 'linear-gradient(to bottom, rgba(239,68,68,0.45) 0%, transparent 100%)',
-              borderBottom: '1px dashed rgba(239,68,68,0.8)',
+              height: '8.5%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 14px 0',
+              color: 'rgba(255, 255, 255, 0.45)',
+              borderBottom: '1px dashed rgba(255, 229, 0, 0.35)',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 100%)',
             }}
-          />
-          {/* Bottom Danger */}
+          >
+            <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 800, color: '#FFE500' }}>
+              9:16 SAFE
+            </span>
+            <div style={{ display: 'flex', gap: 10, fontSize: '0.65rem', fontWeight: 700 }}>
+              <span style={{ opacity: 0.5 }}>Explore</span>
+              <span style={{ borderBottom: '2px solid #fff', paddingBottom: 2 }}>For You</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>🔍</span>
+          </div>
+
+          {/* 2. Right-Side Action Rail Ghost Icons (Avatar +, Heart, Comment, Bookmark, Share, Sound) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '28%',
+              bottom: '18%',
+              right: 8,
+              width: '14%',
+              maxWidth: 54,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderLeft: '1px dashed rgba(255, 229, 0, 0.35)',
+              padding: '6px 0',
+              zIndex: 12,
+            }}
+          >
+            {/* Creator avatar with plus badge */}
+            <div style={{ position: 'relative', width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #fff', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.55rem' }}>👤</span>
+              <div style={{ position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)', width: 11, height: 11, borderRadius: '50%', background: '#ff0050', color: '#fff', fontSize: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>+</div>
+            </div>
+
+            {/* Like */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>🤍</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>128K</span>
+            </div>
+
+            {/* Comment */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>💬</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>1.4K</span>
+            </div>
+
+            {/* Bookmark */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>🔖</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>8.2K</span>
+            </div>
+
+            {/* Share */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>↗️</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>Share</span>
+            </div>
+
+            {/* Vinyl record spinning indicator */}
+            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid #333', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+            </div>
+          </div>
+
+          {/* 3. Bottom Caption & Search Danger Zone */}
           <div
             style={{
               position: 'absolute',
               bottom: 0,
               left: 0,
               right: 0,
-              height: `${config.bottom}%`,
-              background: 'linear-gradient(to top, rgba(239,68,68,0.5) 0%, transparent 100%)',
-              borderTop: '1px dashed rgba(239,68,68,0.8)',
-            }}
-          />
-          {/* Right Icons Danger */}
-          <div
-            style={{
-              position: 'absolute',
-              top: `${config.top}%`,
-              bottom: `${config.bottom}%`,
-              right: 0,
-              width: `${config.right}%`,
-              background: 'rgba(239,68,68,0.25)',
-              borderLeft: '1px dashed rgba(239,68,68,0.8)',
+              height: '18%',
+              borderTop: '1px dashed rgba(255, 229, 0, 0.35)',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)',
+              padding: '8px 14px 10px',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
+              justifyContent: 'flex-end',
               gap: 4,
-              padding: 2,
-              fontSize: '0.45rem',
+              color: 'rgba(255, 255, 255, 0.5)',
             }}
           >
-            <div>❤️</div>
-            <div>💬</div>
-            <div>↗️</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>@yourhandle</span>
+              <span style={{ fontSize: '0.52rem', background: 'rgba(255,255,255,0.2)', padding: '1px 4px', borderRadius: 3 }}>Follow</span>
+            </div>
+            <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '78%' }}>
+              Caption & hashtag text area (Reels / TikTok overlay zone)...
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.5rem', opacity: 0.5 }}>
+              <span>🎵</span> <span>Original Sound - Trending Audio Track</span>
+            </div>
           </div>
-          {/* Safe Box */}
+
+          {/* 4. Active Title & Face Safe Box */}
           <div
             style={{
               position: 'absolute',
-              top: `${config.top}%`,
-              bottom: `${config.bottom}%`,
-              left: 0,
-              right: `${config.right}%`,
-              border: '1.5px solid #22c55e',
+              top: '9%',
+              bottom: '18.5%',
+              left: 10,
+              right: '16%',
+              border: '1.5px solid rgba(255, 229, 0, 0.45)',
+              borderRadius: 10,
+              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.2)',
             }}
-          />
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 6,
+                left: 8,
+                fontSize: '0.52rem',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                color: '#000',
+                background: '#FFE500',
+                padding: '1px 5px',
+                borderRadius: 3,
+                letterSpacing: '0.04em',
+              }}
+            >
+              TITLE & FACE SAFE ZONE
+            </span>
+          </div>
         </>
       ) : is169 ? (
         <div
@@ -275,18 +359,20 @@ function SafeAreaGuideOverlay({
             bottom: '5%',
             left: '5%',
             right: '5%',
-            border: '1.5px solid rgba(34,197,94,0.7)',
+            border: '1.5px dashed rgba(255, 229, 0, 0.4)',
+            borderRadius: 6,
           }}
         />
       ) : (
         <div
           style={{
             position: 'absolute',
-            top: `${config.top}%`,
-            bottom: `${config.bottom}%`,
-            left: `${config.left}%`,
-            right: `${config.right}%`,
-            border: '1.5px solid #22c55e',
+            top: '8%',
+            bottom: '12%',
+            left: '6%',
+            right: '6%',
+            border: '1.5px dashed rgba(255, 229, 0, 0.4)',
+            borderRadius: 6,
           }}
         />
       )}
@@ -353,12 +439,35 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const [focusIntensity, setFocusIntensity] = useState<number>(0.7);
 
   // Sidebar & Layout State
-  const [showSettings, setShowSettings] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'camera' | 'speech' | 'width' | 'audio' | 'fonts' | 'cues' | 'templates'>('camera');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Auto Mobile Screen State Detection
+  const [isMobile, setIsMobile] = useState(false);
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024);
+      setIsMobile(mobile);
+      if (mobile) {
+        setCameraLayout('full-bg');
+        setShowSettings(false);
+        setFontSize((f) => Math.max(32, Math.min(f, 56)));
+        setShowEyelineGuide(false);
+        setCircularFocusLens(false);
+        setBgDimOpacity(0.45);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Video Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -386,24 +495,30 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>('');
   const [scrollProgress, setScrollProgress] = useState(0);
 
-  // Tokenize script into word array
+  // Tokenize script into word array — handles multi-word cues like [HOOK - LOOK AT LENS]
   const scriptTokens = useMemo(() => {
     const tokens: { id: number; raw: string; isCue: boolean; clean: string; isBreak: boolean }[] = [];
-    const splits = script.split(/(\s+)/);
+    // Split by bracket groups first, preserving them
+    const segments = script.split(/(\[[^\]]*\])/g);
     let wordIdx = 0;
 
-    splits.forEach((tok) => {
-      if (/^\s+$/.test(tok)) {
-        if (tok.includes('\n')) {
-          tokens.push({ id: -1, raw: tok, isCue: false, clean: '', isBreak: true });
-        } else {
-          tokens.push({ id: -1, raw: tok, isCue: false, clean: '', isBreak: false });
-        }
-      } else {
-        const isCue = /^[(\[].*[)\]]$/.test(tok);
-        if (isCue) {
-          tokens.push({ id: -1, raw: tok, isCue: true, clean: '', isBreak: false });
-        } else {
+    segments.forEach((segment) => {
+      // Check if this segment is a bracket cue like [HOOK] or [SMOOTH AI SYNC]
+      if (/^\[.*\]$/.test(segment.trim()) && segment.trim().length > 2) {
+        tokens.push({ id: -1, raw: segment.trim(), isCue: true, clean: '', isBreak: false });
+        return;
+      }
+
+      // Otherwise, split by whitespace as before
+      const splits = segment.split(/(\s+)/);
+      splits.forEach((tok) => {
+        if (/^\s+$/.test(tok)) {
+          if (tok.includes('\n')) {
+            tokens.push({ id: -1, raw: tok, isCue: false, clean: '', isBreak: true });
+          } else {
+            tokens.push({ id: -1, raw: tok, isCue: false, clean: '', isBreak: false });
+          }
+        } else if (tok.length > 0) {
           tokens.push({
             id: wordIdx++,
             raw: tok,
@@ -412,7 +527,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             isBreak: false,
           });
         }
-      }
+      });
     });
     return tokens;
   }, [script]);
@@ -462,12 +577,13 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const hudWaveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const peakHoldRef = useRef<{ level: number; time: number }>({ level: -60, time: 0 });
 
-  // Video recording refs
+  // Voice & Video recording refs
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const bgVideoPreviewRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   isPlayingRef.current = isPlaying;
   loopRef.current = loop;
@@ -509,6 +625,17 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
     }
   };
 
+  const [tapToast, setTapToast] = useState<'PLAY' | 'PAUSE' | null>(null);
+  const tapToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showTapToast = (action: 'PLAY' | 'PAUSE') => {
+    if (tapToastTimerRef.current) clearTimeout(tapToastTimerRef.current);
+    setTapToast(action);
+    tapToastTimerRef.current = setTimeout(() => {
+      setTapToast(null);
+    }, 700);
+  };
+
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -522,8 +649,10 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const triggerPlaybackWithCountdown = () => {
     if (isPlaying) {
       setIsPlaying(false);
+      showTapToast('PAUSE');
       return;
     }
+    showTapToast('PLAY');
     setCountdown(3);
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -608,7 +737,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
 
         if (spokenWords.length === 0) return;
 
-        const recentSpoken = spokenWords.slice(-3);
+        const recentSpoken = spokenWords.slice(-4);
         const lastSpoken = recentSpoken[recentSpoken.length - 1];
         setLastHeardWord(lastSpoken);
 
@@ -618,7 +747,36 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
 
         let foundNextIdx = -1;
 
-        for (let offset = 1; offset <= 4; offset++) {
+        // Levenshtein / Fuzzy Similarity Helper for Accent Tolerance
+        const isFuzzyMatch = (scriptWord: string, spokenWord: string): boolean => {
+          if (!scriptWord || !spokenWord) return false;
+          if (scriptWord === spokenWord) return true;
+          
+          // Prefix match (e.g., 'back' matches 'background' or vice versa)
+          if (spokenWord.length >= 3 && scriptWord.startsWith(spokenWord.slice(0, 3))) return true;
+          if (scriptWord.length >= 3 && spokenWord.startsWith(scriptWord.slice(0, 3))) return true;
+          
+          // Substring inclusion for compound/long words
+          if (spokenWord.length >= 4 && scriptWord.includes(spokenWord)) return true;
+          if (scriptWord.length >= 4 && spokenWord.includes(scriptWord)) return true;
+
+          // Simple Levenshtein distance check (1-2 character variation for accents/dropping consonants)
+          const s1 = scriptWord;
+          const s2 = spokenWord;
+          if (Math.abs(s1.length - s2.length) <= 2) {
+            let matches = 0;
+            for (let i = 0; i < Math.min(s1.length, s2.length); i++) {
+              if (s1[i] === s2[i]) matches++;
+            }
+            if (matches >= Math.max(2, Math.floor(Math.min(s1.length, s2.length) * 0.65))) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // 1. Primary search: Check immediate 8 words ahead
+        for (let offset = 1; offset <= 8; offset++) {
           const checkIdx = curIdx + offset;
           if (checkIdx < 0 || checkIdx >= total) continue;
 
@@ -630,13 +788,9 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             if (!spoken || spoken.length < 2) continue;
 
             const isStopWord = STOP_WORDS.has(spoken);
-            if (isStopWord && offset > 1) continue;
+            if (isStopWord && offset > 2) continue;
 
-            if (
-              targetScriptWord === spoken ||
-              (spoken.length >= 4 && targetScriptWord.startsWith(spoken)) ||
-              (targetScriptWord.length >= 4 && spoken.startsWith(targetScriptWord))
-            ) {
+            if (isFuzzyMatch(targetScriptWord, spoken)) {
               foundNextIdx = checkIdx;
               break;
             }
@@ -644,7 +798,42 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           if (foundNextIdx !== -1) break;
         }
 
-        if (foundNextIdx !== -1 && foundNextIdx > curIdx) {
+        // 2. Viewport-Aware Fallback: If missed, scan words currently visible inside the reading window
+        if (foundNextIdx === -1 && readerRef.current) {
+          const el = readerRef.current;
+          const viewTop = el.scrollTop - 40;
+          const viewBottom = el.scrollTop + el.clientHeight + 80;
+          const wordSpans = el.querySelectorAll('[data-word="1"]');
+
+          for (let i = 0; i < wordSpans.length; i++) {
+            const span = wordSpans[i] as HTMLElement;
+            const spanTop = span.offsetTop;
+
+            // Only check upcoming words physically visible inside or ahead in the screen viewport right now
+            if (spanTop >= viewTop && spanTop <= viewBottom) {
+              const wordId = parseInt(span.getAttribute('data-index') || '-1', 10);
+              // STRICT FORWARD-ONLY: Never jump backward to words already read above
+              if (wordId >= curIdx && wordId < total) {
+                const targetScriptWord = cleanWordsList[wordId];
+                if (!targetScriptWord) continue;
+
+                for (let s = 0; s < recentSpoken.length; s++) {
+                  const spoken = recentSpoken[s];
+                  if (!spoken || spoken.length < 3) continue;
+
+                  if (isFuzzyMatch(targetScriptWord, spoken)) {
+                    foundNextIdx = wordId;
+                    break;
+                  }
+                }
+                if (foundNextIdx !== -1) break;
+              }
+            }
+          }
+        }
+
+        // STRICT FORWARD-ONLY PROGRESSION:
+        if (foundNextIdx !== -1 && foundNextIdx >= curIdx) {
           setActiveWordIndex(foundNextIdx);
           activeWordIndexRef.current = foundNextIdx;
           updateTargetScrollForWord(foundNextIdx);
@@ -970,33 +1159,52 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
     setIsRecording(false);
   };
 
-  const startRecording = () => {
-    if (!cameraStream) return;
-    chunksRef.current = [];
-    const recorder = new MediaRecorder(cameraStream, { mimeType: 'video/webm;codecs=vp9,opus' });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      setRecordedVideoUrl(url);
-      setIsRecording(false);
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    };
-    recorder.start(250);
-    mediaRecorderRef.current = recorder;
-    setIsRecording(true);
-    setRecordingSeconds(0);
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingSeconds((s) => s + 1);
-    }, 1000);
+  // ─────────────────────────────────────────────────────────────
+  // VOICE AUDIO RECORDER (Pure Crystal-Clear Microphone Audio)
+  // ─────────────────────────────────────────────────────────────
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+
+  const startVoiceRecording = () => {
+    if (!micStreamRef.current) {
+      startAudioAnalysis(selectedAudioDeviceId);
+    }
+    const stream = micStreamRef.current;
+    if (!stream) return;
+
+    audioChunksRef.current = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/mp4';
+
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: mime });
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioUrl(url);
+        setIsRecording(false);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      };
+      recorder.start(250);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
+    } catch (err) {
+      console.warn('Voice recording start failed:', err);
+    }
   };
 
-  const stopRecording = () => {
+  const stopVoiceRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
+    setIsRecording(false);
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
   };
 
@@ -1181,19 +1389,16 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             key={idx}
             data-cue="1"
             style={{
-              display: 'inline-block',
-              padding: '1px 6px',
-              margin: '0 3px',
-              background: '#FFE500',
-              color: '#000000',
-              borderRadius: 3,
-              fontWeight: 900,
-              fontSize: '0.72em',
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              border: '1.5px solid #000000',
-              verticalAlign: 'baseline',
-              lineHeight: 1,
+              display: 'block',
+              margin: '10px 0 2px',
+              color: '#FFE500',
+              fontSize: '0.45em',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              lineHeight: 1.3,
+              textAlign: textAlign,
+              textShadow: 'none',
+              userSelect: 'none',
             }}
           >
             {tok.raw}
@@ -1210,15 +1415,15 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           data-word="1"
           data-index={tok.id}
           style={{
-            backgroundColor: isCurrent ? '#FFE500' : 'transparent',
-            color: isCurrent ? '#000000' : isPast ? 'rgba(255,255,255,0.45)' : 'inherit',
-            borderRadius: 3,
+            backgroundColor: isCurrent ? 'rgba(255, 229, 0, 0.25)' : 'transparent',
+            color: isCurrent ? '#FFE500' : isPast ? 'rgba(255,255,255,0.45)' : 'inherit',
+            borderBottom: isCurrent ? '2px solid #FFE500' : '2px solid transparent',
+            borderRadius: 2,
             boxDecorationBreak: 'clone',
             WebkitBoxDecorationBreak: 'clone',
-            padding: '0 1px',
+            padding: '0 2px 1px',
             margin: 0,
-            boxShadow: isCurrent ? '0 0 14px rgba(255, 229, 0, 0.7)' : 'none',
-            transition: 'color 0.1s ease, background-color 0.1s ease',
+            transition: 'color 0.12s ease, background-color 0.12s ease, border-color 0.12s ease',
           }}
         >
           {tok.raw}
@@ -1230,7 +1435,8 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   return (
     <div
       style={{
-        height: '100vh',
+        height: '100dvh',
+        minHeight: '-webkit-fill-available',
         width: '100vw',
         overflow: 'hidden',
         background: '#000000',
@@ -1241,17 +1447,18 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         userSelect: 'none',
       }}
     >
-      {/* ── Top Brutalist Studio Header HUD Bar ── */}
+      {/* ── Top Brutalist Studio Header HUD Bar (Desktop Only) ── */}
+      {!isMobile && (
       <header
-        className="fs-header"
+        className="fs-header prompter-desktop-header"
         style={{
-          height: 48,
+          height: 44,
           background: '#ffffff',
           borderBottom: '3px solid #000000',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          padding: '0 8px',
           zIndex: 50,
           flexShrink: 0,
           color: '#000000',
@@ -1262,8 +1469,8 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             href="/"
             className="brutalist-button"
             style={{
-              padding: '6px 14px',
-              fontSize: '0.75rem',
+              padding: '5px 10px',
+              fontSize: '0.72rem',
               textDecoration: 'none',
               display: 'flex',
               alignItems: 'center',
@@ -1273,96 +1480,145 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             ‹ HOME
           </Link>
 
-          {/* Unified Tools Dropdown */}
-          <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
+          {!isMobile && <StudioToolsDropdown currentHref="/teleprompter" theme="light" />}
 
-          <span
-            className="fs-header-badge"
+          <button
+            onClick={() => setShowScriptModal(true)}
             style={{
-              fontSize: '0.68rem',
+              padding: '5px 10px',
+              background: '#FFE500',
+              color: '#000000',
+              border: '2px solid #000000',
+              borderRadius: 4,
               fontFamily: 'monospace',
               fontWeight: 900,
-              background: '#FFE500',
-              padding: '3px 8px',
-              border: '2px solid #000',
-              borderRadius: 4,
-              textTransform: 'uppercase',
+              fontSize: '0.68rem',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 4,
             }}
           >
-            <Zap size={12} />
-            STUDIO PROMPTER
-          </span>
+            <FileText size={12} />
+            SCRIPT
+          </button>
 
-          {/* Quick Camera Layout Toggle: Corner PiP vs Full Background vs Off */}
-          <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+          {/* Quick Safe Zone Overlay Toggle on Mobile Header */}
+          {isMobile && (
             <button
-              onClick={() => {
-                if (!cameraActive) startCamera();
-                setCameraLayout('corner-pip');
-              }}
+              onClick={() => setShowSafeAreas((s) => !s)}
               style={{
+                padding: '5px 8px',
+                background: showSafeAreas ? '#FFE500' : '#ffffff',
+                color: '#000000',
+                border: '2px solid #000000',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.65rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              title="Toggle 9:16 TikTok / Reels Safe Zone Overlay"
+            >
+              <Maximize2 size={11} />
+              {showSafeAreas ? '9:16 SAFE' : 'SAFE OFF'}
+            </button>
+          )}
+
+          {!isMobile && (
+            <span
+              className="fs-header-badge"
+              style={{
+                fontSize: '0.68rem',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                background: '#FFE500',
                 padding: '3px 8px',
-                border: 'none',
-                borderRight: '1px solid #000',
-                background: cameraActive && cameraLayout === 'corner-pip' ? '#000' : '#fff',
-                color: cameraActive && cameraLayout === 'corner-pip' ? '#FFE500' : '#000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.62rem',
-                cursor: 'pointer',
+                border: '2px solid #000',
+                borderRadius: 4,
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
               }}
-              title="Camera in Top-Right Corner (PiP)"
             >
-              ↘️ Corner PiP
-            </button>
+              <Zap size={12} />
+              PROMPTER
+            </span>
+          )}
 
-            <button
-              onClick={() => {
-                if (!cameraActive) startCamera();
-                setCameraLayout('full-bg');
-              }}
-              style={{
-                padding: '3px 8px',
-                border: 'none',
-                borderRight: '1px solid #000',
-                background: cameraActive && cameraLayout === 'full-bg' ? '#000' : '#fff',
-                color: cameraActive && cameraLayout === 'full-bg' ? '#FFE500' : '#000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.62rem',
-                cursor: 'pointer',
-              }}
-              title="Camera in Full Screen Background"
-            >
-              🖼️ Background
-            </button>
+          {/* Quick Camera Layout Toggle (Studio Mode) */}
+          {!isMobile && (
+            <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+              <button
+                onClick={() => {
+                  if (!cameraActive) startCamera();
+                  setCameraLayout('corner-pip');
+                }}
+                style={{
+                  padding: '3px 8px',
+                  border: 'none',
+                  borderRight: '1px solid #000',
+                  background: cameraActive && cameraLayout === 'corner-pip' ? '#000' : '#fff',
+                  color: cameraActive && cameraLayout === 'corner-pip' ? '#FFE500' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Camera in Top-Right Corner (PiP)"
+              >
+                CORNER PIP
+              </button>
 
-            <button
-              onClick={() => {
-                stopCamera();
-                setCameraLayout('off');
-              }}
-              style={{
-                padding: '3px 7px',
-                border: 'none',
-                background: !cameraActive || cameraLayout === 'off' ? '#000' : '#fff',
-                color: !cameraActive || cameraLayout === 'off' ? '#fff' : '#000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.62rem',
-                cursor: 'pointer',
-              }}
-              title="Turn Camera Off"
-            >
-              Off
-            </button>
-          </div>
+              <button
+                onClick={() => {
+                  if (!cameraActive) startCamera();
+                  setCameraLayout('full-bg');
+                }}
+                style={{
+                  padding: '3px 8px',
+                  border: 'none',
+                  borderRight: '1px solid #000',
+                  background: cameraActive && cameraLayout === 'full-bg' ? '#000' : '#fff',
+                  color: cameraActive && cameraLayout === 'full-bg' ? '#FFE500' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Camera in Full Screen Background"
+              >
+                BACKGROUND
+              </button>
+
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setCameraLayout('off');
+                }}
+                style={{
+                  padding: '3px 7px',
+                  border: 'none',
+                  background: !cameraActive || cameraLayout === 'off' ? '#000' : '#fff',
+                  color: !cameraActive || cameraLayout === 'off' ? '#fff' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Turn Camera Off"
+              >
+                Off
+              </button>
+            </div>
+          )}
 
           {/* Quick Chapter Markers */}
-          {chapters.length > 0 && (
+          {!isMobile && chapters.length > 0 && (
             <div style={{ display: 'flex', gap: 4, overflowX: 'auto', maxWidth: 180 }} className="no-scrollbar">
               {chapters.map((ch, idx) => (
                 <button
@@ -1388,9 +1644,21 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           )}
         </div>
 
-        {/* Center Speech AI & VU Meter Telemetry */}
+        {/* Center Read Telemetry */}
         <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900 }}>
-          {speechFollowEnabled ? (
+          {isMobile ? (
+            <div
+              style={{
+                background: '#f4f4f5',
+                border: '1.5px solid #000',
+                padding: '2px 8px',
+                borderRadius: 4,
+                fontSize: '0.68rem',
+              }}
+            >
+              {totalWords} WORDS · {Math.max(10, Math.ceil((totalWords / Math.max(60, speed * 120)) * 60))}s READ
+            </div>
+          ) : speechFollowEnabled ? (
             <div
               style={{
                 display: 'flex',
@@ -1416,8 +1684,8 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                 {speechStatus === 'speaking'
                   ? `AI SYNC: "${lastHeardWord || 'Speaking'}"`
                   : speechStatus === 'listening'
-                  ? 'AI LISTENING (SPEAK TO GLIDE)'
-                  : 'PAUSED (STOPPED ON SILENCE)'}
+                  ? 'AI LISTENING'
+                  : 'PAUSED'}
               </span>
             </div>
           ) : (
@@ -1429,25 +1697,25 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             </div>
           )}
 
-          {/* Mini Waveform in HUD */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              background: '#f4f4f5',
-              padding: '2px 6px',
-              border: '1.5px solid #000',
-              borderRadius: 4,
-            }}
-          >
-            <canvas ref={hudWaveformCanvasRef} width={45} height={15} style={{ background: '#000', borderRadius: 2 }} />
-            <span style={{ fontSize: '0.62rem', color: isClipping ? '#dc2626' : '#000' }}>
-              {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
-            </span>
-          </div>
+          {!isMobile && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                background: '#f4f4f5',
+                padding: '2px 6px',
+                border: '1.5px solid #000',
+                borderRadius: 4,
+              }}
+            >
+              <canvas ref={hudWaveformCanvasRef} width={45} height={15} style={{ background: '#000', borderRadius: 2 }} />
+              <span style={{ fontSize: '0.62rem', color: isClipping ? '#dc2626' : '#000' }}>
+                {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
+              </span>
+            </div>
+          )}
 
-          {/* Recording Timer */}
           {isRecording && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '2px 6px', borderRadius: 4, color: '#b91c1c' }}>
               <Radio size={12} className="animate-pulse" />
@@ -1457,27 +1725,39 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         </div>
 
         {/* Right Action Icons */}
-        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
-            onClick={() => setShowShortcutsModal(true)}
+            onClick={handleToggleFullscreen}
             className="brutalist-button"
             style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
-            title="View Keyboard Shortcuts (Shift + ?)"
+            title="Toggle Fullscreen"
           >
-            <HelpCircle size={13} />
-            Shortcuts
+            <Maximize2 size={13} />
           </button>
+
+          {!isMobile && (
+            <button
+              onClick={() => setShowShortcutsModal(true)}
+              className="brutalist-button"
+              style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
+              title="View Keyboard Shortcuts (Shift + ?)"
+            >
+              <HelpCircle size={13} />
+              Shortcuts
+            </button>
+          )}
 
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`brutalist-button ${showSettings ? 'brutalist-button-primary' : ''}`}
-            style={{ padding: '4px 10px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
+            style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
           >
             <SlidersHorizontal size={13} />
-            {showSettings ? 'Hide Controls' : 'Controls'}
+            {showSettings ? 'Hide' : 'Controls'}
           </button>
         </div>
       </header>
+      )}
 
       {/* ── Main Prompter Screen + Sidebar Layout ── */}
       <div className="fs-workspace" style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
@@ -1493,6 +1773,114 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             justifyContent: 'center',
           }}
         >
+          {/* ── MOBILE: Top Telemetry Bar (AI Sync Status + Separated dB Box) ── */}
+          <div
+            className="prompter-mobile-top-hud"
+            style={{
+              position: 'absolute',
+              top: 'max(8px, env(safe-area-inset-top, 8px))',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 35,
+              display: 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              pointerEvents: 'auto',
+              width: 'max-content',
+              maxWidth: '92vw',
+            }}
+          >
+            {/* 1. AI Voice Sync Toggle Badge (Flexible width, strictly 1 single horizontal line) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSpeechFollowEnabled(!speechFollowEnabled);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                border: '1.5px solid #000',
+                borderRadius: 4,
+                background: speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? '#dcfce7'
+                    : speechStatus === 'listening'
+                    ? '#fef3c7'
+                    : '#fee2e2'
+                  : '#ffffff',
+                color: speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? '#15803d'
+                    : speechStatus === 'listening'
+                    ? '#b45309'
+                    : '#b91c1c'
+                  : '#000000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.64rem',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+                boxShadow: '1.5px 1.5px 0 #000',
+                flexShrink: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+              title="Tap to toggle AI Voice Sync vs Auto Scroll"
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: speechFollowEnabled
+                    ? speechStatus === 'speaking'
+                      ? '#22c55e'
+                      : speechStatus === 'listening'
+                      ? '#f59e0b'
+                      : '#ef4444'
+                    : '#71717a',
+                  flexShrink: 0,
+                }}
+                className={speechStatus === 'speaking' && speechFollowEnabled ? 'animate-pulse' : ''}
+              />
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? `AI: "${lastHeardWord || 'SPEAKING'}"`
+                    : speechStatus === 'listening'
+                    ? 'AI LISTENING'
+                    : 'PAUSED'
+                  : 'TIMED SCROLL'}
+              </span>
+            </button>
+
+            {/* 2. Decibel & Waveform Box (Separated Desktop Style Box) */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: '#ffffff',
+                padding: '4px 8px',
+                border: '1.5px solid #000',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                boxShadow: '1.5px 1.5px 0 #000',
+                flexShrink: 0,
+              }}
+            >
+              <canvas ref={hudWaveformCanvasRef} width={42} height={14} style={{ background: '#000', borderRadius: 2 }} />
+              <span style={{ fontSize: '0.64rem', color: isClipping ? '#dc2626' : '#000', whiteSpace: 'nowrap' }}>
+                {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
+              </span>
+            </div>
+          </div>
+
           {/* 1. Fullscreen Background Camera Feed (If camera is in 'full-bg' mode) */}
           {cameraActive && cameraLayout === 'full-bg' && (
             <>
@@ -1520,6 +1908,10 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                   pointerEvents: 'none',
                 }}
               />
+              {/* 9:16 Safe Area Guide Overlay over full camera viewfinder */}
+              {showSafeAreas && (
+                <SafeAreaGuideOverlay aspectRatio={cameraAspectRatio} mirrored={mirrorHorizontal} />
+              )}
             </>
           )}
 
@@ -1555,7 +1947,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                   borderRadius: 3,
                 }}
               >
-                👁️ EYELINE HORIZON ({eyelinePercent}%)
+                EYELINE HORIZON ({eyelinePercent}%)
               </div>
             </div>
           )}
@@ -1588,11 +1980,12 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             >
               <div
                 style={{
-                  fontSize: '8rem',
+                  fontSize: '7.5rem',
                   fontWeight: 900,
                   fontFamily: 'monospace',
                   color: '#FFE500',
-                  textShadow: '0 0 40px rgba(255, 229, 0, 0.8)',
+                  textShadow: '0 0 35px rgba(255, 229, 0, 0.75)',
+                  transform: 'translateY(-10%)',
                 }}
               >
                 {countdown}
@@ -1600,20 +1993,57 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             </div>
           )}
 
-          {/* 5. Main Prompter Reading Column */}
+          {/* 5. Mobile Tap Feedback Toast */}
+          {tapToast && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '15%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 48,
+                background: tapToast === 'PLAY' ? '#FFE500' : '#ffffff',
+                color: '#000000',
+                border: '3px solid #000000',
+                boxShadow: '4px 4px 0 #000000',
+                padding: '10px 24px',
+                borderRadius: 8,
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '1.2rem',
+                letterSpacing: '0.04em',
+                pointerEvents: 'none',
+              }}
+            >
+              {tapToast === 'PLAY' ? 'STARTING...' : 'PAUSED'}
+            </div>
+          )}
+
+          {/* 6. Main Prompter Reading Column */}
           <div
+            onClick={() => {
+              if (isMobile) {
+                if (isPlaying) {
+                  setIsPlaying(false);
+                  showTapToast('PAUSE');
+                } else {
+                  triggerPlaybackWithCountdown();
+                }
+              }
+            }}
             style={{
               width: '100%',
-              maxWidth: containerMaxWidth,
+              maxWidth: isMobile ? '100%' : containerMaxWidth,
               height: '100%',
               position: 'relative',
               zIndex: 16,
               transform: mirrorTransform,
-              borderLeft: '1.5px dashed rgba(255,255,255,0.2)',
-              borderRight: '1.5px dashed rgba(255,255,255,0.2)',
+              borderLeft: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.2)',
+              borderRight: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.2)',
+              cursor: isMobile ? 'pointer' : 'default',
             }}
           >
-            {isPlaying ? (
+            {isPlaying || isMobile ? (
               <div
                 ref={readerRef}
                 className="no-scrollbar"
@@ -1632,10 +2062,10 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                   letterSpacing: `${letterSpacing}px`,
                   fontFamily: fontFamily,
                   textAlign: textAlign,
-                  padding: `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
+                  padding: isMobile ? '28vh 14px 80vh' : `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
                   whiteSpace: 'pre-wrap',
                   cursor: 'pointer',
-                  textShadow: cameraActive && cameraLayout === 'full-bg' ? '0 2px 14px rgba(0,0,0,0.95)' : 'none',
+                  textShadow: (cameraActive || isMobile) ? '0 2px 12px rgba(0,0,0,0.98), 0 0 6px #000, 0 0 20px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.6)' : 'none',
                 }}
               >
                 {renderTokens()}
@@ -1662,19 +2092,47 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                   letterSpacing: `${letterSpacing}px`,
                   fontFamily: fontFamily,
                   textAlign: textAlign,
-                  padding: `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
+                  padding: isMobile ? '28vh 14px 80vh' : `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
                   caretColor: '#FFE500',
                   cursor: 'text',
                   overflowY: 'auto',
                   position: 'relative',
-                  textShadow: cameraActive && cameraLayout === 'full-bg' ? '0 2px 14px rgba(0,0,0,0.95)' : 'none',
+                  textShadow: (cameraActive || isMobile) ? '0 2px 12px rgba(0,0,0,0.98), 0 0 6px #000, 0 0 20px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.6)' : 'none',
                 }}
               />
             )}
+
+            {/* Top Fade Bleed — text fades to black at top edge */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '25%',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 40%, transparent 100%)',
+                zIndex: 17,
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* Bottom Fade Bleed — text fades to black at bottom edge */}
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '30%',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 35%, transparent 100%)',
+                zIndex: 17,
+                pointerEvents: 'none',
+              }}
+            />
           </div>
 
-          {/* 6. Clean Floating Corner PiP Camera Window (Top-Right / selectable corner) */}
-          {cameraActive && cameraLayout === 'corner-pip' && (
+          {/* 7. Clean Floating Corner PiP Camera Window (Top-Right / Desktop Only) */}
+          {cameraActive && cameraLayout === 'corner-pip' && !isMobile && (
             <div
               style={{
                 position: 'absolute',
@@ -1741,102 +2199,402 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             </div>
           )}
 
-          {/* ── Floating Transport Controls Floater Bar ── */}
+          {/* ── Transport Controls: Mobile Floating Pill + Bottom Sheet + Desktop Studio Dock ── */}
+          <>
+              {/* ── MOBILE: Bottom Floating Control Pill ── */}
+              <div
+                className={mobileControlsOpen ? '' : 'prompter-mobile-pill'}
+                style={{
+                  position: 'fixed',
+                  bottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 60,
+                  display: 'none',
+                  alignItems: 'center',
+                  gap: 0,
+                  background: 'rgba(0, 0, 0, 0.78)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  border: '1.5px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: 50,
+                  padding: '3px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                  transition: 'opacity 0.5s ease',
+                  opacity: isPlaying ? 0.65 : 1,
+                }}
+                onTouchStart={(e) => { e.currentTarget.style.opacity = '1'; }}
+                onTouchEnd={(e) => { const el = e.currentTarget; if (isPlaying) setTimeout(() => { try { el.style.opacity = '0.65'; } catch {} }, 2000); }}
+              >
+                {/* Play / Pause button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isPlaying) {
+                      setIsPlaying(false);
+                      showTapToast('PAUSE');
+                    } else {
+                      triggerPlaybackWithCountdown();
+                    }
+                  }}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: isPlaying ? '#FFE500' : '#ffffff',
+                    color: '#000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isPlaying ? <Pause size={20} strokeWidth={3} /> : <Play size={20} strokeWidth={3} />}
+                </button>
+
+                {/* Speed indicator */}
+                <div style={{ padding: '0 10px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', color: '#fff', whiteSpace: 'nowrap' }}>
+                  {speed.toFixed(1)}x
+                </div>
+
+                {/* Settings Gear */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMobileControlsOpen(true);
+                  }}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'rgba(255, 255, 255, 0.12)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <SlidersHorizontal size={18} />
+                </button>
+              </div>
+
+              {/* ── MOBILE: Bottom Sheet Controls ── */}
+              {mobileControlsOpen && (
+                <>
+                  <div onClick={() => setMobileControlsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70, backdropFilter: 'blur(4px)' }} />
+                  <div
+                    style={{
+                      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 71,
+                      background: '#ffffff', borderRadius: '24px 24px 0 0',
+                      padding: `16px 16px max(20px, env(safe-area-inset-bottom, 20px))`,
+                      color: '#000', display: 'flex', flexDirection: 'column', gap: 12,
+                      maxHeight: '75dvh', overflowY: 'auto',
+                      boxShadow: '0 -10px 40px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    {/* Drag Handle */}
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: -4 }}>
+                      <div style={{ width: 36, height: 4, borderRadius: 2, background: '#d4d4d8' }} />
+                    </div>
+
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Studio Controls
+                      </span>
+                      <button
+                        onClick={() => setMobileControlsOpen(false)}
+                        style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid #000', background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    {/* 1. Voice Recording & AI Voice Follow Controls */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {/* Voice Recording Action */}
+                      <div>
+                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
+                          Voice Recorder
+                        </label>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isRecording) {
+                              stopVoiceRecording();
+                            } else {
+                              startVoiceRecording();
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 44,
+                            border: '2px solid #000',
+                            borderRadius: 8,
+                            background: isRecording ? '#ef4444' : '#ffffff',
+                            color: isRecording ? '#ffffff' : '#000000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            boxShadow: isRecording ? '0 0 12px rgba(239,68,68,0.5)' : 'none',
+                          }}
+                        >
+                          <Mic size={16} />
+                          {isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}
+                        </button>
+                      </div>
+
+                      {/* AI Speech Voice Follow Toggle */}
+                      <div>
+                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>
+                          Scroll Mode
+                        </label>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSpeechFollowEnabled(!speechFollowEnabled);
+                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 44,
+                            border: '2px solid #000',
+                            borderRadius: 8,
+                            background: speechFollowEnabled ? '#FFE500' : '#fff',
+                            color: '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          {speechFollowEnabled ? 'AI VOICE SYNC' : 'TIMED SCROLL'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Recorded Audio Download / Preview Player (If available) */}
+                    {recordedAudioUrl && (
+                      <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <audio src={recordedAudioUrl} controls style={{ height: 28, flex: 1 }} />
+                        <a
+                          href={recordedAudioUrl}
+                          download={`creatorkit-voice-${Date.now()}.webm`}
+                          style={{
+                            padding: '6px 10px',
+                            background: '#000',
+                            color: '#FFE500',
+                            border: '1.5px solid #000',
+                            borderRadius: 6,
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.65rem',
+                            textDecoration: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          DOWNLOAD
+                        </a>
+                      </div>
+                    )}
+
+                    {/* 2. Speed Stepper */}
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Speed</label>
+                      <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.max(0.5, parseFloat((s - 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
+                        <span style={{ flex: 1.6, textAlign: 'center', fontSize: '1rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{speed.toFixed(1)}x</span>
+                        <button onClick={(e) => { e.stopPropagation(); setSpeed((s) => Math.min(8.0, parseFloat((s + 0.2).toFixed(1)))); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
+                      </div>
+                    </div>
+
+                    {/* 3. Font Size & Family */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Text Size</label>
+                        <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #000', borderRadius: 8, overflow: 'hidden' }}>
+                          <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.max(22, f - 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>−</button>
+                          <span style={{ flex: 1.4, textAlign: 'center', fontSize: '0.95rem', fontWeight: 900, fontFamily: 'monospace', background: '#f4f4f5' }}>{fontSize}px</span>
+                          <button onClick={(e) => { e.stopPropagation(); setFontSize((f) => Math.min(72, f + 4)); }} style={{ flex: 1, minHeight: 44, border: 'none', background: '#fff', fontSize: '1.3rem', fontWeight: 900, cursor: 'pointer' }}>+</button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a', display: 'block', marginBottom: 4 }}>Font Family</label>
+                        <select
+                          value={fontFamily}
+                          onChange={(e) => setFontFamily(e.target.value)}
+                          style={{
+                            width: '100%',
+                            height: 44,
+                            border: '2px solid #000',
+                            borderRadius: 8,
+                            padding: '0 8px',
+                            fontFamily: 'monospace',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            background: '#fff',
+                            color: '#000',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <option value='"Inter", sans-serif'>Inter (Default)</option>
+                          <option value='"Roboto", sans-serif'>Roboto</option>
+                          <option value='"Outfit", sans-serif'>Outfit</option>
+                          <option value='"Montserrat", sans-serif'>Montserrat</option>
+                          <option value='"Cinzel", serif'>Cinzel (Cinematic)</option>
+                          <option value='"Space Mono", monospace'>Space Mono</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 4. Secondary Action Buttons: Safe Zone, Script, Reset */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                      <button onClick={(e) => { e.stopPropagation(); setShowSafeAreas((s) => !s); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: showSafeAreas ? '#FFE500' : '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <Shield size={14} /> {showSafeAreas ? '9:16 ON' : 'Safe Area'}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); setShowScriptModal(true); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <FileText size={14} /> Script
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleResetScroll(); setMobileControlsOpen(false); }} style={{ minHeight: 42, border: '2px solid #000', borderRadius: 8, background: '#f4f4f5', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.68rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <RotateCcw size={14} /> Reset
+                      </button>
+                    </div>
+
+                    {/* Telemetry info */}
+                    <div style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 700, color: '#a1a1aa' }}>
+                      {totalWords} words · ~{Math.max(10, Math.ceil((totalWords / Math.max(60, speed * 120)) * 60))}s read time
+                    </div>
+
+                    {/* Big Start / Pause Reading Action */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMobileControlsOpen(false); if (isPlaying) { setIsPlaying(false); } else { triggerPlaybackWithCountdown(); } }}
+                      style={{
+                        width: '100%', minHeight: 50, border: '2.5px solid #000', borderRadius: 10,
+                        background: isPlaying ? '#000' : '#FFE500', color: isPlaying ? '#FFE500' : '#000',
+                        fontFamily: 'monospace', fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.06em',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        boxShadow: '2px 2px 0 #000',
+                      }}
+                    >
+                      {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                      {isPlaying ? 'PAUSE PROMPTER' : 'START READING'}
+                    </button>
+                  </div>
+                </>
+              )}
+          </>
+
+          {/* ── Desktop Studio Transport Dock ── */}
           <div
-            style={{
-              position: 'absolute',
-              bottom: 20,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              zIndex: 35,
-              background: '#ffffff',
-              padding: '6px 14px',
-              border: '3px solid #000000',
-              borderRadius: 4,
-              boxShadow: '6px 6px 0 #000000',
-              color: '#000000',
-            }}
-          >
-            <button
-              onClick={handleResetScroll}
-              className="brutalist-button"
-              style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
-              title="Reset Scroll to Beginning (R / Home)"
-            >
-              <RotateCcw size={15} />
-            </button>
-
-            <button
-              onClick={triggerPlaybackWithCountdown}
-              className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
+            className="prompter-desktop-dock"
               style={{
-                padding: '8px 20px',
-                fontSize: '0.82rem',
-                borderRadius: 4,
+                position: 'absolute',
+                bottom: 20,
+                left: '50%',
+                transform: 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-              }}
-              title="Play / Pause (SPACE)"
-            >
-              {isPlaying ? <Pause size={17} /> : <Play size={17} />}
-              {isPlaying ? 'PAUSE' : 'PLAY'}
-            </button>
-
-            <button
-              onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
-              className="brutalist-button"
-              style={{
-                padding: '7px 9px',
-                fontSize: '0.74rem',
+                gap: 8,
+                zIndex: 35,
+                background: '#ffffff',
+                padding: '6px 14px',
+                border: '3px solid #000000',
                 borderRadius: 4,
-                background: speechFollowEnabled ? '#000' : '#fff',
-                color: speechFollowEnabled ? '#FFE500' : '#000',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
+                boxShadow: '6px 6px 0 #000000',
+                color: '#000000',
               }}
-              title="Toggle Speech-Follow AI Auto-Scroll (S)"
             >
-              <Mic size={14} />
-              <span style={{ fontSize: '0.66rem', fontWeight: 900 }}>AI SYNC</span>
-            </button>
+              <button
+                onClick={handleResetScroll}
+                className="brutalist-button"
+                style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
+                title="Reset Scroll to Beginning (R / Home)"
+              >
+                <RotateCcw size={15} />
+              </button>
 
-            <div style={{ width: 1, height: 22, background: '#ddd' }} />
+              <button
+                onClick={triggerPlaybackWithCountdown}
+                className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
+                style={{
+                  padding: '8px 20px',
+                  fontSize: '0.82rem',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                title="Play / Pause (SPACE)"
+              >
+                {isPlaying ? <Pause size={17} /> : <Play size={17} />}
+                {isPlaying ? 'PAUSE' : 'PLAY'}
+              </button>
 
-            <button
-              onClick={() => setMirrorHorizontal((m) => !m)}
-              className="brutalist-button"
-              style={{
-                padding: '7px 9px',
-                fontSize: '0.74rem',
-                borderRadius: 4,
-                background: mirrorHorizontal ? '#000' : '#fff',
-                color: mirrorHorizontal ? '#fff' : '#000',
-              }}
-              title="Mirror Horizontal (M)"
-            >
-              <ArrowLeftRight size={15} />
-            </button>
+              <button
+                onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
+                className="brutalist-button"
+                style={{
+                  padding: '7px 9px',
+                  fontSize: '0.74rem',
+                  borderRadius: 4,
+                  background: speechFollowEnabled ? '#000' : '#fff',
+                  color: speechFollowEnabled ? '#FFE500' : '#000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                title="Toggle Speech-Follow AI Auto-Scroll (S)"
+              >
+                <Mic size={14} />
+                <span style={{ fontSize: '0.66rem', fontWeight: 900 }}>AI SYNC</span>
+              </button>
 
-            <button
-              onClick={handleToggleFullscreen}
-              className="brutalist-button"
-              style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
-              title="Fullscreen Mode (F)"
-            >
-              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            </button>
-          </div>
+              <div style={{ width: 1, height: 22, background: '#ddd' }} />
+
+              <button
+                onClick={() => setMirrorHorizontal((m) => !m)}
+                className="brutalist-button"
+                style={{
+                  padding: '7px 9px',
+                  fontSize: '0.74rem',
+                  borderRadius: 4,
+                  background: mirrorHorizontal ? '#000' : '#fff',
+                  color: mirrorHorizontal ? '#fff' : '#000',
+                }}
+                title="Mirror Horizontal (M)"
+              >
+                <ArrowLeftRight size={15} />
+              </button>
+
+              <button
+                onClick={handleToggleFullscreen}
+                className="brutalist-button"
+                style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
+                title="Fullscreen Mode (F)"
+              >
+                {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </button>
+            </div>
         </div>
 
-        {/* ── Right Settings & Studio Control Drawer ── */}
-        {showSettings && (
+        {/* ── Right Settings & Studio Control Drawer (Desktop Only) ── */}
+        {showSettings && !isMobile && (
           <aside
-            className="no-scrollbar"
+            className="no-scrollbar prompter-desktop-sidebar"
             style={{
               width: 390,
               background: '#ffffff',
@@ -2129,7 +2887,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                         </label>
                         {!isRecording ? (
                           <button
-                            onClick={startRecording}
+                            onClick={startVoiceRecording}
                             className="brutalist-button brutalist-button-primary"
                             style={{ padding: '8px', fontSize: '0.74rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                           >
@@ -2138,7 +2896,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                           </button>
                         ) : (
                           <button
-                            onClick={stopRecording}
+                            onClick={stopVoiceRecording}
                             style={{
                               padding: '8px',
                               border: '2px solid #ef4444',
@@ -2718,6 +3476,176 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           </aside>
         )}
       </div>
+
+      {/* ── Quick Script Paste & Template Modal (Grandma Simple Mode) ── */}
+      {showScriptModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            zIndex: 120,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setShowScriptModal(false)}
+        >
+          <div
+            className="brutalist-card"
+            style={{
+              background: '#fff',
+              border: '3px solid #000',
+              boxShadow: '6px 6px 0 #000',
+              width: '100%',
+              maxWidth: 560,
+              padding: 20,
+              borderRadius: 6,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              color: '#000',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000', paddingBottom: 8 }}>
+              <span style={{ fontWeight: 900, fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                PASTE YOUR SCRIPT
+              </span>
+              <button
+                onClick={() => setShowScriptModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: '1.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <textarea
+              value={script}
+              onChange={(e) => setScript(e.target.value)}
+              rows={8}
+              placeholder="Paste or type your video script here..."
+              style={{
+                width: '100%',
+                padding: 12,
+                border: '2px solid #000',
+                fontSize: '1rem',
+                fontWeight: 600,
+                fontFamily: 'sans-serif',
+                resize: 'vertical',
+              }}
+            />
+
+            {/* Stage Direction / Cues Quick Helper */}
+            <div style={{ background: '#f4f4f5', padding: '10px 12px', borderRadius: 6, border: '1.5px solid #e4e4e7', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', color: '#52525b' }}>
+                  Stage Direction / Cue Tags (Not read aloud):
+                </span>
+                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#71717a' }}>Tap to insert:</span>
+              </div>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {['[HOOK]', '[PAUSE 2s]', '[SMILE]', '[LOOK AT LENS]', '[POINT 1]', '[CTA]'].map((cueTag) => (
+                  <button
+                    key={cueTag}
+                    onClick={() => setScript((prev) => `${prev}\n\n${cueTag}\n`)}
+                    style={{
+                      padding: '3px 8px',
+                      background: '#fff',
+                      color: '#000',
+                      border: '1.5px solid #000',
+                      borderRadius: 4,
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.62rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + {cueTag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) setScript(text);
+                  } catch (err) {}
+                }}
+                style={{
+                  padding: '8px 12px',
+                  background: '#f4f4f5',
+                  border: '1.5px solid #000',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                PASTE CLIPBOARD
+              </button>
+              <button
+                onClick={() =>
+                  setScript(
+                    `[HOOK - 3 SECONDS]\nStop scrolling! If you are a creator in Ghana or Nigeria, here is the #1 mistake you might be making.\n\n[VALUE DELIVERY]\nNever start a brand shoot without a 50% deposit and clear usage terms.\n\n[CALL TO ACTION]\nDrop your thoughts in the comments and share with a fellow creator!`
+                  )
+                }
+                style={{
+                  padding: '8px 12px',
+                  background: '#f4f4f5',
+                  border: '1.5px solid #000',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                VIRAL HOOK TEMPLATE
+              </button>
+              <button
+                onClick={() => setScript('')}
+                style={{
+                  padding: '8px 12px',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  border: '1.5px solid #dc2626',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                CLEAR
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                handleResetScroll();
+                setShowScriptModal(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '14px',
+                background: '#FFE500',
+                color: '#000',
+                border: '2px solid #000',
+                fontWeight: 900,
+                fontSize: '0.95rem',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                boxShadow: '2px 2px 0 #000',
+              }}
+            >
+              DONE / START READING
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Keyboard Shortcuts Cheat Sheet Modal ── */}
       {showShortcutsModal && (

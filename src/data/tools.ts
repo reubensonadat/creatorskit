@@ -5,13 +5,22 @@ export interface ToolItem {
   desc: string;
   isFlagship?: boolean;
   isExternal?: boolean;
-  category?: 'studio' | 'motion' | 'audio' | 'utility' | 'directory';
+  category?: 'business' | 'studio' | 'motion' | 'audio' | 'utility' | 'directory' | 'archived';
   externalUrl?: string;
   badge?: string;
 }
 
 // ─── 1. IN-HOUSE CREATORKIT TOOLS (100% Local · Zero Daily Maintenance) ─────
 export const NATIVE_TOOLS: ToolItem[] = [
+  {
+    label: 'Creator Business & Legal Suite',
+    href: '/business',
+    hint: 'INVOICES & DEALS',
+    desc: 'Influencer brand deal invoices (MoMo/Bank), sponsorship agreements, payment receipts & pitch letterheads',
+    isFlagship: true,
+    category: 'business',
+    badge: 'NEW FLAGSHIP',
+  },
   {
     label: 'Text Match CUT',
     href: '/match-cut',
@@ -31,28 +40,10 @@ export const NATIVE_TOOLS: ToolItem[] = [
     badge: 'POPULAR',
   },
   {
-    label: 'Creator Space Planner',
-    href: '/space-planner',
-    hint: '3D PRE-VIS',
-    desc: 'Design 3D studio rooms with camera lens FOV cones, lighting Kelvin/Lux, and budget calculator',
-    isFlagship: true,
-    category: 'studio',
-    badge: 'HERO',
-  },
-  {
-    label: 'Production Sync Slate',
-    href: '/sync-slate',
-    hint: 'A/V CLAPPER',
-    desc: 'SMPTE clapper slate with sub-frame timecode, 1kHz sync beep & CSV shot sheets',
-    isFlagship: true,
-    category: 'studio',
-    badge: 'PRO',
-  },
-  {
     label: 'Studio Teleprompter',
     href: '/teleprompter',
-    hint: 'AI SPEECH SYNC',
-    desc: 'Voice Smart Speed, 52 Google Fonts, eyeline spotlight HUD & mirror glass display',
+    hint: 'PHONE & DESKTOP',
+    desc: 'Grandma-simple mobile mode, voice sync, 52 Google Fonts, eyeline spotlight & selfie camera mirror',
     isFlagship: true,
     category: 'studio',
     badge: 'ESSENTIAL',
@@ -65,6 +56,15 @@ export const NATIVE_TOOLS: ToolItem[] = [
     isFlagship: true,
     category: 'utility',
     badge: 'GROWTH',
+  },
+  {
+    label: 'Creator Space Planner',
+    href: '/space-planner',
+    hint: '3D PRE-VIS',
+    desc: 'Design 3D studio rooms with camera lens FOV cones, lighting Kelvin/Lux, and budget calculator',
+    isFlagship: false,
+    category: 'archived',
+    badge: 'ARCHIVED',
   },
   {
     label: 'Beat Sync & Cut Marker Studio',
