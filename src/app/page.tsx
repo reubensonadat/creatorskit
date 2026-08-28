@@ -143,6 +143,31 @@ export default function Home() {
           >
             Thumbnail Lab
           </Link>
+          <Link
+            href="/blog"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "14px 24px",
+              background: "#000",
+              color: "#FFE500",
+              border: "2px solid #000",
+              fontWeight: 900,
+              fontSize: "0.85rem",
+              fontFamily: "monospace",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              textDecoration: "none",
+              boxShadow: "3px 3px 0 #000",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
+          >
+            Research Blog
+            <ArrowRight size={15} />
+          </Link>
         </div>
       </section>
 
@@ -297,6 +322,81 @@ export default function Home() {
               </p>
             </Link>
           ))}
+        </div>
+      </section>
+
+      {/* SECTION 3: CREATOR RESEARCH & BREAKDOWNS */}
+      <section style={{ padding: "0 clamp(16px, 5vw, 24px) clamp(40px, 6vw, 70px)", maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ background: "#000000", color: "#ffffff", border: "3px solid #000000", boxShadow: "6px 6px 0 #FFE500", padding: "clamp(24px, 5vw, 40px)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 8, height: 8, background: "#FFE500" }} />
+              <span style={{ fontSize: "0.68rem", fontWeight: 900, color: "#FFE500", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace" }}>
+                NEW VIRAL RESEARCH &amp; CASE STUDIES
+              </span>
+            </div>
+            <Link
+              href="/blog"
+              style={{
+                color: "#FFE500",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                fontWeight: 900,
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              VIEW ALL ARTICLES &rarr;
+            </Link>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24, alignItems: "center" }}>
+            <div>
+              <span style={{ background: "#dc2626", color: "#fff", padding: "2px 6px", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 900, borderRadius: 2, marginBottom: 10, display: "inline-block" }}>
+                YOUTUBE STRATEGY
+              </span>
+              <h3 style={{ fontSize: "clamp(1.2rem, 3vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.2, margin: "0 0 12px" }}>
+                Why Veritasium Still Gets 100M+ Views: The 3-Part Formula Deconstructed
+              </h3>
+              <p style={{ color: "#a1a1aa", fontSize: "0.88rem", lineHeight: 1.5, margin: "0 0 20px" }}>
+                How Derek Muller turned dry physics into viral gold by inverting traditional education, targeting misconceptions, and leveraging cinematic A/B plot retention techniques.
+              </p>
+              <Link
+                href="/blog/veritasium-why-he-still-gets-views-formula"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 20px",
+                  background: "#FFE500",
+                  color: "#000",
+                  border: "2px solid #000",
+                  fontFamily: "monospace",
+                  fontWeight: 900,
+                  fontSize: "0.8rem",
+                  textDecoration: "none",
+                  boxShadow: "2px 2px 0 #fff",
+                }}
+              >
+                READ CASE STUDY
+                <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            <div style={{ border: "2px solid #333", overflow: "hidden", position: "relative", borderRadius: 4 }}>
+              <img
+                src="https://img.youtube.com/vi/QHhJ8_TJeNo/hqdefault.jpg"
+                alt="Veritasium Formula Breakdown"
+                style={{ width: "100%", height: "auto", display: "block" }}
+              />
+              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.85)", padding: "8px 12px", borderTop: "1px solid #FFE500", display: "flex", justifyContent: "space-between", fontSize: "0.7rem", fontFamily: "monospace" }}>
+                <span style={{ color: "#FFE500", fontWeight: 900 }}>FORMULA:</span>
+                <span style={{ color: "#fff" }}>Misconception · Paradox · A/B Plot</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

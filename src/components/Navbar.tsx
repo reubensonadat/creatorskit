@@ -105,10 +105,10 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Right Section: Invoices & Deals + Tools Dropdown */}
+        {/* Right Section: Blog + Tools Dropdown + All Tools */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Link
-            href="/business"
+            href="/blog"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -117,17 +117,18 @@ export default function Navbar() {
               fontSize: "0.75rem",
               fontWeight: 900,
               cursor: "pointer",
-              background: "#FFE500",
-              color: "#000000",
+              background: pathname.startsWith('/blog') ? "#000000" : "#ffffff",
+              color: pathname.startsWith('/blog') ? "#FFE500" : "#000000",
               border: "2px solid #000",
               fontFamily: "monospace",
               textTransform: "uppercase",
               letterSpacing: "0.04em",
               textDecoration: "none",
               boxShadow: "2px 2px 0 #000",
+              borderRadius: "4px",
             }}
           >
-            Invoices &amp; Deals
+            Blog
           </Link>
 
           {/* Tools Dropdown */}
@@ -340,6 +341,29 @@ export default function Navbar() {
                 padding: 16,
               }}
             >
+              <div style={{ marginBottom: 16 }}>
+                <Link
+                  href="/blog"
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{
+                    display: "block",
+                    padding: "10px 8px",
+                    textAlign: "center",
+                    background: pathname.startsWith('/blog') ? "#000000" : "#ffffff",
+                    color: pathname.startsWith('/blog') ? "#FFE500" : "#000000",
+                    border: "2px solid #000",
+                    fontWeight: 900,
+                    fontFamily: "monospace",
+                    fontSize: "0.78rem",
+                    textDecoration: "none",
+                    boxShadow: "2px 2px 0 #000",
+                    borderRadius: "4px",
+                  }}
+                >
+                  BLOG &amp; CASE STUDIES
+                </Link>
+              </div>
+
               <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#888", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 12 }}>
                 ALL TOOLS ({ALL_TOOLS.length})
               </div>
