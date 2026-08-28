@@ -366,6 +366,8 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
+  const hasInitializedDefaultsRef = useRef(false);
+
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024);
@@ -377,7 +379,11 @@ Control your speed, adjust your font size, and download your voice recording in 
         setShowEyelineGuide(false);
         setCircularFocusLens(false);
         setBgDimOpacity(0.45);
+        if (!hasInitializedDefaultsRef.current) {
+          setSpeechFollowEnabled(false); // Default to butter-smooth Timed Scroll on mobile
+        }
       }
+      hasInitializedDefaultsRef.current = true;
     };
     handleResize();
     window.addEventListener('resize', handleResize);
