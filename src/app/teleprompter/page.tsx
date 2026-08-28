@@ -326,11 +326,11 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [selectedFontCategory, setSelectedFontCategory] = useState<string>('All');
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
 
-  // Text Column Width Customization (Default: 30ch Lens-Contact)
-  const [widthUnit, setWidthUnit] = useState<'ch' | '%' | 'px'>('ch');
-  const [columnCharWidth, setColumnCharWidth] = useState<number>(30); // 15 to 80 chars
-  const [columnPercentWidth, setColumnPercentWidth] = useState<number>(55); // 20% to 100%
-  const [columnPixelWidth, setColumnPixelWidth] = useState<number>(560); // 260 to 1200 px
+  // Text Column Width Customization (Default: 880px / 55ch Spacious Studio Desktop)
+  const [widthUnit, setWidthUnit] = useState<'ch' | '%' | 'px'>('px');
+  const [columnCharWidth, setColumnCharWidth] = useState<number>(55); // 15 to 80 chars
+  const [columnPercentWidth, setColumnPercentWidth] = useState<number>(70); // 20% to 100%
+  const [columnPixelWidth, setColumnPixelWidth] = useState<number>(880); // 260 to 1200 px
   const [eyelinePercent, setEyelinePercent] = useState(38); // 15% to 65% height
   const [showEyelineGuide, setShowEyelineGuide] = useState(true);
   const [bgDimOpacity, setBgDimOpacity] = useState(0.7);
@@ -699,9 +699,27 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     stopSpeechRecognition();
 
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    const isMobileDevice =
+      typeof window !== 'undefined' &&
+      (window.innerWidth < 1024 || 'ontouchstart' in window);
+
+    // Mobile OS audio conflict mitigation: Release Web Audio mic capture so
+    // mobile OS gives 100% exclusive microphone access to SpeechRecognition
+    if (isMobileDevice) {
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state === 'running') {
+        audioContextRef.current.suspend().catch(() => { });
+      }
+    }
+
     // (Re)initialize the accent-aware matching engine with the persisted cadence.
-    // The capability check self-heals stale engine instances that survive
-    // hot-reloads from older module versions.
     if (!voiceEngineRef.current || typeof voiceEngineRef.current.processAlternatives !== 'function') {
       voiceEngineRef.current = createVoiceMatchEngine({ initialWpm: learnedWpmRef.current });
     } else {
@@ -715,13 +733,11 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     try {
       const recognition = new SpeechRecognitionClass();
-      recognition.continuous = true;
+      // iOS WebKit does not support continuous: true reliably; non-continuous + rapid onend restart avoids silent crash
+      recognition.continuous = !isIOS;
       recognition.interimResults = true;
-      // Multi-hypothesis: Chrome often ranks the correct transcription of
-      // accented speech 2nd/3rd, so we request and score all alternatives.
-      recognition.maxAlternatives = 5;
-      // Ghanaian English is non-rhotic like British English, so the en-GB
-      // acoustic model transcribes Ghanaian accents noticeably better.
+      // iOS WebKit throws on maxAlternatives > 1 in older versions
+      recognition.maxAlternatives = isIOS ? 1 : 5;
       recognition.lang = 'en-GB';
 
       // Schedule a single backed-off restart; stale generations no-op.
@@ -759,7 +775,8 @@ Control your speed, adjust your font size, and download your voice recording in 
         // Multi-hypothesis transcription: collect EVERY ASR alternative and
         // let the engine pick whichever fits the script best.
         const hypotheses: TranscriptHypothesis[] = [];
-        for (let alt = 0; alt < 5; alt++) {
+        const maxAlts = isIOS ? 1 : 5;
+        for (let alt = 0; alt < maxAlts; alt++) {
           let transcript = '';
           let hasAlt = false;
           let asrConfidence: number | undefined;
@@ -795,18 +812,13 @@ Control your speed, adjust your font size, and download your voice recording in 
         if (total === 0) return;
 
         // Ghanaian-optimized, context-aware voice matching engine.
-        // Tracks reading position, adapts its search window to speed,
-        // tolerates re-reads, and learns the speaker's natural WPM.
         const engine = voiceEngineRef.current;
         if (engine && Math.abs(engine.currentIndex - activeWordIndexRef.current) > 20) {
-          // Follow manual navigation (chapter jumps / scrubbing)
           engine.seek(Math.max(0, activeWordIndexRef.current));
         }
         const phraseMatch = engine ? engine.processAlternatives(hypotheses, cleanWordsList) : null;
 
         if (phraseMatch && phraseMatch.matched) {
-          // Sync the engine's learned cadence into the persisted ref that
-          // drives the scroll-prediction animation loop
           learnedWpmRef.current = phraseMatch.learnedWpm;
           setLearnedWpmDisplay(phraseMatch.learnedWpm);
           localStorage.setItem('creatorKit_learnedWpm', phraseMatch.learnedWpm.toString());
@@ -815,12 +827,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          // Move the word-clock TARGET to the confirmed match (monotonic).
-          // The continuous follower in the animation loop chases the target
-          // at a steady pace, so ASR bursts advance the highlight
-          // word-by-word instead of teleporting it ("monkey swinging").
           if (Math.abs(targetWordFloatRef.current - phraseMatch.matchIndex) > 20) {
-            // Manual navigation re-anchor: snap the word-clock to the new position
             virtualWordFloatRef.current = phraseMatch.matchIndex;
             lastDisplayedWordRef.current = phraseMatch.matchIndex;
           }
@@ -830,14 +837,20 @@ Control your speed, adjust your font size, and download your voice recording in 
       };
 
       recognition.onerror = (err: any) => {
-        // Permission failures are terminal — stop trying.
-        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+        // Permission failures, audio capture collisions or service blockage
+        if (
+          err.error === 'not-allowed' ||
+          err.error === 'service-not-allowed' ||
+          err.error === 'audio-capture'
+        ) {
+          console.warn('SpeechRecognition permission/capture denied:', err.error);
           setSpeechStatus('unsupported');
+          if (isMobileDevice) {
+            // Auto fallback to timed scroll so reading is uninterrupted on mobile
+            setSpeechFollowEnabled(false);
+          }
           return;
         }
-        // 'aborted' and 'no-speech' are routine lifecycle noise; the onend
-        // handler owns restarting, so we deliberately do nothing here to
-        // avoid dueling restart loops.
         if (err.error === 'network') {
           scheduleRestart(400);
           return;
@@ -849,7 +862,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          scheduleRestart(250);
+          scheduleRestart(isIOS ? 100 : 250);
         } else {
           setSpeechStatus('idle');
         }
@@ -1021,6 +1034,15 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   const startAudioAnalysis = useCallback(async (deviceId?: string) => {
     try {
+      const isMobileDevice =
+        typeof window !== 'undefined' &&
+        (window.innerWidth < 1024 || 'ontouchstart' in window);
+
+      // On mobile, do not open a competing getUserMedia audio stream while speech recognition is active
+      if (isMobileDevice && speechFollowRef.current && isPlayingRef.current) {
+        return;
+      }
+
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach((t) => t.stop());
       }
