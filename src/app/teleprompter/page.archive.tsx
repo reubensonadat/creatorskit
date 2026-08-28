@@ -184,6 +184,201 @@ function cleanWordForMatch(raw: string): string {
     .trim();
 }
 
+function SafeAreaGuideOverlay({
+  aspectRatio,
+  mirrored,
+}: {
+  aspectRatio: AspectRatioType;
+  mirrored: boolean;
+}) {
+  const is916 = aspectRatio === '9:16';
+  const is169 = aspectRatio === '16:9';
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        transform: mirrored ? 'scaleX(-1)' : 'none',
+        transformOrigin: '50% 50%',
+        zIndex: 10,
+        overflow: 'hidden',
+      }}
+    >
+      {is916 ? (
+        <>
+          {/* 1. Top Bar UI Ghost Mockup (Search, Live, Following/For You tabs) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '8.5%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 14px 0',
+              color: 'rgba(255, 255, 255, 0.45)',
+              borderBottom: '1px dashed rgba(255, 229, 0, 0.35)',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 100%)',
+            }}
+          >
+            <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 800, color: '#FFE500' }}>
+              9:16 SAFE
+            </span>
+            <div style={{ display: 'flex', gap: 10, fontSize: '0.65rem', fontWeight: 700 }}>
+              <span style={{ opacity: 0.5 }}>Explore</span>
+              <span style={{ borderBottom: '2px solid #fff', paddingBottom: 2 }}>For You</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>🔍</span>
+          </div>
+
+          {/* 2. Right-Side Action Rail Ghost Icons (Avatar +, Heart, Comment, Bookmark, Share, Sound) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '28%',
+              bottom: '18%',
+              right: 8,
+              width: '14%',
+              maxWidth: 54,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderLeft: '1px dashed rgba(255, 229, 0, 0.35)',
+              padding: '6px 0',
+              zIndex: 12,
+            }}
+          >
+            {/* Creator avatar with plus badge */}
+            <div style={{ position: 'relative', width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #fff', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.55rem' }}>👤</span>
+              <div style={{ position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)', width: 11, height: 11, borderRadius: '50%', background: '#ff0050', color: '#fff', fontSize: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>+</div>
+            </div>
+
+            {/* Like */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>🤍</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>128K</span>
+            </div>
+
+            {/* Comment */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>💬</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>1.4K</span>
+            </div>
+
+            {/* Bookmark */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>🔖</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>8.2K</span>
+            </div>
+
+            {/* Share */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', color: '#fff', opacity: 0.7 }}>↗️</span>
+              <span style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#fff', opacity: 0.6 }}>Share</span>
+            </div>
+
+            {/* Vinyl record spinning indicator */}
+            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid #333', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+            </div>
+          </div>
+
+          {/* 3. Bottom Caption & Search Danger Zone */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '18%',
+              borderTop: '1px dashed rgba(255, 229, 0, 0.35)',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)',
+              padding: '8px 14px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'flex-end',
+              gap: 4,
+              color: 'rgba(255, 255, 255, 0.5)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>@yourhandle</span>
+              <span style={{ fontSize: '0.52rem', background: 'rgba(255,255,255,0.2)', padding: '1px 4px', borderRadius: 3 }}>Follow</span>
+            </div>
+            <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '78%' }}>
+              Caption & hashtag text area (Reels / TikTok overlay zone)...
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.5rem', opacity: 0.5 }}>
+              <span>🎵</span> <span>Original Sound - Trending Audio Track</span>
+            </div>
+          </div>
+
+          {/* 4. Active Title & Face Safe Box */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '9%',
+              bottom: '18.5%',
+              left: 10,
+              right: '16%',
+              border: '1.5px solid rgba(255, 229, 0, 0.45)',
+              borderRadius: 10,
+              boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.2)',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 6,
+                left: 8,
+                fontSize: '0.52rem',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                color: '#000',
+                background: '#FFE500',
+                padding: '1px 5px',
+                borderRadius: 3,
+                letterSpacing: '0.04em',
+              }}
+            >
+              TITLE & FACE SAFE ZONE
+            </span>
+          </div>
+        </>
+      ) : is169 ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: '5%',
+            bottom: '5%',
+            left: '5%',
+            right: '5%',
+            border: '1.5px dashed rgba(255, 229, 0, 0.4)',
+            borderRadius: 6,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: 'absolute',
+            top: '8%',
+            bottom: '12%',
+            left: '6%',
+            right: '6%',
+            border: '1.5px dashed rgba(255, 229, 0, 0.4)',
+            borderRadius: 6,
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function TeleprompterPage() {
   // Core Prompter State
@@ -245,7 +440,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   // Sidebar & Layout State
   const [showSettings, setShowSettings] = useState(false);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'speech' | 'width' | 'audio' | 'fonts' | 'cues' | 'templates'>('speech');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'camera' | 'speech' | 'width' | 'audio' | 'fonts' | 'cues' | 'templates'>('camera');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [showToolsDropdown, setShowToolsDropdown] = useState(false);
@@ -1369,45 +1564,30 @@ Control your speed, adjust your font size, and download your voice recording in 
         userSelect: 'none',
       }}
     >
-      {/* ── Top Floating Studio Header HUD Bar (Desktop Only) ── */}
+      {/* ── Top Brutalist Studio Header HUD Bar (Desktop Only) ── */}
       {!isMobile && (
       <header
         className="fs-header prompter-desktop-header"
         style={{
-          position: 'absolute',
-          top: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)',
-          maxWidth: 1120,
-          height: 46,
-          background: 'rgba(255, 255, 255, 0.94)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '2.5px solid #000000',
-          borderRadius: 12,
-          boxShadow: '0 6px 25px rgba(0,0,0,0.45)',
+          height: 44,
+          background: '#ffffff',
+          borderBottom: '3px solid #000000',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          padding: '0 8px',
           zIndex: 50,
           flexShrink: 0,
           color: '#000000',
-          transition: 'opacity 0.4s ease',
-          opacity: isPlaying ? 0.35 : 1,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-        onMouseLeave={(e) => { if (isPlaying) e.currentTarget.style.opacity = '0.35'; }}
       >
-        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Link
             href="/"
             className="brutalist-button"
             style={{
               padding: '5px 10px',
               fontSize: '0.72rem',
-              borderRadius: 6,
               textDecoration: 'none',
               display: 'flex',
               alignItems: 'center',
@@ -1417,7 +1597,7 @@ Control your speed, adjust your font size, and download your voice recording in 
             ‹ HOME
           </Link>
 
-          <StudioToolsDropdown currentHref="/teleprompter" theme="light" />
+          {!isMobile && <StudioToolsDropdown currentHref="/teleprompter" theme="light" />}
 
           <button
             onClick={() => setShowScriptModal(true)}
@@ -1426,7 +1606,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               background: '#FFE500',
               color: '#000000',
               border: '2px solid #000000',
-              borderRadius: 6,
+              borderRadius: 4,
               fontFamily: 'monospace',
               fontWeight: 900,
               fontSize: '0.68rem',
@@ -1440,8 +1620,122 @@ Control your speed, adjust your font size, and download your voice recording in 
             SCRIPT
           </button>
 
+          {/* Quick Safe Zone Overlay Toggle on Mobile Header */}
+          {isMobile && (
+            <button
+              onClick={() => setShowSafeAreas((s) => !s)}
+              style={{
+                padding: '5px 8px',
+                background: showSafeAreas ? '#FFE500' : '#ffffff',
+                color: '#000000',
+                border: '2px solid #000000',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.65rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              title="Toggle 9:16 TikTok / Reels Safe Zone Overlay"
+            >
+              <Maximize2 size={11} />
+              {showSafeAreas ? '9:16 SAFE' : 'SAFE OFF'}
+            </button>
+          )}
+
+          {!isMobile && (
+            <span
+              className="fs-header-badge"
+              style={{
+                fontSize: '0.68rem',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                background: '#FFE500',
+                padding: '3px 8px',
+                border: '2px solid #000',
+                borderRadius: 4,
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Zap size={12} />
+              PROMPTER
+            </span>
+          )}
+
+          {/* Quick Camera Layout Toggle (Studio Mode) */}
+          {!isMobile && (
+            <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+              <button
+                onClick={() => {
+                  if (!cameraActive) startCamera();
+                  setCameraLayout('corner-pip');
+                }}
+                style={{
+                  padding: '3px 8px',
+                  border: 'none',
+                  borderRight: '1px solid #000',
+                  background: cameraActive && cameraLayout === 'corner-pip' ? '#000' : '#fff',
+                  color: cameraActive && cameraLayout === 'corner-pip' ? '#FFE500' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Camera in Top-Right Corner (PiP)"
+              >
+                CORNER PIP
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!cameraActive) startCamera();
+                  setCameraLayout('full-bg');
+                }}
+                style={{
+                  padding: '3px 8px',
+                  border: 'none',
+                  borderRight: '1px solid #000',
+                  background: cameraActive && cameraLayout === 'full-bg' ? '#000' : '#fff',
+                  color: cameraActive && cameraLayout === 'full-bg' ? '#FFE500' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Camera in Full Screen Background"
+              >
+                BACKGROUND
+              </button>
+
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setCameraLayout('off');
+                }}
+                style={{
+                  padding: '3px 7px',
+                  border: 'none',
+                  background: !cameraActive || cameraLayout === 'off' ? '#000' : '#fff',
+                  color: !cameraActive || cameraLayout === 'off' ? '#fff' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                }}
+                title="Turn Camera Off"
+              >
+                Off
+              </button>
+            </div>
+          )}
+
           {/* Quick Chapter Markers */}
-          {chapters.length > 0 && (
+          {!isMobile && chapters.length > 0 && (
             <div style={{ display: 'flex', gap: 4, overflowX: 'auto', maxWidth: 180 }} className="no-scrollbar">
               {chapters.map((ch, idx) => (
                 <button
@@ -1478,7 +1772,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               gap: 6,
               padding: '4px 10px',
               border: '1.5px solid #000',
-              borderRadius: 6,
+              borderRadius: 4,
               background: speechFollowEnabled
                 ? speechStatus === 'speaking'
                   ? '#dcfce7'
@@ -1537,7 +1831,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               background: '#ffffff',
               padding: '3px 8px',
               border: '1.5px solid #000',
-              borderRadius: 6,
+              borderRadius: 4,
               boxShadow: '1.5px 1.5px 0 #000',
             }}
           >
@@ -1548,7 +1842,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           </div>
 
           {isRecording && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '3px 8px', borderRadius: 6, color: '#b91c1c', boxShadow: '1.5px 1.5px 0 #000' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '3px 8px', borderRadius: 4, color: '#b91c1c', boxShadow: '1.5px 1.5px 0 #000' }}>
               <Radio size={12} className="animate-pulse" />
               <span>REC {formatTime(recordingSeconds)}</span>
             </div>
@@ -1556,30 +1850,32 @@ Control your speed, adjust your font size, and download your voice recording in 
         </div>
 
         {/* Right Action Icons */}
-        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
             onClick={handleToggleFullscreen}
             className="brutalist-button"
-            style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+            style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
             title="Toggle Fullscreen"
           >
-            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            <Maximize2 size={13} />
           </button>
 
-          <button
-            onClick={() => setShowShortcutsModal(true)}
-            className="brutalist-button"
-            style={{ padding: '5px 8px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
-            title="View Keyboard Shortcuts (Shift + ?)"
-          >
-            <HelpCircle size={13} />
-            Shortcuts
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => setShowShortcutsModal(true)}
+              className="brutalist-button"
+              style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
+              title="View Keyboard Shortcuts (Shift + ?)"
+            >
+              <HelpCircle size={13} />
+              Shortcuts
+            </button>
+          )}
 
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`brutalist-button ${showSettings ? 'brutalist-button-primary' : ''}`}
-            style={{ padding: '5px 10px', fontSize: '0.68rem', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5 }}
+            style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4 }}
           >
             <SlidersHorizontal size={13} />
             {showSettings ? 'Hide' : 'Controls'}
@@ -1730,7 +2026,39 @@ Control your speed, adjust your font size, and download your voice recording in 
             </div>
           </div>
 
-
+          {/* 1. Fullscreen Background Camera Feed (If camera is in 'full-bg' mode) */}
+          {cameraActive && cameraLayout === 'full-bg' && (
+            <>
+              <video
+                ref={bgVideoPreviewRef}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  zIndex: 1,
+                  transform: mirrorTransform,
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: `rgba(0,0,0,${bgDimOpacity})`,
+                  zIndex: 2,
+                  pointerEvents: 'none',
+                }}
+              />
+              {/* 9:16 Safe Area Guide Overlay over full camera viewfinder */}
+              {showSafeAreas && (
+                <SafeAreaGuideOverlay aspectRatio={cameraAspectRatio} mirrored={mirrorHorizontal} />
+              )}
+            </>
+          )}
 
           {/* 2. Eyeline Horizon Marker */}
           {showEyelineGuide && (
@@ -1839,11 +2167,13 @@ Control your speed, adjust your font size, and download your voice recording in 
           {/* 6. Main Prompter Reading Column */}
           <div
             onClick={() => {
-              if (isPlaying) {
-                setIsPlaying(false);
-                showTapToast('PAUSE');
-              } else {
-                triggerPlaybackWithCountdown();
+              if (isMobile) {
+                if (isPlaying) {
+                  setIsPlaying(false);
+                  showTapToast('PAUSE');
+                } else {
+                  triggerPlaybackWithCountdown();
+                }
               }
             }}
             style={{
@@ -1853,37 +2183,69 @@ Control your speed, adjust your font size, and download your voice recording in 
               position: 'relative',
               zIndex: 16,
               transform: mirrorTransform,
-              borderLeft: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.15)',
-              borderRight: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.15)',
-              cursor: 'pointer',
+              borderLeft: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.2)',
+              borderRight: isMobile ? 'none' : '1.5px dashed rgba(255,255,255,0.2)',
+              cursor: isMobile ? 'pointer' : 'default',
             }}
           >
-            <div
-              ref={readerRef}
-              className="no-scrollbar"
-              onPointerDown={handleScrub}
-              onScroll={handleContainerScroll}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                overflowY: 'auto',
-                width: '100%',
-                height: '100%',
-                fontSize: `${fontSize}px`,
-                fontWeight: 700,
-                color: textColor,
-                lineHeight: lineHeight,
-                letterSpacing: `${letterSpacing}px`,
-                fontFamily: fontFamily,
-                textAlign: textAlign,
-                padding: isMobile ? '28vh 14px 80vh' : `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
-                whiteSpace: 'pre-wrap',
-                cursor: 'pointer',
-                textShadow: (cameraActive || isMobile) ? '0 2px 12px rgba(0,0,0,0.98), 0 0 6px #000, 0 0 20px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.6)' : 'none',
-              }}
-            >
-              {renderTokens()}
-            </div>
+            {isPlaying || isMobile ? (
+              <div
+                ref={readerRef}
+                className="no-scrollbar"
+                onPointerDown={handleScrub}
+                onScroll={handleContainerScroll}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  overflowY: 'auto',
+                  width: '100%',
+                  height: '100%',
+                  fontSize: `${fontSize}px`,
+                  fontWeight: 700,
+                  color: textColor,
+                  lineHeight: lineHeight,
+                  letterSpacing: `${letterSpacing}px`,
+                  fontFamily: fontFamily,
+                  textAlign: textAlign,
+                  padding: isMobile ? '28vh 14px 80vh' : `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
+                  whiteSpace: 'pre-wrap',
+                  cursor: 'pointer',
+                  textShadow: (cameraActive || isMobile) ? '0 2px 12px rgba(0,0,0,0.98), 0 0 6px #000, 0 0 20px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.6)' : 'none',
+                }}
+              >
+                {renderTokens()}
+              </div>
+            ) : (
+              <textarea
+                ref={textareaRef}
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+                onScroll={handleContainerScroll}
+                placeholder="Paste or type your video script here..."
+                className="no-scrollbar"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'none',
+                  fontSize: `${fontSize}px`,
+                  fontWeight: 700,
+                  color: textColor,
+                  lineHeight: lineHeight,
+                  letterSpacing: `${letterSpacing}px`,
+                  fontFamily: fontFamily,
+                  textAlign: textAlign,
+                  padding: isMobile ? '28vh 14px 80vh' : `calc(${eyelinePercent}vh - 30px) ${textPaddingHorizontal}px 60vh`,
+                  caretColor: '#FFE500',
+                  cursor: 'text',
+                  overflowY: 'auto',
+                  position: 'relative',
+                  textShadow: (cameraActive || isMobile) ? '0 2px 12px rgba(0,0,0,0.98), 0 0 6px #000, 0 0 20px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.6)' : 'none',
+                }}
+              />
+            )}
 
             {/* Top Fade Bleed — subtle 8% top gradient so text is never obscured */}
             <div
@@ -1914,7 +2276,73 @@ Control your speed, adjust your font size, and download your voice recording in 
             />
           </div>
 
+          {/* 7. Clean Floating Corner PiP Camera Window (Top-Right / Desktop Only) */}
+          {cameraActive && cameraLayout === 'corner-pip' && !isMobile && (
+            <div
+              style={{
+                position: 'absolute',
+                ...pipPositionStyle,
+                width: pipWidth,
+                aspectRatio: pipAspectRatioValue,
+                border: '3px solid #ffffff',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.8), 0 0 0 1px #000',
+                zIndex: 35,
+                borderRadius: 8,
+                overflow: 'hidden',
+                background: '#000',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+                <video
+                  ref={videoPreviewRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transform: mirrorTransform,
+                  }}
+                />
 
+                {/* Safe Area Guide Overlay inside PiP */}
+                {showSafeAreas && (
+                  <SafeAreaGuideOverlay aspectRatio={cameraAspectRatio} mirrored={mirrorHorizontal} />
+                )}
+
+                {/* PiP Floating Badge Header */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 6,
+                    left: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    zIndex: 25,
+                  }}
+                >
+                  <span
+                    style={{
+                      background: 'rgba(0,0,0,0.8)',
+                      color: '#FFE500',
+                      border: '1px solid #FFE500',
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      fontSize: '0.55rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                    }}
+                  >
+                    {cameraAspectRatio} PiP
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Transport Controls: Mobile Floating Pill + Bottom Sheet + Desktop Studio Dock ── */}
           <>
@@ -2215,7 +2643,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               )}
           </>
 
-          {/* ── Desktop Studio Floating Transport Dock ── */}
+          {/* ── Desktop Studio Transport Dock ── */}
           <div
             className="prompter-desktop-dock"
             style={{
@@ -2225,62 +2653,43 @@ Control your speed, adjust your font size, and download your voice recording in 
               transform: 'translateX(-50%)',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
               zIndex: 35,
-              background: 'rgba(255, 255, 255, 0.95)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              padding: '5px 12px 5px 6px',
-              border: '2.5px solid #000000',
-              borderRadius: 50,
-              boxShadow: '0 10px 35px rgba(0,0,0,0.5)',
+              background: '#ffffff',
+              padding: '6px 14px',
+              border: '3px solid #000000',
+              borderRadius: 8,
+              boxShadow: '6px 6px 0 #000000',
               color: '#000000',
-              transition: 'opacity 0.4s ease',
-              opacity: isPlaying ? 0.45 : 1,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-            onMouseLeave={(e) => { if (isPlaying) e.currentTarget.style.opacity = '0.45'; }}
           >
-            {/* 1. Big Play / Pause Action */}
+            {/* 1. Reset */}
+            <button
+              onClick={handleResetScroll}
+              className="brutalist-button"
+              style={{ padding: '7px 10px', fontSize: '0.74rem', borderRadius: 4 }}
+              title="Reset Scroll to Top (R / Home)"
+            >
+              <RotateCcw size={15} />
+            </button>
+
+            {/* 2. Big Play / Pause Action */}
             <button
               onClick={triggerPlaybackWithCountdown}
+              className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: '50%',
-                border: '2px solid #000',
-                background: isPlaying ? '#000000' : '#FFE500',
-                color: isPlaying ? '#FFE500' : '#000000',
+                padding: '8px 24px',
+                fontSize: '0.86rem',
+                borderRadius: 6,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '1.5px 1.5px 0 #000',
-                flexShrink: 0,
+                gap: 8,
+                fontWeight: 900,
               }}
               title="Play / Pause (SPACE)"
             >
               {isPlaying ? <Pause size={18} strokeWidth={3} /> : <Play size={18} strokeWidth={3} />}
-            </button>
-
-            {/* 2. Reset */}
-            <button
-              onClick={handleResetScroll}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: '1.5px solid #000',
-                background: '#f4f4f5',
-                color: '#000',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Reset Scroll to Top (R / Home)"
-            >
-              <RotateCcw size={14} />
+              {isPlaying ? 'PAUSE' : 'PLAY'}
             </button>
 
             {/* 3. Pure Voice Audio Recorder */}
@@ -2290,10 +2699,10 @@ Control your speed, adjust your font size, and download your voice recording in 
                 else startVoiceRecording();
               }}
               style={{
-                padding: '6px 12px',
-                fontSize: '0.72rem',
-                borderRadius: 20,
-                border: '1.5px solid #000',
+                padding: '7px 12px',
+                fontSize: '0.74rem',
+                borderRadius: 4,
+                border: '2px solid #000',
                 background: isRecording ? '#ef4444' : '#ffffff',
                 color: isRecording ? '#ffffff' : '#000000',
                 fontFamily: 'monospace',
@@ -2306,8 +2715,8 @@ Control your speed, adjust your font size, and download your voice recording in 
               }}
               title="Record High-Quality Voice Track"
             >
-              <Mic size={14} />
-              <span>{isRecording ? `REC (${formatTime(recordingSeconds)})` : 'REC'}</span>
+              <Mic size={15} />
+              <span>{isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}</span>
             </button>
 
             {/* Recorded Audio Download (If Available) */}
@@ -2316,14 +2725,14 @@ Control your speed, adjust your font size, and download your voice recording in 
                 href={recordedAudioUrl}
                 download={`creatorkit-voice-${Date.now()}.webm`}
                 style={{
-                  padding: '5px 10px',
+                  padding: '7px 10px',
                   background: '#FFE500',
                   color: '#000',
-                  border: '1.5px solid #000',
-                  borderRadius: 20,
+                  border: '2px solid #000',
+                  borderRadius: 4,
                   fontFamily: 'monospace',
                   fontWeight: 900,
-                  fontSize: '0.68rem',
+                  fontSize: '0.7rem',
                   textDecoration: 'none',
                   display: 'flex',
                   alignItems: 'center',
@@ -2331,27 +2740,27 @@ Control your speed, adjust your font size, and download your voice recording in 
                 }}
                 title="Download Recorded Voice Audio"
               >
-                <Download size={13} /> AUDIO
+                <Download size={14} /> AUDIO
               </a>
             )}
 
-            <div style={{ width: 1, height: 20, background: '#d4d4d8', margin: '0 2px' }} />
+            <div style={{ width: 1, height: 22, background: '#000' }} />
 
             {/* 4. Speed Stepper */}
-            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 20, overflow: 'hidden', background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
               <button
                 onClick={() => setSpeed((s) => Math.max(0.5, parseFloat((s - 0.2).toFixed(1))))}
-                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: 'pointer' }}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
                 title="Decrease Speed ([)"
               >
                 −
               </button>
-              <span style={{ padding: '0 6px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', background: '#f4f4f5' }}>
+              <span style={{ padding: '0 8px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', background: '#f4f4f5' }}>
                 {speed.toFixed(1)}x
               </span>
               <button
                 onClick={() => setSpeed((s) => Math.min(8.0, parseFloat((s + 0.2).toFixed(1))))}
-                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.85rem', fontWeight: 900, cursor: 'pointer' }}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
                 title="Increase Speed (])"
               >
                 +
@@ -2359,166 +2768,399 @@ Control your speed, adjust your font size, and download your voice recording in 
             </div>
 
             {/* 5. Text Size Stepper */}
-            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 20, overflow: 'hidden', background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
               <button
                 onClick={() => setFontSize((f) => Math.max(20, f - 4))}
-                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer' }}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
                 title="Smaller Font (-)"
               >
                 A−
               </button>
-              <span style={{ padding: '0 6px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', background: '#f4f4f5' }}>
+              <span style={{ padding: '0 8px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', background: '#f4f4f5' }}>
                 {fontSize}px
               </span>
               <button
                 onClick={() => setFontSize((f) => Math.min(96, f + 4))}
-                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.78rem', fontWeight: 900, cursor: 'pointer' }}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
                 title="Larger Font (+)"
               >
                 A+
               </button>
             </div>
 
-            <div style={{ width: 1, height: 20, background: '#d4d4d8', margin: '0 2px' }} />
+            <div style={{ width: 1, height: 22, background: '#000' }} />
 
             {/* 6. Mirror Horizontal */}
             <button
               onClick={() => setMirrorHorizontal((m) => !m)}
+              className="brutalist-button"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: '1.5px solid #000',
+                padding: '7px 9px',
+                fontSize: '0.74rem',
+                borderRadius: 4,
                 background: mirrorHorizontal ? '#000' : '#fff',
                 color: mirrorHorizontal ? '#fff' : '#000',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
               }}
               title="Mirror Horizontal Beam-Splitter (M)"
             >
-              <ArrowLeftRight size={14} />
+              <ArrowLeftRight size={15} />
             </button>
 
-            {/* 7. Controls drawer toggle */}
+            {/* 7. Fullscreen */}
             <button
-              onClick={() => setShowSettings(!showSettings)}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: '1.5px solid #000',
-                background: showSettings ? '#FFE500' : '#fff',
-                color: '#000',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Studio Settings & Controls (H)"
+              onClick={handleToggleFullscreen}
+              className="brutalist-button"
+              style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
+              title="Fullscreen Mode (F)"
             >
-              <SlidersHorizontal size={14} />
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
           </div>
         </div>
 
-        {/* ── Right Settings & Studio Control Slide-Over Drawer (Desktop Only) ── */}
+        {/* ── Right Settings & Studio Control Drawer (Desktop Only) ── */}
         {showSettings && !isMobile && (
-          <>
-            <div
-              onClick={() => setShowSettings(false)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.5)',
-                zIndex: 80,
-                backdropFilter: 'blur(4px)',
-                WebkitBackdropFilter: 'blur(4px)',
-              }}
-            />
-            <aside
-              className="no-scrollbar prompter-desktop-sidebar"
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: 400,
-                maxWidth: '90vw',
-                background: '#ffffff',
-                borderLeft: '3px solid #000000',
-                display: 'flex',
-                flexDirection: 'column',
-                zIndex: 85,
-                color: '#000000',
-                overflowY: 'auto',
-                boxShadow: '-10px 0 35px rgba(0,0,0,0.4)',
-              }}
-            >
-              {/* Drawer Header */}
-              <div style={{ padding: '12px 14px', borderBottom: '2px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff' }}>
-                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.84rem', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <SlidersHorizontal size={15} />
-                  Studio Settings
-                </span>
+          <aside
+            className="no-scrollbar prompter-desktop-sidebar"
+            style={{
+              width: 390,
+              background: '#ffffff',
+              borderLeft: '3px solid #000000',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 40,
+              color: '#000000',
+              overflowY: 'auto',
+              flexShrink: 0,
+            }}
+          >
+            {/* Drawer Category Tabs */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '2px solid #000', background: '#f4f4f5' }}>
+              {[
+                { id: 'camera', label: 'Camera', icon: Camera },
+                { id: 'speech', label: 'AI Sync', icon: Mic },
+                { id: 'width', label: 'Width', icon: MoveHorizontal },
+                { id: 'audio', label: 'VU Meter', icon: Activity },
+                { id: 'fonts', label: 'Fonts', icon: Type },
+                { id: 'cues', label: 'Cues', icon: Bookmark },
+                { id: 'templates', label: 'Scripts', icon: FileText },
+              ].map((tab) => (
                 <button
-                  onClick={() => setShowSettings(false)}
+                  key={tab.id}
+                  onClick={() => setActiveSidebarTab(tab.id as any)}
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    border: '2px solid #000',
-                    background: '#f4f4f5',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    padding: '8px 1px',
+                    border: 'none',
+                    borderRight: '1px solid #000',
+                    background: activeSidebarTab === tab.id ? '#000' : '#f4f4f5',
+                    color: activeSidebarTab === tab.id ? '#fff' : '#000',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.54rem',
                     cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 3,
+                    textTransform: 'uppercase',
                   }}
                 >
-                  <X size={14} />
+                  <tab.icon size={13} />
+                  {tab.label}
                 </button>
-              </div>
-
-              {/* Drawer Category Tabs (6 categories) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', borderBottom: '2px solid #000', background: '#f4f4f5' }}>
-                {[
-                  { id: 'speech', label: 'AI Sync', icon: Mic },
-                  { id: 'width', label: 'Width', icon: MoveHorizontal },
-                  { id: 'audio', label: 'VU Meter', icon: Activity },
-                  { id: 'fonts', label: 'Fonts', icon: Type },
-                  { id: 'cues', label: 'Cues', icon: Bookmark },
-                  { id: 'templates', label: 'Scripts', icon: FileText },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveSidebarTab(tab.id as any)}
-                    style={{
-                      padding: '8px 1px',
-                      border: 'none',
-                      borderRight: '1px solid #000',
-                      background: activeSidebarTab === tab.id ? '#000' : '#f4f4f5',
-                      color: activeSidebarTab === tab.id ? '#fff' : '#000',
-                      fontFamily: 'monospace',
-                      fontWeight: 900,
-                      fontSize: '0.54rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: 3,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    <tab.icon size={13} />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              ))}
+            </div>
 
             {/* Drawer Body Contents */}
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* TAB 1: CAMERA & CORNER PIP / BACKGROUND SETTINGS */}
+              {activeSidebarTab === 'camera' && (
+                <>
+                  <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Camera size={15} />
+                        Camera Display & Position
+                      </label>
+                      <button
+                        onClick={cameraActive ? stopCamera : () => startCamera()}
+                        className={`brutalist-button ${cameraActive ? 'brutalist-button-primary' : ''}`}
+                        style={{ padding: '4px 10px', fontSize: '0.68rem', borderRadius: 4 }}
+                      >
+                        {cameraActive ? 'Turn Off' : 'Turn On Camera'}
+                      </button>
+                    </div>
 
+                    {/* Camera Mode Selector */}
+                    <div>
+                      <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                        Display Mode
+                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <button
+                          onClick={() => {
+                            if (!cameraActive) startCamera();
+                            setCameraLayout('corner-pip');
+                          }}
+                          style={{
+                            padding: '8px 4px',
+                            border: '1.5px solid #000',
+                            borderRadius: 4,
+                            background: cameraActive && cameraLayout === 'corner-pip' ? '#000' : '#fff',
+                            color: cameraActive && cameraLayout === 'corner-pip' ? '#FFE500' : '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.66rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          ↘️ Corner Picture-in-Picture
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!cameraActive) startCamera();
+                            setCameraLayout('full-bg');
+                          }}
+                          style={{
+                            padding: '8px 4px',
+                            border: '1.5px solid #000',
+                            borderRadius: 4,
+                            background: cameraActive && cameraLayout === 'full-bg' ? '#000' : '#fff',
+                            color: cameraActive && cameraLayout === 'full-bg' ? '#FFE500' : '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.66rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          🖼️ Full Background Feed
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Corner Position Selector for PiP */}
+                    {cameraLayout === 'corner-pip' && (
+                      <div style={{ padding: 10, background: '#f4f4f5', border: '1.5px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
+                          Corner Position & Size
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                          {[
+                            { id: 'top-right', label: 'Top Right' },
+                            { id: 'top-left', label: 'Top Left' },
+                            { id: 'bottom-right', label: 'Btm Right' },
+                            { id: 'bottom-left', label: 'Btm Left' },
+                          ].map((pos) => (
+                            <button
+                              key={pos.id}
+                              onClick={() => setPipPosition(pos.id as any)}
+                              style={{
+                                padding: '5px 2px',
+                                border: '1px solid #000',
+                                borderRadius: 3,
+                                background: pipPosition === pos.id ? '#000' : '#fff',
+                                color: pipPosition === pos.id ? '#FFE500' : '#000',
+                                fontFamily: 'monospace',
+                                fontSize: '0.58rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* PiP Size */}
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {[
+                            { id: 'sm', label: 'Small (180px)' },
+                            { id: 'md', label: 'Medium (240px)' },
+                            { id: 'lg', label: 'Large (320px)' },
+                          ].map((s) => (
+                            <button
+                              key={s.id}
+                              onClick={() => setPipSize(s.id as any)}
+                              style={{
+                                flex: 1,
+                                padding: '5px 2px',
+                                border: '1px solid #000',
+                                borderRadius: 3,
+                                background: pipSize === s.id ? '#000' : '#fff',
+                                color: pipSize === s.id ? '#FFE500' : '#000',
+                                fontFamily: 'monospace',
+                                fontSize: '0.6rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Camera Aspect Ratio Switcher */}
+                    <div>
+                      <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
+                        Camera Aspect Ratio & Safe Zone
+                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+                        {[
+                          { id: '9:16', label: '9:16' },
+                          { id: '16:9', label: '16:9' },
+                          { id: '1:1', label: '1:1' },
+                          { id: '4:5', label: '4:5' },
+                          { id: '4:3', label: '4:3' },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => setCameraAspectRatio(item.id as any)}
+                            style={{
+                              padding: '6px 2px',
+                              border: '1.5px solid #000',
+                              borderRadius: 4,
+                              background: cameraAspectRatio === item.id ? '#000' : '#fff',
+                              color: cameraAspectRatio === item.id ? '#FFE500' : '#000',
+                              fontFamily: 'monospace',
+                              fontWeight: 900,
+                              fontSize: '0.64rem',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Safe Area Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid #eee' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 800, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={showSafeAreas}
+                          onChange={(e) => setShowSafeAreas(e.target.checked)}
+                          style={{ width: 14, height: 14, accentColor: '#000' }}
+                        />
+                        <Shield size={13} />
+                        Show Safe Zone Guides ({cameraAspectRatio})
+                      </label>
+                    </div>
+
+                    {/* Background Darkness (if in full-bg mode) */}
+                    {cameraLayout === 'full-bg' && (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
+                          <span>BACKGROUND DIMMING:</span>
+                          <span>{Math.round(bgDimOpacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="0.95"
+                          step="0.05"
+                          value={bgDimOpacity}
+                          onChange={(e) => setBgDimOpacity(parseFloat(e.target.value))}
+                          style={{ width: '100%', accentColor: '#000' }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Camera Device Selector */}
+                    <div>
+                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 800, display: 'block', marginBottom: 4 }}>
+                        Camera Input ({cameras.length} Detected)
+                      </label>
+                      <select
+                        value={selectedCameraId}
+                        onChange={(e) => {
+                          setSelectedCameraId(e.target.value);
+                          if (cameraActive) startCamera(e.target.value);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          border: '2px solid #000',
+                          borderRadius: 4,
+                          background: '#fff',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {cameras.length > 0 ? (
+                          cameras.map((c, idx) => (
+                            <option key={c.deviceId || idx} value={c.deviceId}>
+                              {c.label || `Camera ${idx + 1}`}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">Default Front Camera</option>
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Video Recording Panel */}
+                    {cameraActive && (
+                      <div style={{ paddingTop: 8, borderTop: '1.5px solid #eee', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 800, display: 'block' }}>
+                          Take Recording
+                        </label>
+                        {!isRecording ? (
+                          <button
+                            onClick={startVoiceRecording}
+                            className="brutalist-button brutalist-button-primary"
+                            style={{ padding: '8px', fontSize: '0.74rem', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                          >
+                            <Radio size={14} />
+                            Start Recording Take
+                          </button>
+                        ) : (
+                          <button
+                            onClick={stopVoiceRecording}
+                            style={{
+                              padding: '8px',
+                              border: '2px solid #ef4444',
+                              borderRadius: 4,
+                              background: '#ef4444',
+                              color: '#fff',
+                              fontFamily: 'monospace',
+                              fontWeight: 900,
+                              fontSize: '0.74rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            <Radio size={14} className="animate-pulse" />
+                            Stop Recording ({formatTime(recordingSeconds)})
+                          </button>
+                        )}
+
+                        {recordedVideoUrl && (
+                          <a
+                            href={recordedVideoUrl}
+                            download={`teleprompter-take-${Date.now()}.webm`}
+                            className="brutalist-button"
+                            style={{ padding: '6px', fontSize: '0.7rem', borderRadius: 4, textDecoration: 'none', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                          >
+                            <Download size={13} />
+                            Download Recorded Take (.WebM)
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* TAB 2: SPEECH AI AUTO-SCROLL */}
               {activeSidebarTab === 'speech' && (
@@ -3059,8 +3701,7 @@ Control your speed, adjust your font size, and download your voice recording in 
               )}
             </div>
           </aside>
-        </>
-      )}
+        )}
       </div>
 
       {/* ── Quick Script Paste & Template Modal (Grandma Simple Mode) ── */}
