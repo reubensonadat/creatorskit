@@ -37,6 +37,7 @@ import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 import {
   cleanWordForMatch,
   createVoiceMatchEngine,
+  type TranscriptHypothesis,
   type VoiceMatchEngine,
 } from '@/lib/teleprompter/voice-matching-engine';
 
@@ -549,7 +550,9 @@ Control your speed, adjust your font size, and download your voice recording in 
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+      // Multi-hypothesis: Chrome often ranks the correct transcription of
+      // accented speech 2nd/3rd, so we request and score all alternatives.
+      recognition.maxAlternatives = 5;
       // Ghanaian English is non-rhotic like British English, so the en-GB
       // acoustic model transcribes Ghanaian accents noticeably better.
       recognition.lang = 'en-GB';
@@ -567,24 +570,40 @@ Control your speed, adjust your font size, and download your voice recording in 
           isSpeakingCadenceActiveRef.current = false;
         }, autoPauseThresholdMs);
 
-        let latestTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          latestTranscript += event.results[i][0].transcript;
+        // Multi-hypothesis transcription: collect EVERY ASR alternative and
+        // let the engine pick whichever fits the script best.
+        const hypotheses: TranscriptHypothesis[] = [];
+        for (let alt = 0; alt < 5; alt++) {
+          let transcript = '';
+          let hasAlt = false;
+          let asrConfidence: number | undefined;
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const result = event.results[i];
+            if (result.length <= alt) {
+              transcript = '';
+              hasAlt = false;
+              break;
+            }
+            transcript += result[alt].transcript;
+            hasAlt = true;
+            const conf = result[alt].confidence;
+            if (typeof conf === 'number' && conf > 0) asrConfidence = conf;
+          }
+          if (!hasAlt || !transcript.trim()) break;
+          const words = transcript
+            .toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+          if (words.length === 0) break;
+          hypotheses.push({ words, rank: alt, asrConfidence });
         }
 
-        const spokenWords = latestTranscript
-          .toLowerCase()
-          .replace(/[^\w\s]/g, '')
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean);
+        if (hypotheses.length === 0) return;
 
-        if (spokenWords.length === 0) return;
-
-        // Use more recent words for better matching (up to 6 words)
-        const recentSpoken = spokenWords.slice(-6);
-        const lastSpoken = recentSpoken[recentSpoken.length - 1];
-        setLastHeardWord(lastSpoken);
+        const primaryWords = hypotheses[0].words;
+        setLastHeardWord(primaryWords[primaryWords.length - 1]);
 
         const total = cleanWordsList.length;
         if (total === 0) return;
@@ -597,7 +616,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           // Follow manual navigation (chapter jumps / scrubbing)
           engine.seek(Math.max(0, activeWordIndexRef.current));
         }
-        const phraseMatch = engine ? engine.process(recentSpoken, cleanWordsList) : null;
+        const phraseMatch = engine ? engine.processAlternatives(hypotheses, cleanWordsList) : null;
 
         if (phraseMatch && phraseMatch.matched) {
           // Sync the engine's learned cadence into the persisted ref that

@@ -468,6 +468,53 @@ export function canonicalizeWord(word: string): string {
     return normalizeForAccent(raw);
 }
 
+/** One ASR transcript hypothesis: a word list plus its rank/confidence. */
+export interface TranscriptHypothesis {
+    words: string[];
+    /** 0 = primary Chrome hypothesis, 1+ = lower-ranked alternatives */
+    rank: number;
+    /** Chrome-provided confidence 0..1 when available */
+    asrConfidence?: number;
+}
+
+/**
+ * Number words for numeric equivalence matching. Lets "25" in the script
+ * match "twentyfive" / "twenty five" in speech and vice versa.
+ */
+const NUMBER_WORDS: Record<string, number> = {
+    zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+    eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+    fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+    nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60,
+    seventy: 70, eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
+    million: 1000000,
+};
+
+/**
+ * Parse a numeric value from a word or digit token.
+ * Handles pure digits ("25"), simple number words ("five"), and
+ * hyphenated/merged compounds ("twentyfive" -> 25, "onehundred" -> 100).
+ */
+export function numericValue(word: string): number | null {
+    const w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!w) return null;
+    if (/^\d+(\.\d+)?$/.test(w)) return parseFloat(w);
+    if (NUMBER_WORDS[w] !== undefined) return NUMBER_WORDS[w];
+
+    // Compound: greedy two-part split (tens+units or units*scale)
+    for (let i = 3; i <= w.length - 3; i++) {
+        const head = w.slice(0, i);
+        const tail = w.slice(i);
+        const h = NUMBER_WORDS[head];
+        const t = NUMBER_WORDS[tail];
+        if (h !== undefined && t !== undefined) {
+            if (h >= 20 && h <= 90 && t < 100) return h + t;   // twentyfive
+            if (h < 10 && (t === 100 || t === 1000 || t === 1000000)) return h * t; // twothousand
+        }
+    }
+    return null;
+}
+
 /**
  * Soundex phonetic code. Words that sound alike share a code,
  * e.g. "three" -> T600 and "tree" -> T600.
@@ -593,6 +640,13 @@ export function isFuzzyMatch(scriptWord: string, spokenWord: string): WordMatchR
 
     // 1. Exact match
     if (s1 === s2) return { match: true, confidence: 1.0, strategy: 'exact' };
+
+    // 1.5 Numeric equivalence ("25" <-> "twentyfive", "100" <-> "hundred")
+    const num1 = numericValue(s1);
+    const num2 = numericValue(s2);
+    if (num1 !== null && num2 !== null && num1 === num2) {
+        return { match: true, confidence: 0.97, strategy: 'numeric' };
+    }
 
     // 2. Canonical Ghanaian equivalence (dis -> this, dem -> them)
     const c1 = canonicalizeWord(s1);
@@ -892,6 +946,76 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
     let lastMatchIndex = 0;
     let recentDelta = 0;
     let lastResult: VoiceMatchEngineResult | null = null;
+    /** Timestamp of the last accepted match (drives lost-tracking recovery) */
+    let lastProgressTimestamp = 0;
+    /** ms without an accepted match before triggering the recovery re-anchor scan */
+    const RECOVERY_AFTER_MS = 5000;
+
+    const buildFallback = (): VoiceMatchEngineResult => ({
+        matched: false,
+        matchIndex: currentIndex,
+        confidence: 0,
+        matchedWords: 0,
+        instantWpm: null,
+        learnedWpm: wpmTracker.wpm,
+        delta: 0,
+    });
+
+    /** Score one spoken phrase against the script at the current position. */
+    const findFromCurrent = (recent: string[], scriptWords: string[]): PhraseMatchResult | null =>
+        findContextAwareMatch(recent, scriptWords, currentIndex, {
+            baseLookahead,
+            maxLookahead,
+            allowBacktracking,
+            recentDelta,
+        });
+
+    /** Apply an accepted match: update WPM learning + internal position state. */
+    const applyMatch = (match: PhraseMatchResult): VoiceMatchEngineResult => {
+        const instantWpm = wpmTracker.update(
+            match.matchIndex,
+            match.confidence,
+            Date.now(),
+            minWpm,
+            maxWpm
+        );
+
+        const delta = match.matchIndex - currentIndex;
+        // Track recent movement speed (EMA) to size the next search window
+        recentDelta = recentDelta === 0 ? delta : Math.round(recentDelta * 0.7 + delta * 0.3);
+
+        currentIndex = match.matchIndex;
+        lastMatchIndex = match.matchIndex;
+        lastProgressTimestamp = Date.now();
+
+        lastResult = {
+            matched: true,
+            matchIndex: match.matchIndex,
+            confidence: match.confidence,
+            matchedWords: match.matchedWords,
+            instantWpm,
+            learnedWpm: wpmTracker.wpm,
+            delta,
+        };
+        return lastResult;
+    };
+
+    /**
+     * Lost-tracking recovery: after RECOVERY_AFTER_MS without an accepted
+     * match, scan far ahead (120 words) for a strong 3+ word anchor to
+     * re-lock the position instead of staying stuck behind the speaker.
+     */
+    const attemptRecovery = (spoken: string[], scriptWords: string[]): PhraseMatchResult | null => {
+        const now = Date.now();
+        if (lastProgressTimestamp !== 0 && now - lastProgressTimestamp < RECOVERY_AFTER_MS) {
+            return null;
+        }
+        const wide = findBestPhraseMatch(spoken, scriptWords, currentIndex, 120);
+        if (wide && wide.confidence >= 0.75 && wide.matchedWords >= 3) {
+            return wide;
+        }
+        return null;
+    };
 
     return {
         get currentIndex() {
@@ -909,6 +1033,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
             lastMatchIndex = scriptPosition;
             recentDelta = 0;
             lastResult = null;
+            lastProgressTimestamp = 0;
             wpmTracker.reset(wpm);
         },
 
@@ -923,15 +1048,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
          * inside) against the full script.
          */
         process(spokenWords: string[], scriptWords: string[]): VoiceMatchEngineResult {
-            const fallback: VoiceMatchEngineResult = {
-                matched: false,
-                matchIndex: currentIndex,
-                confidence: 0,
-                matchedWords: 0,
-                instantWpm: null,
-                learnedWpm: wpmTracker.wpm,
-                delta: 0,
-            };
+            const fallback = buildFallback();
 
             if (!spokenWords?.length || !scriptWords?.length) {
                 lastResult = fallback;
@@ -940,43 +1057,72 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
 
             // Focus on the most recent words (ASR interim results grow over time)
             const recent = spokenWords.slice(-6);
-            const match = findContextAwareMatch(recent, scriptWords, currentIndex, {
-                baseLookahead,
-                maxLookahead,
-                allowBacktracking,
-                recentDelta,
-            });
+            const match = findFromCurrent(recent, scriptWords);
 
-            if (!match || match.confidence < confidenceThreshold) {
+            if (match && match.confidence >= confidenceThreshold) {
+                return applyMatch(match);
+            }
+
+            // Lost-tracking recovery: re-anchor on a strong phrase far ahead
+            const recovery = attemptRecovery(recent, scriptWords);
+            if (recovery) return applyMatch(recovery);
+
+            lastResult = fallback;
+            return fallback;
+        },
+
+        /**
+         * Multi-hypothesis matching: score EVERY ASR alternative against the
+         * script and accept whichever fits best. Chrome frequently ranks the
+         * correct transcription of accented speech 2nd or 3rd, so this
+         * recovers matches the primary hypothesis loses. Rank acts as a
+         * small prior so lower alternatives must fit clearly better to win.
+         */
+        processAlternatives(
+            hypotheses: TranscriptHypothesis[],
+            scriptWords: string[]
+        ): VoiceMatchEngineResult {
+            const fallback = buildFallback();
+
+            if (!hypotheses?.length || !scriptWords?.length) {
                 lastResult = fallback;
                 return fallback;
             }
 
-            const instantWpm = wpmTracker.update(
-                match.matchIndex,
-                match.confidence,
-                Date.now(),
-                minWpm,
-                maxWpm
-            );
+            let best: PhraseMatchResult | null = null;
 
-            const delta = match.matchIndex - currentIndex;
-            // Track recent movement speed (EMA) to size the next search window
-            recentDelta = recentDelta === 0 ? delta : Math.round(recentDelta * 0.7 + delta * 0.3);
+            for (const hyp of hypotheses) {
+                const recent = hyp.words.slice(-6);
+                const match = findFromCurrent(recent, scriptWords);
+                if (!match || match.confidence < confidenceThreshold) continue;
 
-            currentIndex = match.matchIndex;
-            lastMatchIndex = match.matchIndex;
+                // Rank prior: primary hypothesis gets up to +0.06, decaying per rank
+                const rankPrior = Math.max(0, 0.06 * (1 - hyp.rank * 0.25));
+                const asrBoost = hyp.asrConfidence !== undefined ? hyp.asrConfidence * 0.05 : 0;
+                const score = Math.min(1, match.confidence + rankPrior + asrBoost);
 
-            lastResult = {
-                matched: true,
-                matchIndex: match.matchIndex,
-                confidence: match.confidence,
-                matchedWords: match.matchedWords,
-                instantWpm,
-                learnedWpm: wpmTracker.wpm,
-                delta,
-            };
-            return lastResult;
+                // Prefer clearly higher scores; break ties by words matched so
+                // longer, stronger phrase alignments beat single-word hits of
+                // equal (capped) confidence.
+                const isBetter =
+                    !best ||
+                    score > best.confidence + 1e-9 ||
+                    (Math.abs(score - best.confidence) <= 1e-9 &&
+                        match.matchedWords > best.matchedWords);
+
+                if (isBetter) {
+                    best = { ...match, confidence: score };
+                }
+            }
+
+            if (best) return applyMatch(best);
+
+            // Lost-tracking recovery using the primary hypothesis
+            const recovery = attemptRecovery(hypotheses[0].words.slice(-6), scriptWords);
+            if (recovery) return applyMatch(recovery);
+
+            lastResult = fallback;
+            return fallback;
         },
     };
 }
