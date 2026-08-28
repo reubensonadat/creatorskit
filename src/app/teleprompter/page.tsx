@@ -550,27 +550,142 @@ Control your speed, adjust your font size, and download your voice recording in 
   };
 
   useEffect(() => {
-    // Manual pace takes precedence as the seed; otherwise fall back to the
-    // last AI-learned pace from a previous session.
-    const savedManual = localStorage.getItem('creatorKit_manualWpm');
-    if (savedManual) {
-      const parsedManual = parseInt(savedManual, 10);
-      if (!isNaN(parsedManual) && parsedManual >= 50 && parsedManual <= 300) {
-        setManualWpm(parsedManual);
-        setLearnedWpmDisplay(parsedManual);
-        learnedWpmRef.current = parsedManual;
-        return;
+    // 1. Load persisted script
+    try {
+      const savedScript = localStorage.getItem('creatorKit_teleprompter_script');
+      if (savedScript && savedScript.trim().length > 0) {
+        setScript(savedScript);
       }
-    }
-    const savedWpm = localStorage.getItem('creatorKit_learnedWpm');
-    if (savedWpm) {
-      const parsed = parseInt(savedWpm, 10);
-      if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
-        learnedWpmRef.current = parsed;
-        setLearnedWpmDisplay(parsed);
+      const savedSpeed = localStorage.getItem('creatorKit_teleprompter_speed');
+      if (savedSpeed) setSpeed(parseFloat(savedSpeed) || 2.2);
+
+      const savedFontSize = localStorage.getItem('creatorKit_teleprompter_fontSize');
+      if (savedFontSize) setFontSize(parseInt(savedFontSize, 10) || 42);
+
+      const savedLineHeight = localStorage.getItem('creatorKit_teleprompter_lineHeight');
+      if (savedLineHeight) setLineHeight(parseFloat(savedLineHeight) || 1.6);
+
+      const savedLetterSpacing = localStorage.getItem('creatorKit_teleprompter_letterSpacing');
+      if (savedLetterSpacing) setLetterSpacing(parseFloat(savedLetterSpacing) || 0);
+
+      const savedTextColor = localStorage.getItem('creatorKit_teleprompter_textColor');
+      if (savedTextColor) setTextColor(savedTextColor);
+
+      const savedFontFamily = localStorage.getItem('creatorKit_teleprompter_fontFamily');
+      if (savedFontFamily) setFontFamily(savedFontFamily);
+
+      const savedTextAlign = localStorage.getItem('creatorKit_teleprompter_textAlign');
+      if (savedTextAlign === 'left' || savedTextAlign === 'center' || savedTextAlign === 'right') {
+        setTextAlign(savedTextAlign);
       }
+
+      const savedWidthUnit = localStorage.getItem('creatorKit_teleprompter_widthUnit');
+      if (savedWidthUnit === 'ch' || savedWidthUnit === '%' || savedWidthUnit === 'px') {
+        setWidthUnit(savedWidthUnit);
+      }
+
+      const savedColumnCharWidth = localStorage.getItem('creatorKit_teleprompter_columnCharWidth');
+      if (savedColumnCharWidth) setColumnCharWidth(parseInt(savedColumnCharWidth, 10) || 55);
+
+      const savedColumnPercentWidth = localStorage.getItem('creatorKit_teleprompter_columnPercentWidth');
+      if (savedColumnPercentWidth) setColumnPercentWidth(parseInt(savedColumnPercentWidth, 10) || 70);
+
+      const savedColumnPixelWidth = localStorage.getItem('creatorKit_teleprompter_columnPixelWidth');
+      if (savedColumnPixelWidth) setColumnPixelWidth(parseInt(savedColumnPixelWidth, 10) || 880);
+
+      const savedEyelinePercent = localStorage.getItem('creatorKit_teleprompter_eyelinePercent');
+      if (savedEyelinePercent) setEyelinePercent(parseInt(savedEyelinePercent, 10) || 38);
+
+      const savedShowEyelineGuide = localStorage.getItem('creatorKit_teleprompter_showEyelineGuide');
+      if (savedShowEyelineGuide !== null) setShowEyelineGuide(savedShowEyelineGuide === 'true');
+
+      const savedBgDimOpacity = localStorage.getItem('creatorKit_teleprompter_bgDimOpacity');
+      if (savedBgDimOpacity) setBgDimOpacity(parseFloat(savedBgDimOpacity) || 0.7);
+
+      const savedCircularFocusLens = localStorage.getItem('creatorKit_teleprompter_circularFocusLens');
+      if (savedCircularFocusLens !== null) setCircularFocusLens(savedCircularFocusLens === 'true');
+
+      const savedFocusIntensity = localStorage.getItem('creatorKit_teleprompter_focusIntensity');
+      if (savedFocusIntensity) setFocusIntensity(parseFloat(savedFocusIntensity) || 0.7);
+
+      const savedAutoPause = localStorage.getItem('creatorKit_teleprompter_autoPauseThresholdMs');
+      if (savedAutoPause) setAutoPauseThresholdMs(parseInt(savedAutoPause, 10) || 2000);
+
+      const savedSpeechDamping = localStorage.getItem('creatorKit_teleprompter_speechDamping');
+      if (savedSpeechDamping) setSpeechDamping(parseFloat(savedSpeechDamping) || 0.07);
+
+      const savedManual = localStorage.getItem('creatorKit_manualWpm');
+      if (savedManual) {
+        const parsedManual = parseInt(savedManual, 10);
+        if (!isNaN(parsedManual) && parsedManual >= 50 && parsedManual <= 300) {
+          setManualWpm(parsedManual);
+          setLearnedWpmDisplay(parsedManual);
+          learnedWpmRef.current = parsedManual;
+        }
+      } else {
+        const savedWpm = localStorage.getItem('creatorKit_learnedWpm');
+        if (savedWpm) {
+          const parsed = parseInt(savedWpm, 10);
+          if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
+            learnedWpmRef.current = parsed;
+            setLearnedWpmDisplay(parsed);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read teleprompter state from localStorage:', e);
     }
   }, []);
+
+  // Persist script changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('creatorKit_teleprompter_script', script);
+    } catch { }
+  }, [script]);
+
+  // Persist studio configurations
+  useEffect(() => {
+    try {
+      localStorage.setItem('creatorKit_teleprompter_speed', speed.toString());
+      localStorage.setItem('creatorKit_teleprompter_fontSize', fontSize.toString());
+      localStorage.setItem('creatorKit_teleprompter_lineHeight', lineHeight.toString());
+      localStorage.setItem('creatorKit_teleprompter_letterSpacing', letterSpacing.toString());
+      localStorage.setItem('creatorKit_teleprompter_textColor', textColor);
+      localStorage.setItem('creatorKit_teleprompter_fontFamily', fontFamily);
+      localStorage.setItem('creatorKit_teleprompter_textAlign', textAlign);
+      localStorage.setItem('creatorKit_teleprompter_widthUnit', widthUnit);
+      localStorage.setItem('creatorKit_teleprompter_columnCharWidth', columnCharWidth.toString());
+      localStorage.setItem('creatorKit_teleprompter_columnPercentWidth', columnPercentWidth.toString());
+      localStorage.setItem('creatorKit_teleprompter_columnPixelWidth', columnPixelWidth.toString());
+      localStorage.setItem('creatorKit_teleprompter_eyelinePercent', eyelinePercent.toString());
+      localStorage.setItem('creatorKit_teleprompter_showEyelineGuide', showEyelineGuide.toString());
+      localStorage.setItem('creatorKit_teleprompter_bgDimOpacity', bgDimOpacity.toString());
+      localStorage.setItem('creatorKit_teleprompter_circularFocusLens', circularFocusLens.toString());
+      localStorage.setItem('creatorKit_teleprompter_focusIntensity', focusIntensity.toString());
+      localStorage.setItem('creatorKit_teleprompter_autoPauseThresholdMs', autoPauseThresholdMs.toString());
+      localStorage.setItem('creatorKit_teleprompter_speechDamping', speechDamping.toString());
+    } catch { }
+  }, [
+    speed,
+    fontSize,
+    lineHeight,
+    letterSpacing,
+    textColor,
+    fontFamily,
+    textAlign,
+    widthUnit,
+    columnCharWidth,
+    columnPercentWidth,
+    columnPixelWidth,
+    eyelinePercent,
+    showEyelineGuide,
+    bgDimOpacity,
+    circularFocusLens,
+    focusIntensity,
+    autoPauseThresholdMs,
+    speechDamping,
+  ]);
 
   const handleResetScroll = useCallback(() => {
     setIsPlaying(false);
