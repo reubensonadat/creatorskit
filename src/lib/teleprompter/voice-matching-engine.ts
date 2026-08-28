@@ -872,7 +872,6 @@ export function createWPMTracker(initialWpm: number = 140) {
             return state.samples;
         },
         reset(wpm: number = initialWpm) {
-            state.wpm = initialWpm;
             state.wpm = wpm;
             state.lastTimestamp = 0;
             state.lastIndex = 0;
@@ -1041,6 +1040,15 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
         seek(index: number) {
             currentIndex = index;
             lastMatchIndex = index;
+        },
+
+        /**
+         * Manually set the reading pace (WPM). The adaptive tracker keeps
+         * refining from this new baseline instead of learning from scratch,
+         * so the user can seed it with their natural pace.
+         */
+        setPace(wpm: number) {
+            wpmTracker.reset(Math.max(50, Math.min(300, Math.round(wpm))));
         },
 
         /**

@@ -286,7 +286,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [autoPauseThresholdMs, setAutoPauseThresholdMs] = useState(2000);
 
   // 2. Live Web Audio VU Meter & Real-time Decibel Monitor State
-  const [, setAudioMeterActive] = useState(false);
+  const [audioMeterActive, setAudioMeterActive] = useState(false);
   const [rmsDecibels, setRmsDecibels] = useState<number>(-60);
   const [peakDecibels, setPeakDecibels] = useState<number>(-60);
   const [isClipping, setIsClipping] = useState<boolean>(false);
@@ -400,12 +400,24 @@ Control your speed, adjust your font size, and download your voice recording in 
   // scrolling progress word-by-word on a smooth timeline instead of jumping.
   const virtualWordFloatRef = useRef<number>(0);
   const lastDisplayedWordRef = useRef<number>(-1);
+  // Manual reading pace: the user seeds the AI learner with their own WPM so
+  // it does not have to learn from scratch; the tracker keeps refining from it.
+  const [manualWpm, setManualWpm] = useState<number>(150);
+  const [learnedWpmDisplay, setLearnedWpmDisplay] = useState<number>(150);
+  // Mic-gated pause detection: the live audio meter stamps the last moment
+  // the room was actually loud. When it has been quiet for ~700ms the user
+  // has genuinely paused, so the teleprompter glide freezes in place.
+  const audioMeterActiveRef = useRef<boolean>(false);
+  const noiseFloorDbRef = useRef<number>(-45);
+  const lastLoudMicTimestampRef = useRef<number>(0);
 
   isPlayingRef.current = isPlaying;
   loopRef.current = loop;
   speechFollowRef.current = speechFollowEnabled;
   activeWordIndexRef.current = activeWordIndex;
   speechDampingRef.current = speechDamping;
+  audioMeterActiveRef.current = audioMeterActive;
+  noiseFloorDbRef.current = noiseFloorDb;
 
   const formatTime = (total: number) => {
     const m = Math.floor(total / 60).toString().padStart(2, '0');
@@ -414,11 +426,24 @@ Control your speed, adjust your font size, and download your voice recording in 
   };
 
   useEffect(() => {
+    // Manual pace takes precedence as the seed; otherwise fall back to the
+    // last AI-learned pace from a previous session.
+    const savedManual = localStorage.getItem('creatorKit_manualWpm');
+    if (savedManual) {
+      const parsedManual = parseInt(savedManual, 10);
+      if (!isNaN(parsedManual) && parsedManual >= 50 && parsedManual <= 300) {
+        setManualWpm(parsedManual);
+        setLearnedWpmDisplay(parsedManual);
+        learnedWpmRef.current = parsedManual;
+        return;
+      }
+    }
     const savedWpm = localStorage.getItem('creatorKit_learnedWpm');
     if (savedWpm) {
       const parsed = parseInt(savedWpm, 10);
       if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
         learnedWpmRef.current = parsed;
+        setLearnedWpmDisplay(parsed);
       }
     }
   }, []);
@@ -511,10 +536,29 @@ Control your speed, adjust your font size, and download your voice recording in 
     }
   }, [eyelinePercent, isMobile]);
 
+  // Recognition restart protocol: onend is the ONLY restart path, with
+  // exponential backoff and a generation token that invalidates restarts
+  // scheduled by sessions that have since been stopped/replaced. This
+  // prevents competing recognition.start() calls from fighting each other
+  // in an infinite 'aborted' error loop.
+  const recognitionRestartRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; attempt: number; gen: number }>({
+    timer: null,
+    attempt: 0,
+    gen: 0,
+  });
+
   const stopSpeechRecognition = useCallback(() => {
+    // Invalidate any scheduled restarts from the session being stopped
+    recognitionRestartRef.current.gen++;
+    if (recognitionRestartRef.current.timer) {
+      clearTimeout(recognitionRestartRef.current.timer);
+      recognitionRestartRef.current.timer = null;
+    }
+    recognitionRestartRef.current.attempt = 0;
     if (speechRecognitionRef.current) {
       try {
         speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.onerror = null;
         speechRecognitionRef.current.abort();
       } catch { }
       speechRecognitionRef.current = null;
@@ -560,12 +604,31 @@ Control your speed, adjust your font size, and download your voice recording in 
       // acoustic model transcribes Ghanaian accents noticeably better.
       recognition.lang = 'en-GB';
 
+      // Schedule a single backed-off restart; stale generations no-op.
+      const scheduleRestart = (baseDelay: number) => {
+        const restart = recognitionRestartRef.current;
+        if (restart.timer) clearTimeout(restart.timer);
+        const gen = restart.gen;
+        const delay = Math.min(3000, baseDelay * Math.pow(2, Math.min(restart.attempt, 4)));
+        restart.attempt++;
+        restart.timer = setTimeout(() => {
+          restart.timer = null;
+          if (gen !== recognitionRestartRef.current.gen) return; // stale session
+          if (!(speechFollowRef.current && isPlayingRef.current)) return;
+          try {
+            recognition.start();
+          } catch { /* already started */ }
+        }, delay);
+      };
+
       recognition.onstart = () => {
         setSpeechStatus('listening');
+        recognitionRestartRef.current.attempt = 0; // healthy start resets backoff
       };
 
       recognition.onresult = (event: any) => {
         setSpeechStatus('speaking');
+        recognitionRestartRef.current.attempt = 0; // live transcripts reset backoff
 
         if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
         pauseTimerRef.current = setTimeout(() => {
@@ -625,6 +688,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           // Sync the engine's learned cadence into the persisted ref that
           // drives the scroll-prediction animation loop
           learnedWpmRef.current = phraseMatch.learnedWpm;
+          setLearnedWpmDisplay(phraseMatch.learnedWpm);
           localStorage.setItem('creatorKit_learnedWpm', phraseMatch.learnedWpm.toString());
 
           lastMatchTimestampRef.current = Date.now();
@@ -645,30 +709,26 @@ Control your speed, adjust your font size, and download your voice recording in 
       };
 
       recognition.onerror = (err: any) => {
-        if (err.error !== 'no-speech') {
-          console.warn('SpeechRecognition notice:', err);
+        // Permission failures are terminal — stop trying.
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          setSpeechStatus('unsupported');
+          return;
         }
-        // If aborted or interrupted on mobile, auto restart if still playing
-        if (speechFollowRef.current && isPlayingRef.current) {
-          setTimeout(() => {
-            try {
-              if (speechFollowRef.current && isPlayingRef.current) {
-                recognition.start();
-              }
-            } catch { }
-          }, 300);
+        // 'aborted' and 'no-speech' are routine lifecycle noise; the onend
+        // handler owns restarting, so we deliberately do nothing here to
+        // avoid dueling restart loops.
+        if (err.error === 'network') {
+          scheduleRestart(400);
+          return;
+        }
+        if (err.error !== 'aborted' && err.error !== 'no-speech') {
+          console.warn('SpeechRecognition error:', err.error);
         }
       };
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          setTimeout(() => {
-            try {
-              if (speechFollowRef.current && isPlayingRef.current) {
-                recognition.start();
-              }
-            } catch { }
-          }, 200);
+          scheduleRestart(250);
         } else {
           setSpeechStatus('idle');
         }
@@ -716,6 +776,10 @@ Control your speed, adjust your font size, and download your voice recording in 
           const diff = targetScroll - currentScroll;
           const now = Date.now();
           const timeSinceLastMatch = now - lastMatchTimestampRef.current;
+          // Mic-gated pause: freeze the glide when the room has been quiet
+          // for ~700ms (only enforced while the live audio meter is running).
+          const micQuiet =
+            audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
 
           // 1. Anchor Word Spring Easing: If there is a target position difference, ease into it smoothly
           if (Math.abs(diff) > 0.5) {
@@ -742,7 +806,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           // 2. Word-Timeline Karaoke Glide: advance a virtual word position
           // at the learned WPM between anchors so the highlight moves
           // word-by-word and the scroll follows the actual word positions.
-          else if (timeSinceLastMatch < 2500 && isSpeakingCadenceActiveRef.current) {
+          else if (timeSinceLastMatch < 2500 && isSpeakingCadenceActiveRef.current && !micQuiet) {
             const wordsPerSec = learnedWpmRef.current / 60;
             const maxLead = 8; // never drift far ahead of the last confirmed match
             const nextVirtual = Math.min(
@@ -930,6 +994,13 @@ Control your speed, adjust your font size, and download your voice recording in 
         const rms = Math.sqrt(sumSquares / bufferLength);
         const rmsDb = rms > 0.0001 ? Math.max(-60, Math.min(0, 20 * Math.log10(rms))) : -60;
         const peakDb = peakAmp > 0.0001 ? Math.max(-60, Math.min(0, 20 * Math.log10(peakAmp))) : -60;
+
+        // Pause detection: stamp the last moment the mic was actually loud
+        // (above the calibrated noise floor + 6dB). The teleprompter glide
+        // freezes when the room goes quiet, so pausing stops the scroll.
+        if (rmsDb > Math.max(noiseFloorDbRef.current + 6, -50)) {
+          lastLoudMicTimestampRef.current = Date.now();
+        }
 
         setRmsDecibels(Math.round(rmsDb));
 
@@ -2559,7 +2630,36 @@ Control your speed, adjust your font size, and download your voice recording in 
                           )}
                         </div>
                       </div>
-
+  
+                      {/* Manual Reading Pace — seeds the AI learner */}
+                      <div style={{ padding: '8px 10px', background: '#fff', border: '2px solid #000', borderRadius: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', marginBottom: 4 }}>
+                          <span>Set Your Reading Pace</span>
+                          <span style={{ color: '#000' }}>{manualWpm} WPM</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={80}
+                          max={220}
+                          step={5}
+                          value={manualWpm}
+                          onChange={(e) => {
+                            const wpm = parseInt(e.target.value, 10);
+                            setManualWpm(wpm);
+                            setLearnedWpmDisplay(wpm);
+                            learnedWpmRef.current = wpm;
+                            localStorage.setItem('creatorKit_manualWpm', wpm.toString());
+                            voiceEngineRef.current?.setPace?.(wpm);
+                          }}
+                          style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', marginTop: 2 }}>
+                          <span>🐢 80</span>
+                          <span>AI LEARNED: {Math.round(learnedWpmDisplay)} WPM</span>
+                          <span>220 🐇</span>
+                        </div>
+                      </div>
+  
                       {/* Pacing Smoothness Presets */}
                       <div>
                         <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
