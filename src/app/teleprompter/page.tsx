@@ -422,6 +422,10 @@ Control your speed, adjust your font size, and download your voice recording in 
   // the learned WPM between confirmed speech matches, so highlighting and
   // scrolling progress word-by-word on a smooth timeline instead of jumping.
   const virtualWordFloatRef = useRef<number>(0);
+  // Word-clock target: confirmed matches only move this; the virtual
+  // timeline chases it continuously (see the animation loop) so the
+  // highlight advances one word at a time instead of teleporting.
+  const targetWordFloatRef = useRef<number>(0);
   const lastDisplayedWordRef = useRef<number>(-1);
   // Manual reading pace: the user seeds the AI learner with their own WPM so
   // it does not have to learn from scratch; the tracker keeps refining from it.
@@ -479,6 +483,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     setActiveWordIndex(-1);
     activeWordIndexRef.current = -1;
     virtualWordFloatRef.current = 0;
+    targetWordFloatRef.current = 0;
     lastDisplayedWordRef.current = -1;
     setLastHeardWord('');
     setScrollProgress(0);
@@ -614,6 +619,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     // Sync the karaoke word timeline to the current reading position
     virtualWordFloatRef.current = Math.max(0, activeWordIndexRef.current);
+    targetWordFloatRef.current = virtualWordFloatRef.current;
     lastDisplayedWordRef.current = activeWordIndexRef.current;
 
     try {
@@ -718,18 +724,16 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          // Snap the karaoke timeline to the confirmed match — forward
-          // only, so a match that confirms behind the glided timeline
-          // (re-read echo) never yanks the highlight backwards.
-          virtualWordFloatRef.current = Math.max(virtualWordFloatRef.current, phraseMatch.matchIndex);
-          const confirmedIdx = Math.round(virtualWordFloatRef.current);
-          setActiveWordIndex(confirmedIdx);
-          activeWordIndexRef.current = confirmedIdx;
-          lastDisplayedWordRef.current = confirmedIdx;
-          // Predictive lead: aim where the speaker will be in ~0.6s to
-          // compensate for the inherent ASR transcription latency
-          const leadWords = Math.min(2, Math.max(1, Math.round((phraseMatch.learnedWpm / 60) * 0.45)));
-          updateTargetScrollForWord(phraseMatch.matchIndex + leadWords);
+          // Move the word-clock TARGET to the confirmed match (monotonic).
+          // The continuous follower in the animation loop chases the target
+          // at a steady pace, so ASR bursts advance the highlight
+          // word-by-word instead of teleporting it ("monkey swinging").
+          if (Math.abs(targetWordFloatRef.current - phraseMatch.matchIndex) > 20) {
+            // Manual navigation re-anchor: snap the word-clock to the new position
+            virtualWordFloatRef.current = phraseMatch.matchIndex;
+            lastDisplayedWordRef.current = phraseMatch.matchIndex;
+          }
+          targetWordFloatRef.current = Math.max(targetWordFloatRef.current, phraseMatch.matchIndex);
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
       };
@@ -798,83 +802,74 @@ Control your speed, adjust your font size, and download your voice recording in 
       if (el) {
         if (speechFollowRef.current && isPlayingRef.current) {
           const currentScroll = el.scrollTop;
-          const targetScroll = targetScrollYRef.current;
-          const diff = targetScroll - currentScroll;
           const now = Date.now();
-          const timeSinceLastMatch = now - lastMatchTimestampRef.current;
-          // Mic-gated pause: freeze the glide when the room has been quiet
-          // for ~700ms (only enforced while the live audio meter is running).
+          // Mic-gated pause: freeze the word-clock when the room has been
+          // quiet for ~700ms (only enforced while the live audio meter runs).
           const micQuiet =
             audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
           // Velocity-limited easing: the prompt never moves faster than
-          // ~450 px/s, so multi-word jumps (bracket cues like [HOOK],
-          // recovery re-locks) glide at a constant eye-trackable speed
-          // instead of snapping sharply and breaking visual focus.
+          // ~450 px/s, so word-to-word movement stays eye-trackable.
           const maxStep = (450 * Math.min(delta, 50)) / 1000;
 
-          // 1. Anchor Word Spring Easing: If there is a target position difference, ease into it smoothly
-          if (Math.abs(diff) > 0.5) {
-            let decay = 1 - Math.exp(-6.5 * (Math.min(delta, 50) / 1000));
-            let appliedDiff = diff;
-
-            // Strict forward-only progression: while voice-following the
-            // prompt never scrolls backwards. Small backward corrections
-            // (re-read echoes, glide overshoot) are suppressed entirely —
-            // hold position and let the confirmed target catch up.
-            if (diff < 0) {
-              if (diff > -140) {
-                appliedDiff = 0;
-              } else {
-                // Large backward jumps are genuine navigation (chapter
-                // jump / reset) — ease back visibly but gently.
-                decay = 1 - Math.exp(-4.0 * (Math.min(delta, 50) / 1000));
-              }
+          // 1. Continuous word-clock follower. Confirmed matches only move
+          // the TARGET; the virtual timeline chases it every frame at
+          // cruise pace plus a bounded catch-up boost. The highlight
+          // therefore advances one word at a time at a steady cadence —
+          // ASR bursts never teleport it, and it never stalls between
+          // bursts.
+          if (!micQuiet && isSpeakingCadenceActiveRef.current) {
+            const cruise = learnedWpmRef.current / 60; // words/sec at natural pace
+            const gap = targetWordFloatRef.current - virtualWordFloatRef.current;
+            if (gap > 0) {
+              // Catch-up is proportional to the gap but capped at 2x
+              // cruise, so bursts converge quickly yet visibly.
+              const catchUp = Math.min(gap * 2.5, cruise * 2.0);
+              const advance = Math.min((cruise + catchUp) * (delta / 1000), gap);
+              virtualWordFloatRef.current += advance;
             }
 
-            if (appliedDiff !== 0) {
-              const eased = appliedDiff * decay;
-              const step = Math.max(-maxStep, Math.min(maxStep, eased));
-              el.scrollTop = currentScroll + step;
-              scrollPosRef.current = el.scrollTop;
-            }
-          }
-          // 2. Word-Timeline Karaoke Glide: advance a virtual word position
-          // at the learned WPM between anchors so the highlight moves
-          // word-by-word and the scroll follows the actual word positions.
-          else if (timeSinceLastMatch < 2500 && isSpeakingCadenceActiveRef.current && !micQuiet) {
-            const wordsPerSec = learnedWpmRef.current / 60;
-            const maxLead = 4; // tight leash: never drift far ahead of the last confirmed match
-            const nextVirtual = Math.min(
-              virtualWordFloatRef.current + wordsPerSec * (delta / 1000),
-              lastMatchIndexRef.current + maxLead
-            );
-            virtualWordFloatRef.current = Math.max(virtualWordFloatRef.current, nextVirtual);
-
-            // Karaoke highlight: advance the active word along the timeline
             const displayWord = Math.round(virtualWordFloatRef.current);
             if (displayWord !== lastDisplayedWordRef.current) {
               lastDisplayedWordRef.current = displayWord;
               setActiveWordIndex(displayWord);
               activeWordIndexRef.current = displayWord;
             }
+          }
 
-            // Timeline scroll: interpolate pixels between actual word anchors
-            const wordSpans = readerRef.current?.querySelectorAll('[data-word="1"]');
-            if (wordSpans && wordSpans.length > 0) {
-              const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
-              const ceilIdx = Math.min(floorIdx + 1, wordSpans.length - 1);
-              const frac = virtualWordFloatRef.current - floorIdx;
-              const targetRatio = isMobile ? 0.45 : eyelinePercent / 100;
-              const anchorY = (readerRef.current?.clientHeight || 0) * targetRatio;
-              const y0 = Math.max(0, (wordSpans[floorIdx] as HTMLElement).offsetTop - anchorY);
-              const y1 = Math.max(0, (wordSpans[ceilIdx] as HTMLElement).offsetTop - anchorY);
-              targetScrollYRef.current = y0 + (y1 - y0) * frac;
+          // 2. Scroll: interpolate the pixel position along the word
+          // timeline (between actual DOM word anchors) and ease toward
+          // it, forward-only.
+          const wordSpans = readerRef.current?.querySelectorAll('[data-word="1"]');
+          if (wordSpans && wordSpans.length > 0) {
+            const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
+            const ceilIdx = Math.min(floorIdx + 1, wordSpans.length - 1);
+            const frac = virtualWordFloatRef.current - floorIdx;
+            const targetRatio = isMobile ? 0.45 : eyelinePercent / 100;
+            const anchorY = (readerRef.current?.clientHeight || 0) * targetRatio;
+            const y0 = Math.max(0, (wordSpans[floorIdx] as HTMLElement).offsetTop - anchorY);
+            const y1 = Math.max(0, (wordSpans[ceilIdx] as HTMLElement).offsetTop - anchorY);
+            targetScrollYRef.current = y0 + (y1 - y0) * frac;
 
-              const glideDiff = targetScrollYRef.current - currentScroll;
-              if (Math.abs(glideDiff) > 0.5) {
-                const glideDecay = 1 - Math.exp(-7.0 * (Math.min(delta, 50) / 1000));
-                const glideStep = Math.max(-maxStep, Math.min(maxStep, glideDiff * glideDecay));
-                el.scrollTop = currentScroll + glideStep;
+            const diff = targetScrollYRef.current - currentScroll;
+            if (Math.abs(diff) > 0.5) {
+              let decay = 1 - Math.exp(-6.5 * (Math.min(delta, 50) / 1000));
+              let appliedDiff = diff;
+
+              // Strict forward-only progression: small backward
+              // corrections (re-read echoes, interpolation wobble) are
+              // suppressed entirely; large ones (genuine navigation)
+              // ease back visibly but gently.
+              if (diff < 0) {
+                if (diff > -140) {
+                  appliedDiff = 0;
+                } else {
+                  decay = 1 - Math.exp(-4.0 * (Math.min(delta, 50) / 1000));
+                }
+              }
+
+              if (appliedDiff !== 0) {
+                const step = Math.max(-maxStep, Math.min(maxStep, appliedDiff * decay));
+                el.scrollTop = currentScroll + step;
                 scrollPosRef.current = el.scrollTop;
               }
             }
@@ -2666,7 +2661,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                           )}
                         </div>
                       </div>
-  
+
                       {/* Manual Reading Pace — seeds the AI learner */}
                       <div style={{ padding: '8px 10px', background: '#fff', border: '2px solid #000', borderRadius: 4 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', marginBottom: 4 }}>
@@ -2695,7 +2690,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                           <span>220 🐇</span>
                         </div>
                       </div>
-  
+
                       {/* Pacing Smoothness Presets */}
                       <div>
                         <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
