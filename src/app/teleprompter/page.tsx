@@ -386,17 +386,17 @@ export default function TeleprompterPage() {
     `[HOOK - LOOK DIRECTLY AT THE LENS]
 Welcome to CreatorKit Pro Teleprompter!
 
-[CORNER CAMERA PIP]
-You can now see yourself cleanly in the top-right corner, or switch to full background whenever you like!
+[HIGH-FIDELITY AUDIO RECORDING]
+Record crystal-clear voiceovers with real-time decibel monitoring right at the top of your screen.
 
-[SMOOTH AI SYNC]
+[SMOOTH AI SPEECH SYNC]
 Start reading aloud and notice how the prompter glides gently with your natural speaking cadence.
 
-[PAUSE TEST]
+[PAUSE TEST - TAKE A BREATH]
 When you pause to take a breath or emphasize a point, the auto-scroll smoothly freezes immediately.
 
-[CUSTOM TEXT WIDTH]
-Adjust your reading width to 28 or 32 characters in the Width tab so your eyes stay centered directly beneath your camera lens!`
+[EFFORTLESS PACING]
+Control your speed, adjust your font size, and download your voice recording in one tap!`
   );
 
   // Playback & Speed Controls
@@ -575,6 +575,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const audioAnimFrameRef = useRef<number | null>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const hudWaveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mobileHudWaveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const peakHoldRef = useRef<{ level: number; time: number }>({ level: -60, time: 0 });
 
   // Voice & Video recording refs
@@ -584,6 +585,13 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Adaptive Velocity & Cadence Learner Refs
+  const learnedWpmRef = useRef<number>(130); // Default natural speaking pace (130 WPM)
+  const lastMatchTimestampRef = useRef<number>(Date.now());
+  const lastMatchIndexRef = useRef<number>(0);
+  const speechVelocityPxPerSecRef = useRef<number>(0);
+  const isSpeakingCadenceActiveRef = useRef<boolean>(false);
 
   isPlayingRef.current = isPlaying;
   loopRef.current = loop;
@@ -597,8 +605,19 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
     return `${m}:${s}`;
   };
 
+  useEffect(() => {
+    const savedWpm = localStorage.getItem('creatorKit_learnedWpm');
+    if (savedWpm) {
+      const parsed = parseInt(savedWpm, 10);
+      if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
+        learnedWpmRef.current = parsed;
+      }
+    }
+  }, []);
+
   const handleResetScroll = useCallback(() => {
     setIsPlaying(false);
+    isPlayingRef.current = false;
     scrollPosRef.current = 0;
     targetScrollYRef.current = 0;
     setActiveWordIndex(-1);
@@ -674,10 +693,12 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
     const wordSpans = readerRef.current.querySelectorAll('[data-word="1"]');
     if (wordSpans && wordSpans[wordIdx]) {
       const targetSpan = wordSpans[wordIdx] as HTMLElement;
-      const targetY = targetSpan.offsetTop - readerRef.current.clientHeight * (eyelinePercent / 100);
+      // On mobile, position active reading line comfortably at 45% screen height
+      const targetRatio = isMobile ? 0.45 : (eyelinePercent / 100);
+      const targetY = targetSpan.offsetTop - readerRef.current.clientHeight * targetRatio;
       targetScrollYRef.current = Math.max(0, targetY);
     }
-  }, [eyelinePercent]);
+  }, [eyelinePercent, isMobile]);
 
   const stopSpeechRecognition = useCallback(() => {
     if (speechRecognitionRef.current) {
@@ -721,6 +742,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
         pauseTimerRef.current = setTimeout(() => {
           setSpeechStatus('paused');
+          isSpeakingCadenceActiveRef.current = false;
         }, autoPauseThresholdMs);
 
         let latestTranscript = '';
@@ -775,65 +797,77 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           return false;
         };
 
-        // 1. Primary search: Check immediate 8 words ahead
-        for (let offset = 1; offset <= 8; offset++) {
-          const checkIdx = curIdx + offset;
-          if (checkIdx < 0 || checkIdx >= total) continue;
+        // 1. Contextual Multi-Word (Bi-gram) Matching: Check if 2 spoken words match consecutive script words
+        if (recentSpoken.length >= 2) {
+          const w1 = recentSpoken[recentSpoken.length - 2];
+          const w2 = recentSpoken[recentSpoken.length - 1];
 
-          const targetScriptWord = cleanWordsList[checkIdx];
-          if (!targetScriptWord) continue;
+          for (let offset = 1; offset <= 8; offset++) {
+            const checkIdx = curIdx + offset;
+            if (checkIdx < 0 || checkIdx + 1 >= total) continue;
 
-          for (let s = 0; s < recentSpoken.length; s++) {
-            const spoken = recentSpoken[s];
-            if (!spoken || spoken.length < 2) continue;
+            const script1 = cleanWordsList[checkIdx];
+            const script2 = cleanWordsList[checkIdx + 1];
 
-            const isStopWord = STOP_WORDS.has(spoken);
-            if (isStopWord && offset > 2) continue;
-
-            if (isFuzzyMatch(targetScriptWord, spoken)) {
-              foundNextIdx = checkIdx;
+            if (isFuzzyMatch(script1, w1) && isFuzzyMatch(script2, w2)) {
+              foundNextIdx = checkIdx + 1;
               break;
             }
           }
-          if (foundNextIdx !== -1) break;
         }
 
-        // 2. Viewport-Aware Fallback: If missed, scan words currently visible inside the reading window
-        if (foundNextIdx === -1 && readerRef.current) {
-          const el = readerRef.current;
-          const viewTop = el.scrollTop - 40;
-          const viewBottom = el.scrollTop + el.clientHeight + 80;
-          const wordSpans = el.querySelectorAll('[data-word="1"]');
+        // 2. Closest-Proximity Single-Word Matching (Selects closest upcoming word first)
+        if (foundNextIdx === -1) {
+          const candidates: number[] = [];
 
-          for (let i = 0; i < wordSpans.length; i++) {
-            const span = wordSpans[i] as HTMLElement;
-            const spanTop = span.offsetTop;
+          for (let offset = 1; offset <= 5; offset++) {
+            const checkIdx = curIdx + offset;
+            if (checkIdx < 0 || checkIdx >= total) continue;
 
-            // Only check upcoming words physically visible inside or ahead in the screen viewport right now
-            if (spanTop >= viewTop && spanTop <= viewBottom) {
-              const wordId = parseInt(span.getAttribute('data-index') || '-1', 10);
-              // STRICT FORWARD-ONLY: Never jump backward to words already read above
-              if (wordId >= curIdx && wordId < total) {
-                const targetScriptWord = cleanWordsList[wordId];
-                if (!targetScriptWord) continue;
+            const targetScriptWord = cleanWordsList[checkIdx];
+            if (!targetScriptWord) continue;
 
-                for (let s = 0; s < recentSpoken.length; s++) {
-                  const spoken = recentSpoken[s];
-                  if (!spoken || spoken.length < 3) continue;
+            for (let s = 0; s < recentSpoken.length; s++) {
+              const spoken = recentSpoken[s];
+              if (!spoken || spoken.length < 2) continue;
 
-                  if (isFuzzyMatch(targetScriptWord, spoken)) {
-                    foundNextIdx = wordId;
-                    break;
-                  }
-                }
-                if (foundNextIdx !== -1) break;
+              const isStopWord = STOP_WORDS.has(spoken) || spoken.length <= 2;
+              if (isStopWord && offset > 1) continue;
+
+              if (isFuzzyMatch(targetScriptWord, spoken)) {
+                candidates.push(checkIdx);
+                break;
               }
             }
           }
+
+          // If multiple occurrences match (e.g. multiple "your"), ALWAYS pick the closest one (minimum positive offset)
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => a - b);
+            foundNextIdx = candidates[0];
+          }
         }
 
-        // STRICT FORWARD-ONLY PROGRESSION:
-        if (foundNextIdx !== -1 && foundNextIdx >= curIdx) {
+        // STRICT PROGRESSION: Advance only if found and within sensible sequential distance
+        if (foundNextIdx !== -1 && (curIdx < 0 || (foundNextIdx >= curIdx && foundNextIdx <= curIdx + 8))) {
+          const now = Date.now();
+          const wordsSpoken = foundNextIdx - Math.max(0, lastMatchIndexRef.current);
+          const timeElapsedSec = (now - lastMatchTimestampRef.current) / 1000;
+
+          // Real-time Adaptive Cadence Calculation (Learns your natural WPM)
+          if (timeElapsedSec > 0.3 && timeElapsedSec < 6.0 && wordsSpoken > 0) {
+            const instantWpm = Math.round((wordsSpoken / timeElapsedSec) * 60);
+            if (instantWpm >= 50 && instantWpm <= 280) {
+              // Exponential Moving Average filter to learn speaking rhythm
+              learnedWpmRef.current = Math.round(learnedWpmRef.current * 0.7 + instantWpm * 0.3);
+              localStorage.setItem('creatorKit_learnedWpm', learnedWpmRef.current.toString());
+            }
+          }
+
+          lastMatchTimestampRef.current = now;
+          lastMatchIndexRef.current = foundNextIdx;
+          isSpeakingCadenceActiveRef.current = true;
+
           setActiveWordIndex(foundNextIdx);
           activeWordIndexRef.current = foundNextIdx;
           updateTargetScrollForWord(foundNextIdx);
@@ -845,17 +879,37 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         if (err.error !== 'no-speech') {
           console.warn('SpeechRecognition notice:', err);
         }
+        // If aborted or interrupted on mobile, auto restart if still playing
+        if (speechFollowRef.current && isPlayingRef.current) {
+          setTimeout(() => {
+            try {
+              if (speechFollowRef.current && isPlayingRef.current) {
+                recognition.start();
+              }
+            } catch {}
+          }, 300);
+        }
       };
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          try {
-            recognition.start();
-          } catch {}
+          setTimeout(() => {
+            try {
+              if (speechFollowRef.current && isPlayingRef.current) {
+                recognition.start();
+              }
+            } catch {}
+          }, 200);
+        } else {
+          setSpeechStatus('idle');
         }
       };
 
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (e) {
+        console.warn('Recognition start already active:', e);
+      }
       speechRecognitionRef.current = recognition;
     } catch (err) {
       console.warn('Failed to start SpeechRecognition:', err);
@@ -891,11 +945,43 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           const currentScroll = el.scrollTop;
           const targetScroll = targetScrollYRef.current;
           const diff = targetScroll - currentScroll;
+          const now = Date.now();
+          const timeSinceLastMatch = now - lastMatchTimestampRef.current;
 
+          // 1. Anchor Word Spring Easing: If there is a target position difference, ease into it smoothly
           if (Math.abs(diff) > 0.5) {
-            const step = diff * speechDampingRef.current;
-            el.scrollTop = currentScroll + step;
+            let decay = 1 - Math.exp(-4.5 * (Math.min(delta, 50) / 1000));
+            let appliedDiff = diff;
+            
+            // Dampen backwards snapping (text moving down) to prevent erratic "going down down" behavior
+            if (diff < -2) {
+              // If the overshoot is small (less than roughly one line height), don't snap back at all.
+              // Just pause and wait for the natural scroll target to catch up.
+              if (diff > -(fontSize * 1.5)) {
+                appliedDiff = 0; 
+              } else {
+                // If it's a huge jump backwards, ease it much slower so it's not jarring
+                decay = 1 - Math.exp(-1.5 * (Math.min(delta, 50) / 1000));
+              }
+            }
+
+            if (appliedDiff !== 0) {
+              el.scrollTop = currentScroll + (appliedDiff * decay);
+              scrollPosRef.current = el.scrollTop;
+            }
+          } 
+          // 2. Continuous Cadence Glide: If speaking actively between anchors, glide smoothly at learned WPM
+          else if (timeSinceLastMatch < 1200 && isSpeakingCadenceActiveRef.current) {
+            // Words per line estimate: line char width / ~5 chars per word
+            const estimatedWordsPerLine = characterWidth / 5.2;
+            const linesPerSec = (learnedWpmRef.current / 60) / estimatedWordsPerLine;
+            // pixels per second = lines per sec * estimated line height in px (fontSize * 1.35)
+            const pixelsPerSec = linesPerSec * (fontSize * 1.35);
+            
+            const baseWpmSpeed = pixelsPerSec * (delta / 1000);
+            el.scrollTop = currentScroll + baseWpmSpeed;
             scrollPosRef.current = el.scrollTop;
+            targetScrollYRef.current = el.scrollTop;
           }
         } else if (!speechFollowRef.current && isPlayingRef.current) {
           const baseSpeed = (speed * fontSize * delta) / 3800;
@@ -957,12 +1043,17 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         micStreamRef.current.getTracks().forEach((t) => t.stop());
       }
 
-      const constraints: MediaStreamConstraints = {
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-        video: false,
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: false,
+      });
       micStreamRef.current = stream;
 
       const AudioContextClass =
@@ -973,10 +1064,18 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
       audioContextRef.current = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
+
+      // Studio Vocal Clarity Filter (High-pass at 85Hz to cut low rumble/AC hum)
+      const highPassFilter = ctx.createBiquadFilter();
+      highPassFilter.type = 'highpass';
+      highPassFilter.frequency.value = 85;
+
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.25;
-      source.connect(analyser);
+
+      source.connect(highPassFilter);
+      highPassFilter.connect(analyser);
       analyserRef.current = analyser;
 
       setAudioMeterActive(true);
@@ -1002,8 +1101,10 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
         let x = 0;
 
         for (let i = 0; i < bufferLength; i++) {
-          const v = data[i];
-          const y = ((v + 1) / 2) * height;
+          // Amplify sensitivity by 3.5x so voice dynamics produce clear visible waveforms
+          const v = (data[i] - 0) * 3.5;
+          const clamped = Math.max(-1, Math.min(1, v));
+          const y = ((clamped + 1) / 2) * height;
 
           if (i === 0) {
             cCtx.moveTo(x, y);
@@ -1056,9 +1157,14 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           }
         }
 
-        const waveColor = peakDb >= -2.0 ? '#ef4444' : peakDb >= -18 ? '#22c55e' : '#f59e0b';
+        // Dynamic Waveform Colors:
+        // Peak >= -10dB -> Red (#ef4444)
+        // Normal Speech (-45dB to -10dB) -> Vibrant Green (#22c55e)
+        // Background noise (< -45dB) -> Amber / Golden Brown (#f59e0b)
+        const waveColor = peakDb >= -10.0 ? '#ef4444' : peakDb >= -45.0 ? '#22c55e' : '#f59e0b';
         drawWaveform(waveformCanvasRef.current, timeDomainData, waveColor);
         drawWaveform(hudWaveformCanvasRef.current, timeDomainData, waveColor);
+        drawWaveform(mobileHudWaveformCanvasRef.current, timeDomainData, waveColor);
 
         audioAnimFrameRef.current = requestAnimationFrame(renderAudioLoop);
       };
@@ -1104,8 +1210,19 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
 
   useEffect(() => {
     startAudioAnalysis(selectedAudioDeviceId);
+
+    const unlockAudio = () => {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    window.addEventListener('click', unlockAudio, { once: true });
+
     return () => {
       stopAudioAnalysis();
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
     };
   }, [selectedAudioDeviceId, startAudioAnalysis, stopAudioAnalysis]);
 
@@ -1423,7 +1540,7 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
             WebkitBoxDecorationBreak: 'clone',
             padding: '0 2px 1px',
             margin: 0,
-            transition: 'color 0.12s ease, background-color 0.12s ease, border-color 0.12s ease',
+            transition: 'color 0.16s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           {tok.raw}
@@ -1871,9 +1988,9 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
+                gap: 6,
                 background: '#ffffff',
-                padding: '4px 8px',
+                padding: '3px 8px',
                 border: '1.5px solid #000',
                 borderRadius: 4,
                 fontFamily: 'monospace',
@@ -1882,8 +1999,28 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
                 flexShrink: 0,
               }}
             >
-              <canvas ref={hudWaveformCanvasRef} width={42} height={14} style={{ background: '#000', borderRadius: 2 }} />
-              <span style={{ fontSize: '0.64rem', color: isClipping ? '#dc2626' : '#000', whiteSpace: 'nowrap' }}>
+              {/* Dynamic Live Color VU Canvas */}
+              <canvas
+                ref={mobileHudWaveformCanvasRef}
+                width={80}
+                height={28}
+                style={{
+                  width: 44,
+                  height: 14,
+                  background: '#000000',
+                  borderRadius: 2,
+                  display: 'block',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: '0.64rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  color: rmsDecibels >= -12 ? '#dc2626' : rmsDecibels >= -45 ? '#16a34a' : '#d97706',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
               </span>
             </div>
@@ -2110,29 +2247,29 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
               />
             )}
 
-            {/* Top Fade Bleed — text fades to black at top edge */}
+            {/* Top Fade Bleed — subtle 8% top gradient so text is never obscured */}
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
-                height: '25%',
-                background: 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 40%, transparent 100%)',
+                height: '8%',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)',
                 zIndex: 17,
                 pointerEvents: 'none',
               }}
             />
 
-            {/* Bottom Fade Bleed — text fades to black at bottom edge */}
+            {/* Bottom Fade Bleed — subtle bottom fade */}
             <div
               style={{
                 position: 'absolute',
                 bottom: 0,
                 left: 0,
                 right: 0,
-                height: '30%',
-                background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 35%, transparent 100%)',
+                height: '14%',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
                 zIndex: 17,
                 pointerEvents: 'none',
               }}
