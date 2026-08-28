@@ -13,8 +13,13 @@ import {
   Plus,
   Trash2,
   Check,
+  ImagePlus,
+  X,
 } from 'lucide-react';
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import { ReceiptPrinter } from '@/components/receipt-printer';
+import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
+import ReceiptDocument, { type ReceiptDocumentData } from '@/components/receipt-document';
 
 type TabType = 'invoice' | 'receipt' | 'agreement' | 'letterhead';
 type CurrencyType = 'GHS' | 'NGN' | 'USD' | 'GBP' | 'EUR';
@@ -136,6 +141,98 @@ function BusinessSuiteContent() {
   const [copiedNotification, setCopiedNotification] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
+  // ─── BRAND LOGO UPLOAD STATE ──────────────────────────────────
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setLogoUrl(reader.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // ─── ANIMATED THERMAL RECEIPT PRINTER STATE ───────────────────
+  const [printStage, setPrintStage] = useState<'idle' | 'processing' | 'printing' | 'complete'>('idle');
+  const printTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const startAnimatedPrint = () => {
+    printTimersRef.current.forEach(clearTimeout);
+    printTimersRef.current = [
+      setTimeout(() => setPrintStage('processing'), 0),
+      setTimeout(() => setPrintStage('printing'), 900),
+      setTimeout(() => setPrintStage('complete'), 2900),
+    ];
+  };
+
+  const closeAnimatedPrint = () => {
+    printTimersRef.current.forEach(clearTimeout);
+    printTimersRef.current = [];
+    setPrintStage('idle');
+  };
+
+  useEffect(() => {
+    if (printStage === 'idle') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAnimatedPrint();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [printStage]);
+
+  useEffect(() => () => printTimersRef.current.forEach(clearTimeout), []);
+
+  const payChannel =
+    paymentType === 'momo'
+      ? `MoMo · ${momoNetwork} · ${momoNumber}`
+      : paymentType === 'bank'
+        ? `Bank · ${bankName} · ${bankAccountNumber}`
+        : paymentType === 'paystack'
+          ? `Paystack · ${paystackLink}`
+          : `Wire · ${wireIban}`;
+
+  // ─── SHAREABLE CLIENT RECEIPT LINK ────────────────────────────
+  const [clientLinkCopied, setClientLinkCopied] = useState(false);
+
+  const buildReceiptLink = () => {
+    const payload: ReceiptPayload = {
+      n: creatorName,
+      h: creatorHandle,
+      e: creatorEmail,
+      p: creatorPhone,
+      l: creatorLocation,
+      c: clientName,
+      a: clientContact,
+      cu: currency,
+      rn: receiptNumber,
+      dt: issueDate,
+      it: items.map((i) => ({ d: i.description, q: i.quantity, r: i.rate })),
+      da: discountAmount,
+      tp: taxPercentage,
+      ap: amountPaid,
+      pt: paymentType,
+      mn: momoNetwork,
+      mu: momoNumber,
+      bn: bankName,
+      ba: bankAccountNumber,
+      lg: logoUrl ?? undefined,
+    };
+    return `${window.location.origin}/receipt?r=${encodeReceipt(payload)}`;
+  };
+
+  const copyClientLink = () => {
+    navigator.clipboard.writeText(buildReceiptLink());
+    setClientLinkCopied(true);
+    setTimeout(() => setClientLinkCopied(false), 2500);
+  };
+
+  const shareReceiptOnWhatsApp = () => {
+    const text = `Hello ${clientContact || clientName}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${buildReceiptLink()}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const addItem = (preset?: typeof PRESET_DELIVERABLES[0]) => {
     if (preset) {
       setItems([
@@ -234,6 +331,32 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
   };
 
   const sym = CURRENCY_SYMBOLS[currency];
+
+  // Shared receipt data — drives the animated printer paper AND the client link view
+  const receiptDocData: ReceiptDocumentData = {
+    logoUrl: logoUrl,
+    creatorName,
+    creatorHandle,
+    creatorEmail,
+    creatorPhone,
+    creatorLocation,
+    clientName,
+    clientContact,
+    currency,
+    sym,
+    receiptNumber,
+    issueDate,
+    items,
+    discountAmount,
+    taxPercentage,
+    subtotal,
+    tax,
+    totalAmount,
+    amountPaid,
+    balanceDue,
+    paymentType,
+    payChannel,
+  };
 
   return (
     <div style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
@@ -941,15 +1064,24 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
           >
             {/* Header / Watermark badge */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: 20, marginBottom: 24, gap: 16 }}>
-              <div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
-                  {creatorName}
-                </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#444', marginTop: 2 }}>
-                  {creatorHandle} · {creatorNiche}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 4 }}>
-                  {creatorPhone} | {creatorEmail} | {creatorLocation}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                {logoUrl && (
+                  <img
+                    src={logoUrl}
+                    alt={`${creatorName} logo`}
+                    style={{ height: 54, width: 54, objectFit: 'contain', border: '1.5px solid #000', background: '#fff', padding: 3, flexShrink: 0 }}
+                  />
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
+                    {creatorName}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#444', marginTop: 2 }}>
+                    {creatorHandle} · {creatorNiche}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 4 }}>
+                    {creatorPhone} | {creatorEmail} | {creatorLocation}
+                  </div>
                 </div>
               </div>
 
@@ -1129,6 +1261,56 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </div>
                 </div>
 
+                {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                  <input
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={handleLogoUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => logoFileInputRef.current?.click()}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                  >
+                    <ImagePlus size={14} /> {logoUrl ? 'Change Logo' : 'Upload Your Logo'}
+                  </button>
+                  {logoUrl && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '2px solid #000', background: '#fff', padding: '4px 8px', boxShadow: '3px 3px 0 #000' }}>
+                      <img src={logoUrl} alt="Brand logo" style={{ height: 26, width: 'auto', objectFit: 'contain' }} />
+                      <button
+                        onClick={() => setLogoUrl(null)}
+                        aria-label="Remove logo"
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', color: '#000' }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={startAnimatedPrint}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 rgba(0,0,0,0.35)', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', marginLeft: 'auto' }}
+                  >
+                    <Printer size={14} /> Print Animated Receipt
+                  </button>
+                  <button
+                    onClick={copyClientLink}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                  >
+                    <Share2 size={14} /> {clientLinkCopied ? 'Link Copied!' : 'Copy Client Link'}
+                  </button>
+                  <button
+                    onClick={shareReceiptOnWhatsApp}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                  >
+                    Send on WhatsApp
+                  </button>
+                  <div style={{ flexBasis: '100%', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
+                    CLIENT FLOW: they open the link, watch the receipt print itself, then download or print it — no account needed.
+                  </div>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, fontSize: '0.82rem' }}>
                   <div>
                     <div style={{ color: '#888', fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>RECEIVED FROM:</div>
@@ -1261,6 +1443,62 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
           </div>
         </div>
       </div>
+
+      {/* ─── ANIMATED THERMAL RECEIPT PRINTER OVERLAY ─── */}
+      {printStage !== 'idle' && (
+        <div
+          className="print:hidden"
+          style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.82)', display: 'flex', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
+        >
+          <div style={{ margin: 'auto', width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <div style={{ alignSelf: 'flex-end' }}>
+              <button
+                onClick={closeAnimatedPrint}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+              >
+                <X size={14} /> Close
+              </button>
+            </div>
+
+            <ReceiptPrinter.Root stage={printStage} feedMotion="stepped">
+              <ReceiptPrinter.Machine>
+                <ReceiptPrinter.Header>
+                  <ReceiptPrinter.Status>
+                    {printStage === 'processing' ? 'Processing payment…' : printStage === 'printing' ? 'Printing receipt…' : 'Receipt ready'}
+                  </ReceiptPrinter.Status>
+                  <span className="rounded-[0.25rem] bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
+                    CreatorKit
+                  </span>
+                </ReceiptPrinter.Header>
+                <ReceiptPrinter.Screen>
+                  <div className="flex items-baseline justify-between font-mono text-[11px] font-bold uppercase tracking-widest">
+                    <span>{sym}{amountPaid.toLocaleString()}</span>
+                    <span>{amountPaid >= totalAmount ? 'Paid in full' : 'Partial'}</span>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {clientName} · {receiptNumber}
+                  </p>
+                </ReceiptPrinter.Screen>
+              </ReceiptPrinter.Machine>
+
+              <ReceiptPrinter.Output className="h-[38rem]">
+                <ReceiptPrinter.Paper>
+                  <ReceiptDocument data={receiptDocData} />
+                </ReceiptPrinter.Paper>
+              </ReceiptPrinter.Output>
+            </ReceiptPrinter.Root>
+
+            {printStage === 'complete' && (
+              <button
+                onClick={handlePrint}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fef08a', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 16px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+              >
+                <Printer size={14} /> Print / Save PDF
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
