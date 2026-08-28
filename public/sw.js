@@ -1,5 +1,5 @@
 // CreatorKit Production PWA Service Worker
-const CACHE_NAME = 'creatorkit-pwa-v1';
+const CACHE_NAME = 'creatorkit-pwa-v2';
 
 const STATIC_PRECACHE = [
   '/',
@@ -9,11 +9,13 @@ const STATIC_PRECACHE = [
   '/favicon.ico',
 ];
 
-// Install Event — precache core assets
+// Install Event — precache core assets (fault-tolerant: a single missing
+// asset like /favicon.ico must not reject the whole install and break
+// activation with "Failed to execute 'addAll' on 'Cache'")
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_PRECACHE);
+      return Promise.allSettled(STATIC_PRECACHE.map((url) => cache.add(url)));
     }).then(() => self.skipWaiting())
   );
 });

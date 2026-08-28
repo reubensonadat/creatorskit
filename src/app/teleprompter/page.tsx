@@ -181,6 +181,29 @@ Get started today for free at CreatorKit.win!`,
   },
 ];
 
+/**
+ * Copy-paste prompt for generating teleprompter-ready scripts with any AI
+ * (ChatGPT / Claude / Gemini). It bakes in the exact bracket-cue grammar
+ * the teleprompter parses ([HOOK], [PAUSE 2s], [POINT 1], [CTA], ...) so
+ * AI-generated scripts work with voice-sync, chapters and cue markers
+ * on the first try.
+ */
+const AI_SCRIPT_PROMPT = `Generate a teleprompter script for a ~60 second video about: [YOUR TOPIC HERE].
+
+Format constraints (my teleprompter app parses these exactly):
+1. Write it the way it is SPOKEN: short conversational sentences, contractions, plain words.
+2. Every delivery cue goes on its OWN line in square brackets. Use ONLY these cues:
+   [HOOK] - the attention-grabbing opener (place it right before your first sentence)
+   [PAUSE 1s] / [PAUSE 2s] / [PAUSE 3s] - freeze the scroll for that long (use for emphasis)
+   [SMILE] - smile at the camera
+   [LOOK AT LENS] - hold eye contact with the lens
+   [POINT 1], [POINT 2], [POINT 3] - start each key point with its numbered cue
+   [CTA] - the call-to-action closer
+3. One idea per line, maximum ~12 words per line (easy to read while scrolling).
+4. Around 140-160 spoken words total (about 60 seconds at natural pace).
+5. Plain text only: no markdown, no headings, no emojis - just lines and the bracket cues above.
+6. The cue lines are stage directions - they are never read aloud.`;
+
 export default function TeleprompterPage() {
   // Core Prompter State
   const [script, setScript] = useState(
@@ -705,7 +728,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastDisplayedWordRef.current = confirmedIdx;
           // Predictive lead: aim where the speaker will be in ~0.6s to
           // compensate for the inherent ASR transcription latency
-          const leadWords = Math.min(4, Math.max(1, Math.round((phraseMatch.learnedWpm / 60) * 0.6)));
+          const leadWords = Math.min(2, Math.max(1, Math.round((phraseMatch.learnedWpm / 60) * 0.45)));
           updateTargetScrollForWord(phraseMatch.matchIndex + leadWords);
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
@@ -820,7 +843,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           // word-by-word and the scroll follows the actual word positions.
           else if (timeSinceLastMatch < 2500 && isSpeakingCadenceActiveRef.current && !micQuiet) {
             const wordsPerSec = learnedWpmRef.current / 60;
-            const maxLead = 8; // never drift far ahead of the last confirmed match
+            const maxLead = 4; // tight leash: never drift far ahead of the last confirmed match
             const nextVirtual = Math.min(
               virtualWordFloatRef.current + wordsPerSec * (delta / 1000),
               lastMatchIndexRef.current + maxLead
@@ -3295,6 +3318,20 @@ Control your speed, adjust your font size, and download your voice recording in 
                 }}
               >
                 VIRAL HOOK TEMPLATE
+              </button>
+              <button
+                onClick={() => setScript(AI_SCRIPT_PROMPT)}
+                style={{
+                  padding: '8px 12px',
+                  background: '#fef08a',
+                  border: '1.5px solid #000',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                ✨ GET AI PROMPT
               </button>
               <button
                 onClick={() => setScript('')}

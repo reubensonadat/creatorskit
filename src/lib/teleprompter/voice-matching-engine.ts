@@ -899,7 +899,11 @@ export function createWPMTracker(initialWpm: number = 140) {
                     instantWpm = candidate;
                     // Adaptive learning rate: high-confidence matches move the EMA more
                     const learningRate = 0.18 + confidence * 0.22;
-                    state.wpm = Math.round(state.wpm * (1 - learningRate) + candidate * learningRate);
+                    // Asymmetric learning: quick to slow down, reluctant to
+                    // speed up — a prompt that lags slightly is far less
+                    // disorienting than one that races ahead of the speaker.
+                    const lr = candidate >= state.wpm ? learningRate * 0.5 : learningRate;
+                    state.wpm = Math.round(state.wpm * (1 - lr) + candidate * lr);
                     state.samples++;
                 }
             }
@@ -974,8 +978,13 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
         // Monotonic forward progression: a match that lands behind the
         // current position is a re-read echo (ASR re-emitting the previous
         // phrase) — it confirms where we are but must NEVER pull the
-        // tracking backwards.
-        const nextIndex = Math.max(match.matchIndex, currentIndex);
+        // tracking backwards. Forward leaps are also clamped (~40 words)
+        // so a suspicious far anchor can never teleport the tracking
+        // way ahead of the speaker.
+        const nextIndex = Math.min(
+            Math.max(match.matchIndex, currentIndex),
+            currentIndex + 40
+        );
 
         const instantWpm = wpmTracker.update(
             nextIndex,
@@ -1015,8 +1024,8 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
         if (lastProgressTimestamp !== 0 && now - lastProgressTimestamp < RECOVERY_AFTER_MS) {
             return null;
         }
-        const wide = findBestPhraseMatch(spoken, scriptWords, currentIndex, 120);
-        if (wide && wide.confidence >= 0.75 && wide.matchedWords >= 3) {
+        const wide = findBestPhraseMatch(spoken, scriptWords, currentIndex, 60);
+        if (wide && wide.confidence >= 0.82 && wide.matchedWords >= 4) {
             return wide;
         }
         return null;
