@@ -535,8 +535,10 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     stopSpeechRecognition();
 
-    // (Re)initialize the accent-aware matching engine with the persisted cadence
-    if (!voiceEngineRef.current) {
+    // (Re)initialize the accent-aware matching engine with the persisted cadence.
+    // The capability check self-heals stale engine instances that survive
+    // hot-reloads from older module versions.
+    if (!voiceEngineRef.current || typeof voiceEngineRef.current.processAlternatives !== 'function') {
       voiceEngineRef.current = createVoiceMatchEngine({ initialWpm: learnedWpmRef.current });
     } else {
       voiceEngineRef.current.reset(Math.max(0, activeWordIndexRef.current), learnedWpmRef.current);
