@@ -1644,80 +1644,88 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           )}
         </div>
 
-        {/* Center Read Telemetry */}
-        <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 900 }}>
-          {isMobile ? (
-            <div
+        {/* Center Read Telemetry & Audio Meter */}
+        <div className="fs-header-center" style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'monospace', fontSize: '0.74rem', fontWeight: 900 }}>
+          {/* AI Voice Sync / Timed Scroll Toggle Badge (Strict Single Line) */}
+          <button
+            onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              border: '1.5px solid #000',
+              borderRadius: 4,
+              background: speechFollowEnabled
+                ? speechStatus === 'speaking'
+                  ? '#dcfce7'
+                  : speechStatus === 'listening'
+                  ? '#fef3c7'
+                  : '#fee2e2'
+                : '#ffffff',
+              color: speechFollowEnabled
+                ? speechStatus === 'speaking'
+                  ? '#15803d'
+                  : speechStatus === 'listening'
+                  ? '#b45309'
+                  : '#b91c1c'
+                : '#000000',
+              fontFamily: 'monospace',
+              fontWeight: 900,
+              fontSize: '0.68rem',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              boxShadow: '1.5px 1.5px 0 #000',
+            }}
+            title="Click to toggle AI Voice Sync vs Timed Scroll (S)"
+          >
+            <span
               style={{
-                background: '#f4f4f5',
-                border: '1.5px solid #000',
-                padding: '2px 8px',
-                borderRadius: 4,
-                fontSize: '0.68rem',
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: speechFollowEnabled
+                  ? speechStatus === 'speaking'
+                    ? '#22c55e'
+                    : speechStatus === 'listening'
+                    ? '#f59e0b'
+                    : '#ef4444'
+                  : '#71717a',
               }}
-            >
-              {totalWords} WORDS · {Math.max(10, Math.ceil((totalWords / Math.max(60, speed * 120)) * 60))}s READ
-            </div>
-          ) : speechFollowEnabled ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '2px 8px',
-                border: '1.5px solid #000',
-                borderRadius: 4,
-                background: speechStatus === 'speaking' ? '#dcfce7' : speechStatus === 'listening' ? '#fef3c7' : '#fee2e2',
-                color: speechStatus === 'speaking' ? '#15803d' : speechStatus === 'listening' ? '#b45309' : '#b91c1c',
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: speechStatus === 'speaking' ? '#22c55e' : speechStatus === 'listening' ? '#f59e0b' : '#ef4444',
-                }}
-                className={speechStatus === 'speaking' ? 'animate-pulse' : ''}
-              />
-              <span style={{ fontSize: '0.64rem' }}>
-                {speechStatus === 'speaking'
-                  ? `AI SYNC: "${lastHeardWord || 'Speaking'}"`
+              className={speechStatus === 'speaking' && speechFollowEnabled ? 'animate-pulse' : ''}
+            />
+            <span style={{ whiteSpace: 'nowrap' }}>
+              {speechFollowEnabled
+                ? speechStatus === 'speaking'
+                  ? `AI: "${lastHeardWord || 'SPEAKING'}"`
                   : speechStatus === 'listening'
                   ? 'AI LISTENING'
-                  : 'PAUSED'}
-              </span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#666' }}>
-              <span>SPEED:</span>
-              <span style={{ color: '#d97706', background: '#fef3c7', padding: '1px 6px', border: '1.5px solid #000', borderRadius: 4 }}>
-                {speed.toFixed(1)}x
-              </span>
-            </div>
-          )}
+                  : 'PAUSED'
+                : `TIMED SCROLL (${speed.toFixed(1)}x)`}
+            </span>
+          </button>
 
-          {!isMobile && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                background: '#f4f4f5',
-                padding: '2px 6px',
-                border: '1.5px solid #000',
-                borderRadius: 4,
-              }}
-            >
-              <canvas ref={hudWaveformCanvasRef} width={45} height={15} style={{ background: '#000', borderRadius: 2 }} />
-              <span style={{ fontSize: '0.62rem', color: isClipping ? '#dc2626' : '#000' }}>
-                {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
-              </span>
-            </div>
-          )}
+          {/* Desktop Decibel & Waveform Box */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: '#ffffff',
+              padding: '3px 8px',
+              border: '1.5px solid #000',
+              borderRadius: 4,
+              boxShadow: '1.5px 1.5px 0 #000',
+            }}
+          >
+            <canvas ref={hudWaveformCanvasRef} width={50} height={15} style={{ background: '#000', borderRadius: 2 }} />
+            <span style={{ fontSize: '0.68rem', color: isClipping ? '#dc2626' : '#000', whiteSpace: 'nowrap' }}>
+              {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
+            </span>
+          </div>
 
           {isRecording && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '2px 6px', borderRadius: 4, color: '#b91c1c' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fee2e2', border: '1.5px solid #ef4444', padding: '3px 8px', borderRadius: 4, color: '#b91c1c', boxShadow: '1.5px 1.5px 0 #000' }}>
               <Radio size={12} className="animate-pulse" />
               <span>REC {formatTime(recordingSeconds)}</span>
             </div>
@@ -2501,94 +2509,176 @@ Adjust your reading width to 28 or 32 characters in the Width tab so your eyes s
           {/* ── Desktop Studio Transport Dock ── */}
           <div
             className="prompter-desktop-dock"
+            style={{
+              position: 'absolute',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              zIndex: 35,
+              background: '#ffffff',
+              padding: '6px 14px',
+              border: '3px solid #000000',
+              borderRadius: 8,
+              boxShadow: '6px 6px 0 #000000',
+              color: '#000000',
+            }}
+          >
+            {/* 1. Reset */}
+            <button
+              onClick={handleResetScroll}
+              className="brutalist-button"
+              style={{ padding: '7px 10px', fontSize: '0.74rem', borderRadius: 4 }}
+              title="Reset Scroll to Top (R / Home)"
+            >
+              <RotateCcw size={15} />
+            </button>
+
+            {/* 2. Big Play / Pause Action */}
+            <button
+              onClick={triggerPlaybackWithCountdown}
+              className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
               style={{
-                position: 'absolute',
-                bottom: 20,
-                left: '50%',
-                transform: 'translateX(-50%)',
+                padding: '8px 24px',
+                fontSize: '0.86rem',
+                borderRadius: 6,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                zIndex: 35,
-                background: '#ffffff',
-                padding: '6px 14px',
-                border: '3px solid #000000',
-                borderRadius: 4,
-                boxShadow: '6px 6px 0 #000000',
-                color: '#000000',
+                fontWeight: 900,
               }}
+              title="Play / Pause (SPACE)"
             >
-              <button
-                onClick={handleResetScroll}
-                className="brutalist-button"
-                style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
-                title="Reset Scroll to Beginning (R / Home)"
-              >
-                <RotateCcw size={15} />
-              </button>
+              {isPlaying ? <Pause size={18} strokeWidth={3} /> : <Play size={18} strokeWidth={3} />}
+              {isPlaying ? 'PAUSE' : 'PLAY'}
+            </button>
 
-              <button
-                onClick={triggerPlaybackWithCountdown}
-                className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
-                style={{
-                  padding: '8px 20px',
-                  fontSize: '0.82rem',
-                  borderRadius: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-                title="Play / Pause (SPACE)"
-              >
-                {isPlaying ? <Pause size={17} /> : <Play size={17} />}
-                {isPlaying ? 'PAUSE' : 'PLAY'}
-              </button>
+            {/* 3. Pure Voice Audio Recorder */}
+            <button
+              onClick={() => {
+                if (isRecording) stopVoiceRecording();
+                else startVoiceRecording();
+              }}
+              style={{
+                padding: '7px 12px',
+                fontSize: '0.74rem',
+                borderRadius: 4,
+                border: '2px solid #000',
+                background: isRecording ? '#ef4444' : '#ffffff',
+                color: isRecording ? '#ffffff' : '#000000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                boxShadow: isRecording ? '0 0 10px rgba(239,68,68,0.5)' : 'none',
+              }}
+              title="Record High-Quality Voice Track"
+            >
+              <Mic size={15} />
+              <span>{isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}</span>
+            </button>
 
-              <button
-                onClick={() => setSpeechFollowEnabled(!speechFollowEnabled)}
-                className="brutalist-button"
+            {/* Recorded Audio Download (If Available) */}
+            {recordedAudioUrl && (
+              <a
+                href={recordedAudioUrl}
+                download={`creatorkit-voice-${Date.now()}.webm`}
                 style={{
-                  padding: '7px 9px',
-                  fontSize: '0.74rem',
+                  padding: '7px 10px',
+                  background: '#FFE500',
+                  color: '#000',
+                  border: '2px solid #000',
                   borderRadius: 4,
-                  background: speechFollowEnabled ? '#000' : '#fff',
-                  color: speechFollowEnabled ? '#FFE500' : '#000',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.7rem',
+                  textDecoration: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
                 }}
-                title="Toggle Speech-Follow AI Auto-Scroll (S)"
+                title="Download Recorded Voice Audio"
               >
-                <Mic size={14} />
-                <span style={{ fontSize: '0.66rem', fontWeight: 900 }}>AI SYNC</span>
-              </button>
+                <Download size={14} /> AUDIO
+              </a>
+            )}
 
-              <div style={{ width: 1, height: 22, background: '#ddd' }} />
+            <div style={{ width: 1, height: 22, background: '#000' }} />
 
+            {/* 4. Speed Stepper */}
+            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
               <button
-                onClick={() => setMirrorHorizontal((m) => !m)}
-                className="brutalist-button"
-                style={{
-                  padding: '7px 9px',
-                  fontSize: '0.74rem',
-                  borderRadius: 4,
-                  background: mirrorHorizontal ? '#000' : '#fff',
-                  color: mirrorHorizontal ? '#fff' : '#000',
-                }}
-                title="Mirror Horizontal (M)"
+                onClick={() => setSpeed((s) => Math.max(0.5, parseFloat((s - 0.2).toFixed(1))))}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
+                title="Decrease Speed ([)"
               >
-                <ArrowLeftRight size={15} />
+                −
               </button>
-
+              <span style={{ padding: '0 8px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', background: '#f4f4f5' }}>
+                {speed.toFixed(1)}x
+              </span>
               <button
-                onClick={handleToggleFullscreen}
-                className="brutalist-button"
-                style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
-                title="Fullscreen Mode (F)"
+                onClick={() => setSpeed((s) => Math.min(8.0, parseFloat((s + 0.2).toFixed(1))))}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
+                title="Increase Speed (])"
               >
-                {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                +
               </button>
             </div>
+
+            {/* 5. Text Size Stepper */}
+            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
+              <button
+                onClick={() => setFontSize((f) => Math.max(20, f - 4))}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
+                title="Smaller Font (-)"
+              >
+                A−
+              </button>
+              <span style={{ padding: '0 8px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', background: '#f4f4f5' }}>
+                {fontSize}px
+              </span>
+              <button
+                onClick={() => setFontSize((f) => Math.min(96, f + 4))}
+                style={{ padding: '4px 8px', border: 'none', background: '#fff', fontSize: '0.8rem', fontWeight: 900, cursor: 'pointer' }}
+                title="Larger Font (+)"
+              >
+                A+
+              </button>
+            </div>
+
+            <div style={{ width: 1, height: 22, background: '#000' }} />
+
+            {/* 6. Mirror Horizontal */}
+            <button
+              onClick={() => setMirrorHorizontal((m) => !m)}
+              className="brutalist-button"
+              style={{
+                padding: '7px 9px',
+                fontSize: '0.74rem',
+                borderRadius: 4,
+                background: mirrorHorizontal ? '#000' : '#fff',
+                color: mirrorHorizontal ? '#fff' : '#000',
+              }}
+              title="Mirror Horizontal Beam-Splitter (M)"
+            >
+              <ArrowLeftRight size={15} />
+            </button>
+
+            {/* 7. Fullscreen */}
+            <button
+              onClick={handleToggleFullscreen}
+              className="brutalist-button"
+              style={{ padding: '7px 9px', fontSize: '0.74rem', borderRadius: 4 }}
+              title="Fullscreen Mode (F)"
+            >
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          </div>
         </div>
 
         {/* ── Right Settings & Studio Control Drawer (Desktop Only) ── */}
