@@ -7,6 +7,7 @@ import {
   Pause,
   RotateCcw,
   ArrowLeftRight,
+  ArrowUpDown,
   SlidersHorizontal,
   ChevronLeft,
   Maximize2,
@@ -2492,6 +2493,27 @@ Control your speed, adjust your font size, and download your voice recording in 
               title="Mirror Horizontal Beam-Splitter (M)"
             >
               <ArrowLeftRight size={14} />
+            </button>
+
+            {/* 6b. Mirror Vertical — the keyboard-only 'V' shortcut made
+                visible and reversible from the UI */}
+            <button
+              onClick={() => setMirrorVertical((m) => !m)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '1.5px solid #000',
+                background: mirrorVertical ? '#000' : '#fff',
+                color: mirrorVertical ? '#fff' : '#000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+              title="Flip Vertical (V)"
+            >
+              <ArrowUpDown size={14} />
             </button>
 
             {/* 7. Controls drawer toggle */}
