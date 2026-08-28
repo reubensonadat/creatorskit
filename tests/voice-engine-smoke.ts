@@ -79,6 +79,19 @@ async function main() {
       r.matched && r.matchIndex >= 42 && r.matchIndex <= 44
     );
 
+    // d) Monotonic forward progression: a re-read echo (ASR re-emitting
+    //    an earlier phrase, here words from idx 37-40) must never pull
+    //    the tracked position backwards.
+    const before = engine.currentIndex;
+    r = engine.processAlternatives(
+        [{ words: 'packaging the thumbnail and the'.split(' '), rank: 0 }],
+        script
+    );
+    check(
+      `re-read echo does not regress position (before ${before}, after ${r.matchIndex})`,
+      r.matchIndex >= before
+    );
+
     console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
     process.exit(failures === 0 ? 0 : 1);
 }

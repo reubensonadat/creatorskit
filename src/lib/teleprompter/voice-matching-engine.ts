@@ -971,25 +971,31 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
 
     /** Apply an accepted match: update WPM learning + internal position state. */
     const applyMatch = (match: PhraseMatchResult): VoiceMatchEngineResult => {
+        // Monotonic forward progression: a match that lands behind the
+        // current position is a re-read echo (ASR re-emitting the previous
+        // phrase) — it confirms where we are but must NEVER pull the
+        // tracking backwards.
+        const nextIndex = Math.max(match.matchIndex, currentIndex);
+
         const instantWpm = wpmTracker.update(
-            match.matchIndex,
+            nextIndex,
             match.confidence,
             Date.now(),
             minWpm,
             maxWpm
         );
 
-        const delta = match.matchIndex - currentIndex;
+        const delta = nextIndex - currentIndex;
         // Track recent movement speed (EMA) to size the next search window
         recentDelta = recentDelta === 0 ? delta : Math.round(recentDelta * 0.7 + delta * 0.3);
 
-        currentIndex = match.matchIndex;
-        lastMatchIndex = match.matchIndex;
+        currentIndex = nextIndex;
+        lastMatchIndex = nextIndex;
         lastProgressTimestamp = Date.now();
 
         lastResult = {
             matched: true,
-            matchIndex: match.matchIndex,
+            matchIndex: nextIndex,
             confidence: match.confidence,
             matchedWords: match.matchedWords,
             instantWpm,

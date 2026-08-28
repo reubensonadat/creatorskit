@@ -695,11 +695,14 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          setActiveWordIndex(phraseMatch.matchIndex);
-          activeWordIndexRef.current = phraseMatch.matchIndex;
-          // Snap the karaoke timeline to the confirmed match
-          virtualWordFloatRef.current = phraseMatch.matchIndex;
-          lastDisplayedWordRef.current = phraseMatch.matchIndex;
+          // Snap the karaoke timeline to the confirmed match — forward
+          // only, so a match that confirms behind the glided timeline
+          // (re-read echo) never yanks the highlight backwards.
+          virtualWordFloatRef.current = Math.max(virtualWordFloatRef.current, phraseMatch.matchIndex);
+          const confirmedIdx = Math.round(virtualWordFloatRef.current);
+          setActiveWordIndex(confirmedIdx);
+          activeWordIndexRef.current = confirmedIdx;
+          lastDisplayedWordRef.current = confirmedIdx;
           // Predictive lead: aim where the speaker will be in ~0.6s to
           // compensate for the inherent ASR transcription latency
           const leadWords = Math.min(4, Math.max(1, Math.round((phraseMatch.learnedWpm / 60) * 0.6)));
@@ -780,26 +783,35 @@ Control your speed, adjust your font size, and download your voice recording in 
           // for ~700ms (only enforced while the live audio meter is running).
           const micQuiet =
             audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
+          // Velocity-limited easing: the prompt never moves faster than
+          // ~450 px/s, so multi-word jumps (bracket cues like [HOOK],
+          // recovery re-locks) glide at a constant eye-trackable speed
+          // instead of snapping sharply and breaking visual focus.
+          const maxStep = (450 * Math.min(delta, 50)) / 1000;
 
           // 1. Anchor Word Spring Easing: If there is a target position difference, ease into it smoothly
           if (Math.abs(diff) > 0.5) {
-            let decay = 1 - Math.exp(-9.0 * (Math.min(delta, 50) / 1000));
+            let decay = 1 - Math.exp(-6.5 * (Math.min(delta, 50) / 1000));
             let appliedDiff = diff;
 
-            // Dampen backwards snapping (text moving down) to prevent erratic "going down down" behavior
-            if (diff < -2) {
-              // If the overshoot is small (less than roughly one line height), don't snap back at all.
-              // Just pause and wait for the natural scroll target to catch up.
-              if (diff > -(fontSize * 1.5)) {
+            // Strict forward-only progression: while voice-following the
+            // prompt never scrolls backwards. Small backward corrections
+            // (re-read echoes, glide overshoot) are suppressed entirely —
+            // hold position and let the confirmed target catch up.
+            if (diff < 0) {
+              if (diff > -140) {
                 appliedDiff = 0;
               } else {
-                // If it's a huge jump backwards, ease it much slower so it's not jarring
+                // Large backward jumps are genuine navigation (chapter
+                // jump / reset) — ease back visibly but gently.
                 decay = 1 - Math.exp(-4.0 * (Math.min(delta, 50) / 1000));
               }
             }
 
             if (appliedDiff !== 0) {
-              el.scrollTop = currentScroll + (appliedDiff * decay);
+              const eased = appliedDiff * decay;
+              const step = Math.max(-maxStep, Math.min(maxStep, eased));
+              el.scrollTop = currentScroll + step;
               scrollPosRef.current = el.scrollTop;
             }
           }
@@ -838,7 +850,8 @@ Control your speed, adjust your font size, and download your voice recording in 
               const glideDiff = targetScrollYRef.current - currentScroll;
               if (Math.abs(glideDiff) > 0.5) {
                 const glideDecay = 1 - Math.exp(-7.0 * (Math.min(delta, 50) / 1000));
-                el.scrollTop = currentScroll + glideDiff * glideDecay;
+                const glideStep = Math.max(-maxStep, Math.min(maxStep, glideDiff * glideDecay));
+                el.scrollTop = currentScroll + glideStep;
                 scrollPosRef.current = el.scrollTop;
               }
             }
