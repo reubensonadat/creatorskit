@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
-import { ReceiptPrinter } from '@/components/receipt-printer';
+import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
 import ReceiptDocument, { type ReceiptDocumentData } from '@/components/receipt-document';
 import { saveReceiptToDatabase } from '@/lib/supabase';
@@ -159,7 +159,9 @@ function BusinessSuiteContent() {
   const [printStage, setPrintStage] = useState<'idle' | 'processing' | 'printing' | 'complete'>('idle');
   const printTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const startAnimatedPrint = () => {
+  const startAnimatedPrint = async () => {
+    // Ensure the Supabase short link exists so the printed QR code is scannable
+    await ensureReceiptShortUrl();
     printTimersRef.current.forEach(clearTimeout);
     printTimersRef.current = [
       setTimeout(() => setPrintStage('processing'), 0),
@@ -249,16 +251,26 @@ function BusinessSuiteContent() {
   };
 
   const copyClientLink = async () => {
-    const link = await buildReceiptLink();
+    const link = await ensureReceiptShortUrl();
     navigator.clipboard.writeText(link);
     setClientLinkCopied(true);
     setTimeout(() => setClientLinkCopied(false), 2500);
   };
 
   const shareReceiptOnWhatsApp = async () => {
-    const link = await buildReceiptLink();
+    const link = await ensureReceiptShortUrl();
     const text = `Hello ${clientContact || clientName}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // ─── SUPABASE SHORT LINK FOR THE SCANNABLE QR ──────────────────
+  const [receiptShortUrl, setReceiptShortUrl] = useState<string | null>(null);
+
+  const ensureReceiptShortUrl = async (): Promise<string> => {
+    if (receiptShortUrl) return receiptShortUrl;
+    const link = await buildReceiptLink();
+    setReceiptShortUrl(link);
+    return link;
   };
 
   const addItem = (preset?: typeof PRESET_DELIVERABLES[0]) => {
@@ -386,12 +398,38 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
     payChannel,
   };
 
+  // QR target: the Supabase short link once created, else a logo-free payload link
+  const receiptQrUrl =
+    receiptShortUrl ??
+    (typeof window !== 'undefined'
+      ? `${window.location.origin}/receipt?r=${encodeReceipt({ ...buildReceiptPayload(), lg: undefined })}`
+      : undefined);
+
   return (
     <div style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
+      <style>{`
+        @media print {
+          .ck-noprint { display: none !important; }
+          body * { visibility: hidden; }
+          #printable-document, #printable-document * { visibility: visible; }
+          #printable-document {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            min-height: 0 !important;
+            background: #fff !important;
+          }
+        }
+      `}</style>
       {/* Main Container */}
       <div style={{ maxWidth: 1380, margin: '0 auto' }}>
         {/* Banner / Title */}
         <div
+          className="ck-noprint"
           style={{
             background: '#fff',
             border: '2px solid #000',
@@ -560,7 +598,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
           }}
         >
           {/* ─── LEFT COLUMN: BUILDER & SETTINGS CONTROLS ─── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="ck-noprint" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* 1. Creator & Brand Info */}
             <div
               style={{
@@ -1090,7 +1128,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
             }}
           >
-            {/* Header / Watermark badge */}
+            {/* Header / Watermark badge (the receipt tab uses the thermal receipt's own header) */}
+            {activeTab !== 'receipt' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: 20, marginBottom: 24, gap: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
                 {logoUrl && (
@@ -1128,18 +1167,18 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   }}
                 >
                   {activeTab === 'invoice' && 'OFFICIAL INVOICE'}
-                  {activeTab === 'receipt' && 'PAYMENT RECEIPT'}
                   {activeTab === 'agreement' && 'DEAL CONTRACT'}
                   {activeTab === 'letterhead' && 'OFFICIAL PITCH'}
                 </div>
                 <div style={{ fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', marginTop: 6 }}>
-                  NO: {activeTab === 'receipt' ? receiptNumber : invoiceNumber}
+                  NO: {invoiceNumber}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: '#666' }}>
                   Date: {issueDate}
                 </div>
               </div>
             </div>
+            )}
 
             {/* ─── TAB CONTENT 1: INVOICE PREVIEW ─── */}
             {activeTab === 'invoice' && (
@@ -1277,20 +1316,24 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
             {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
             {activeTab === 'receipt' && (
               <div>
-                <div style={{ textAlign: 'center', margin: '20px 0', padding: '24px', background: '#fef08a', border: '2px solid #000', boxShadow: '3px 3px 0 #000' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', color: '#000', letterSpacing: '0.1em' }}>
-                    OFFICIAL PAYMENT RECEIPT
-                  </div>
-                  <div style={{ fontSize: '2.4rem', fontWeight: 900, margin: '8px 0' }}>
-                    {sym}{amountPaid.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#000' }}>
-                    {amountPaid >= totalAmount ? 'PAYMENT COMPLETED IN FULL' : 'PARTIAL DEPOSIT RECEIVED'}
+                {/* ─── THERMAL RECEIPT PREVIEW — pixel-identical to the printer output ─── */}
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
+                  <div
+                    style={{
+                      width: 355,
+                      background: '#fafafa',
+                      color: '#09090b',
+                      padding: '28px 24px 32px',
+                      clipPath: receiptClipPath,
+                      boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
                   </div>
                 </div>
 
                 {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                <div className="ck-noprint" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 24 }}>
                   <input
                     ref={logoFileInputRef}
                     type="file"
@@ -1339,22 +1382,6 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, fontSize: '0.82rem' }}>
-                  <div>
-                    <div style={{ color: '#888', fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>RECEIVED FROM:</div>
-                    <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{clientName}</div>
-                    <div style={{ color: '#555' }}>Attn: {clientContact}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: '#888', fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>PAYMENT METHOD:</div>
-                    <div style={{ fontWeight: 800, textTransform: 'uppercase' }}>{paymentType} ({momoNetwork || bankName})</div>
-                    <div style={{ color: '#555' }}>Issued on: {issueDate}</div>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '2px solid #000', paddingTop: 16, fontSize: '0.75rem', color: '#666', textAlign: 'center' }}>
-                  Thank you for partnering with {creatorName}. For inquiries, contact {creatorEmail} or {creatorPhone}.
-                </div>
               </div>
             )}
 
@@ -1475,7 +1502,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
       {/* ─── ANIMATED THERMAL RECEIPT PRINTER OVERLAY ─── */}
       {printStage !== 'idle' && (
         <div
-          className="print:hidden"
+          className="ck-noprint"
           style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.82)', display: 'flex', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
         >
           <div style={{ margin: 'auto', width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
@@ -1511,7 +1538,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
               <ReceiptPrinter.Output className="h-[38rem]">
                 <ReceiptPrinter.Paper>
-                  <ReceiptDocument data={receiptDocData} />
+                  <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
                 </ReceiptPrinter.Paper>
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>

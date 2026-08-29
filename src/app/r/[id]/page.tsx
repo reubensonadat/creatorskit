@@ -126,6 +126,9 @@ export default function ShortReceiptPage() {
     payChannel: payChannelLabel(data),
   };
 
+  // QR encodes this receipt's own link — scan any printed copy to reopen it
+  const qrUrl = typeof window !== 'undefined' ? window.location.href : undefined;
+
   return (
     <div style={{ minHeight: '100vh', background: '#09090b', padding: '24px 16px 48px', display: 'flex' }}>
       <style>{PRINT_CSS}</style>
@@ -164,7 +167,7 @@ export default function ShortReceiptPage() {
 
           <ReceiptPrinter.Output className="h-[38rem]">
             <ReceiptPrinter.Paper>
-              <ReceiptDocument data={docData} />
+              <ReceiptDocument data={docData} qrUrl={qrUrl} />
             </ReceiptPrinter.Paper>
           </ReceiptPrinter.Output>
         </ReceiptPrinter.Root>
@@ -191,7 +194,7 @@ export default function ShortReceiptPage() {
             clipPath: receiptClipPath,
           }}
         >
-          <ReceiptDocument data={docData} />
+          <ReceiptDocument data={docData} qrUrl={qrUrl} />
         </div>
       </div>
     </div>

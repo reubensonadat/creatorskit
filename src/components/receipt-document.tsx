@@ -1,6 +1,7 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import QRCode from 'qrcode';
 
 /**
  * ReceiptDocument — the canonical THERMAL receipt layout.
@@ -54,6 +55,8 @@ export type ReceiptDocumentProps = {
     data: ReceiptDocumentData;
     /** Cap line items — the printer paper has finite height. Default 6. */
     maxItems?: number;
+    /** URL encoded into the scannable QR code (the Supabase short link). */
+    qrUrl?: string;
     style?: CSSProperties;
 };
 
@@ -101,9 +104,34 @@ function Row({
 export default function ReceiptDocument({
     data,
     maxItems = 6,
+    qrUrl,
     style,
 }: ReceiptDocumentProps) {
     const { sym } = data;
+    const [qrSrc, setQrSrc] = useState<string | null>(null);
+
+    useEffect(() => {
+        let alive = true;
+        if (!qrUrl) {
+            setQrSrc(null);
+            return;
+        }
+        QRCode.toDataURL(qrUrl, {
+            margin: 1,
+            width: 240,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000ff', light: '#ffffffff' },
+        })
+            .then((src) => {
+                if (alive) setQrSrc(src);
+            })
+            .catch(() => {
+                if (alive) setQrSrc(null);
+            });
+        return () => {
+            alive = false;
+        };
+    }, [qrUrl]);
     const visibleItems = data.items.slice(0, maxItems);
     const hiddenCount = data.items.length - visibleItems.length;
     const paidInFull = data.amountPaid >= data.totalAmount;
@@ -221,20 +249,33 @@ export default function ReceiptDocument({
 
             <Divider />
 
-            {/* ─── Barcode + receipt number ─── */}
-            <div
-                aria-hidden="true"
-                style={{
-                    margin: '0 auto',
-                    height: 32,
-                    width: 176,
-                    background:
-                        'repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 4px,currentColor 4px 7px,transparent 7px 9px,currentColor 9px 10px,transparent 10px 13px)',
-                }}
-            />
+            {/* ─── Scannable QR (or barcode fallback) + receipt number ─── */}
+            {qrSrc ? (
+                <img
+                    src={qrSrc}
+                    alt="Scan to view and verify this receipt online"
+                    style={{ display: 'block', margin: '0 auto', width: 116, height: 116 }}
+                />
+            ) : (
+                <div
+                    aria-hidden="true"
+                    style={{
+                        margin: '0 auto',
+                        height: 32,
+                        width: 176,
+                        background:
+                            'repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 4px,currentColor 4px 7px,transparent 7px 9px,currentColor 9px 10px,transparent 10px 13px)',
+                    }}
+                />
+            )}
             <div style={{ textAlign: 'center', fontSize: 9, letterSpacing: '0.3em', marginTop: 4 }}>
                 {data.receiptNumber}
             </div>
+            {qrSrc && (
+                <div style={{ textAlign: 'center', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', opacity: MUTED_OPACITY, marginTop: 2 }}>
+                    Scan to view & verify online
+                </div>
+            )}
 
             {/* ─── Footer ─── */}
             <div style={{ textAlign: 'center', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.2em', marginTop: 12 }}>
