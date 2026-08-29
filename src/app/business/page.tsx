@@ -117,7 +117,7 @@ function BusinessSuiteContent() {
 
   // ─── PAYMENT CHANNELS ─────────────────────────────────────────
   const [paymentType, setPaymentType] = useState<'momo' | 'bank' | 'paystack' | 'wire'>('momo');
-  
+
   // MoMo Details
   const [momoNetwork, setMomoNetwork] = useState('MTN Mobile Money');
   const [momoNumber, setMomoNumber] = useState('024 123 4567');
@@ -160,8 +160,8 @@ function BusinessSuiteContent() {
   const printTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const startAnimatedPrint = async () => {
-    // Ensure the Supabase short link exists so the printed QR code is scannable
-    await ensureReceiptShortUrl();
+    // Ensure the Supabase short link exists so the printed QR code is scannable (receipts only)
+    if (activeTab === 'receipt') await ensureReceiptShortUrl();
     printTimersRef.current.forEach(clearTimeout);
     printTimersRef.current = [
       setTimeout(() => setPrintStage('processing'), 0),
@@ -227,7 +227,7 @@ function BusinessSuiteContent() {
   const buildReceiptLink = async (): Promise<string> => {
     const payload = buildReceiptPayload();
     const encoded = encodeReceipt(payload);
-    
+
     // Save to Supabase for clean short link
     const shortId = await saveReceiptToDatabase({
       receiptNumber,
@@ -310,10 +310,10 @@ function BusinessSuiteContent() {
   };
 
   // WhatsApp / Email Summary Copy
-  const copyWhatsAppSummary = () => {
+  const buildWhatsAppText = () => {
     const sym = CURRENCY_SYMBOLS[currency];
     const itemsList = items.map((i) => `• ${i.quantity}x ${i.description} — ${sym}${i.rate * i.quantity}`).join('\n');
-    
+
     let payDetails = '';
     if (paymentType === 'momo') {
       payDetails = `MoMo: ${momoNetwork} | ${momoNumber} (${momoName})`;
@@ -361,9 +361,17 @@ Usage Rights: ${usagePeriod}
 Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
     }
 
-    navigator.clipboard.writeText(text);
+    return text;
+  };
+
+  const copyWhatsAppSummary = () => {
+    navigator.clipboard.writeText(buildWhatsAppText());
     setCopiedNotification(true);
     setTimeout(() => setCopiedNotification(false), 2500);
+  };
+
+  const sendWhatsAppSummary = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppText())}`, '_blank');
   };
 
   const handlePrint = () => {
@@ -404,6 +412,288 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
     (typeof window !== 'undefined'
       ? `${window.location.origin}/receipt?r=${encodeReceipt({ ...buildReceiptPayload(), lg: undefined })}`
       : undefined);
+
+  // Document bodies (shared between the live preview and the animated printer)
+  const invoiceDocument = (
+    <div>
+      {/* Billed To / Invoice Details */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 32, marginBottom: 32 }}>
+        <div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Billed To
+          </div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginTop: 8 }}>
+            {clientName}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#4b5563', marginTop: 4 }}>
+            Attn: {clientContact}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>
+            {clientEmail} {clientAddress && `· ${clientAddress}`}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+            <span style={{ color: '#6b7280' }}>Issue Date</span>
+            <span style={{ fontWeight: 600, color: '#111827' }}>{issueDate}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+            <span style={{ color: '#6b7280' }}>Payment Due</span>
+            <span style={{ fontWeight: 700, color: '#dc2626' }}>{dueDate}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 16 }}>
+            <span style={{ color: '#6b7280', flexShrink: 0 }}>Deposit Required</span>
+            <span style={{ fontWeight: 600, color: '#111827', textAlign: 'right' }}>{depositPercentage}% to lock shoot date</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Deliverables Table */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 28 }}>
+        <thead>
+          <tr>
+            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>#</th>
+            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Campaign Deliverable / Scope</th>
+            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'center', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Qty</th>
+            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'right', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Rate</th>
+            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'right', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => (
+            <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+              <td style={{ padding: '12px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', verticalAlign: 'top' }}>{idx + 1}</td>
+              <td style={{ padding: '12px 10px', fontSize: '0.82rem', fontWeight: 500, color: '#374151', verticalAlign: 'top' }}>{item.description}</td>
+              <td style={{ padding: '12px 10px', fontSize: '0.78rem', fontWeight: 600, color: '#374151', textAlign: 'center', verticalAlign: 'top' }}>{item.quantity}</td>
+              <td style={{ padding: '12px 10px', fontSize: '0.78rem', fontWeight: 600, color: '#374151', textAlign: 'right', verticalAlign: 'top' }}>{sym}{item.rate.toLocaleString()}</td>
+              <td style={{ padding: '12px 10px', fontSize: '0.82rem', fontWeight: 700, color: '#111827', textAlign: 'right', verticalAlign: 'top' }}>{sym}{(item.quantity * item.rate).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Totals & Deposit Summary */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 28 }}>
+        <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
+            <span>Subtotal</span>
+            <span style={{ fontWeight: 600, color: '#111827' }}>{sym}{subtotal.toLocaleString()}</span>
+          </div>
+          {taxPercentage > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
+              <span>Withholding Tax ({taxPercentage}%)</span>
+              <span style={{ fontWeight: 600, color: '#111827' }}>{sym}{tax.toLocaleString()}</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 800, color: '#111827', borderTop: '1px solid #e5e7eb', paddingTop: 10, marginTop: 2 }}>
+            <span>Total Campaign Fee</span>
+            <span>{sym}{totalAmount.toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', background: '#000', color: '#fff', padding: '12px 14px', marginTop: 6 }}>
+            <span style={{ fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.03em' }}>{depositPercentage}% DEPOSIT DUE NOW</span>
+            <span style={{ fontSize: '1rem', fontWeight: 800 }}>{sym}{depositRequired.toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#9ca3af', padding: '0 2px' }}>
+            <span>Balance on approval</span>
+            <span style={{ fontWeight: 600 }}>{sym}{balanceDue.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Details & Deal Terms */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 32, borderTop: '1px solid #f3f4f6', paddingTop: 20 }}>
+        <div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
+            Payment Details
+          </div>
+          {paymentType === 'momo' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Network</span>
+                <span style={{ fontWeight: 600, color: '#111827' }}>{momoNetwork}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>MoMo Number</span>
+                <span style={{ fontWeight: 700, color: '#111827' }}>{momoNumber}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Account Name</span>
+                <span style={{ fontWeight: 600, color: '#111827' }}>{momoName}</span>
+              </div>
+            </div>
+          )}
+          {paymentType === 'bank' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Bank</span>
+                <span style={{ fontWeight: 600, color: '#111827' }}>{bankName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Account Number</span>
+                <span style={{ fontWeight: 700, color: '#111827' }}>{bankAccountNumber}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Account Name</span>
+                <span style={{ fontWeight: 600, color: '#111827' }}>{bankAccountName}</span>
+              </div>
+            </div>
+          )}
+          {paymentType === 'paystack' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                <span style={{ color: '#6b7280', flexShrink: 0 }}>Pay Online</span>
+                <span style={{ fontWeight: 600, color: '#111827', textAlign: 'right', wordBreak: 'break-all' }}>{paystackLink}</span>
+              </div>
+            </div>
+          )}
+          {paymentType === 'wire' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>SWIFT</span>
+                <span style={{ fontWeight: 700, color: '#111827' }}>{wireSwift}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>IBAN</span>
+                <span style={{ fontWeight: 700, color: '#111827' }}>{wireIban}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
+            Deal Terms
+          </div>
+          <ul style={{ fontSize: '0.74rem', color: '#4b5563', paddingLeft: 16, margin: 0, lineHeight: 1.7 }}>
+            <li>Production begins after the deposit is confirmed.</li>
+            <li>Includes max <strong>{revisionRounds} rounds</strong> of minor edits.</li>
+            <li>Usage license: <strong>{usagePeriod}</strong>.</li>
+            <li>Paid whitelisting / Spark ads requires separate written consent.</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Invoice footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, borderTop: '1px solid #f3f4f6', paddingTop: 14, marginTop: 24 }}>
+        <div style={{ fontSize: '0.7rem', color: '#71717a' }}>
+          Thank you for your business — {creatorName}
+        </div>
+        <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Powered by CreatorKit
+        </div>
+      </div>
+    </div>
+  );
+
+  const agreementDocument = (
+    <div style={{ fontSize: '0.78rem', lineHeight: 1.6, color: '#222' }}>
+      <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#71717a', borderBottom: '1px dashed #d4d4d8', paddingBottom: 8, marginBottom: 14 }}>
+        CONTENT CREATOR SPONSORSHIP &amp; LICENSING AGREEMENT
+      </div>
+      <p>
+        This agreement is entered into on <strong>{issueDate}</strong> between <strong>{creatorName}</strong> (&quot;Creator&quot;) and <strong>{clientName}</strong> (&quot;Brand/Client&quot;).
+      </p>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>1. Scope of Deliverables</div>
+        <ul style={{ paddingLeft: 18, marginTop: 4 }}>
+          {items.map((i) => (
+            <li key={i.id}>
+              {i.quantity}x {i.description}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>2. Compensation &amp; Payment Terms</div>
+        <p style={{ margin: 0 }}>
+          Total compensation is <strong>{sym}{totalAmount.toLocaleString()}</strong>. A non-refundable deposit of <strong>{depositPercentage}% ({sym}{depositRequired.toLocaleString()})</strong> is required prior to production commencement. The balance of <strong>{sym}{balanceDue.toLocaleString()}</strong> is due upon draft approval prior to public release.
+        </p>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>3. Revisions &amp; Approvals</div>
+        <p style={{ margin: 0 }}>
+          The campaign includes up to <strong>{revisionRounds} rounds of minor revisions</strong> aligned with the agreed creative brief. Full script changes or re-shoots requested after filming will incur a separate 50% re-shoot fee.
+        </p>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>4. Usage Rights &amp; Whitelisting</div>
+        <p style={{ margin: 0 }}>
+          Creator grants Brand the right to use the content for <strong>{usagePeriod}</strong> across organic social media channels. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require separate written licensing agreement.
+        </p>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>5. Cancellation &amp; Kill Fee</div>
+        <p style={{ margin: 0 }}>
+          If Brand cancels the campaign after filming has occurred, Creator shall retain the {depositPercentage}% deposit as a kill fee to cover production expenses.
+        </p>
+      </div>
+
+      {/* Signatures */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, marginTop: 30, borderTop: '1px dashed #d4d4d8', paddingTop: 20 }}>
+        <div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR CREATOR:</div>
+          <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
+          <div style={{ fontWeight: 800, marginTop: 4 }}>{creatorName}</div>
+          <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: {issueDate}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR BRAND / AGENCY:</div>
+          <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
+          <div style={{ fontWeight: 800, marginTop: 4 }}>{clientContact} ({clientName})</div>
+          <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: _______________</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const letterheadDocument = (
+    <div style={{ fontSize: '0.82rem', lineHeight: 1.7 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 20, background: '#fef08a', border: '2px solid #000', padding: '10px 12px' }}>
+        <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>AUDIENCE HIGHLIGHTS</div>
+        <div style={{ fontSize: '0.75rem' }}>Ghana &amp; Nigeria Diaspora Focus · 82% Mobile Engagement · High Conversion</div>
+      </div>
+
+      <p>Dear {clientContact || 'Partnerships Lead'},</p>
+      <p>
+        I am writing to officially propose a high-impact content partnership between <strong>{creatorName}</strong> ({creatorHandle}) and <strong>{clientName}</strong>.
+      </p>
+      <p>
+        As an active {creatorNiche}, my community trusts my recommendations for authentic product storytelling, high-energy hooks, and engaging social video.
+      </p>
+      <p>
+        Below is the recommended campaign package tailored for your marketing goals:
+      </p>
+
+      <div style={{ background: '#fafafa', padding: '12px 14px', border: '1px dashed #d4d4d8', margin: '14px 0' }}>
+        {items.map((i) => (
+          <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '0.78rem', fontWeight: 600, marginBottom: 6 }}>
+            <span>{i.quantity}x {i.description}</span>
+            <span style={{ fontWeight: 800, flexShrink: 0 }}>{sym}{(i.quantity * i.rate).toLocaleString()}</span>
+          </div>
+        ))}
+        <div style={{ borderTop: '2px solid #000', paddingTop: 8, marginTop: 8, fontWeight: 900, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
+          <span>Package Investment</span>
+          <span>{sym}{totalAmount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <p>
+        I look forward to discussing how we can bring this campaign to life. Please reach me directly at {creatorPhone} or {creatorEmail}.
+      </p>
+
+      <div style={{ marginTop: 24 }}>
+        <div>Warm regards,</div>
+        <div style={{ fontWeight: 900, fontSize: '0.95rem', marginTop: 4 }}>{creatorName}</div>
+        <div style={{ fontSize: '0.72rem', color: '#666' }}>{creatorHandle} · {creatorLocation}</div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
@@ -1145,222 +1435,64 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
             style={
               activeTab !== 'receipt'
                 ? {
-                    background: '#ffffff',
-                    border: '1px solid #e4e4e7',
-                    boxShadow: '0 24px 48px -24px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.06)',
-                    padding: 'clamp(28px, 4vw, 48px)',
-                    maxWidth: 860,
-                    margin: '0 auto',
-                    position: 'sticky',
-                    top: 80,
-                    minHeight: 680,
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                  }
+                  background: '#ffffff',
+                  border: '1px solid #e4e4e7',
+                  boxShadow: '0 24px 48px -24px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.06)',
+                  padding: 'clamp(28px, 4vw, 48px)',
+                  maxWidth: 860,
+                  margin: '0 auto',
+                  position: 'sticky',
+                  top: 80,
+                  minHeight: 680,
+                  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                }
                 : {
-                    position: 'sticky',
-                    top: 80,
-                  }
+                  position: 'sticky',
+                  top: 80,
+                }
             }
           >
             {/* Header / Watermark badge (the receipt tab uses the thermal receipt's own header) */}
             {activeTab !== 'receipt' && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: 20, marginBottom: 24, gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                {logoUrl && (
-                  <img
-                    src={logoUrl}
-                    alt={`${creatorName} logo`}
-                    style={{ height: 54, width: 54, objectFit: 'contain', border: '1px solid #e4e4e7', background: '#fff', padding: 3, flexShrink: 0 }}
-                  />
-                )}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
-                    {creatorName}
-                  </div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#444', marginTop: 2 }}>
-                    {creatorHandle} · {creatorNiche}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 4 }}>
-                    {creatorPhone} | {creatorEmail} | {creatorLocation}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.02em', textTransform: 'uppercase', lineHeight: 1.15 }}>
-                  {activeTab === 'invoice' && 'Brand Deal Invoice'}
-                  {activeTab === 'agreement' && 'Influencer Agreement'}
-                  {activeTab === 'letterhead' && 'Pitch Letterhead'}
-                </div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', marginTop: 8, color: '#71717a', letterSpacing: '0.04em' }}>
-                  NO: {invoiceNumber}
-                </div>
-                <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#71717a', letterSpacing: '0.04em' }}>
-                  DATE: {issueDate}
-                </div>
-              </div>
-            </div>
-            )}
-
-            {/* ─── TAB CONTENT 1: INVOICE PREVIEW ─── */}
-            {activeTab === 'invoice' && (
-              <div>
-                {/* Billed To / Payment Terms — receipt-style meta rows */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', marginBottom: 24 }}>
-                  <div style={{ paddingRight: 24 }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Billed To
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: 20, marginBottom: 24, gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                  {logoUrl && (
+                    <img
+                      src={logoUrl}
+                      alt={`${creatorName} logo`}
+                      style={{ height: 54, width: 54, objectFit: 'contain', border: '1px solid #e4e4e7', background: '#fff', padding: 3, flexShrink: 0 }}
+                    />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
+                      {creatorName}
                     </div>
-                    <div style={{ fontSize: '0.98rem', fontWeight: 900, marginTop: 6 }}>
-                      {clientName}
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#444', marginTop: 2 }}>
+                      {creatorHandle} · {creatorNiche}
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#52525b', marginTop: 3 }}>
-                      Attn: {clientContact}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#71717a', marginTop: 2 }}>
-                      {clientEmail} {clientAddress && `· ${clientAddress}`}
-                    </div>
-                  </div>
-
-                  <div style={{ borderLeft: '1px dashed #d4d4d8', paddingLeft: 24 }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Payment Terms
-                    </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, marginTop: 6 }}>
-                      {depositPercentage}% deposit to lock shoot date
-                    </div>
-                    <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 800, color: '#dc2626', marginTop: 4 }}>
-                      DUE: {dueDate}
+                    <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 4 }}>
+                      {creatorPhone} | {creatorEmail} | {creatorLocation}
                     </div>
                   </div>
                 </div>
 
-                {/* Deliverables Table */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 22 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #000' }}>
-                      <th style={{ padding: '6px 4px 8px', fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textAlign: 'left', letterSpacing: '0.05em' }}>#</th>
-                      <th style={{ padding: '6px 4px 8px', fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textAlign: 'left', letterSpacing: '0.05em' }}>CAMPAIGN DELIVERABLE / SCOPE</th>
-                      <th style={{ padding: '6px 4px 8px', fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textAlign: 'center', letterSpacing: '0.05em' }}>QTY</th>
-                      <th style={{ padding: '6px 4px 8px', fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textAlign: 'right', letterSpacing: '0.05em' }}>RATE</th>
-                      <th style={{ padding: '6px 4px 8px', fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', color: '#71717a', textAlign: 'right', letterSpacing: '0.05em' }}>AMOUNT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr key={item.id} style={{ borderBottom: '1px dashed #e4e4e7' }}>
-                        <td style={{ padding: '11px 4px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', color: '#71717a', verticalAlign: 'top' }}>{idx + 1}</td>
-                        <td style={{ padding: '11px 4px', fontSize: '0.82rem', fontWeight: 600, verticalAlign: 'top' }}>{item.description}</td>
-                        <td style={{ padding: '11px 4px', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', verticalAlign: 'top' }}>{item.quantity}</td>
-                        <td style={{ padding: '11px 4px', fontSize: '0.78rem', fontWeight: 700, textAlign: 'right', verticalAlign: 'top' }}>{sym}{item.rate.toLocaleString()}</td>
-                        <td style={{ padding: '11px 4px', fontSize: '0.82rem', fontWeight: 900, textAlign: 'right', verticalAlign: 'top' }}>{sym}{(item.quantity * item.rate).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Totals & Deposit Summary — receipt-style emphasized stack */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-                  <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontFamily: 'monospace', color: '#71717a' }}>
-                      <span>SUBTOTAL</span>
-                      <span style={{ fontWeight: 700, color: '#000' }}>{sym}{subtotal.toLocaleString()}</span>
-                    </div>
-                    {taxPercentage > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontFamily: 'monospace', color: '#71717a' }}>
-                        <span>WHT ({taxPercentage}%)</span>
-                        <span style={{ fontWeight: 700, color: '#000' }}>{sym}{tax.toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.92rem', fontWeight: 900, borderTop: '2px solid #000', paddingTop: 8, marginTop: 2 }}>
-                      <span>TOTAL CAMPAIGN FEE</span>
-                      <span>{sym}{totalAmount.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.88rem', fontWeight: 900, background: '#fef08a', border: '2px solid #000', padding: '8px 10px', marginTop: 4 }}>
-                      <span>{depositPercentage}% DEPOSIT DUE NOW</span>
-                      <span>{sym}{depositRequired.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', color: '#71717a', padding: '0 2px' }}>
-                      <span>BALANCE ON APPROVAL</span>
-                      <span style={{ fontWeight: 700, color: '#000' }}>{sym}{balanceDue.toLocaleString()}</span>
-                    </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.02em', textTransform: 'uppercase', lineHeight: 1.15 }}>
+                    {activeTab === 'invoice' && 'Brand Deal Invoice'}
+                    {activeTab === 'agreement' && 'Influencer Agreement'}
+                    {activeTab === 'letterhead' && 'Pitch Letterhead'}
                   </div>
-                </div>
-
-                {/* Payment Instructions & Deal Protections */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20, borderTop: '1px dashed #d4d4d8', paddingTop: 18 }}>
-                  <div>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#71717a', marginBottom: 8 }}>
-                      Payment Instructions
-                    </div>
-                    {paymentType === 'momo' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#fafafa', border: '1px dashed #d4d4d8', padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>Network</span>
-                          <span style={{ fontWeight: 800 }}>{momoNetwork}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>MoMo Number</span>
-                          <span style={{ fontWeight: 900, fontFamily: 'monospace' }}>{momoNumber}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>Account Name</span>
-                          <span style={{ fontWeight: 800 }}>{momoName}</span>
-                        </div>
-                      </div>
-                    )}
-                    {paymentType === 'bank' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#fafafa', border: '1px dashed #d4d4d8', padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>Bank</span>
-                          <span style={{ fontWeight: 800 }}>{bankName}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>Account No</span>
-                          <span style={{ fontWeight: 900, fontFamily: 'monospace' }}>{bankAccountNumber}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>Account Name</span>
-                          <span style={{ fontWeight: 800 }}>{bankAccountName}</span>
-                        </div>
-                      </div>
-                    )}
-                    {paymentType === 'paystack' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#fafafa', border: '1px dashed #d4d4d8', padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', gap: 12 }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase', flexShrink: 0 }}>Pay Online</span>
-                          <span style={{ fontWeight: 800, textAlign: 'right', wordBreak: 'break-all' }}>{paystackLink}</span>
-                        </div>
-                      </div>
-                    )}
-                    {paymentType === 'wire' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#fafafa', border: '1px dashed #d4d4d8', padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>SWIFT</span>
-                          <span style={{ fontWeight: 900, fontFamily: 'monospace' }}>{wireSwift}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                          <span style={{ fontFamily: 'monospace', color: '#71717a', textTransform: 'uppercase' }}>IBAN</span>
-                          <span style={{ fontWeight: 900, fontFamily: 'monospace' }}>{wireIban}</span>
-                        </div>
-                      </div>
-                    )}
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', marginTop: 8, color: '#71717a', letterSpacing: '0.04em' }}>
+                    NO: {invoiceNumber}
                   </div>
-
-                  <div>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#71717a', marginBottom: 8 }}>
-                      Deal Terms
-                    </div>
-                    <ul style={{ fontSize: '0.7rem', color: '#52525b', paddingLeft: 16, margin: 0, lineHeight: 1.6 }}>
-                      <li>Production begins after the deposit is confirmed.</li>
-                      <li>Includes max <strong>{revisionRounds} rounds</strong> of minor edits.</li>
-                      <li>Usage license: <strong>{usagePeriod}</strong>.</li>
-                      <li>Paid whitelisting / Spark ads requires separate written consent.</li>
-                    </ul>
+                  <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#71717a', letterSpacing: '0.04em' }}>
+                    DATE: {issueDate}
                   </div>
                 </div>
               </div>
             )}
+
+            {activeTab === 'invoice' && invoiceDocument}
 
             {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
             {activeTab === 'receipt' && (
@@ -1434,113 +1566,33 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </div>
             )}
 
-            {/* ─── TAB CONTENT 3: INFLUENCER AGREEMENT CONTRACT PREVIEW ─── */}
-            {activeTab === 'agreement' && (
-              <div style={{ fontSize: '0.78rem', lineHeight: 1.6, color: '#222' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#71717a', borderBottom: '1px dashed #d4d4d8', paddingBottom: 8, marginBottom: 14 }}>
-                  CONTENT CREATOR SPONSORSHIP &amp; LICENSING AGREEMENT
-                </div>
-                <p>
-                  This agreement is entered into on <strong>{issueDate}</strong> between <strong>{creatorName}</strong> (&quot;Creator&quot;) and <strong>{clientName}</strong> (&quot;Brand/Client&quot;).
-                </p>
+            {activeTab === 'agreement' && agreementDocument}
 
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>1. Scope of Deliverables</div>
-                  <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-                    {items.map((i) => (
-                      <li key={i.id}>
-                        {i.quantity}x {i.description}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+            {activeTab === 'letterhead' && letterheadDocument}
 
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>2. Compensation &amp; Payment Terms</div>
-                  <p style={{ margin: 0 }}>
-                    Total compensation is <strong>{sym}{totalAmount.toLocaleString()}</strong>. A non-refundable deposit of <strong>{depositPercentage}% ({sym}{depositRequired.toLocaleString()})</strong> is required prior to production commencement. The balance of <strong>{sym}{balanceDue.toLocaleString()}</strong> is due upon draft approval prior to public release.
-                  </p>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>3. Revisions &amp; Approvals</div>
-                  <p style={{ margin: 0 }}>
-                    The campaign includes up to <strong>{revisionRounds} rounds of minor revisions</strong> aligned with the agreed creative brief. Full script changes or re-shoots requested after filming will incur a separate 50% re-shoot fee.
-                  </p>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>4. Usage Rights &amp; Whitelisting</div>
-                  <p style={{ margin: 0 }}>
-                    Creator grants Brand the right to use the content for <strong>{usagePeriod}</strong> across organic social media channels. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require separate written licensing agreement.
-                  </p>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>5. Cancellation &amp; Kill Fee</div>
-                  <p style={{ margin: 0 }}>
-                    If Brand cancels the campaign after filming has occurred, Creator shall retain the {depositPercentage}% deposit as a kill fee to cover production expenses.
-                  </p>
-                </div>
-
-                {/* Signatures */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, marginTop: 30, borderTop: '1px dashed #d4d4d8', paddingTop: 20 }}>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR CREATOR:</div>
-                    <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
-                    <div style={{ fontWeight: 800, marginTop: 4 }}>{creatorName}</div>
-                    <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: {issueDate}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR BRAND / AGENCY:</div>
-                    <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
-                    <div style={{ fontWeight: 800, marginTop: 4 }}>{clientContact} ({clientName})</div>
-                    <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: _______________</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ─── TAB CONTENT 4: PITCH LETTERHEAD PREVIEW ─── */}
-            {activeTab === 'letterhead' && (
-              <div style={{ fontSize: '0.82rem', lineHeight: 1.7 }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 20, background: '#fef08a', border: '2px solid #000', padding: '10px 12px' }}>
-                  <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>AUDIENCE HIGHLIGHTS</div>
-                  <div style={{ fontSize: '0.75rem' }}>Ghana &amp; Nigeria Diaspora Focus · 82% Mobile Engagement · High Conversion</div>
-                </div>
-
-                <p>Dear {clientContact || 'Partnerships Lead'},</p>
-                <p>
-                  I am writing to officially propose a high-impact content partnership between <strong>{creatorName}</strong> ({creatorHandle}) and <strong>{clientName}</strong>.
-                </p>
-                <p>
-                  As an active {creatorNiche}, my community trusts my recommendations for authentic product storytelling, high-energy hooks, and engaging social video.
-                </p>
-                <p>
-                  Below is the recommended campaign package tailored for your marketing goals:
-                </p>
-
-                <div style={{ background: '#fafafa', padding: '12px 14px', border: '1px dashed #d4d4d8', margin: '14px 0' }}>
-                  {items.map((i) => (
-                    <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '0.78rem', fontWeight: 600, marginBottom: 6 }}>
-                      <span>{i.quantity}x {i.description}</span>
-                      <span style={{ fontWeight: 800, flexShrink: 0 }}>{sym}{(i.quantity * i.rate).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop: '2px solid #000', paddingTop: 8, marginTop: 8, fontWeight: 900, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Package Investment</span>
-                    <span>{sym}{totalAmount.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <p>
-                  I look forward to discussing how we can bring this campaign to life. Please reach me directly at {creatorPhone} or {creatorEmail}.
-                </p>
-
-                <div style={{ marginTop: 24 }}>
-                  <div>Warm regards,</div>
-                  <div style={{ fontWeight: 900, fontSize: '0.95rem', marginTop: 4 }}>{creatorName}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#666' }}>{creatorHandle} · {creatorLocation}</div>
+            {/* ─── DOCUMENT ACTIONS: print & share any document (hidden when printing) ─── */}
+            {activeTab !== 'receipt' && (
+              <div className="ck-noprint" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 28 }}>
+                <button
+                  onClick={startAnimatedPrint}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 rgba(0,0,0,0.35)', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                >
+                  <Printer size={14} /> Print {activeTab === 'invoice' ? 'Invoice' : activeTab === 'agreement' ? 'Contract' : 'Pitch'}
+                </button>
+                <button
+                  onClick={copyWhatsAppSummary}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                >
+                  {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Summary Copied!' : 'Copy Summary'}
+                </button>
+                <button
+                  onClick={sendWhatsAppSummary}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                >
+                  Send on WhatsApp
+                </button>
+                <div style={{ flexBasis: '100%', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
+                  Watch it print in the thermal printer, then Print / Save PDF — the file contains just the document.
                 </div>
               </div>
             )}
@@ -1554,7 +1606,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
           className="ck-noprint"
           style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.82)', display: 'flex', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
         >
-          <div style={{ margin: 'auto', width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          <div style={{ margin: 'auto', width: '100%', maxWidth: activeTab === 'receipt' ? 420 : 560, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <div style={{ alignSelf: 'flex-end' }}>
               <button
                 onClick={closeAnimatedPrint}
@@ -1564,7 +1616,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </button>
             </div>
 
-            <ReceiptPrinter.Root stage={printStage} feedMotion="stepped">
+            <ReceiptPrinter.Root stage={printStage} feedMotion="stepped" className={activeTab !== 'receipt' ? 'max-w-md' : undefined}>
               <ReceiptPrinter.Machine>
                 <ReceiptPrinter.Header>
                   <ReceiptPrinter.Status>
@@ -1576,18 +1628,30 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                 </ReceiptPrinter.Header>
                 <ReceiptPrinter.Screen>
                   <div className="flex items-baseline justify-between font-mono text-[11px] font-bold uppercase tracking-widest">
-                    <span>{sym}{amountPaid.toLocaleString()}</span>
-                    <span>{amountPaid >= totalAmount ? 'Paid in full' : 'Partial'}</span>
+                    <span>{sym}{activeTab === 'receipt' ? amountPaid.toLocaleString() : totalAmount.toLocaleString()}</span>
+                    <span>
+                      {activeTab === 'receipt'
+                        ? amountPaid >= totalAmount ? 'Paid in full' : 'Partial'
+                        : activeTab === 'invoice' ? 'Invoice' : activeTab === 'agreement' ? 'Contract' : 'Pitch'}
+                    </span>
                   </div>
                   <p className="mt-1 truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
-                    {clientName} · {receiptNumber}
+                    {clientName} · {activeTab === 'receipt' ? receiptNumber : invoiceNumber}
                   </p>
                 </ReceiptPrinter.Screen>
               </ReceiptPrinter.Machine>
 
-              <ReceiptPrinter.Output className="h-[38rem]">
+              <ReceiptPrinter.Output className={activeTab === 'receipt' ? 'h-[38rem]' : 'h-auto'}>
                 <ReceiptPrinter.Paper>
-                  <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
+                  {activeTab === 'receipt' ? (
+                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
+                  ) : (
+                    <div style={{ width: '100%', background: '#ffffff', color: '#09090b', padding: '20px 16px', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif' }}>
+                      {activeTab === 'invoice' && invoiceDocument}
+                      {activeTab === 'agreement' && agreementDocument}
+                      {activeTab === 'letterhead' && letterheadDocument}
+                    </div>
+                  )}
                 </ReceiptPrinter.Paper>
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>
