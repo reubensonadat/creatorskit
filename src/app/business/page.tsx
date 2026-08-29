@@ -20,6 +20,7 @@ import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 import { ReceiptPrinter } from '@/components/receipt-printer';
 import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
 import ReceiptDocument, { type ReceiptDocumentData } from '@/components/receipt-document';
+import { saveReceiptToDatabase } from '@/lib/supabase';
 
 type TabType = 'invoice' | 'receipt' | 'agreement' | 'letterhead';
 type CurrencyType = 'GHS' | 'NGN' | 'USD' | 'GBP' | 'EUR';
@@ -196,8 +197,8 @@ function BusinessSuiteContent() {
   // ─── SHAREABLE CLIENT RECEIPT LINK ────────────────────────────
   const [clientLinkCopied, setClientLinkCopied] = useState(false);
 
-  const buildReceiptLink = () => {
-    const payload: ReceiptPayload = {
+  const buildReceiptPayload = (): ReceiptPayload => {
+    return {
       n: creatorName,
       h: creatorHandle,
       e: creatorEmail,
@@ -219,17 +220,44 @@ function BusinessSuiteContent() {
       ba: bankAccountNumber,
       lg: logoUrl ?? undefined,
     };
-    return `${window.location.origin}/receipt?r=${encodeReceipt(payload)}`;
   };
 
-  const copyClientLink = () => {
-    navigator.clipboard.writeText(buildReceiptLink());
+  const buildReceiptLink = async (): Promise<string> => {
+    const payload = buildReceiptPayload();
+    const encoded = encodeReceipt(payload);
+    
+    // Save to Supabase for clean short link
+    const shortId = await saveReceiptToDatabase({
+      receiptNumber,
+      creatorName,
+      creatorEmail,
+      creatorPhone,
+      clientName,
+      currency,
+      totalAmount,
+      amountPaid,
+      balanceDue,
+      paymentChannel: paymentType,
+      payloadString: encoded,
+    });
+
+    if (shortId) {
+      return `${window.location.origin}/r/${shortId}`;
+    }
+
+    return `${window.location.origin}/receipt?r=${encoded}`;
+  };
+
+  const copyClientLink = async () => {
+    const link = await buildReceiptLink();
+    navigator.clipboard.writeText(link);
     setClientLinkCopied(true);
     setTimeout(() => setClientLinkCopied(false), 2500);
   };
 
-  const shareReceiptOnWhatsApp = () => {
-    const text = `Hello ${clientContact || clientName}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${buildReceiptLink()}`;
+  const shareReceiptOnWhatsApp = async () => {
+    const link = await buildReceiptLink();
+    const text = `Hello ${clientContact || clientName}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 

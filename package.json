@@ -45,6 +45,7 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@reactuses/core": "^6.0.5",
     "@remixicon/react": "^4.9.0",
+    "@supabase/supabase-js": "^2.112.4",
     "@tanstack/react-query": "^5.82.0",
     "@tanstack/react-table": "^8.21.3",
     "@types/lz-string": "^1.5.0",

@@ -225,6 +225,320 @@ export const BLOG_POSTS: BlogPost[] = [
       ],
     },
   },
+
+  // ── 1. DOPAMINE LOOP SERIES: THE CASINO BLUEPRINT (OVERVIEW) ──
+  {
+    slug: 'the-dopamine-addiction-loop-casino-science',
+    title: 'The Dopamine Addiction Loop: Why Casino Psychology Makes Storytelling Unskippable',
+    subtitle: 'The 4-step neurological retention framework that taps into the exact cognitive mechanisms used by Las Vegas blackjack tables.',
+    excerpt: 'Casinos don’t keep gamblers playing by guaranteeing wins. They keep them hooked through the unyielding anticipation of an unknown outcome. Here is how to apply the 4-step loop—Stakes, Big Question, Headfake, and Rehook—to every short-form video you make.',
+    instagramUrl: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    coverImage: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=1200&auto=format&fit=crop&q=80',
+    videoCredit: {
+      channel: 'Creator Masterclass / Instagram Reels',
+      title: 'The Dopamine Addiction Loop: How to Make Storytelling Scientifically Unskippable',
+      url: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    },
+    date: 'August 28, 2026',
+    readTime: '5 min read',
+    author: {
+      name: 'CreatorKit Research Lab',
+      role: 'Viral Storytelling & Audience Retention',
+    },
+    tags: ['Storytelling', 'Dopamine Loop', 'Psychology', 'Retention'],
+    category: 'Storytelling',
+    pillColor: {
+      bg: '#FFE500',
+      text: '#000000',
+    },
+    content: {
+      whatYoullLearn: [
+        'The Neurological Secret: Why dopamine is an anticipation molecule, not a satisfaction reward.',
+        'The 4-Step Sequence: Stakes → Big Question → Headfake → Rehook.',
+        'Why single-loop videos flatline while cascading-loop videos break past 1M+ views.',
+        'Formatting bracket pacing cues for Studio Teleprompter.',
+      ],
+      sections: [
+        {
+          id: 'the-casino-secret',
+          heading: 'Act I: The Chemical Engine of Video Retention',
+          subheading: 'Why dopamine spikes during uncertainty, not during the resolution.',
+          paragraphs: [
+            'Neuroscientists have proven that dopamine is not released when you receive a prize—it surges during the agonizing, thrilling anticipation *before* the outcome is revealed.',
+            'When a viewer scrolls TikTok or Instagram Reels, their brain operates with the exact same receptors as a gambler sitting at a blackjack table.',
+            'If your story is flat and predictable, their dopamine drops to baseline and their thumb immediately swipes. But when you structure your video around the **4-Step Dopamine Addiction Loop**, leaving becomes neurologically counter-intuitive.',
+          ],
+          quote: {
+            text: 'Dopamine is the molecule of craving. If you answer all questions before opening the next loop, the brain has no reason to stay.',
+            speaker: 'CreatorKit Storytelling Manifesto',
+          },
+        },
+      ],
+      actionableChecklist: [
+        'Establish emotional stakes (character + risk + urgency) in your first 4 seconds.',
+        'Plant a clear, single Big Question before second 8.',
+        'Use CreatorKit Teleprompter with [STAKES], [QUESTION], and [HEADFAKE] markers.',
+      ],
+      relatedTools: [
+        {
+          name: 'Studio Teleprompter',
+          href: '/teleprompter',
+          desc: 'Practice delivering high-cadence 4-step loops with voice-matching scrolling.',
+          badge: 'SCRIPTING',
+        },
+      ],
+    },
+  },
+
+  // ── 2. DOPAMINE LOOP SERIES: STEP 1 — THE STAKES TRIAD ──
+  {
+    slug: 'the-stakes-triad-relatable-risk-urgency',
+    title: 'The Stakes Triad: How to Make Strangers Care in the First 3 Seconds',
+    subtitle: 'The 3 emotional ingredients—Relatable Character, Concrete Risk, and Ticking Urgency—that prevent the 3-second swipe.',
+    excerpt: 'To get any dopamine to release in the viewer’s brain, they must care about your story in the first place. Here is how to construct The Stakes Triad in under 12 words without sounding cheesy.',
+    instagramUrl: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    coverImage: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&auto=format&fit=crop&q=80',
+    videoCredit: {
+      channel: 'Creator Masterclass / Instagram Reels',
+      title: 'Step 1: The Stakes Triad',
+      url: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    },
+    date: 'August 28, 2026',
+    readTime: '4 min read',
+    author: {
+      name: 'CreatorKit Research Lab',
+      role: 'Viral Storytelling & Audience Retention',
+    },
+    tags: ['Storytelling', 'Hooks', 'Shorts', 'Retention'],
+    category: 'Storytelling',
+    pillColor: {
+      bg: '#FFE500',
+      text: '#000000',
+    },
+    content: {
+      whatYoullLearn: [
+        'The 3 Pillars: A Character to Root For + Something at Risk + Ticking Clock Urgency.',
+        'Why the stakes don’t need to be life-or-death—they just need to be personally relatable.',
+        'Transforming flat descriptive hooks into high-stakes narrative triggers.',
+      ],
+      sections: [
+        {
+          id: 'the-three-pillars',
+          heading: 'Act I: The 3 Pillars of The Stakes Triad',
+          subheading: 'Stop describing what you are doing. Declare what is at risk.',
+          paragraphs: [
+            'Every failed video begins with a dry statement: "Today I am testing this video editing software." The viewer has zero emotional stake in your software test.',
+            'To trigger dopamine, your opening line must establish **The Stakes Triad**:',
+            '1. **A Character to Root For**: A vulnerable human being with a clear objective.',
+            '2. **Something at Risk**: A real consequence if the mission fails (having to sell a house, forfeiting a client deposit, failing a public test).',
+            '3. **Urgency**: A ticking countdown clock (e.g. "in just two weeks", "before midnight", "in 90 seconds").',
+          ],
+          table: {
+            headers: ['Flat Topic Statement (0% Stakes)', 'The Stakes Triad Hook (Instant Buy-in)'],
+            rows: [
+              ['"Testing camera lenses for YouTube."', '"I have 48 hours to shoot a commercial for Nike on a $50 thrifted lens or I lose the retainer forever."'],
+              ['"How to code an app in Python."', '"I bet my roommate $500 I could build a working SaaS app before sunrise without writing syntax."'],
+            ],
+          },
+        },
+      ],
+      actionableChecklist: [
+        'Check your opening line: Does it contain a character, a risk, and a time limit?',
+        'Delete any intro greeting or channel intro.',
+      ],
+      relatedTools: [
+        {
+          name: 'Studio Teleprompter',
+          href: '/teleprompter',
+          desc: 'Practice delivering punchy 4-second stakes hooks with live speech sync.',
+          badge: 'HOOKS',
+        },
+      ],
+    },
+  },
+
+  // ── 3. DOPAMINE LOOP SERIES: STEP 2 — THE BIG QUESTION ──
+  {
+    slug: 'the-big-question-blackjack-curiosity-gap',
+    title: 'The Big Question: The Blackjack Model of Viewer Curiosity',
+    subtitle: 'How to plant the single irresistible mystery in the viewer’s mind that makes swiping away physically uncomfortable.',
+    excerpt: 'The stakes make viewers pay attention, but The Big Question is what makes leaving unbearable. Learn how to formulate the curiosity gap like a live blackjack card flip.',
+    instagramUrl: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    coverImage: 'https://images.unsplash.com/photo-1511193311914-0346f16efe90?w=1200&auto=format&fit=crop&q=80',
+    videoCredit: {
+      channel: 'Creator Masterclass / Instagram Reels',
+      title: 'Step 2: The Big Question',
+      url: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    },
+    date: 'August 28, 2026',
+    readTime: '4 min read',
+    author: {
+      name: 'CreatorKit Research Lab',
+      role: 'Viral Storytelling & Audience Retention',
+    },
+    tags: ['Curiosity', 'Storytelling', 'Retention', 'Packaging'],
+    category: 'Storytelling',
+    pillColor: {
+      bg: '#FFE500',
+      text: '#000000',
+    },
+    content: {
+      whatYoullLearn: [
+        'George Loewenstein’s Information Gap Theory.',
+        'The Blackjack Metaphor: The tension of the next card to be dealt.',
+        'Framing binary, high-stakes curiosity questions.',
+      ],
+      sections: [
+        {
+          id: 'blackjack-tension',
+          heading: 'Act I: The Next Card on The Felt',
+          subheading: 'Why the brain stays hostage to an open loop.',
+          paragraphs: [
+            'In blackjack, the tension is not about the history of cards—it is simply: "What card is the dealer about to reveal?"',
+            'In video creation, Step 2 is where you provide just enough context for a sharp, juicy question to ignite inside the viewer’s mind. Once the question is planted, their prefrontal cortex refuses to leave until the gap is closed.',
+          ],
+        },
+      ],
+      actionableChecklist: [
+        'Ensure your Big Question is planted before second 8 of the video.',
+        'Test your question clarity in CreatorKit Thumbnail Lab.',
+      ],
+      relatedTools: [
+        {
+          name: 'Thumbnail Lab',
+          href: '/thumbnail-lab',
+          desc: 'Simulate curiosity gaps across mobile feeds.',
+          badge: 'PACKAGING',
+        },
+      ],
+    },
+  },
+
+  // ── 4. DOPAMINE LOOP SERIES: STEP 3 — THE HEADFAKE ──
+  {
+    slug: 'the-headfake-narrative-contrast-subversion',
+    title: 'The Headfake: The Masterclass in Narrative Contrast & Subversion',
+    subtitle: 'Why predictable stories fail and how to use the psychological snap from Assumption A to Unexpected Truth B.',
+    excerpt: 'The Headfake is where you truly hook them. By contrasting against what the normal viewer assumes, you trigger the explosive dopamine rush of an unexpected plot twist.',
+    instagramUrl: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    coverImage: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1200&auto=format&fit=crop&q=80',
+    videoCredit: {
+      channel: 'Creator Masterclass / Instagram Reels',
+      title: 'Step 3: The Headfake',
+      url: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    },
+    date: 'August 28, 2026',
+    readTime: '4 min read',
+    author: {
+      name: 'CreatorKit Research Lab',
+      role: 'Viral Storytelling & Audience Retention',
+    },
+    tags: ['Storytelling', 'Plot Twists', 'Contrast', 'Retention'],
+    category: 'Storytelling',
+    pillColor: {
+      bg: '#FFE500',
+      text: '#000000',
+    },
+    content: {
+      whatYoullLearn: [
+        'The Art of Contrast: Why human psychology craves subverted expectations.',
+        'Why mystery novels and thriller cinema rely on the Headfake mechanism.',
+        'Snapping the storyline from predicted outcome (A) to surprise reveal (B).',
+      ],
+      sections: [
+        {
+          id: 'the-art-of-contrast',
+          heading: 'Act I: The Art of The Sharp Narrative Pivot',
+          subheading: 'Why confirming expectations produces zero viral retention.',
+          paragraphs: [
+            'If your story goes where the viewer expects, they feel smart, get bored, and scroll away.',
+            'The Headfake is where you lead the viewer to a 90% logical certainty on outcome (A)—and then snap the story in an entirely different direction to reveal (B). This sudden contrast forces the brain into active cognitive recalibration, releasing a massive wave of dopamine.',
+          ],
+        },
+      ],
+      actionableChecklist: [
+        'Pinpoint your Headfake: Where is the sharp 90-degree twist in your script?',
+        'Use CreatorKit Text Match CUT to flash the revelation word on screen.',
+      ],
+      relatedTools: [
+        {
+          name: 'Text Match CUT',
+          href: '/match-cut',
+          desc: 'Create punchy typography cuts that emphasize narrative twists.',
+          badge: 'RETENTION',
+        },
+      ],
+    },
+  },
+
+  // ── 5. DOPAMINE LOOP SERIES: STEP 4 — CASCADING REHOOKS ──
+  {
+    slug: 'cascading-loops-infinite-viewer-retention',
+    title: 'Cascading Loops: How Top Creators Eliminate Mid-Video Drop-Off Forever',
+    subtitle: 'Dealing the next blackjack hand before the chips are cleared: How to overlap open loops in endless succession.',
+    excerpt: 'Good stories have one addiction loop throughout. Great stories have cascading loops that overlap in rapid succession. Here is how to keep viewer retention continuous across your entire video.',
+    instagramUrl: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    coverImage: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1200&auto=format&fit=crop&q=80',
+    videoCredit: {
+      channel: 'Creator Masterclass / Instagram Reels',
+      title: 'Step 4: The Cascading Rehook',
+      url: 'https://www.instagram.com/reel/Db-zJhiuXP3/?igsi=MWhld29lcnV5Z3hwbA==',
+    },
+    date: 'August 28, 2026',
+    readTime: '5 min read',
+    author: {
+      name: 'CreatorKit Research Lab',
+      role: 'Viral Storytelling & Audience Retention',
+    },
+    tags: ['Retention', 'Pacing', 'Teleprompter', 'Video Editing'],
+    category: 'Retention',
+    pillColor: {
+      bg: '#FFE500',
+      text: '#000000',
+    },
+    content: {
+      whatYoullLearn: [
+        'The Cascading Rehook: Dealing the next hand before the player can walk away.',
+        'The Shingle Overlap Principle: Opening Loop #2 inside the resolution of Loop #1.',
+        'CreatorKit Studio Teleprompter bracket template for cascading pacing.',
+      ],
+      sections: [
+        {
+          id: 'cascading-hands',
+          heading: 'Act I: Never Let The Table Go Cold',
+          subheading: 'Why silence between points is an invitation for the viewer to swipe.',
+          paragraphs: [
+            'Just like a casino tries to deal you the next blackjack hand as quickly as possible, you want to rehook the viewer the millisecond the previous loop resolves.',
+            'By overlapping your narrative loops like shingles on a roof, there is never a single moment where all mental tabs are closed. The viewer is trapped in continuous forward momentum.',
+          ],
+          formulaBox: {
+            title: 'The 4-Step Dopamine Addiction Loop Framework',
+            steps: [
+              { step: '1. The Stakes', detail: 'Relatable character + Tangible Risk + Ticking clock urgency.' },
+              { step: '2. The Big Question', detail: 'Plant the single unanswered mystery that demands resolution.' },
+              { step: '3. The Headfake', detail: 'Snap from expected outcome (A) to unexpected contrast (B).' },
+              { step: '4. The Rehook', detail: 'Instantly deal Loop #2 before dopamine drops to zero.' },
+            ],
+          },
+        },
+      ],
+      actionableChecklist: [
+        'Eliminate dead pauses between narrative beats.',
+        'Open Loop #2 before concluding Loop #1.',
+        'Paste your script into CreatorKit Teleprompter with bracket delivery cues.',
+      ],
+      relatedTools: [
+        {
+          name: 'Studio Teleprompter',
+          href: '/teleprompter',
+          desc: 'Deliver tight, cascading scripts with voice-synchronized scrolling.',
+          badge: 'STUDIO',
+        },
+      ],
+    },
+  },
+
+  // ── 6. CREATOR BUSINESS: USAGE RIGHTS ──
   {
     slug: 'never-charge-per-view-usage-rights-formula',
     title: 'Why You Should Never Charge "Per View": The Usage Rights Formula That 10x’s Brand Deals',
@@ -243,68 +557,36 @@ export const BLOG_POSTS: BlogPost[] = [
       bg: '#FFE500',
       text: '#000000',
     },
-    featured: false,
     content: {
       whatYoullLearn: [
         'Why "Organic Impressions" are only 20% of a brand deal’s total commercial value.',
         'The 3-Part Pricing Architecture: Base Production Fee + Organic Placement + Paid Ad Whitelisting.',
         'How to price 30-day, 90-day, and 1-year digital usage rights.',
-        'Generating professional itemized creator invoices in CreatorKit Business Suite.',
       ],
       sections: [
         {
           id: 'the-cpm-trap',
-          heading: 'Act I: The CPM Trap (Why Views Are The Worst Metric to Price)',
-          subheading: 'Stop selling your eyeballs. Start licensing your intellectual property.',
+          heading: 'Act I: The CPM Trap',
           paragraphs: [
-            'Here is the standard conversation between an unrepresented creator and a brand manager: The brand asks: "What is your rate for a dedicated 60-second video?" The creator looks at their average 25,000 views, multiplies it by a $25 CPM, and sheepishly replies: "$625."',
-            'The brand manager approves the invoice in 4 minutes flat. Why? Because the brand just bought an asset they will run as a paid Meta and TikTok ad for the next 9 months, generating $250,000 in revenue—all for six hundred bucks.',
-            'When you sell a sponsorship, you are not just providing organic reach. You are acting as a full-service creative agency: casting, scripting, shooting, lighting, editing, and providing your personal likeness and trust. In the traditional advertising world, producing a 60-second high-converting commercial costs brands between $15,000 and $40,000 before running a single ad.',
+            'When you sell a sponsorship, you are acting as a full-service creative agency. The real revenue is charging for the right to use that footage in paid ads.',
           ],
-          quote: {
-            text: 'Brands don’t pay creators for their subscriber count. They pay for the asset they can amplify across paid media channels.',
-            speaker: 'CreatorKit Business Valuation Framework',
-          },
-          keyInsight: 'Your organic audience is the testing ground. The real revenue is charging for the right to use that high-converting footage in paid advertisements.',
-        },
-        {
-          id: 'the-three-bucket-quote',
-          heading: 'Act II: The 3-Bucket Itemized Quote Structure',
-          subheading: 'How to break down your quote on a professional CreatorKit invoice.',
-          paragraphs: [
-            'Instead of sending a single flat number, professional creators itemize their deliverable into three transparent commercial tiers:',
-            '1. **Base Creative & Production Fee**: Covers pre-production, filming, editing, revisions, and equipment ($1,500 – $3,000).',
-            '2. **Organic Distribution Fee**: The right to post on your channel to your active audience ($500 – $1,500).',
-            '3. **Paid Usage & Whitelisting Rights (The Multiplier)**: The right for the brand to run your video as a paid ad from their brand handle or whitelist through your handle ($1,000/month for 30 days, $2,500 for 90 days).',
-          ],
-          table: {
-            headers: ['Deliverable Component', 'Amateur Quote', 'Professional Itemized Invoice'],
-            rows: [
-              ['60-second dedicated integration', '$600 (all-inclusive)', '$1,800 (Production + 1 Revision Round)'],
-              ['Organic audience post', '$0 (bundled)', '$750 (Organic broadcast)'],
-              ['Paid Ad Usage Rights (90 Days)', 'Free (transferred in fine print)', '$2,400 ($800/mo licensing multiplier)'],
-              ['Total Campaign Revenue', '$600', '$4,950'],
-            ],
-          },
         },
       ],
       actionableChecklist: [
-        'Never sign a contract with "perpetual, worldwide, royalty-free usage" clauses without a 5x rate multiplier.',
-        'Itemize Production Fee, Organic Posting, and 30/90-day Paid Usage separately.',
-        'Generate an official itemized invoice with automatic currency conversion in CreatorKit Business Suite.',
+        'Itemize Production Fee, Organic Posting, and Paid Usage separately on CreatorKit Invoices.',
       ],
       relatedTools: [
         {
           name: 'Invoices & Deals',
           href: '/business',
-          desc: 'Create, itemize, and issue client invoices with usage rights clauses and receipts.',
+          desc: 'Create, itemize, and issue client invoices with usage rights clauses.',
           badge: 'BUSINESS',
         },
       ],
     },
   },
 
-  // ── 2. CREATOR BUSINESS: THE 50/50 PAYMENT RULE ──
+  // ── 7. CREATOR BUSINESS: 50/50 PAYMENT RULE ──
   {
     slug: 'the-50-50-payment-rule-brand-deals',
     title: 'The 50/50 Payment Rule: How to Stop Getting Ghosted by Brand Sponsors',
@@ -325,30 +607,20 @@ export const BLOG_POSTS: BlogPost[] = [
     },
     content: {
       whatYoullLearn: [
-        'The 50/50 Milestone Rule: 50% upfront before production starts, 50% upon draft approval before publishing.',
-        'Why Net-60 and Net-90 terms destroy creator working capital.',
+        'The 50/50 Milestone Rule: 50% upfront before production, 50% upon draft approval.',
         'Using thermal payment receipts as official proof of deposit.',
-        'The simple contract clause that prevents endless unpaid revision loops.',
       ],
       sections: [
         {
-          id: 'the-ghosting-problem',
-          heading: 'Act I: Why Sponsors Ghost Unprotected Creators',
+          id: 'ghosting-prevention',
+          heading: 'Act I: Secure The Deposit First',
           paragraphs: [
-            'Every creator has a horror story: A brand agrees to pay $3,000 for a dedicated review. The creator spends 40 hours filming, editing, and color grading. They send the draft. The brand asks for 4 rounds of major script changes, and when the creator asks for payment upon posting, the brand’s accounting department goes completely dark.',
-            'Why does this happen? Because the creator held zero financial leverage.',
-            'In corporate commerce, no production studio turns on a camera without a non-refundable commencement deposit. By implementing the **50/50 Rule**, you separate serious brands from budget tire-kickers before investing a single minute of production time.',
+            'A contract without an upfront deposit is just a polite wish list. Always secure 50% before setting up your tripod.',
           ],
-          quote: {
-            text: 'A contract without an upfront deposit is just a polite wish list. Always secure 50% before setting up your tripod.',
-            speaker: 'CreatorKit Contract Standard',
-          },
         },
       ],
       actionableChecklist: [
-        'Never begin scripting or filming without a cleared 50% commencement deposit.',
         'Issue an instant deposit receipt using CreatorKit Receipt Printer.',
-        'Include a limit of 2 complimentary revision rounds in your agreement terms.',
       ],
       relatedTools: [
         {
@@ -361,7 +633,7 @@ export const BLOG_POSTS: BlogPost[] = [
     },
   },
 
-  // ── 3. MRBEAST PACKAGING & THUMBNAIL ARCHITECTURE ──
+  // ── 8. MRBEAST THUMBNAIL ARCHITECTURE ──
   {
     slug: 'mrbeast-100-hour-thumbnail-architecture',
     title: 'The 100-Hour Thumbnail: How MrBeast’s Team Tests 20 Variations Before Uploading',
@@ -382,316 +654,37 @@ export const BLOG_POSTS: BlogPost[] = [
     },
     content: {
       whatYoullLearn: [
-        'The 3-Element Visual Rule: Subject + Conflict + Environment (Zero Clutter).',
-        'Why facial expressions must convey a single, unambiguous extreme emotion.',
-        'The 100px Mobile Glance Test: Passing the 0.8-second homepage scan.',
-        'Simulating real YouTube feeds inside CreatorKit Thumbnail Lab.',
+        'The 3-Element Visual Rule: Subject + Conflict + Context (Zero Clutter).',
+        'Passing the 0.8-second 100px mobile glance test in CreatorKit Thumbnail Lab.',
       ],
       sections: [
         {
-          id: 'packaging-first',
-          heading: 'Act I: Packaging Is Not Marketing—Packaging IS The Product',
+          id: 'three-element-rule',
+          heading: 'Act I: Simplicity at 100px',
           paragraphs: [
-            'When Jimmy Donaldson (MrBeast) conceives a video, his team doesn’t start with camera gear or locations. They start in Photoshop. If they cannot design a thumbnail that triggers an instant visual double-take in 0.5 seconds, the video idea is scrapped entirely.',
-            'Most creators treat thumbnails as an afterthought on upload day. They screenshot a frame from their timeline, slap 8 words in bright yellow font across the middle, and wonder why their CTR is 2.8%.',
-            'To dominate recommendations, every thumbnail must follow **The 3-Element Visual Rule**:',
-            '1. **Element 1 (The Subject)**: The hero character or focal object occupying 40% of the canvas with high edge contrast.',
-            '2. **Element 2 (The Impossibility/Conflict)**: A visual contradiction that defies physics or common sense (e.g. a yacht on a mountain, 100,000 laser pointers).',
-            '3. **Element 3 (The Contextual Background)**: High-saturation, low-complexity environment that frames the subject without competing for visual focus.',
+            'If your thumbnail has 4 elements, it has 1 element too many. Every visual element must tell an instant story.',
           ],
-          quote: {
-            text: 'If your thumbnail has 4 elements, it has 1 element too many. Simplicity at 100px is king.',
-            speaker: 'Jimmy Donaldson (MrBeast)',
-          },
         },
       ],
       actionableChecklist: [
-        'Remove all duplicate text that already exists in the video title.',
-        'Verify your thumbnail contains no more than 3 distinct visual focal points.',
-        'Upload your graphic into CreatorKit Thumbnail Lab to test dark mode and light mode feed contrast.',
+        'Test your graphics scaled down to 100px width in CreatorKit Thumbnail Lab.',
       ],
       relatedTools: [
         {
           name: 'Thumbnail Lab',
           href: '/thumbnail-lab',
-          desc: 'Simulate YouTube mobile and desktop homepages with instant CTR grading.',
+          desc: 'Simulate YouTube feeds with instant CTR grading.',
           badge: 'PACKAGING',
         },
       ],
     },
   },
 
-  // ── 4. THE MUTED FAST-FORWARD TEST ──
-  {
-    slug: 'the-million-dollar-muted-fast-forward-test',
-    title: 'The $1,000,000 Muted Test: Why Top Editors Cut Videos With Sound Off',
-    subtitle: 'How to build irresistible visual pacing that holds international audiences without understanding a single spoken word.',
-    excerpt: 'Over 65% of short-form viewers and 20% of desktop YouTube users watch initial video moments with audio muted. Here is the visual pacing test used by top editing houses to eliminate visual dead zones.',
-    coverImage: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=1200&auto=format&fit=crop&q=80',
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Research Lab',
-      role: 'Post-Production & Retention Editing',
-    },
-    tags: ['Video Editing', 'Pacing', 'Retention', 'Shorts'],
-    category: 'Video Editing',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'The Muted Timeline Scrub: Spotting visual flatlines before exporting.',
-        'Visual Pattern Interrupts: Camera punch-ins, B-roll cutaways, and object zooms every 3 seconds.',
-        'Word-Anchor Typography: Using kinetic text to bridge silent viewing sessions.',
-      ],
-      sections: [
-        {
-          id: 'muted-editing-science',
-          heading: 'Act I: The Visual Clarity Benchmark',
-          paragraphs: [
-            'Load your rough cut into Premiere Pro or DaVinci Resolve. Hit mute. Set the playback speed to 1.5x. Now watch your video.',
-            'Can a stranger who speaks zero English immediately understand who the main character is, what problem they are solving, and whether they are winning or losing?',
-            'If the answer is no, your video relies entirely on audio exposition. In modern digital media, audio-heavy videos suffer massive drop-offs because human visual processing is 60,000 times faster than auditory processing. By mastering silent visual narrative, your edits become globally resonant.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Perform the 1.5x Muted Scrub on every video before final render.',
-        'Ensure an on-screen visual change occurs at least once every 2.8 seconds.',
-        'Use CreatorKit Match Cut for rapid visual typography transitions.',
-      ],
-      relatedTools: [
-        {
-          name: 'Text Match CUT',
-          href: '/match-cut',
-          desc: 'Create seamless word-anchor cuts that keep viewers locked on screen.',
-          badge: 'EDITING',
-        },
-      ],
-    },
-  },
-
-  // ── 5. SOUND DESIGN: THE 40HZ SUB-BASS DROP ──
-  {
-    slug: 'the-40hz-sub-bass-drop-psychoacoustics',
-    title: 'The 40Hz Sub-Bass Drop: How Sound Effects Control Viewer Pupil Dilation',
-    subtitle: 'The psychoacoustics of low-frequency cinematic drops, micro-risers, and why a 0.3-second silence spike resets attention.',
-    excerpt: 'Sound design accounts for 60% of emotional retention. Learn how top sound editors use 40Hz sub-bass rumbles, stereo whooshes, and silence gating to trigger involuntary physiological focus.',
-    coverImage: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200&auto=format&fit=crop&q=80',
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Audio Lab',
-      role: 'Psychoacoustics & Sound Architecture',
-    },
-    tags: ['Sound Design', 'Audio', 'Editing', 'Retention'],
-    category: 'Sound Design',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'The Neurobiology of Bass: Why low frequencies bypass conscious thought and trigger the nervous system.',
-        'The Silence Gate: Cutting all audio tracks 300ms before a major visual punchline.',
-        'Layering sound effects: High transient whoosh + mid snap + low sub-drop.',
-        'Automating dead-air trimming with CreatorKit Silence Trimmer.',
-      ],
-      sections: [
-        {
-          id: 'psychoacoustic-power',
-          heading: 'Act I: Sound Is Involuntary',
-          paragraphs: [
-            'You can close your eyes to ignore a visual graphic. You cannot close your ears. Sound enters the auditory cortex through direct neurological pathways that trigger involuntary physiological reactions.',
-            'When a 40Hz sub-bass hit occurs underneath a key statement, the inner ear registers physical pressure. The viewer’s pupils dilate, heart rate shifts slightly, and alertness spikes.',
-            'Combine this with the **Silence Gate Technique**—muting all background music and room tone for 0.4 seconds right before a revelation—and the contrast creates a vacuum that compels 100% focus.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Add a high-pass filtered riser that cuts abruptly to silence before your hook delivery.',
-        'Use CreatorKit Silence Trimmer to remove unwanted vocal pauses while preserving rhythmic timing.',
-      ],
-      relatedTools: [
-        {
-          name: 'Silence Trimmer',
-          href: '/silence-trimmer',
-          desc: 'Automatically trim dead air and pauses with millisecond threshold precision.',
-          badge: 'AUDIO',
-        },
-      ],
-    },
-  },
-
-  // ── 6. SOUND DESIGN: THE HANS ZIMMER 7-SECOND SHIFT ──
-  {
-    slug: 'the-hans-zimmer-7-second-music-shift-rule',
-    title: 'The Hans Zimmer Rule: How Micro-Music Shifts Reset Attention Every 7 Seconds',
-    subtitle: 'Why playing the same looping lo-fi beat for 60 seconds causes auditory fatigue and how to layer audio energy stems.',
-    excerpt: 'Auditory habituation is the silent killer of viewer watch time. When background music stays static for more than 10 seconds, the brain filters it out as background noise. Here is how to score videos with micro-energy shifts.',
-    coverImage: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=1200&auto=format&fit=crop&q=80',
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Audio Lab',
-      role: 'Psychoacoustics & Sound Architecture',
-    },
-    tags: ['Audio', 'Music', 'Pacing', 'Sound Design'],
-    category: 'Sound Design',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'Auditory Habituation: Why continuous music tracks trigger mental tune-out.',
-        'The 3 Music Energy Tiers: Investigative Drone → Driving Rhythm → Climax Drop.',
-        'Syncing audio transitions to on-screen text cuts with CreatorKit Beat Sync.',
-      ],
-      sections: [
-        {
-          id: 'music-energy-layers',
-          heading: 'Act I: Beat The Habituation Clock',
-          paragraphs: [
-            'In Hollywood scoring, composers like Hans Zimmer never repeat a musical phrase without introducing a subtle new harmonic layer, a rhythm change, or a sudden drop.',
-            'When video editors drop a single stock music track across an entire 2-minute video, the viewer’s brain habituates after 8 seconds. The energy feels flat, sluggish, and emotionally monotone.',
-            'By cutting the music track, dropping the bassline, or swapping instruments every 7 to 12 seconds in sync with your narrative beats, you constantly refresh the auditory stimulation.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Cut your background track whenever you introduce a new Act or topic point.',
-        'Use CreatorKit Beat Sync to align key visual cuts with rhythmic transients.',
-      ],
-      relatedTools: [
-        {
-          name: 'Beat Sync',
-          href: '/beat-sync',
-          desc: 'Detect audio transients and generate markers for rhythm-perfect video cuts.',
-          badge: 'AUDIO',
-        },
-      ],
-    },
-  },
-
-  // ── 7. KINETIC TYPOGRAPHY & ALEX HORMOZI CAPTIONING ──
-  {
-    slug: 'the-1-word-kinetic-caption-science',
-    title: 'The 1-Word Screen Rule: Why Kinetic Captions Boost Short-Form Completion by 43%',
-    subtitle: 'The eye-tracking science of center-locked typography and why rapid color flashes prevent the thumb swipe.',
-    excerpt: 'Alex Hormozi and top short-form agencies don’t use kinetic text for decoration—they use it to control saccadic eye movement. Learn how to format 1-2 word typography anchors that force continuous reading reflexes.',
-    coverImage: 'https://images.unsplash.com/photo-1542744094-24638eff58bb?w=1200&auto=format&fit=crop&q=80',
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Research Lab',
-      role: 'Typography & Visual Retention Systems',
-    },
-    tags: ['Captions', 'Typography', 'Shorts', 'Alex Hormozi'],
-    category: 'Video Editing',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'Saccadic Eye Movement: Why full-paragraph subtitles cause viewers to read ahead and scroll.',
-        'The Center-Anchor Rule: Keeping the reading focal point locked in a 200px screen zone.',
-        'Color Highlighting: Using yellow (#FFE500) and green to emphasize power words.',
-        'Generating animated kinetic subtitles in CreatorKit Auto Captions.',
-      ],
-      sections: [
-        {
-          id: 'eye-tracking-science',
-          heading: 'Act I: The Psychology of Saccadic Gaze Locking',
-          paragraphs: [
-            'Eye-tracking lab studies demonstrate a clear difference in viewer behavior between static subtitles and center-locked kinetic words.',
-            'When a video displays 3 lines of static text at the bottom of the screen, the viewer reads the entire sentence in 0.6 seconds. Because their brain has already consumed the punchline before you speak it, they feel no suspense and swipe away.',
-            'When words flash **one or two at a time in the center of the frame** at the exact cadence of your speech, the viewer’s ocular reflexes are forced into active synchronization. They cannot read ahead; they are locked to your real-time vocal speed.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Never display more than 3 words per frame on vertical video.',
-        'Anchor subtitles in the center third of the screen above TikTok UI icons.',
-        'Generate synchronized animated captions with CreatorKit Auto Captions.',
-      ],
-      relatedTools: [
-        {
-          name: 'Auto Captions',
-          href: '/auto-captions',
-          desc: 'Create viral animated short-form captions with word-level timing and highlight styles.',
-          badge: 'CAPTIONS',
-        },
-        {
-          name: 'Text Highlighting',
-          href: '/text-highlighter',
-          desc: 'Highlight document excerpts, contracts, and quotes with animated marker pens.',
-          badge: 'MOTION',
-        },
-      ],
-    },
-  },
-
-  // ── 8. ALI ABDAAL 3-BUCKET SCRIPTING SYSTEM ──
-  {
-    slug: 'ali-abdaal-3-bucket-scripting-system',
-    title: 'Write For The Ear, Not The Eye: Ali Abdaal’s 3-Bucket Scripting System',
-    subtitle: 'How to convert raw Notion brain dumps into conversational teleprompter scripts that sound 100% natural on camera.',
-    excerpt: 'Written English and spoken English are two entirely different languages. If you read written prose into a camera, you sound robotic and stiff. Here is Ali Abdaal’s 3-bucket architecture for effortless, natural speech delivery.',
-    coverImage: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=1200&auto=format&fit=crop&q=80',
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Scripting Lab',
-      role: 'Speech Cadence & Narrative Architecture',
-    },
-    tags: ['Scriptwriting', 'Productivity', 'Teleprompter', 'Ali Abdaal'],
-    category: 'Scriptwriting',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'The 3-Bucket Pipeline: Raw Idea Capture → The 3-Act Bullet Scaffold → Spoken Pacing Polish.',
-        'The 12-Word Rule: Eliminating compound sentences and subordinate clauses.',
-        'Using bracket stage directions: [LOOK_LEFT], [PAUSE], [SPEED_UP] on CreatorKit Teleprompter.',
-      ],
-      sections: [
-        {
-          id: 'scripting-for-the-ear',
-          heading: 'Act I: The Two Languages of Content',
-          paragraphs: [
-            'Most creators write scripts as if they are submitting an academic term paper. They use full punctuation, complex clauses, and formal vocabulary like "furthermore," "subsequently," and "in summary."',
-            'The moment they look into the camera lens and read those words, their energy flatlines. They sound stiff, rehearsed, and disconnected.',
-            'Spoken conversational English relies on fragments, contractions, rhetorical pauses, and rhythm. Ali Abdaal’s **3-Bucket Scripting Architecture** ensures your scripts flow like an intimate, high-energy coffee chat with a friend.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Read your script aloud while pacing the room before hitting record.',
-        'Replace all formal phrases with natural contractions (e.g. "do not" → "don\'t").',
-        'Load into CreatorKit Studio Teleprompter with voice-matching scrolling.',
-      ],
-      relatedTools: [
-        {
-          name: 'Studio Teleprompter',
-          href: '/teleprompter',
-          desc: 'Read scripts with voice-synchronized scrolling, countdowns, and bracket delivery cues.',
-          badge: 'STUDIO',
-        },
-      ],
-    },
-  },
-
-  // ── 9. TIKTOK ALGORITHM: BATCH TESTING & 200-VIEW JAIL ──
+  // ── 9. TIKTOK ALGORITHM: BATCH TESTING & SEARCH INSIGHTS ──
   {
     slug: 'tiktok-algorithm-batch-testing-200-view-jail',
     title: 'The 200-View Jail Myth: How TikTok’s Batch Testing Algorithm Actually Works',
-    subtitle: 'A reverse-engineering of ByteDance’s 4-tier distribution pipeline, cohort scoring thresholds, and why accounts get stuck.',
+    subtitle: 'A reverse-engineering of ByteDance’s 4-tier distribution pipeline, cohort scoring thresholds, and the Creator Search Insights backdoor.',
     excerpt: 'Getting stuck at 200 views is not a shadowban—it is a mathematical grading system. Here is the exact scoring rubric ByteDance’s recommendation engine uses to promote or kill your video in the first 120 minutes.',
     coverImage: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=1200&auto=format&fit=crop&q=80',
     date: 'August 28, 2026',
@@ -708,22 +701,20 @@ export const BLOG_POSTS: BlogPost[] = [
     },
     content: {
       whatYoullLearn: [
-        'The 4 Progressive Cohort Tiers: How a video advances from 250 test users to 1,000,000+ FYP feeds.',
-        'The First 120-Minute Window: Why initial speed of completion rate dictates lifetime reach.',
-        'The "Creator Search Insights" Upload Backdoor.',
+        'The 4 Progressive Cohort Tiers (Tier 1: 250 → Tier 2: 1K–5K → Tier 3: 50K–100K → Tier 4: 1M+).',
+        'The "Creator Search Insights" Backdoor Upload Ritual.',
       ],
       sections: [
         {
-          id: 'batch-pipeline',
+          id: 'batch-rubric',
           heading: 'Act I: The 4 Tiers of Automated Batch Testing',
           paragraphs: [
-            '200 views is Tier 1 of ByteDance’s automated batch testing pipeline. The system serves your video to 200–300 users and measures telemetry: scroll rates, completion %, loop rate, and shares.',
+            '200 views is Tier 1 of ByteDance’s automated batch testing pipeline. Launching uploads directly from Creator Search Insights links your video to high-demand active search pools.',
           ],
         },
       ],
       actionableChecklist: [
         'Launch uploads from Creator Search Insights to bypass untargeted cold testing.',
-        'Keep duration under 30 seconds for maximum completion rate.',
       ],
       relatedTools: [
         {
@@ -763,14 +754,14 @@ export const BLOG_POSTS: BlogPost[] = [
       sections: [
         {
           id: 'loop-formula',
-          heading: 'Act I: The Mathematics of Over-100% Retention',
+          heading: 'Act I: Over-100% Retention Mathematics',
           paragraphs: [
-            'Because short-form platforms automatically replay videos, Watch Time Ratio = Total Seconds Watched / Video Duration. When watch time exceeds 100%, algorithms treat the content as viral gold.',
+            'When a video loops twice, watch time reaches 200%, signaling to the ranking model that the user demanded an immediate replay.',
           ],
         },
       ],
       actionableChecklist: [
-        'Connect your last sentence grammatically into your first sentence.',
+        'Connect your final sentence directly into your opening sentence.',
       ],
       relatedTools: [
         {
@@ -783,60 +774,7 @@ export const BLOG_POSTS: BlogPost[] = [
     },
   },
 
-  // ── 11. DOPAMINE LOOP MASTERCLASS ──
-  {
-    slug: 'the-dopamine-addiction-loop-framework',
-    title: 'The Casino Blueprint: Why Las Vegas Psychology Makes Videos Scientifically Unskippable',
-    subtitle: 'An introduction to the 4-step neurological retention engine used by casino floors, mystery thrillers, and 100M-view creators.',
-    excerpt: 'Casinos don’t keep players at the blackjack table by handing out free money. They do it with an unyielding 4-step dopamine loop: Stakes, Big Question, Headfake, and Cascading Rehooks.',
-    instagramUrl: 'https://www.instagram.com/reel/DaiCxAkOpNb/?igsi=ajR0cm1ldmV6OTN0',
-    coverImage: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=1200&auto=format&fit=crop&q=80',
-    videoCredit: {
-      channel: 'Creator Masterclass / Instagram Reels',
-      title: 'The Dopamine Addiction Loop Series',
-      url: 'https://www.instagram.com/reel/DaiCxAkOpNb/?igsi=ajR0cm1ldmV6OTN0',
-    },
-    date: 'August 28, 2026',
-    readTime: '5 min read',
-    author: {
-      name: 'CreatorKit Research Lab',
-      role: 'Viral Storytelling & Audience Retention',
-    },
-    tags: ['Storytelling', 'Retention', 'Psychology', 'Shorts'],
-    category: 'Storytelling',
-    pillColor: {
-      bg: '#FFE500',
-      text: '#000000',
-    },
-    content: {
-      whatYoullLearn: [
-        'Why dopamine is an anticipation molecule, not a pleasure reward.',
-        'The 4-Step Retention Loop: Stakes → Big Question → Headfake → Rehook.',
-      ],
-      sections: [
-        {
-          id: 'casino-storytelling',
-          heading: 'Act I: The Casino Floor on Your Phone Screen',
-          paragraphs: [
-            'Casinos are not entertainment venues; they are neurological laboratories engineered around anticipation. When you build cascading loops into your videos, skipping becomes neurologically unnatural.',
-          ],
-        },
-      ],
-      actionableChecklist: [
-        'Audit your video hook for character + risk + ticking urgency.',
-      ],
-      relatedTools: [
-        {
-          name: 'Studio Teleprompter',
-          href: '/teleprompter',
-          desc: 'Deliver tight, dopamine-engineered scripts with voice sync.',
-          badge: 'SCRIPTING',
-        },
-      ],
-    },
-  },
-
-  // ── 12. VERITASIUM FORMULA ──
+  // ── 11. VERITASIUM FORMULA ──
   {
     slug: 'veritasium-why-he-still-gets-views-formula',
     title: 'The Illusion of Clarity: Why 99% of "Good" Videos Fail (And The Veritasium Formula)',
@@ -862,30 +800,30 @@ export const BLOG_POSTS: BlogPost[] = [
       bg: '#FFE500',
       text: '#000000',
     },
+    featured: false,
     content: {
       whatYoullLearn: [
-        'The "Fluency Illusion": Why smooth, well-spoken explainers cause immediate viewer drop-off.',
-        'The Intuition Shatter Hook: How to force the viewer’s brain into active engagement within 5 seconds.',
-        'The Paradox Inversion: Why school structures produce 0% CTR and how to make complex topics irresistibly clickable.',
-        'The Hollywood A/B Plot Engine: The pacing mechanism that keeps 20-minute long-form retention above 65%.',
+        'The "Fluency Illusion": Why smooth explainers cause immediate drop-off.',
+        'The Intuition Shatter Hook: Forcing the brain into active engagement.',
+        'The Hollywood A/B Plot Engine: Alternating theory with physical adventure.',
       ],
       sections: [
         {
           id: 'the-fluency-trap',
           heading: 'Act I: The Trap of The "Great Explainer"',
           paragraphs: [
-            'In cognitive psychology, the Fluency Illusion occurs when information is presented so smoothly that the viewer’s brain mistakes easy processing for genuine understanding. When an explainer feels simple, the viewer assumes they already know the material. Their brain downshifts into passive cruise control. Within 30 seconds, they feel no urgency to stay—and they click away.',
+            'When an explainer feels too simple, the viewer assumes they already understand the material, downshifts into passive cruise control, and clicks away. To hold attention, you must make the brain work.',
           ],
         },
       ],
       actionableChecklist: [
-        'Audit your video hook: Are you dismantling an intuitive misconception?',
+        'Dismantle an intuitive misconception in the first 5 seconds.',
       ],
       relatedTools: [
         {
           name: 'Studio Teleprompter',
           href: '/teleprompter',
-          desc: 'Deliver tight, retention-engineered scripts with voice sync and bracket delivery cues.',
+          desc: 'Deliver tight, retention-engineered scripts with voice sync.',
           badge: 'SCRIPTING',
         },
       ],
