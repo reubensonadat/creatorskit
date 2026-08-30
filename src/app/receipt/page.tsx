@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Printer } from 'lucide-react';
+import { Printer, Download } from 'lucide-react';
+import { exportDocumentAsImage } from '@/lib/export-document-image';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import ReceiptDocument, {
   type ReceiptDocumentData,
@@ -84,6 +85,31 @@ function ReceiptClientView({ data }: { data: ReceiptPayload }) {
     payChannel: payChannelLabel(data),
   };
 
+  const [isSavingImage, setIsSavingImage] = useState(false);
+  const receiptCardRef = useRef<HTMLDivElement>(null);
+
+  const saveReceiptImage = async () => {
+    setIsSavingImage(true);
+    try {
+      const node = receiptCardRef.current;
+      if (!node) {
+        setIsSavingImage(false);
+        return;
+      }
+
+      await exportDocumentAsImage({
+        node,
+        filename: `receipt-${data.rn || 'receipt'}.png`,
+        title: `Receipt ${data.rn} - ${data.n}`,
+        text: `Payment receipt from ${data.n}`,
+      });
+    } catch (err) {
+      console.error('Error saving receipt image:', err);
+    } finally {
+      setIsSavingImage(false);
+    }
+  };
+
   // QR encodes this receipt's own link — scan any printed copy to reopen it
   const qrUrl = typeof window !== 'undefined' ? window.location.href : undefined;
 
@@ -125,18 +151,29 @@ function ReceiptClientView({ data }: { data: ReceiptPayload }) {
 
           <ReceiptPrinter.Output className="h-[38rem]">
             <ReceiptPrinter.Paper>
-              <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
+              <div ref={receiptCardRef}>
+                <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
+              </div>
             </ReceiptPrinter.Paper>
           </ReceiptPrinter.Output>
         </ReceiptPrinter.Root>
 
         {stage === 'complete' && (
-          <button
-            onClick={() => window.print()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fef08a', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 16px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
-          >
-            <Printer size={14} /> Print / Save PDF
-          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%', maxWidth: 360 }}>
+            <button
+              onClick={() => window.print()}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 12px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              <Printer size={14} /> Print PDF
+            </button>
+            <button
+              onClick={saveReceiptImage}
+              disabled={isSavingImage}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 12px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
+            </button>
+          </div>
         )}
       </div>
 

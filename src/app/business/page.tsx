@@ -10,12 +10,14 @@ import {
   Award,
   Share2,
   Printer,
+  Download,
   Plus,
   Trash2,
   Check,
   ImagePlus,
   X,
 } from 'lucide-react';
+import { exportDocumentAsImage } from '@/lib/export-document-image';
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
@@ -496,8 +498,35 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
     window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppText())}`, '_blank');
   };
 
+  const [isSavingImage, setIsSavingImage] = useState(false);
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const saveDocumentAsImage = async () => {
+    setIsSavingImage(true);
+    try {
+      const node = document.getElementById('printable-document');
+      if (!node) {
+        setIsSavingImage(false);
+        return;
+      }
+
+      const docId = activeTab === 'receipt' ? receiptNumber : invoiceNumber;
+      const filename = `${activeTab}-${docId || 'document'}.png`;
+
+      await exportDocumentAsImage({
+        node,
+        filename,
+        title: `${activeTab.toUpperCase()} - ${creatorName}`,
+        text: `${creatorName} - ${activeTab.toUpperCase()} (${docId})`,
+      });
+    } catch (err) {
+      console.error('Error saving image:', err);
+    } finally {
+      setIsSavingImage(false);
+    }
   };
 
   const sym = CURRENCY_SYMBOLS[currency];
@@ -2206,63 +2235,96 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, width: '100%', maxWidth: 540 }}>
                   <button
                     onClick={startAnimatedPrint}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 6,
                       background: '#FFE500',
                       color: '#000',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
-                      padding: '7px 16px',
-                      fontSize: '0.75rem',
+                      height: 38,
+                      padding: '0 10px',
+                      fontSize: '0.72rem',
                       fontWeight: 900,
                       fontFamily: 'monospace',
                       textTransform: 'uppercase',
                       cursor: 'pointer',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <Printer size={15} /> Print / Save PDF
+                    <Printer size={14} /> Print
+                  </button>
+                  <button
+                    onClick={saveDocumentAsImage}
+                    disabled={isSavingImage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#000',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 10px',
+                      fontSize: '0.72rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
                   </button>
                   <button
                     onClick={copyWhatsAppSummary}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 6,
                       background: '#fff',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
-                      padding: '7px 14px',
-                      fontSize: '0.75rem',
+                      height: 38,
+                      padding: '0 10px',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
                       fontFamily: 'monospace',
                       cursor: 'pointer',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied!' : 'Copy Summary'}
+                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
                   </button>
                   <button
                     onClick={sendWhatsAppSummary}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 6,
                       background: '#16a34a',
                       color: '#fff',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
-                      padding: '7px 14px',
-                      fontSize: '0.75rem',
+                      height: 38,
+                      padding: '0 10px',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
                       fontFamily: 'monospace',
                       cursor: 'pointer',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    Send on WhatsApp
+                    WhatsApp
                   </button>
                 </div>
               </div>
@@ -2310,7 +2372,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </div>
 
                   {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
-                  <div className="ck-noprint" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 24 }}>
+                  <div className="ck-noprint" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: 8, marginBottom: 24 }}>
                     <input
                       ref={logoFileInputRef}
                       type="file"
@@ -2320,14 +2382,14 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                     />
                     <button
                       onClick={() => logoFileInputRef.current?.click()}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      <ImagePlus size={14} /> {logoUrl ? 'Change Logo' : 'Upload Brand Logo'}
+                      <ImagePlus size={14} /> {logoUrl ? 'Logo' : 'Upload Logo'}
                     </button>
                     {logoUrl && (
                       <button
                         onClick={() => setLogoUrl(null)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
                       >
                         <Trash2 size={12} /> Remove
                       </button>
@@ -2335,19 +2397,26 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
                     <button
                       onClick={startAnimatedPrint}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      <Printer size={14} /> Print Receipt
+                      <Printer size={14} /> Print
                     </button>
                     <button
-                      onClick={copyClientLink}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      onClick={saveDocumentAsImage}
+                      disabled={isSavingImage}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Link Copied' : 'Client Link'}
+                      <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
+                    </button>
+                    <button
+                      onClick={copyReceiptClientLink}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Copied' : 'Client Link'}
                     </button>
                     <button
                       onClick={shareReceiptOnWhatsApp}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
                       WhatsApp
                     </button>
@@ -2375,23 +2444,23 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                 }}
               >
                 <div style={{ fontSize: '0.75rem', color: '#666', fontWeight: 600 }}>
-                  Ready to bill? Click Print to generate or download clean PDF.
+                  Ready to bill? Print or save image directly to your device.
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, width: '100%' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, width: '100%' }}>
                   <button
                     onClick={startAnimatedPrint}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 4,
                       background: '#FFE500',
                       color: '#000',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
                       height: 38,
-                      padding: '0 8px',
-                      fontSize: '0.75rem',
+                      padding: '0 4px',
+                      fontSize: '0.72rem',
                       fontWeight: 900,
                       fontFamily: 'monospace',
                       textTransform: 'uppercase',
@@ -2399,7 +2468,31 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Printer size={14} /> Print
+                    <Printer size={13} /> Print
+                  </button>
+                  <button
+                    onClick={saveDocumentAsImage}
+                    disabled={isSavingImage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      background: '#000',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 4px',
+                      fontSize: '0.72rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Download size={13} /> {isSavingImage ? 'Saving…' : 'Image'}
                   </button>
                   <button
                     onClick={copyWhatsAppSummary}
@@ -2407,21 +2500,21 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 4,
                       background: '#fff',
                       color: '#000',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
                       height: 38,
-                      padding: '0 8px',
-                      fontSize: '0.75rem',
+                      padding: '0 4px',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
                       fontFamily: 'monospace',
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
+                    {copiedNotification ? <Check size={13} /> : <Share2 size={13} />} {copiedNotification ? 'Copied' : 'Copy'}
                   </button>
                   <button
                     onClick={sendWhatsAppSummary}
@@ -2429,14 +2522,14 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 4,
                       background: '#16a34a',
                       color: '#fff',
                       border: '2px solid #000',
                       boxShadow: '2px 2px 0 #000',
                       height: 38,
-                      padding: '0 8px',
-                      fontSize: '0.75rem',
+                      padding: '0 4px',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
                       fontFamily: 'monospace',
                       cursor: 'pointer',
@@ -2536,12 +2629,19 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, width: '100%', maxWidth: 440, marginTop: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 8, width: '100%', maxWidth: 480, marginTop: 4 }}>
               <button
                 onClick={handlePrint}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
                 <Printer size={14} /> Print PDF
+              </button>
+              <button
+                onClick={saveDocumentAsImage}
+                disabled={isSavingImage}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
               </button>
               <button
                 onClick={copyWhatsAppSummary}
@@ -2551,9 +2651,9 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </button>
               <button
                 onClick={sendWhatsAppSummary}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '9px 14px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer' }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
-                Send on WhatsApp
+                WhatsApp
               </button>
             </div>
           </div>
