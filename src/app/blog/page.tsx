@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { BLOG_POSTS, type BlogPost } from '@/data/blog-posts';
+import { fetchPostsFromDatabase } from '@/lib/supabase';
 import AdBanner from '@/components/AdBanner';
 import {
   ArrowUpRight,
@@ -14,17 +15,26 @@ import {
 } from 'lucide-react';
 
 export default function BlogIndexPage() {
+  const [posts, setPosts] = useState<BlogPost[]>(BLOG_POSTS);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('All');
 
-  const allTags = useMemo(() => {
-    const tagsSet = new Set<string>();
-    BLOG_POSTS.forEach((p) => p.tags.forEach((t) => tagsSet.add(t)));
-    return ['All', ...Array.from(tagsSet)];
+  useEffect(() => {
+    fetchPostsFromDatabase().then((data) => {
+      if (data && data.length > 0) {
+        setPosts(data);
+      }
+    });
   }, []);
 
+  const allTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    posts.forEach((p) => p.tags.forEach((t) => tagsSet.add(t)));
+    return ['All', ...Array.from(tagsSet)];
+  }, [posts]);
+
   const filteredPosts = useMemo(() => {
-    return BLOG_POSTS.filter((post) => {
+    return posts.filter((post) => {
       const matchesSearch =
         post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         post.subtitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -35,15 +45,16 @@ export default function BlogIndexPage() {
 
       return matchesSearch && matchesTag;
     });
-  }, [searchQuery, selectedTag]);
+  }, [posts, searchQuery, selectedTag]);
 
   // Featured post (latest/highlighted)
   const featuredPost = useMemo(() => {
-    return BLOG_POSTS.find((p) => p.featured) || BLOG_POSTS[0];
-  }, []);
+    return posts.find((p) => p.featured) || posts[0] || BLOG_POSTS[0];
+  }, [posts]);
 
   // Remaining posts for the clean separated card grid
   const gridPosts = useMemo(() => {
+    if (!featuredPost) return filteredPosts;
     if (searchQuery || selectedTag !== 'All') {
       return filteredPosts;
     }

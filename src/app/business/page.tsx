@@ -21,6 +21,10 @@ import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
 import ReceiptDocument, { type ReceiptDocumentData } from '@/components/receipt-document';
 import { saveReceiptToDatabase } from '@/lib/supabase';
+import InvoiceDocumentRenderer, { type InvoiceData, type InvoiceTemplateId } from '@/components/invoice-templates';
+import ContractDocumentRenderer, { type ContractData, type ContractTemplateId } from '@/components/contract-templates';
+import LetterheadDocumentRenderer, { type LetterheadData, type LetterheadTemplateId } from '@/components/letterhead-templates';
+import { GOOGLE_FONTS_LIST } from '@/app/match-cut/google-fonts';
 
 type TabType = 'invoice' | 'receipt' | 'agreement' | 'letterhead';
 type CurrencyType = 'GHS' | 'NGN' | 'USD' | 'GBP' | 'EUR';
@@ -77,11 +81,128 @@ function BusinessSuiteContent() {
 
   const [currency, setCurrency] = useState<CurrencyType>('GHS');
   const [invoiceNumber, setInvoiceNumber] = useState('INV-2026-0042');
+  const [poNumber, setPoNumber] = useState('PO-GH-2026');
   const [receiptNumber, setReceiptNumber] = useState('REC-2026-0042');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(
-    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
+  const [shippingAddress, setShippingAddress] = useState('Airport Residential Area, Accra, Ghana');
+  const [signatureName, setSignatureName] = useState('Kofi Mensah');
+  const [customNotes, setCustomNotes] = useState('');
+
+  // ─── INVOICE TEMPLATE, COLORS & TYPOGRAPHY STATE ──────────────
+  const [invoiceTemplate, setInvoiceTemplate] = useState<InvoiceTemplateId>('navy');
+  const [headingFont, setHeadingFont] = useState('Oswald');
+  const [bodyFont, setBodyFont] = useState('Inter');
+  const [signatureFont, setSignatureFont] = useState('Caveat');
+  const [primaryColor, setPrimaryColor] = useState('#162a45');
+  const [accentColor, setAccentColor] = useState('#e15b3c');
+  // ─── BRANDING TOGGLE (Powered by CreatorKit badge on printed documents) ──
+  const [brandingOn, setBrandingOn] = useState(true);
+
+  // ─── CONTRACT TEMPLATE, CLAUSES & META STATE ─────────────────
+  const [contractTemplate, setContractTemplate] = useState<ContractTemplateId>('service');
+  const [contractTitle, setContractTitle] = useState('SERVICE CONTRACT');
+  const [contractScopeDescription, setContractScopeDescription] = useState('Production and distribution of authentic brand campaign content across social media channels.');
+  const [contractConfidentiality, setContractConfidentiality] = useState(true);
+  const [contractGoverningLaw, setContractGoverningLaw] = useState('Ghana');
+  const [contractEndDate, setContractEndDate] = useState('');
+  const [contractExclusivity, setContractExclusivity] = useState('None');
+  const [contractCustomTerms, setContractCustomTerms] = useState('');
+  const [contractKillFee, setContractKillFee] = useState(50);
+
+  // ─── LETTERHEAD TEMPLATE & PROPOSAL STATE ─────────────────────
+  const [letterheadTemplate, setLetterheadTemplate] = useState<LetterheadTemplateId>('creative');
+  const [letterheadTitle, setLetterheadTitle] = useState('Campaign Proposal');
+  const [letterheadAudienceFocus, setLetterheadAudienceFocus] = useState('Ghana & West Africa Diaspora');
+  const [letterheadEngagementRate, setLetterheadEngagementRate] = useState('82% Mobile · High Conversion');
+  const [letterheadTrackRecord, setLetterheadTrackRecord] = useState('4K Cinematic Social Storytelling');
+  const [letterheadIntro, setLetterheadIntro] = useState('');
+  const [letterheadBody, setLetterheadBody] = useState('');
+
+  const handleSelectContractPreset = (preset: string) => {
+    if (preset === 'service') {
+      setContractTemplate('service');
+      setContractTitle('SERVICE CONTRACT');
+      setContractScopeDescription('Provision of creative video production, brand integration, and organic social media posting.');
+      setContractConfidentiality(true);
+      setContractExclusivity('None');
+    } else if (preset === 'sponsorship') {
+      setContractTemplate('creator');
+      setContractTitle('CONTENT CREATOR SPONSORSHIP & LICENSING AGREEMENT');
+      setContractScopeDescription('Dedicated multi-platform influencer sponsorship campaign including custom content creation, product placement, and organic distribution.');
+      setContractConfidentiality(true);
+      setContractExclusivity('30 Days Category Exclusive');
+    } else if (preset === 'business') {
+      setContractTemplate('business');
+      setContractTitle('BUSINESS CONTRACT AGREEMENT');
+      setContractScopeDescription('Professional creative services, brand asset creation, and content consulting.');
+      setContractConfidentiality(true);
+      setContractExclusivity('None');
+    } else if (preset === 'nda') {
+      setContractTemplate('service');
+      setContractTitle('NON-DISCLOSURE & PROPRIETARY INFORMATION AGREEMENT');
+      setContractScopeDescription('Mutual protection of confidential business strategies, unreleased product features, and marketing campaigns.');
+      setContractConfidentiality(true);
+      setContractExclusivity('None');
+    } else if (preset === 'contractor') {
+      setContractTemplate('service');
+      setContractTitle('INDEPENDENT CONTRACTOR AGREEMENT');
+      setContractScopeDescription('Independent contractor creative production services.');
+      setContractConfidentiality(true);
+      setContractExclusivity('None');
+    }
+  };
+
+  const handleSelectContractTemplate = (t: ContractTemplateId) => {
+    setContractTemplate(t);
+    if (t === 'service') {
+      setContractTitle('SERVICE CONTRACT');
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+    } else if (t === 'business') {
+      setContractTitle('BUSINESS CONTRACT AGREEMENT');
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+    } else {
+      setContractTitle('CONTENT CREATOR SPONSORSHIP & LICENSING AGREEMENT');
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+    }
+  };
+
+  const handleSelectTemplate = (t: InvoiceTemplateId) => {
+    setInvoiceTemplate(t);
+    if (t === 'navy') {
+      setHeadingFont('Oswald');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+      setPrimaryColor('#162a45');
+      setAccentColor('#e15b3c');
+    } else if (t === 'ledger') {
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+      setPrimaryColor('#000000');
+      setAccentColor('#10b981');
+    } else if (t === 'slate') {
+      setHeadingFont('DM Serif Display');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+      setPrimaryColor('#283548');
+      setAccentColor('#334155');
+    } else {
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+      setPrimaryColor('#000000');
+      setAccentColor('#FFE500');
+    }
+  };
 
   // ─── DELIVERABLES ─────────────────────────────────────────────
   const [items, setItems] = useState<DeliverableItem[]>([
@@ -221,6 +342,7 @@ function BusinessSuiteContent() {
       bn: bankName,
       ba: bankAccountNumber,
       lg: logoUrl ?? undefined,
+      br: brandingOn ? 1 : 0,
     };
   };
 
@@ -413,286 +535,156 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
       ? `${window.location.origin}/receipt?r=${encodeReceipt({ ...buildReceiptPayload(), lg: undefined })}`
       : undefined);
 
-  // Document bodies (shared between the live preview and the animated printer)
+  // Full invoice data object passed to the chosen template
+  const invoiceDocData: InvoiceData = {
+    creatorName,
+    creatorHandle,
+    creatorEmail,
+    creatorPhone,
+    creatorLocation,
+    creatorNiche,
+    logoUrl,
+    clientName,
+    clientContact,
+    clientEmail,
+    clientAddress,
+    shippingAddress,
+    invoiceNumber,
+    poNumber,
+    issueDate,
+    dueDate,
+    currency,
+    sym,
+    items,
+    subtotal,
+    discountAmount,
+    taxPercentage,
+    tax,
+    totalAmount,
+    depositPercentage,
+    depositRequired,
+    amountPaid,
+    balanceDue,
+    paymentType,
+    momoNetwork,
+    momoNumber,
+    momoName,
+    bankName,
+    bankAccountName,
+    bankAccountNumber,
+    paystackLink,
+    wireSwift,
+    wireIban,
+    usagePeriod,
+    revisionRounds,
+    turnaroundDays,
+    signatureName,
+    customNotes,
+    headingFont,
+    bodyFont,
+    signatureFont,
+    primaryColor,
+    accentColor,
+  };
+
   const invoiceDocument = (
-    <div>
-      {/* Billed To / Invoice Details */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 32, marginBottom: 32 }}>
-        <div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Billed To
-          </div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginTop: 8 }}>
-            {clientName}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#4b5563', marginTop: 4 }}>
-            Attn: {clientContact}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>
-            {clientEmail} {clientAddress && `· ${clientAddress}`}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-            <span style={{ color: '#6b7280' }}>Issue Date</span>
-            <span style={{ fontWeight: 600, color: '#111827' }}>{issueDate}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-            <span style={{ color: '#6b7280' }}>Payment Due</span>
-            <span style={{ fontWeight: 700, color: '#dc2626' }}>{dueDate}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 16 }}>
-            <span style={{ color: '#6b7280', flexShrink: 0 }}>Deposit Required</span>
-            <span style={{ fontWeight: 600, color: '#111827', textAlign: 'right' }}>{depositPercentage}% to lock shoot date</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Deliverables Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 28 }}>
-        <thead>
-          <tr>
-            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>#</th>
-            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Campaign Deliverable / Scope</th>
-            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'center', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Qty</th>
-            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'right', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Rate</th>
-            <th style={{ padding: '9px 10px', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'right', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, idx) => (
-            <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-              <td style={{ padding: '12px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', verticalAlign: 'top' }}>{idx + 1}</td>
-              <td style={{ padding: '12px 10px', fontSize: '0.82rem', fontWeight: 500, color: '#374151', verticalAlign: 'top' }}>{item.description}</td>
-              <td style={{ padding: '12px 10px', fontSize: '0.78rem', fontWeight: 600, color: '#374151', textAlign: 'center', verticalAlign: 'top' }}>{item.quantity}</td>
-              <td style={{ padding: '12px 10px', fontSize: '0.78rem', fontWeight: 600, color: '#374151', textAlign: 'right', verticalAlign: 'top' }}>{sym}{item.rate.toLocaleString()}</td>
-              <td style={{ padding: '12px 10px', fontSize: '0.82rem', fontWeight: 700, color: '#111827', textAlign: 'right', verticalAlign: 'top' }}>{sym}{(item.quantity * item.rate).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Totals & Deposit Summary */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 28 }}>
-        <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
-            <span>Subtotal</span>
-            <span style={{ fontWeight: 600, color: '#111827' }}>{sym}{subtotal.toLocaleString()}</span>
-          </div>
-          {taxPercentage > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
-              <span>Withholding Tax ({taxPercentage}%)</span>
-              <span style={{ fontWeight: 600, color: '#111827' }}>{sym}{tax.toLocaleString()}</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 800, color: '#111827', borderTop: '1px solid #e5e7eb', paddingTop: 10, marginTop: 2 }}>
-            <span>Total Campaign Fee</span>
-            <span>{sym}{totalAmount.toLocaleString()}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', background: '#000', color: '#fff', padding: '12px 14px', marginTop: 6 }}>
-            <span style={{ fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.03em' }}>{depositPercentage}% DEPOSIT DUE NOW</span>
-            <span style={{ fontSize: '1rem', fontWeight: 800 }}>{sym}{depositRequired.toLocaleString()}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#9ca3af', padding: '0 2px' }}>
-            <span>Balance on approval</span>
-            <span style={{ fontWeight: 600 }}>{sym}{balanceDue.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Payment Details & Deal Terms */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 32, borderTop: '1px solid #f3f4f6', paddingTop: 20 }}>
-        <div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
-            Payment Details
-          </div>
-          {paymentType === 'momo' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Network</span>
-                <span style={{ fontWeight: 600, color: '#111827' }}>{momoNetwork}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>MoMo Number</span>
-                <span style={{ fontWeight: 700, color: '#111827' }}>{momoNumber}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Account Name</span>
-                <span style={{ fontWeight: 600, color: '#111827' }}>{momoName}</span>
-              </div>
-            </div>
-          )}
-          {paymentType === 'bank' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Bank</span>
-                <span style={{ fontWeight: 600, color: '#111827' }}>{bankName}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Account Number</span>
-                <span style={{ fontWeight: 700, color: '#111827' }}>{bankAccountNumber}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Account Name</span>
-                <span style={{ fontWeight: 600, color: '#111827' }}>{bankAccountName}</span>
-              </div>
-            </div>
-          )}
-          {paymentType === 'paystack' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                <span style={{ color: '#6b7280', flexShrink: 0 }}>Pay Online</span>
-                <span style={{ fontWeight: 600, color: '#111827', textAlign: 'right', wordBreak: 'break-all' }}>{paystackLink}</span>
-              </div>
-            </div>
-          )}
-          {paymentType === 'wire' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '0.78rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>SWIFT</span>
-                <span style={{ fontWeight: 700, color: '#111827' }}>{wireSwift}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>IBAN</span>
-                <span style={{ fontWeight: 700, color: '#111827' }}>{wireIban}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
-            Deal Terms
-          </div>
-          <ul style={{ fontSize: '0.74rem', color: '#4b5563', paddingLeft: 16, margin: 0, lineHeight: 1.7 }}>
-            <li>Production begins after the deposit is confirmed.</li>
-            <li>Includes max <strong>{revisionRounds} rounds</strong> of minor edits.</li>
-            <li>Usage license: <strong>{usagePeriod}</strong>.</li>
-            <li>Paid whitelisting / Spark ads requires separate written consent.</li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Invoice footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, borderTop: '1px solid #f3f4f6', paddingTop: 14, marginTop: 24 }}>
-        <div style={{ fontSize: '0.7rem', color: '#71717a' }}>
-          Thank you for your business — {creatorName}
-        </div>
-        <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Powered by CreatorKit
-        </div>
-      </div>
-    </div>
+    <InvoiceDocumentRenderer templateId={invoiceTemplate} data={invoiceDocData} showBranding={brandingOn} />
   );
+
+  const contractDocData: ContractData = {
+    creatorName,
+    creatorHandle,
+    creatorEmail,
+    creatorPhone,
+    creatorLocation,
+    creatorAddress: creatorLocation,
+    logoUrl,
+    clientName,
+    clientContact,
+    clientEmail,
+    clientAddress,
+    contractNumber: invoiceNumber.replace('INV-', 'AGR-'),
+    contractTitle,
+    effectiveDate: issueDate,
+    endDate: contractEndDate || undefined,
+    currency,
+    sym,
+    scopeDescription: contractScopeDescription || undefined,
+    items,
+    totalAmount,
+    depositPercentage,
+    depositRequired,
+    balanceDue,
+    paymentType: 'fixed',
+    paymentMethodDetails:
+      paymentType === 'momo'
+        ? `MTN / Vodafone Mobile Money (${momoNetwork}: ${momoNumber} - ${momoName})`
+        : paymentType === 'bank'
+          ? `Bank Transfer (${bankName} - Acct: ${bankAccountNumber} / ${bankAccountName})`
+          : paymentType === 'paystack'
+            ? `Paystack Payment Link`
+            : `USD Wire Transfer (SWIFT: ${wireSwift})`,
+    usagePeriod,
+    revisionRounds,
+    turnaroundDays,
+    confidentiality: contractConfidentiality,
+    governingLaw: contractGoverningLaw,
+    exclusivity: contractExclusivity,
+    customTerms: contractCustomTerms || undefined,
+    killFeePercentage: contractKillFee,
+    serviceProviderSignName: signatureName || creatorName,
+    clientSignName: '',
+    headingFont,
+    bodyFont,
+    signatureFont,
+    primaryColor,
+    accentColor,
+  };
 
   const agreementDocument = (
-    <div style={{ fontSize: '0.78rem', lineHeight: 1.6, color: '#222' }}>
-      <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#71717a', borderBottom: '1px dashed #d4d4d8', paddingBottom: 8, marginBottom: 14 }}>
-        CONTENT CREATOR SPONSORSHIP &amp; LICENSING AGREEMENT
-      </div>
-      <p>
-        This agreement is entered into on <strong>{issueDate}</strong> between <strong>{creatorName}</strong> (&quot;Creator&quot;) and <strong>{clientName}</strong> (&quot;Brand/Client&quot;).
-      </p>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>1. Scope of Deliverables</div>
-        <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-          {items.map((i) => (
-            <li key={i.id}>
-              {i.quantity}x {i.description}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>2. Compensation &amp; Payment Terms</div>
-        <p style={{ margin: 0 }}>
-          Total compensation is <strong>{sym}{totalAmount.toLocaleString()}</strong>. A non-refundable deposit of <strong>{depositPercentage}% ({sym}{depositRequired.toLocaleString()})</strong> is required prior to production commencement. The balance of <strong>{sym}{balanceDue.toLocaleString()}</strong> is due upon draft approval prior to public release.
-        </p>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>3. Revisions &amp; Approvals</div>
-        <p style={{ margin: 0 }}>
-          The campaign includes up to <strong>{revisionRounds} rounds of minor revisions</strong> aligned with the agreed creative brief. Full script changes or re-shoots requested after filming will incur a separate 50% re-shoot fee.
-        </p>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>4. Usage Rights &amp; Whitelisting</div>
-        <p style={{ margin: 0 }}>
-          Creator grants Brand the right to use the content for <strong>{usagePeriod}</strong> across organic social media channels. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require separate written licensing agreement.
-        </p>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>5. Cancellation &amp; Kill Fee</div>
-        <p style={{ margin: 0 }}>
-          If Brand cancels the campaign after filming has occurred, Creator shall retain the {depositPercentage}% deposit as a kill fee to cover production expenses.
-        </p>
-      </div>
-
-      {/* Signatures */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, marginTop: 30, borderTop: '1px dashed #d4d4d8', paddingTop: 20 }}>
-        <div>
-          <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR CREATOR:</div>
-          <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
-          <div style={{ fontWeight: 800, marginTop: 4 }}>{creatorName}</div>
-          <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: {issueDate}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace' }}>FOR BRAND / AGENCY:</div>
-          <div style={{ height: 40, borderBottom: '1px solid #000', marginTop: 10 }} />
-          <div style={{ fontWeight: 800, marginTop: 4 }}>{clientContact} ({clientName})</div>
-          <div style={{ fontSize: '0.68rem', color: '#666' }}>Date: _______________</div>
-        </div>
-      </div>
-    </div>
+    <ContractDocumentRenderer
+      templateId={contractTemplate}
+      data={contractDocData}
+      showBranding={brandingOn}
+    />
   );
 
+  const letterheadDocData: LetterheadData = {
+    creatorName,
+    creatorHandle,
+    creatorEmail,
+    creatorPhone,
+    creatorLocation,
+    creatorNiche,
+    logoUrl,
+    clientName,
+    clientContact,
+    clientEmail,
+    clientAddress,
+    issueDate,
+    letterheadNumber: invoiceNumber,
+    letterTitle: letterheadTitle,
+    audienceFocus: letterheadAudienceFocus,
+    engagementRate: letterheadEngagementRate,
+    trackRecord: letterheadTrackRecord,
+    introText: letterheadIntro || undefined,
+    bodyText: letterheadBody || undefined,
+    items,
+    totalAmount,
+    currency,
+    sym,
+    headingFont,
+    bodyFont,
+    primaryColor,
+    accentColor,
+  };
+
   const letterheadDocument = (
-    <div style={{ fontSize: '0.82rem', lineHeight: 1.7 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 20, background: '#fef08a', border: '2px solid #000', padding: '10px 12px' }}>
-        <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>AUDIENCE HIGHLIGHTS</div>
-        <div style={{ fontSize: '0.75rem' }}>Ghana &amp; Nigeria Diaspora Focus · 82% Mobile Engagement · High Conversion</div>
-      </div>
-
-      <p>Dear {clientContact || 'Partnerships Lead'},</p>
-      <p>
-        I am writing to officially propose a high-impact content partnership between <strong>{creatorName}</strong> ({creatorHandle}) and <strong>{clientName}</strong>.
-      </p>
-      <p>
-        As an active {creatorNiche}, my community trusts my recommendations for authentic product storytelling, high-energy hooks, and engaging social video.
-      </p>
-      <p>
-        Below is the recommended campaign package tailored for your marketing goals:
-      </p>
-
-      <div style={{ background: '#fafafa', padding: '12px 14px', border: '1px dashed #d4d4d8', margin: '14px 0' }}>
-        {items.map((i) => (
-          <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '0.78rem', fontWeight: 600, marginBottom: 6 }}>
-            <span>{i.quantity}x {i.description}</span>
-            <span style={{ fontWeight: 800, flexShrink: 0 }}>{sym}{(i.quantity * i.rate).toLocaleString()}</span>
-          </div>
-        ))}
-        <div style={{ borderTop: '2px solid #000', paddingTop: 8, marginTop: 8, fontWeight: 900, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Package Investment</span>
-          <span>{sym}{totalAmount.toLocaleString()}</span>
-        </div>
-      </div>
-
-      <p>
-        I look forward to discussing how we can bring this campaign to life. Please reach me directly at {creatorPhone} or {creatorEmail}.
-      </p>
-
-      <div style={{ marginTop: 24 }}>
-        <div>Warm regards,</div>
-        <div style={{ fontWeight: 900, fontSize: '0.95rem', marginTop: 4 }}>{creatorName}</div>
-        <div style={{ fontSize: '0.72rem', color: '#666' }}>{creatorHandle} · {creatorLocation}</div>
-      </div>
-    </div>
+    <LetterheadDocumentRenderer
+      templateId={letterheadTemplate}
+      data={letterheadDocData}
+      showBranding={brandingOn}
+    />
   );
 
   return (
@@ -704,7 +696,11 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
         @media print {
           .ck-noprint { display: none !important; }
           body * { visibility: hidden; }
-          #printable-document, #printable-document * { visibility: visible; }
+          #printable-document, #printable-document * { 
+            visibility: visible; 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+          }
           #printable-document {
             position: absolute !important;
             left: 0 !important;
@@ -763,6 +759,28 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
           {/* Quick Actions (Print, WhatsApp copy, Currency) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* CreatorKit badge toggle — controls branding on all printed documents */}
+            <button
+              onClick={() => setBrandingOn((v) => !v)}
+              title="Show or hide the 'Powered by CreatorKit' badge on printed documents"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 12px',
+                background: brandingOn ? '#000' : '#fff',
+                color: brandingOn ? '#fff' : '#000',
+                border: '2px solid #000',
+                fontWeight: 900,
+                fontSize: '0.72rem',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                boxShadow: '2px 2px 0 #000',
+              }}
+            >
+              {brandingOn ? <Check size={13} /> : <X size={13} />} BADGE: {brandingOn ? 'ON' : 'OFF'}
+            </button>
+
             {/* Currency Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '2px solid #000', padding: '4px 8px', background: '#fff' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace' }}>CURRENCY:</span>
@@ -914,6 +932,617 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
         >
           {/* ─── LEFT COLUMN: BUILDER & SETTINGS CONTROLS ─── */}
           <div className="ck-noprint" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* 0. Invoice Template Picker (When on Invoice Tab) */}
+            {activeTab === 'invoice' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    INVOICE DESIGN TEMPLATE
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                    4 STYLES
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
+                    { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
+                    { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
+                    { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
+                  ].map((tpl) => {
+                    const isCurrent = invoiceTemplate === tpl.id;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => handleSelectTemplate(tpl.id as InvoiceTemplateId)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 10px',
+                          background: isCurrent ? '#FFE500' : '#f9fafb',
+                          color: '#000',
+                          border: '2px solid #000',
+                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 3,
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                          {isCurrent ? '✓ ' : ''}{tpl.title}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                          {tpl.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Typography Customization (When on Invoice Tab) */}
+            {activeTab === 'invoice' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    TYPOGRAPHY (52 GOOGLE FONTS)
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                    CUSTOMIZE FONTS
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      TITLE / HEADING FONT
+                    </label>
+                    <select
+                      value={headingFont}
+                      onChange={(e) => setHeadingFont(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      {GOOGLE_FONTS_LIST.map((f) => (
+                        <option key={`heading-${f.id}`} value={f.name}>
+                          {f.name} ({f.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      BODY &amp; TABLE FONT
+                    </label>
+                    <select
+                      value={bodyFont}
+                      onChange={(e) => setBodyFont(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      {GOOGLE_FONTS_LIST.map((f) => (
+                        <option key={`body-${f.id}`} value={f.name}>
+                          {f.name} ({f.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                    SIGNATURE &amp; SCRIPT FONT
+                  </label>
+                  <select
+                    value={signatureFont}
+                    onChange={(e) => setSignatureFont(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                  >
+                    {GOOGLE_FONTS_LIST.map((f) => (
+                      <option key={`sig-${f.id}`} value={f.name}>
+                        {f.name} ({f.category})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Color & Accent Highlights Customization (When on Invoice Tab) */}
+            {activeTab === 'invoice' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    COLOR THEME &amp; HIGHLIGHTS
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                    LIVE PALETTE
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  {/* Primary / Frame Color */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                      PRIMARY COLOR
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <input
+                        type="color"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {primaryColor.toUpperCase()}
+                      </span>
+                    </div>
+                    {/* Quick Swatches */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {[
+                        { label: 'Navy', hex: '#162a45' },
+                        { label: 'Slate', hex: '#283548' },
+                        { label: 'Black', hex: '#000000' },
+                        { label: 'Royal', hex: '#1e3a8a' },
+                        { label: 'Pine', hex: '#064e3b' },
+                        { label: 'Wine', hex: '#7f1d1d' },
+                      ].map((swatch) => (
+                        <button
+                          key={swatch.hex}
+                          type="button"
+                          title={swatch.label}
+                          onClick={() => setPrimaryColor(swatch.hex)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            background: swatch.hex,
+                            border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                            boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Accent / Highlight Color */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                      ACCENT / HIGHLIGHT
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <input
+                        type="color"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {accentColor.toUpperCase()}
+                      </span>
+                    </div>
+                    {/* Quick Swatches */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {[
+                        { label: 'Terracotta', hex: '#e15b3c' },
+                        { label: 'Gold', hex: '#eab308' },
+                        { label: 'Emerald', hex: '#10b981' },
+                        { label: 'Cyan', hex: '#06b6d4' },
+                        { label: 'Rose', hex: '#e11d48' },
+                        { label: 'Neon', hex: '#FFE500' },
+                      ].map((swatch) => (
+                        <button
+                          key={swatch.hex}
+                          type="button"
+                          title={swatch.label}
+                          onClick={() => setAccentColor(swatch.hex)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            background: swatch.hex,
+                            border: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                            boxShadow: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #000' : 'none',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 0. Contract Template & Clause Customizer (When on Agreement Tab) */}
+            {activeTab === 'agreement' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    CONTRACT LEGAL TEMPLATE
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                    3 FORMATS
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+                  {[
+                    { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
+                    { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
+                    { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
+                  ].map((tpl) => {
+                    const isCurrent = contractTemplate === tpl.id;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => handleSelectContractTemplate(tpl.id as ContractTemplateId)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 10px',
+                          background: isCurrent ? '#FFE500' : '#f9fafb',
+                          color: '#000',
+                          border: '2px solid #000',
+                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 3,
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                          {isCurrent ? '✓ ' : ''}{tpl.title}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                          {tpl.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Quick Presets */}
+                <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
+                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                    QUICK LEGAL PRESETS (1-CLICK LOAD)
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {[
+                      { id: 'service', label: 'Standard Service' },
+                      { id: 'sponsorship', label: 'Influencer Deal' },
+                      { id: 'business', label: 'Agency Agreement' },
+                      { id: 'nda', label: 'Mutual NDA' },
+                      { id: 'contractor', label: 'Contractor' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectContractPreset(p.id)}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #000',
+                          padding: '4px 8px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contract Meta & Clauses Customization */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      CONTRACT TITLE
+                    </label>
+                    <input
+                      type="text"
+                      value={contractTitle}
+                      onChange={(e) => setContractTitle(e.target.value)}
+                      placeholder="SERVICE CONTRACT"
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      SCOPE OVERVIEW &amp; CAMPAIGN BRIEF
+                    </label>
+                    <textarea
+                      value={contractScopeDescription}
+                      onChange={(e) => setContractScopeDescription(e.target.value)}
+                      placeholder="Describe the nature of the campaign and deliverables..."
+                      rows={2}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        EXCLUSIVITY CLAUSE
+                      </label>
+                      <select
+                        value={contractExclusivity}
+                        onChange={(e) => setContractExclusivity(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                      >
+                        <option value="None">None (Non-Exclusive)</option>
+                        <option value="30 Days Category Exclusive">30 Days Category Exclusive</option>
+                        <option value="60 Days Category Exclusive">60 Days Category Exclusive</option>
+                        <option value="90 Days Competitor Lockout">90 Days Competitor Lockout</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        KILL FEE / CANCEL DEPOSIT %
+                      </label>
+                      <input
+                        type="number"
+                        value={contractKillFee}
+                        onChange={(e) => setContractKillFee(parseInt(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        GOVERNING LAW
+                      </label>
+                      <input
+                        type="text"
+                        value={contractGoverningLaw}
+                        onChange={(e) => setContractGoverningLaw(e.target.value)}
+                        placeholder="Ghana"
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        CONFIDENTIALITY (NDA)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setContractConfidentiality((v) => !v)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          border: '1.5px solid #000',
+                          background: contractConfidentiality ? '#000' : '#fff',
+                          color: contractConfidentiality ? '#fff' : '#000',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          fontFamily: 'monospace',
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                        }}
+                      >
+                        {contractConfidentiality ? '✓ INCLUDED' : '✕ EXCLUDED'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      ADDITIONAL TERMS &amp; CUSTOM COVENANTS (OPTIONAL)
+                    </label>
+                    <textarea
+                      value={contractCustomTerms}
+                      onChange={(e) => setContractCustomTerms(e.target.value)}
+                      placeholder="Add any specific conditions, delivery dates, or sponsor obligations..."
+                      rows={2}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 0. Letterhead Template & Proposal Customizer (When on Letterhead Tab) */}
+            {activeTab === 'letterhead' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    PITCH LETTERHEAD TEMPLATE
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                    2 FORMATS
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                  {[
+                    { id: 'creative', title: 'Creative Pitch', desc: 'Media Kit & Highlights with Package table' },
+                    { id: 'executive', title: 'Executive Proposal', desc: 'Corporate proposal layout with deliverables' },
+                  ].map((tpl) => {
+                    const isCurrent = letterheadTemplate === tpl.id;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => setLetterheadTemplate(tpl.id as LetterheadTemplateId)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 10px',
+                          background: isCurrent ? '#FFE500' : '#f9fafb',
+                          color: '#000',
+                          border: '2px solid #000',
+                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 3,
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                          {isCurrent ? '✓ ' : ''}{tpl.title}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                          {tpl.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Letterhead Customization Inputs */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      PROPOSAL TITLE
+                    </label>
+                    <input
+                      type="text"
+                      value={letterheadTitle}
+                      onChange={(e) => setLetterheadTitle(e.target.value)}
+                      placeholder="Campaign Proposal"
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        AUDIENCE FOCUS
+                      </label>
+                      <input
+                        type="text"
+                        value={letterheadAudienceFocus}
+                        onChange={(e) => setLetterheadAudienceFocus(e.target.value)}
+                        placeholder="Ghana & Diaspora"
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        ENGAGEMENT HIGHLIGHT
+                      </label>
+                      <input
+                        type="text"
+                        value={letterheadEngagementRate}
+                        onChange={(e) => setLetterheadEngagementRate(e.target.value)}
+                        placeholder="82% Mobile · High Conversion"
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      CUSTOM INTRO / PROPOSAL HOOK (OPTIONAL)
+                    </label>
+                    <textarea
+                      value={letterheadIntro}
+                      onChange={(e) => setLetterheadIntro(e.target.value)}
+                      placeholder="Leave blank to use smart generated intro or write custom..."
+                      rows={2}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Typography Customization (When on Agreement or Letterhead Tab) */}
+            {(activeTab === 'agreement' || activeTab === 'letterhead') && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: 18,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                    DOCUMENT TYPOGRAPHY (52 GOOGLE FONTS)
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                    CUSTOMIZE FONTS
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      TITLE / HEADING FONT
+                    </label>
+                    <select
+                      value={headingFont}
+                      onChange={(e) => setHeadingFont(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      {GOOGLE_FONTS_LIST.map((f) => (
+                        <option key={`doc-heading-${f.id}`} value={f.name}>
+                          {f.name} ({f.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      BODY &amp; CLAUSE FONT
+                    </label>
+                    <select
+                      value={bodyFont}
+                      onChange={(e) => setBodyFont(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      {GOOGLE_FONTS_LIST.map((f) => (
+                        <option key={`doc-body-${f.id}`} value={f.name}>
+                          {f.name} ({f.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 1. Creator & Brand Info */}
             <div
               style={{
@@ -1006,6 +1635,32 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      CLIENT ADDRESS
+                    </label>
+                    <input
+                      type="text"
+                      value={clientAddress}
+                      onChange={(e) => setClientAddress(e.target.value)}
+                      placeholder="2 Court Square, New York..."
+                      style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                      CLIENT EMAIL
+                    </label>
+                    <input
+                      type="text"
+                      value={clientEmail}
+                      onChange={(e) => setClientEmail(e.target.value)}
+                      style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                    />
+                  </div>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
@@ -1032,6 +1687,63 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                     />
                   </div>
                 </div>
+
+                {activeTab === 'invoice' && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          DUE DATE
+                        </label>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={(e) => setDueDate(e.target.value)}
+                          style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          P.O. NUMBER (OPTIONAL)
+                        </label>
+                        <input
+                          type="text"
+                          value={poNumber}
+                          onChange={(e) => setPoNumber(e.target.value)}
+                          placeholder="e.g. 2312/2019"
+                          style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          SHIPPING ADDRESS / SHIP TO
+                        </label>
+                        <input
+                          type="text"
+                          value={shippingAddress}
+                          onChange={(e) => setShippingAddress(e.target.value)}
+                          placeholder="3787 Pineview Drive..."
+                          style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          SIGNATURE NAME (SCRIPT)
+                        </label>
+                        <input
+                          type="text"
+                          value={signatureName}
+                          onChange={(e) => setSignatureName(e.target.value)}
+                          placeholder="e.g. John Smith"
+                          style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1054,6 +1766,35 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </div>
 
               {/* 1-Click Preset Buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, borderBottom: '1px dashed #ccc', paddingBottom: 10 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
+                    TAX / VAT (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={taxPercentage}
+                    onChange={(e) => setTaxPercentage(parseFloat(e.target.value) || 0)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
+                    DISCOUNT ({sym})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                  />
+                </div>
+              </div>
+
               <div style={{ marginBottom: 14 }}>
                 <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 6, color: '#555' }}>
                   + QUICK ADD PRESET (GH/NG RATES):
@@ -1428,171 +2169,282 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
             </div>
           </div>
 
-          {/* ─── RIGHT COLUMN: LIVE BRANDED DOCUMENT PREVIEW (PRINTABLE) ─── */}
-          <div
-            ref={printAreaRef}
-            id="printable-document"
-            style={
-              activeTab !== 'receipt'
-                ? {
-                  background: '#ffffff',
-                  border: '1px solid #e4e4e7',
-                  boxShadow: '0 24px 48px -24px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.06)',
-                  padding: 'clamp(28px, 4vw, 48px)',
-                  maxWidth: 860,
-                  margin: '0 auto',
-                  position: 'sticky',
-                  top: 80,
-                  minHeight: 680,
-                  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                }
-                : {
-                  position: 'sticky',
-                  top: 80,
-                }
-            }
-          >
-            {/* Header / Watermark badge (the receipt tab uses the thermal receipt's own header) */}
+          {/* ─── RIGHT COLUMN: PREVIEW & ACTIONS ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Top Document Action Bar (Only when not on receipt tab) */}
             {activeTab !== 'receipt' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: 20, marginBottom: 24, gap: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                  {logoUrl && (
-                    <img
-                      src={logoUrl}
-                      alt={`${creatorName} logo`}
-                      style={{ height: 54, width: 54, objectFit: 'contain', border: '1px solid #e4e4e7', background: '#fff', padding: 3, flexShrink: 0 }}
-                    />
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
-                      {creatorName}
-                    </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#444', marginTop: 2 }}>
-                      {creatorHandle} · {creatorNiche}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#666', marginTop: 4 }}>
-                      {creatorPhone} | {creatorEmail} | {creatorLocation}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.02em', textTransform: 'uppercase', lineHeight: 1.15 }}>
-                    {activeTab === 'invoice' && 'Brand Deal Invoice'}
-                    {activeTab === 'agreement' && 'Influencer Agreement'}
-                    {activeTab === 'letterhead' && 'Pitch Letterhead'}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', marginTop: 8, color: '#71717a', letterSpacing: '0.04em' }}>
-                    NO: {invoiceNumber}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#71717a', letterSpacing: '0.04em' }}>
-                    DATE: {issueDate}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'invoice' && invoiceDocument}
-
-            {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
-            {activeTab === 'receipt' && (
-              <div>
-                {/* ─── THERMAL RECEIPT PREVIEW — pixel-identical to the printer output ─── */}
-                <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
-                  <div
+              <div
+                className="ck-noprint"
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: '12px 18px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span
                     style={{
-                      width: 355,
-                      background: '#fafafa',
-                      color: '#09090b',
-                      padding: '28px 24px 32px',
-                      clipPath: receiptClipPath,
-                      boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
+                      fontSize: '0.7rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      background: '#000',
+                      color: '#fff',
+                      padding: '3px 8px',
                     }}
                   >
-                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
-                  </div>
+                    {activeTab === 'invoice' ? 'INVOICE' : activeTab === 'agreement' ? 'CONTRACT' : 'LETTERHEAD'}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
+                    Live Document Preview
+                  </span>
                 </div>
 
-                {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
-                <div className="ck-noprint" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-                  <input
-                    ref={logoFileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    onChange={handleLogoUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => logoFileInputRef.current?.click()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
-                  >
-                    <ImagePlus size={14} /> {logoUrl ? 'Change Logo' : 'Upload Your Logo'}
-                  </button>
-                  {logoUrl && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '2px solid #000', background: '#fff', padding: '4px 8px', boxShadow: '3px 3px 0 #000' }}>
-                      <img src={logoUrl} alt="Brand logo" style={{ height: 26, width: 'auto', objectFit: 'contain' }} />
-                      <button
-                        onClick={() => setLogoUrl(null)}
-                        aria-label="Remove logo"
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', color: '#000' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     onClick={startAnimatedPrint}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 rgba(0,0,0,0.35)', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', marginLeft: 'auto' }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: '#FFE500',
+                      color: '#000',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      padding: '7px 16px',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                    }}
                   >
-                    <Printer size={14} /> Print Animated Receipt
+                    <Printer size={15} /> Print / Save PDF
                   </button>
                   <button
-                    onClick={copyClientLink}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                    onClick={copyWhatsAppSummary}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      padding: '7px 14px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                    }}
                   >
-                    <Share2 size={14} /> {clientLinkCopied ? 'Link Copied!' : 'Copy Client Link'}
+                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied!' : 'Copy Summary'}
                   </button>
                   <button
-                    onClick={shareReceiptOnWhatsApp}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                    onClick={sendWhatsAppSummary}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: '#16a34a',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      padding: '7px 14px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                    }}
                   >
                     Send on WhatsApp
                   </button>
-                  <div style={{ flexBasis: '100%', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
-                    CLIENT FLOW: they open the link, watch the receipt print itself, then download or print it — no account needed.
-                  </div>
                 </div>
-
               </div>
             )}
 
-            {activeTab === 'agreement' && agreementDocument}
+            {/* ─── LIVE BRANDED DOCUMENT CANVAS (PRINTABLE) ─── */}
+            <div
+              ref={printAreaRef}
+              id="printable-document"
+              style={
+                activeTab === 'receipt'
+                  ? {}
+                  : {
+                    background: '#ffffff',
+                    border: '1px solid #e4e4e7',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                    maxWidth: 820,
+                    width: '100%',
+                    margin: '0 auto',
+                    minHeight: 700,
+                    padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
+                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                  }
+              }
+            >
+              {activeTab === 'invoice' && invoiceDocument}
 
-            {activeTab === 'letterhead' && letterheadDocument}
+              {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
+              {activeTab === 'receipt' && (
+                <div>
+                  {/* ─── THERMAL RECEIPT PREVIEW ─── */}
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
+                    <div
+                      style={{
+                        width: 355,
+                        background: '#fafafa',
+                        color: '#09090b',
+                        padding: '28px 24px 32px',
+                        clipPath: receiptClipPath,
+                        boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
+                      }}
+                    >
+                      <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
+                    </div>
+                  </div>
 
-            {/* ─── DOCUMENT ACTIONS: print & share any document (hidden when printing) ─── */}
+                  {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
+                  <div className="ck-noprint" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 24 }}>
+                    <input
+                      ref={logoFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      onChange={handleLogoUpload}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      onClick={() => logoFileInputRef.current?.click()}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      <ImagePlus size={14} /> {logoUrl ? 'Change Logo' : 'Upload Brand Logo'}
+                    </button>
+                    {logoUrl && (
+                      <button
+                        onClick={() => setLogoUrl(null)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
+                      >
+                        <Trash2 size={12} /> Remove
+                      </button>
+                    )}
+
+                    <button
+                      onClick={startAnimatedPrint}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      <Printer size={14} /> Print Receipt
+                    </button>
+                    <button
+                      onClick={copyClientLink}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Link Copied' : 'Client Link'}
+                    </button>
+                    <button
+                      onClick={shareReceiptOnWhatsApp}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 10px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      WhatsApp
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'agreement' && agreementDocument}
+
+              {activeTab === 'letterhead' && letterheadDocument}
+            </div>
+
+            {/* Bottom Action Bar */}
             {activeTab !== 'receipt' && (
-              <div className="ck-noprint" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 28 }}>
-                <button
-                  onClick={startAnimatedPrint}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 rgba(0,0,0,0.35)', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
-                >
-                  <Printer size={14} /> Print {activeTab === 'invoice' ? 'Invoice' : activeTab === 'agreement' ? 'Contract' : 'Pitch'}
-                </button>
-                <button
-                  onClick={copyWhatsAppSummary}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
-                >
-                  {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Summary Copied!' : 'Copy Summary'}
-                </button>
-                <button
-                  onClick={sendWhatsAppSummary}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 14px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
-                >
-                  Send on WhatsApp
-                </button>
-                <div style={{ flexBasis: '100%', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
-                  Watch it print in the thermal printer, then Print / Save PDF — the file contains just the document.
+              <div
+                className="ck-noprint"
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: '0.75rem', color: '#666', fontWeight: 600 }}>
+                  Ready to bill? Click Print to generate or download clean PDF.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, width: '100%' }}>
+                  <button
+                    onClick={startAnimatedPrint}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#FFE500',
+                      color: '#000',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 8px',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Printer size={14} /> Print
+                  </button>
+                  <button
+                    onClick={copyWhatsAppSummary}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#fff',
+                      color: '#000',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 8px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={sendWhatsAppSummary}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#16a34a',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 8px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    WhatsApp
+                  </button>
                 </div>
               </div>
             )}
@@ -1600,14 +2452,33 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
         </div>
       </div>
 
-      {/* ─── ANIMATED THERMAL RECEIPT PRINTER OVERLAY ─── */}
+      {/* ─── ANIMATED PRINTER OVERLAY (For all documents: Invoices, Receipts, Contracts, Letterheads) ─── */}
       {printStage !== 'idle' && (
         <div
           className="ck-noprint"
-          style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.82)', display: 'flex', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
         >
-          <div style={{ margin: 'auto', width: '100%', maxWidth: activeTab === 'receipt' ? 420 : 560, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-            <div style={{ alignSelf: 'flex-end' }}>
+          <div
+            style={{
+              margin: 'auto',
+              width: '100%',
+              maxWidth: activeTab === 'receipt' ? 420 : 860,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 14,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#fff' }}>
+                {activeTab === 'receipt'
+                  ? 'THERMAL RECEIPT PRINTER'
+                  : activeTab === 'invoice'
+                    ? 'INVOICE PRINTER'
+                    : activeTab === 'agreement'
+                      ? 'CONTRACT PRINTER'
+                      : 'LETTERHEAD PRINTER'}
+              </span>
               <button
                 onClick={closeAnimatedPrint}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '6px 12px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
@@ -1616,11 +2487,19 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </button>
             </div>
 
-            <ReceiptPrinter.Root stage={printStage} feedMotion="stepped" className={activeTab !== 'receipt' ? 'max-w-md' : undefined}>
+            <ReceiptPrinter.Root
+              stage={printStage}
+              feedMotion="stepped"
+              className={activeTab === 'receipt' ? 'max-w-sm' : 'max-w-4xl'}
+            >
               <ReceiptPrinter.Machine>
                 <ReceiptPrinter.Header>
                   <ReceiptPrinter.Status>
-                    {printStage === 'processing' ? 'Processing payment…' : printStage === 'printing' ? 'Printing receipt…' : 'Receipt ready'}
+                    {printStage === 'processing'
+                      ? 'Processing document…'
+                      : printStage === 'printing'
+                        ? `Printing ${activeTab === 'invoice' ? 'Invoice' : activeTab === 'agreement' ? 'Contract' : activeTab === 'letterhead' ? 'Letterhead' : 'Receipt'}…`
+                        : 'Document ready'}
                   </ReceiptPrinter.Status>
                   <span className="rounded-[0.25rem] bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
                     CreatorKit
@@ -1631,8 +2510,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                     <span>{sym}{activeTab === 'receipt' ? amountPaid.toLocaleString() : totalAmount.toLocaleString()}</span>
                     <span>
                       {activeTab === 'receipt'
-                        ? amountPaid >= totalAmount ? 'Paid in full' : 'Partial'
-                        : activeTab === 'invoice' ? 'Invoice' : activeTab === 'agreement' ? 'Contract' : 'Pitch'}
+                        ? (amountPaid >= totalAmount ? 'Paid in full' : 'Partial')
+                        : activeTab === 'invoice'
+                          ? 'INVOICE READY'
+                          : activeTab === 'agreement'
+                            ? 'CONTRACT READY'
+                            : 'PITCH READY'}
                     </span>
                   </div>
                   <p className="mt-1 truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
@@ -1641,29 +2524,38 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                 </ReceiptPrinter.Screen>
               </ReceiptPrinter.Machine>
 
-              <ReceiptPrinter.Output className={activeTab === 'receipt' ? 'h-[38rem]' : 'h-auto'}>
-                <ReceiptPrinter.Paper>
-                  {activeTab === 'receipt' ? (
+              <ReceiptPrinter.Output className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem] px-0'}>
+                <ReceiptPrinter.Paper variant={activeTab === 'receipt' ? 'receipt' : 'document'}>
+                  {activeTab === 'receipt' && (
                     <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
-                  ) : (
-                    <div style={{ width: '100%', background: '#ffffff', color: '#09090b', padding: '20px 16px', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif' }}>
-                      {activeTab === 'invoice' && invoiceDocument}
-                      {activeTab === 'agreement' && agreementDocument}
-                      {activeTab === 'letterhead' && letterheadDocument}
-                    </div>
                   )}
+                  {activeTab === 'invoice' && invoiceDocument}
+                  {activeTab === 'agreement' && agreementDocument}
+                  {activeTab === 'letterhead' && letterheadDocument}
                 </ReceiptPrinter.Paper>
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>
 
-            {printStage === 'complete' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, width: '100%', maxWidth: 440, marginTop: 4 }}>
               <button
                 onClick={handlePrint}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fef08a', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '8px 16px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer' }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
-                <Printer size={14} /> Print / Save PDF
+                <Printer size={14} /> Print PDF
               </button>
-            )}
+              <button
+                onClick={copyWhatsAppSummary}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                onClick={sendWhatsAppSummary}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '3px 3px 0 #000', padding: '9px 14px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer' }}
+              >
+                Send on WhatsApp
+              </button>
+            </div>
           </div>
         </div>
       )}

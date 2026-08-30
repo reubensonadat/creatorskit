@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { BLOG_POSTS, type BlogPost } from '@/data/blog-posts';
+import { fetchPostBySlugFromDatabase, fetchPostsFromDatabase } from '@/lib/supabase';
 import AdBanner from '@/components/AdBanner';
 import NewsletterCard from '@/components/blog/NewsletterCard';
 import SocialShareBar from '@/components/blog/SocialShareBar';
@@ -32,7 +33,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const post = BLOG_POSTS.find((p) => p.slug === slug);
+  const post = (await fetchPostBySlugFromDatabase(slug)) || BLOG_POSTS.find((p) => p.slug === slug);
   if (!post) return { title: 'Post Not Found — CreatorKit' };
 
   return {
@@ -50,14 +51,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const post = BLOG_POSTS.find((p) => p.slug === slug);
+  const post = (await fetchPostBySlugFromDatabase(slug)) || BLOG_POSTS.find((p) => p.slug === slug);
 
   if (!post) {
     notFound();
   }
 
   // Related posts
-  const otherPosts = BLOG_POSTS.filter((p) => p.slug !== post.slug);
+  const allPosts = (await fetchPostsFromDatabase()) || BLOG_POSTS;
+  const otherPosts = allPosts.filter((p) => p.slug !== post.slug);
 
   return (
     <div style={{ background: '#f5f5f5', minHeight: '100vh', color: '#000000', padding: 'clamp(16px, 3vw, 36px) clamp(12px, 3vw, 24px) 100px' }}>

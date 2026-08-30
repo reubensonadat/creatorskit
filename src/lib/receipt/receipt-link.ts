@@ -63,6 +63,8 @@ export type ReceiptPayload = {
     // ── Branding ─────────────────────────────────────────────
     /** Optional logo as a data URL (skipped when too large for a URL) */
     lg?: string;
+    /** "Powered by CreatorKit" badge on the printed document: 1 = on (default), 0 = off */
+    br?: 0 | 1;
 };
 
 export const RECEIPT_CURRENCY_SYMBOLS: Record<string, string> = {

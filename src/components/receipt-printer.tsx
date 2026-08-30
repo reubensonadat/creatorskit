@@ -1,22 +1,10 @@
 'use client';
 
 /**
- * ReceiptPrinter — an animated thermal receipt printer for the CreatorKit
- * Business Suite. Adapted for this codebase from a motion-design prototype:
- * framer-motion instead of `motion/react`, lucide-react icons instead of
- * phosphor, `cn` from `@/lib/utils`, and the zinc palette instead of custom
- * grayscale design tokens.
- *
- * Usage:
- *   <ReceiptPrinter.Root stage="printing" feedMotion="stepped">
- *     <ReceiptPrinter.Machine>
- *       <ReceiptPrinter.Header>...</ReceiptPrinter.Header>
- *       <ReceiptPrinter.Screen>...</ReceiptPrinter.Screen>
- *     </ReceiptPrinter.Machine>
- *     <ReceiptPrinter.Output>
- *       <ReceiptPrinter.Paper>...receipt content...</ReceiptPrinter.Paper>
- *     </ReceiptPrinter.Output>
- *   </ReceiptPrinter.Root>
+ * ReceiptPrinter & DocumentPrinter — an animated physical printer for the
+ * CreatorKit Business Suite. Supports both thermal receipts (zig-zag torn edge,
+ * compact width) and full A4 documents (Invoices, Contracts, Letterheads) with
+ * high-fidelity stepped/smooth paper feed animations.
  */
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -49,7 +37,9 @@ export type ReceiptPrinterMachineProps = ComponentPropsWithoutRef<'div'>;
 export type ReceiptPrinterHeaderProps = ComponentPropsWithoutRef<'div'>;
 export type ReceiptPrinterScreenProps = ComponentPropsWithoutRef<'div'>;
 export type ReceiptPrinterOutputProps = ComponentPropsWithoutRef<'div'>;
-export type ReceiptPrinterPaperProps = ComponentPropsWithoutRef<'article'>;
+export type ReceiptPrinterPaperProps = ComponentPropsWithoutRef<'article'> & {
+    variant?: 'receipt' | 'document';
+};
 
 export type ReceiptPrinterStatusProps = Omit<
     ComponentPropsWithoutRef<'div'>,
@@ -87,7 +77,7 @@ const receiptToothPoints = Array.from(
 ).join(', ');
 export const receiptClipPath = `polygon(0 0, 100% 0, 100% calc(100% - ${receiptToothDepth}px), ${receiptToothPoints})`;
 
-// Stepped feed: the paper jerks line-by-line like a real thermal printer.
+// Stepped feed: the paper feeds line-by-line like a real thermal/laser printer.
 const printingTransformKeyframes = [
     'translateY(calc(-100% + 2px))',
     'translateY(-91%)',
@@ -117,9 +107,9 @@ const printingKeyframeTimes = [
 ];
 
 const statusLabels: Record<ReceiptPrinterStage, ReactNode> = {
-    processing: 'Processing your order',
-    printing: 'Printing your receipt',
-    complete: 'Order complete',
+    processing: 'Processing document…',
+    printing: 'Printing document…',
+    complete: 'Document ready',
 };
 
 const machineClassName =
@@ -136,7 +126,7 @@ function useReceiptPrinter(component: string) {
 }
 
 function ReceiptPrinterRoot({
-    'aria-label': ariaLabel = 'Receipt printer',
+    'aria-label': ariaLabel = 'Printer',
     animate = true,
     children,
     className,
@@ -157,8 +147,8 @@ function ReceiptPrinterRoot({
             <section
                 aria-label={ariaLabel}
                 className={cn(
-                    'relative isolate flex w-full max-w-sm flex-col items-center',
-                    className,
+                    'relative isolate flex w-full flex-col items-center',
+                    className || 'max-w-sm',
                 )}
                 data-stage={stage}
                 {...props}
@@ -331,8 +321,24 @@ function ReceiptPrinterPaper({
     children,
     className,
     style,
+    variant = 'receipt',
     ...props
 }: ReceiptPrinterPaperProps) {
+    if (variant === 'document') {
+        return (
+            <article
+                className={cn(
+                    'relative z-10 w-full bg-white text-zinc-950 shadow-2xl',
+                    className,
+                )}
+                style={style}
+                {...props}
+            >
+                {children}
+            </article>
+        );
+    }
+
     return (
         <article
             className={cn(
@@ -362,15 +368,15 @@ function ReceiptPrinterOutput({
     return (
         <div
             className={cn(
-                'relative z-50 -mt-4 h-[32rem] w-[calc(80%+3rem)] max-w-full overflow-hidden px-6',
-                className,
+                'relative z-50 -mt-4 w-full overflow-hidden',
+                className || 'h-[32rem] px-6',
             )}
             {...props}
         >
             {isReceiptVisible ? (
                 <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-6 -top-1 z-20 h-2 bg-zinc-950/75 blur-[6px] dark:bg-zinc-50/75"
+                    className="pointer-events-none absolute inset-x-0 -top-1 z-20 h-2 bg-zinc-950/75 blur-[6px] dark:bg-zinc-50/75"
                 />
             ) : null}
 
@@ -387,12 +393,12 @@ function ReceiptPrinterOutput({
                                 : 'translateY(calc(-100% + 2px))',
                 }}
                 aria-hidden={stage !== 'complete'}
-                className='relative isolate before:pointer-events-none before:absolute before:inset-x-3 before:bottom-4 before:top-3 before:z-0 before:rounded-sm before:shadow-[0_8px_24px_rgba(9,9,11,0.24)] before:content-[""] after:pointer-events-none after:absolute after:bottom-0 after:left-[8%] after:right-[8%] after:z-0 after:h-3 after:translate-y-1.5 after:rounded-full after:bg-zinc-950/10 after:blur-lg after:content-[""] dark:before:shadow-[0_8px_24px_rgba(255,255,255,0.14)] dark:after:bg-zinc-50/10'
+                className="relative isolate"
                 initial={false}
                 transition={{
                     opacity: { duration: animate ? 0.16 : 0, ease: easeOut },
                     transform: {
-                        duration: shouldMove ? 1.75 : 0,
+                        duration: shouldMove ? 1.85 : 0,
                         ease: shouldUseSteppedFeed ? 'linear' : easeInOut,
                         times: shouldUseSteppedFeed ? printingKeyframeTimes : undefined,
                     },

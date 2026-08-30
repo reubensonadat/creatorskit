@@ -57,6 +57,8 @@ export type ReceiptDocumentProps = {
     maxItems?: number;
     /** URL encoded into the scannable QR code (the Supabase short link). */
     qrUrl?: string;
+    /** Show the "Powered by CreatorKit" badge. Default true. */
+    showBranding?: boolean;
     style?: CSSProperties;
 };
 
@@ -105,6 +107,7 @@ export default function ReceiptDocument({
     data,
     maxItems = 6,
     qrUrl,
+    showBranding = true,
     style,
 }: ReceiptDocumentProps) {
     const { sym } = data;
@@ -282,7 +285,7 @@ export default function ReceiptDocument({
                 Thank you!
             </div>
             <div style={{ textAlign: 'center', fontSize: 9, opacity: MUTED_OPACITY, marginTop: 2 }}>
-                {data.creatorEmail} · Powered by CreatorKit
+                {data.creatorEmail}{showBranding ? ' · Powered by CreatorKit' : ''}
             </div>
         </div>
     );
