@@ -167,7 +167,7 @@ export default function ShortReceiptPage() {
 
           <ReceiptPrinter.Output className="h-[38rem]">
             <ReceiptPrinter.Paper>
-              <ReceiptDocument data={docData} qrUrl={qrUrl} />
+              <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
             </ReceiptPrinter.Paper>
           </ReceiptPrinter.Output>
         </ReceiptPrinter.Root>
@@ -194,7 +194,7 @@ export default function ShortReceiptPage() {
             clipPath: receiptClipPath,
           }}
         >
-          <ReceiptDocument data={docData} qrUrl={qrUrl} />
+          <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
         </div>
       </div>
     </div>

@@ -2305,7 +2305,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                         boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
                       }}
                     >
-                      <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
+                      <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
                     </div>
                   </div>
 
@@ -2527,7 +2527,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               <ReceiptPrinter.Output className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem] px-0'}>
                 <ReceiptPrinter.Paper variant={activeTab === 'receipt' ? 'receipt' : 'document'}>
                   {activeTab === 'receipt' && (
-                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} />
+                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
                   )}
                   {activeTab === 'invoice' && invoiceDocument}
                   {activeTab === 'agreement' && agreementDocument}

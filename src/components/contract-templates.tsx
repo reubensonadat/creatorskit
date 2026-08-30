@@ -325,7 +325,7 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
             {/* Fixed-height blank signature space with solid line for manual pen signing */}
             <div
               style={{
-                height: 48,
+                height: 64,
                 borderBottom: '1.5px solid #000',
                 marginBottom: 6,
               }}
@@ -349,7 +349,7 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
             {/* Fixed-height blank signature space with solid line for manual pen signing */}
             <div
               style={{
-                height: 48,
+                height: 64,
                 borderBottom: '1.5px solid #000',
                 marginBottom: 6,
               }}
@@ -625,7 +625,7 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
             {/* Fixed-height blank signature space with solid line for manual pen signing */}
             <div
               style={{
-                height: 48,
+                height: 64,
                 borderBottom: '1.5px solid #111827',
                 marginBottom: 6,
               }}
@@ -646,7 +646,7 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
             {/* Fixed-height blank signature space with solid line for manual pen signing */}
             <div
               style={{
-                height: 48,
+                height: 64,
                 borderBottom: '1.5px solid #111827',
                 marginBottom: 6,
               }}
@@ -820,7 +820,7 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
           {/* Fixed-height blank signature space with solid line for manual pen signing */}
           <div
             style={{
-              height: 48,
+              height: 64,
               borderBottom: '1.5px solid #000',
               marginTop: 4,
               marginBottom: 6,
@@ -837,7 +837,7 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
           {/* Fixed-height blank signature space with solid line for manual pen signing */}
           <div
             style={{
-              height: 48,
+              height: 64,
               borderBottom: '1.5px solid #000',
               marginTop: 4,
               marginBottom: 6,

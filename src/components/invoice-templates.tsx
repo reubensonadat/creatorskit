@@ -332,7 +332,7 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
           {/* Fixed blank manual signing space with solid underline */}
           <div
             style={{
-              height: 44,
+              height: 64,
               borderBottom: '1.5px solid #000',
               marginBottom: 4,
             }}
@@ -496,7 +496,7 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#6b7280' }}>
             AUTHORIZED SIGNATURE:
           </div>
-          <div style={{ height: 44, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
+          <div style={{ height: 64, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
           <div style={{ fontWeight: 800, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>
@@ -644,7 +644,7 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280' }}>
             SIGNATURE:
           </div>
-          <div style={{ height: 44, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
+          <div style={{ height: 64, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
           <div style={{ fontWeight: 800, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>
@@ -765,7 +765,7 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
           <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>
             AUTHORIZED SIGNATURE:
           </div>
-          <div style={{ height: 44, borderBottom: '2px solid #000', marginBottom: 4 }} />
+          <div style={{ height: 64, borderBottom: '2px solid #000', marginBottom: 4 }} />
           <div style={{ fontWeight: 900, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>

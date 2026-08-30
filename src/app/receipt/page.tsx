@@ -125,7 +125,7 @@ function ReceiptClientView({ data }: { data: ReceiptPayload }) {
 
           <ReceiptPrinter.Output className="h-[38rem]">
             <ReceiptPrinter.Paper>
-              <ReceiptDocument data={docData} qrUrl={qrUrl} />
+              <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
             </ReceiptPrinter.Paper>
           </ReceiptPrinter.Output>
         </ReceiptPrinter.Root>
@@ -152,7 +152,7 @@ function ReceiptClientView({ data }: { data: ReceiptPayload }) {
             clipPath: receiptClipPath,
           }}
         >
-          <ReceiptDocument data={docData} qrUrl={qrUrl} />
+          <ReceiptDocument data={docData} qrUrl={qrUrl} showBranding={data.br !== 0} />
         </div>
       </div>
     </div>
