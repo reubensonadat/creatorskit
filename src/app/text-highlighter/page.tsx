@@ -76,8 +76,8 @@ export default function TextHighlighterPage() {
   const [customByline, setCustomByline] = useState(currentCut?.byline || '');
   const [customBodyText, setCustomBodyText] = useState((currentCut?.bodyParagraphs || BODY_CORPUS).join('\n\n'));
 
-  // Sidebar Tab
-  const [sidebarTab, setSidebarTab] = useState<'style' | 'text'>('style');
+  // Sidebar Tab Navigation (4-Tab Modular Suite)
+  const [sidebarTab, setSidebarTab] = useState<'style' | 'typography' | 'scene' | 'text'>('style');
 
   // Animation & Sweep Transport
   const [isPlaying, setIsPlaying] = useState(true);
@@ -122,6 +122,7 @@ export default function TextHighlighterPage() {
 
   // Export State
   const [isExporting, setIsExporting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
 
@@ -287,11 +288,17 @@ export default function TextHighlighterPage() {
 
   // Generate Custom Phrase Cuts
   const handleAutoGenerate = () => {
-    if (!anchorPhrase.trim()) return;
-    const newCuts = generateCutsForPhrase(anchorPhrase.trim(), 6);
+    const phrase = anchorPhrase.trim();
+    if (!phrase) return;
+    setIsGenerating(true);
+    const newCuts = generateCutsForPhrase(phrase, 6);
     setCuts(newCuts);
     setCurrentCutIndex(0);
     animStartTimeRef.current = performance.now();
+    setHighlightProgress(0);
+    setIsPlaying(true);
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume);
+    setTimeout(() => setIsGenerating(false), 250);
   };
 
   // Restart Animation from 0%
@@ -575,50 +582,54 @@ export default function TextHighlighterPage() {
       : GOOGLE_FONTS_LIST.filter((f) => f.category === selectedFontCategory);
 
   return (
-    <div className="tool-page-padding" style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000', padding: '24px 20px 80px', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
-      {/* Top Breadcrumb & Title Bar */}
-      <div style={{ maxWidth: 1280, margin: '0 auto 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span
-              style={{
-                fontSize: '0.68rem',
-                fontWeight: 900,
-                color: '#000',
-                letterSpacing: '0.12em',
-                fontFamily: 'monospace',
-                textTransform: 'uppercase',
-                background: '#FFE500',
-                padding: '3px 8px',
-                border: '2px solid #000',
-                borderRadius: 4,
-              }}
-            >
-              ANIMATED HIGHLIGHTER
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Link
-              href="/match-cut"
-              className="brutalist-button"
-              style={{
-                padding: '4px 10px',
-                fontSize: '0.68rem',
-                borderRadius: 4,
-                textDecoration: 'none',
-                background: '#ffffff',
-              }}
-            >
-              Switch to Optical Match Cut Studio ⚡
-            </Link>
-          </div>
+    <div
+      className="tool-page-padding"
+      style={{
+        position: 'relative',
+        minHeight: '100%',
+        padding: '20px 16px 80px',
+        maxWidth: 1380,
+        margin: '0 auto',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        width: '100%',
+      }}
+    >
+      {/* Top Title & Category Bar */}
+      <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="tool-page-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 900,
+              color: '#000',
+              letterSpacing: '0.14em',
+              fontFamily: 'monospace',
+              textTransform: 'uppercase',
+              background: '#FFE500',
+              padding: '3px 8px',
+              border: '2px solid #000',
+              boxShadow: '2px 2px 0 #000',
+            }}
+          >
+            ANIMATED HIGHLIGHTER STUDIO
+          </span>
+          <span
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: '#666',
+              fontFamily: 'monospace',
+            }}
+          >
+            MACRO LENS OPTICS · 52 GOOGLE FONTS · 1080P EXPORT
+          </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
           <h1
             style={{
-              fontSize: '1.75rem',
+              fontSize: '1.85rem',
               fontWeight: 900,
               letterSpacing: '-0.03em',
               color: '#000',
@@ -630,9 +641,9 @@ export default function TextHighlighterPage() {
           </h1>
           <p
             style={{
-              fontSize: '0.82rem',
+              fontSize: '0.85rem',
               color: '#555',
-              maxWidth: 680,
+              maxWidth: 720,
               lineHeight: 1.5,
               fontWeight: 500,
               margin: 0,
@@ -643,22 +654,22 @@ export default function TextHighlighterPage() {
         </div>
       </div>
 
-      {/* Main 2-Column Grid */}
+      {/* Main Workspace 2-Column Responsive Grid */}
       <div
-        className="tool-inner-grid"
+        className="matchcut-workspace-grid"
         style={{
-          maxWidth: 1280,
-          margin: '0 auto',
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.22fr) minmax(360px, 440px)',
+          gridTemplateColumns: 'minmax(0, 1.28fr) minmax(360px, 440px)',
           gap: 20,
           alignItems: 'start',
         }}
       >
-        {/* Left Column: Canvas Viewport & Controls */}
+        {/* Left Column: Canvas Viewport & Transport */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          
+          {/* Main Stage Viewport Frame */}
           <div
-            className="brutalist-card"
+            className="brutalist-card tool-canvas-frame"
             style={{
               padding: 14,
               background: '#ffffff',
@@ -667,11 +678,14 @@ export default function TextHighlighterPage() {
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
-              borderRadius: 4,
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              width: '100%',
             }}
           >
             {/* Viewport Meta Bar */}
             <div
+              className="tool-viewport-meta"
               style={{
                 width: '100%',
                 display: 'flex',
@@ -704,13 +718,12 @@ export default function TextHighlighterPage() {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="tool-viewport-meta-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
                   onClick={() => setShowCrosshairGuide(!showCrosshairGuide)}
                   style={{
                     padding: '4px 8px',
                     border: '1.5px solid #000',
-                    borderRadius: 4,
                     background: showCrosshairGuide ? '#000' : '#fff',
                     color: showCrosshairGuide ? '#fff' : '#000',
                     fontFamily: 'monospace',
@@ -732,7 +745,6 @@ export default function TextHighlighterPage() {
                   style={{
                     padding: '3px 8px',
                     border: '1.5px solid #000',
-                    borderRadius: 4,
                     background: '#f4f4f5',
                     color: '#000',
                     fontFamily: 'monospace',
@@ -754,17 +766,17 @@ export default function TextHighlighterPage() {
 
             {/* Stage Canvas */}
             <div
+              className="tool-canvas-viewport"
               style={{
                 position: 'relative',
                 width: '100%',
                 maxHeight: 'calc(100vh - 340px)',
-                minHeight: 380,
+                minHeight: 390,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: '#141413',
                 border: '3px solid #000',
-                borderRadius: 4,
                 boxShadow: '4px 4px 0 rgba(0,0,0,0.18)',
                 overflow: 'hidden',
               }}
@@ -786,12 +798,12 @@ export default function TextHighlighterPage() {
 
             {/* Transport & Animation Speed Bar */}
             <div
+              className="tool-transport-bar"
               style={{
                 width: '100%',
                 marginTop: 12,
                 padding: '8px 12px',
                 border: '2px solid #000',
-                borderRadius: 4,
                 background: '#f4f4f5',
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -805,7 +817,7 @@ export default function TextHighlighterPage() {
                 <button
                   onClick={handleReplay}
                   className="brutalist-button"
-                  style={{ padding: '6px 10px', fontSize: '0.72rem', borderRadius: 4 }}
+                  style={{ padding: '6px 10px', fontSize: '0.72rem' }}
                   title="Replay highlight stroke from beginning"
                 >
                   <RotateCcw size={14} />
@@ -813,7 +825,7 @@ export default function TextHighlighterPage() {
                 <button
                   onClick={() => setIsPlaying(!isPlaying)}
                   className={`brutalist-button ${isPlaying ? 'brutalist-button-primary' : ''}`}
-                  style={{ padding: '6px 16px', fontSize: '0.74rem', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}
+                  style={{ padding: '6px 16px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {isPlaying ? <Pause size={14} /> : <Play size={14} />}
                   {isPlaying ? 'PAUSE' : 'PLAY LOOP'}
@@ -821,7 +833,7 @@ export default function TextHighlighterPage() {
               </div>
 
               {/* Sweep Duration */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
                   DURATION: <span style={{ color: '#d97706' }}>{highlightDuration}S</span>
                 </span>
@@ -835,7 +847,7 @@ export default function TextHighlighterPage() {
                   style={{ width: 80, accentColor: '#000', cursor: 'pointer' }}
                   title="Adjust sweep animation duration in seconds"
                 />
-                <div style={{ display: 'flex', border: '2px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+                <div className="tool-transport-speed-presets" style={{ display: 'flex', border: '2px solid #000', background: '#fff' }}>
                   {[1.0, 1.5, 2.0, 3.0].map((d) => (
                     <button
                       key={d}
@@ -863,7 +875,7 @@ export default function TextHighlighterPage() {
                 <button
                   onClick={() => setHighlightDirection(highlightDirection === 'ltr' ? 'rtl' : 'ltr')}
                   className="brutalist-button"
-                  style={{ padding: '4px 8px', fontSize: '0.68rem', borderRadius: 4 }}
+                  style={{ padding: '5px 8px', fontSize: '0.68rem' }}
                   title="Toggle highlight sweep direction"
                 >
                   {highlightDirection === 'ltr' ? '➡️ LTR' : '⬅️ RTL'}
@@ -901,7 +913,6 @@ export default function TextHighlighterPage() {
                   style={{
                     padding: '4px 6px',
                     border: '2px solid #000',
-                    borderRadius: 4,
                     background: '#fff',
                     fontFamily: 'monospace',
                     fontSize: '0.68rem',
@@ -910,7 +921,7 @@ export default function TextHighlighterPage() {
                   }}
                 >
                   <option value="paper">Marker Friction (Paper)</option>
-                  <option value="shutter">Shutter Click</option>
+                  <option value="shutter">Shutter Snap</option>
                   <option value="typewriter">Typewriter Clack</option>
                   <option value="mute">Muted</option>
                 </select>
@@ -919,6 +930,7 @@ export default function TextHighlighterPage() {
 
             {/* Under-canvas Aspect Ratio Bar */}
             <div
+              className="tool-aspect-bar tool-aspect-export-row"
               style={{
                 width: '100%',
                 marginTop: 10,
@@ -952,7 +964,7 @@ export default function TextHighlighterPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="brutalist-button"
                   onClick={handleDownloadSingleFrame}
@@ -1024,6 +1036,7 @@ export default function TextHighlighterPage() {
 
           {/* Quick Export Cards Row */}
           <div
+            className="tool-export-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
@@ -1072,7 +1085,7 @@ export default function TextHighlighterPage() {
         </div>
 
         {/* Right Column: Customization Sidebar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Target Phrase Box */}
           <div
             className="brutalist-card"
@@ -1118,12 +1131,18 @@ export default function TextHighlighterPage() {
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
               <input
                 type="text"
                 maxLength={23}
                 value={anchorPhrase}
                 onChange={(e) => setAnchorPhrase(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAutoGenerate();
+                  }
+                }}
                 placeholder="Enter word to highlight (max 23 chars)"
                 style={{
                   flex: 1,
@@ -1139,6 +1158,7 @@ export default function TextHighlighterPage() {
               />
               <button
                 onClick={handleAutoGenerate}
+                disabled={isGenerating}
                 className="brutalist-button brutalist-button-primary"
                 style={{
                   fontSize: '0.8rem',
@@ -1151,10 +1171,12 @@ export default function TextHighlighterPage() {
                   gap: 6,
                   boxShadow: '3px 3px 0 #000',
                   textTransform: 'uppercase',
+                  transform: isGenerating ? 'scale(0.96)' : 'none',
+                  transition: 'transform 0.1s ease',
                 }}
               >
-                <Zap size={15} />
-                Generate
+                <Zap size={15} className={isGenerating ? 'animate-bounce' : ''} />
+                {isGenerating ? 'GENERATING...' : 'GENERATE'}
               </button>
             </div>
 
@@ -1191,531 +1213,61 @@ export default function TextHighlighterPage() {
             </div>
           </div>
 
-          {/* 52 Google Fonts Typography Selector Card */}
-          <div
-            className="brutalist-card"
-            style={{
-              padding: 14,
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-              borderRadius: 4,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label
-                style={{
-                  fontSize: '0.72rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  color: '#000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Type size={14} />
-                Font Selection (52 Google Fonts)
-              </label>
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  color: '#000',
-                  background: '#FFE500',
-                  padding: '2px 6px',
-                  border: '1px solid #000',
-                  borderRadius: 4,
-                }}
-              >
-                {GOOGLE_FONTS_LIST.find((f) => f.fontFamily === fontFamily)?.name || 'Custom'}
-              </span>
-            </div>
-
-            {/* Category Filter Tabs */}
-            <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
-              {['All', 'Serif', 'Typewriter', 'Tabloid', 'Sans', 'Display'].map((cat) => (
+          {/* Tab Navigation Bar */}
+          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)' }}>
+            {[
+              { id: 'style' as const, label: 'Style & Ink', icon: Sliders },
+              { id: 'typography' as const, label: 'Fonts (52)', icon: Type },
+              { id: 'scene' as const, label: 'Optics & Scene', icon: Disc },
+              { id: 'text' as const, label: 'Story Copy', icon: FileText },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = sidebarTab === tab.id;
+              return (
                 <button
-                  key={cat}
-                  onClick={() => setSelectedFontCategory(cat)}
+                  key={tab.id}
+                  onClick={() => setSidebarTab(tab.id as any)}
                   style={{
                     flex: 1,
-                    padding: '4px 2px',
-                    border: 'none',
-                    borderRight: cat !== 'Display' ? '1px solid #000' : 'none',
-                    background: selectedFontCategory === cat ? '#000' : '#fff',
-                    color: selectedFontCategory === cat ? '#fff' : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.58rem',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Main Font Select Dropdown */}
-            <select
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                border: '2px solid #000',
-                borderRadius: 4,
-                background: '#fff',
-                color: '#000',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              {filteredFonts.map((f) => (
-                <option key={f.id} value={f.fontFamily}>
-                  {f.name} ({f.category})
-                </option>
-              ))}
-            </select>
-
-            {/* Quick Popular Font Pills */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-              {[
-                { label: 'Playfair Serif', font: '"Playfair Display", Georgia, serif' },
-                { label: 'Special Elite', font: '"Special Elite", monospace' },
-                { label: 'Bebas Tabloid', font: '"Bebas Neue", Impact, sans-serif' },
-                { label: 'Cinzel Roman', font: '"Cinzel", "Times New Roman", serif' },
-                { label: 'Perm Marker', font: '"Permanent Marker", cursive' },
-                { label: 'Inter Sans', font: '"Inter", sans-serif' },
-              ].map((qf) => (
-                <button
-                  key={qf.label}
-                  onClick={() => setFontFamily(qf.font)}
-                  style={{
-                    padding: '4px 4px',
-                    border: '1.5px solid #000',
-                    borderRadius: 4,
-                    background: fontFamily === qf.font ? '#000' : '#fff',
-                    color: fontFamily === qf.font ? '#fff' : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.62rem',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {qf.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Document Sector & Circular Lens Blur Controls Card */}
-          <div
-            className="brutalist-card"
-            style={{
-              padding: 14,
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-              borderRadius: 4,
-            }}
-          >
-            {/* Sector Placement */}
-            <div>
-              <label
-                style={{
-                  fontSize: '0.68rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  color: '#000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginBottom: 6,
-                }}
-              >
-                <MoveVertical size={13} />
-                Document Sector Position
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {[
-                  { id: 'top-masthead' as const, label: 'Top (Header)' },
-                  { id: 'center-headline' as const, label: 'Center (Main)' },
-                  { id: 'body-paragraph' as const, label: 'Bottom (Body)' },
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setHighlightSector(s.id)}
-                    style={{
-                      padding: '6px 4px',
-                      border: '2px solid #000',
-                      borderRadius: 4,
-                      background: highlightSector === s.id ? '#000' : '#fff',
-                      color: highlightSector === s.id ? '#fff' : '#000',
-                      fontFamily: 'monospace',
-                      fontWeight: 900,
-                      fontSize: '0.65rem',
-                      cursor: 'pointer',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Circular Optical Lens Blur */}
-            <div
-              style={{
-                padding: 10,
-                border: '2px solid #000',
-                borderRadius: 4,
-                background: depthOfField ? '#fef08a' : '#f4f4f5',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label
-                  style={{
-                    fontSize: '0.68rem',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    textTransform: 'uppercase',
-                    color: '#000',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={depthOfField}
-                    onChange={(e) => setDepthOfField(e.target.checked)}
-                    style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
-                  />
-                  <Disc size={13} />
-                  Circular Optical Lens Blur
-                </label>
-                <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                  {depthOfField ? `${Math.round(dofIntensity * 100)}%` : 'OFF'}
-                </span>
-              </div>
-
-              {depthOfField && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                    SOFT
-                  </span>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1.0"
-                    step="0.05"
-                    value={dofIntensity}
-                    onChange={(e) => setDofIntensity(parseFloat(e.target.value))}
-                    style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                    HEAVY
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Canvas Environment Card */}
-          <div
-            className="brutalist-card"
-            style={{
-              padding: 14,
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-              borderRadius: 4,
-            }}
-          >
-            <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', display: 'block', marginBottom: 2 }}>
-              Canvas Environment
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-              {[
-                { id: 'paper' as const, label: 'Newspaper', icon: '📰' },
-                { id: 'dark' as const, label: 'Dark', icon: '⬛' },
-                { id: 'image' as const, label: 'Image', icon: '🖼' },
-                { id: 'custom' as const, label: 'Custom', icon: '🎨' },
-              ].map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => handleEnvironmentSwitch(e.id)}
-                  style={{
-                    padding: '8px 6px',
-                    border: '2px solid #000',
-                    borderRadius: 4,
-                    background: canvasEnvironment === e.id ? '#000' : '#fff',
-                    color: canvasEnvironment === e.id ? '#fff' : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.66rem',
-                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: 4,
+                    gap: 6,
+                    padding: '10px 6px',
+                    border: 'none',
+                    background: isActive ? '#ffffff' : 'transparent',
+                    color: isActive ? '#000000' : '#ffffff',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    fontSize: '0.68rem',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    letterSpacing: '0.03em',
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  {e.icon} {e.label}
+                  <Icon size={13} />
+                  {tab.label}
                 </button>
-              ))}
-            </div>
-
-            {/* Image Upload (only when image env selected) */}
-            {canvasEnvironment === 'image' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                  Upload Screenshot
-                </label>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={handleImageUpload}
-                  style={{ fontSize: '0.62rem', fontFamily: 'monospace' }}
-                />
-                {uploadedImageUrl && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444', minWidth: 48 }}>OPACITY</span>
-                      <input
-                        type="range"
-                        min="0.05"
-                        max="1.0"
-                        step="0.05"
-                        value={imageOpacity}
-                        onChange={(e) => setImageOpacity(parseFloat(e.target.value))}
-                        style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                        {Math.round(imageOpacity * 100)}%
-                      </span>
-                    </div>
-                    <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #ccc', borderRadius: 2 }} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Custom Color Picker (only when custom env selected) */}
-            {canvasEnvironment === 'custom' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>BG COLOR</span>
-                <input
-                  type="color"
-                  value={customBgColor}
-                  onChange={(e) => setCustomBgColor(e.target.value)}
-                  style={{ width: 32, height: 28, border: '2px solid #000', borderRadius: 4, cursor: 'pointer', padding: 0 }}
-                />
-                <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>{customBgColor}</span>
-              </div>
-            )}
-
-            {/* Element Visibility Toggles */}
-            <div>
-              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
-                Show Elements
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                {[
-                  { key: 'showTopColumns', label: 'Top Columns', val: showTopColumns, set: setShowTopColumns },
-                  { key: 'showMasthead', label: 'Masthead', val: showMasthead, set: setShowMasthead },
-                  { key: 'showSubhead', label: 'Subhead', val: showSubhead, set: setShowSubhead },
-                  { key: 'showByline', label: 'Byline', val: showByline, set: setShowByline },
-                  { key: 'showBottomColumns', label: 'Bottom Cols', val: showBottomColumns, set: setShowBottomColumns },
-                  { key: 'showDividerRules', label: 'Dividers', val: showDividerRules, set: setShowDividerRules },
-                ].map((t) => (
-                  <label
-                    key={t.key}
-                    style={{
-                      fontSize: '0.6rem',
-                      fontFamily: 'monospace',
-                      fontWeight: 700,
-                      color: '#000',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      padding: '3px 0',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={t.val}
-                      onChange={(e) => t.set(e.target.checked)}
-                      style={{ width: 12, height: 12, accentColor: '#000', cursor: 'pointer' }}
-                    />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Camera Zoom */}
-            <div>
-              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
-                Camera Zoom
-              </label>
-              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={zoomEnabled}
-                  onChange={(e) => setZoomEnabled(e.target.checked)}
-                  style={{ width: 12, height: 12, accentColor: '#000', cursor: 'pointer' }}
-                />
-                Enable Zoom
-              </label>
-              {zoomEnabled && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(['in', 'out'] as const).map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setZoomDirection(d)}
-                        style={{
-                          flex: 1,
-                          padding: '4px 0',
-                          border: '1.5px solid #000',
-                          borderRadius: 3,
-                          background: zoomDirection === d ? '#000' : '#fff',
-                          color: zoomDirection === d ? '#fff' : '#000',
-                          fontFamily: 'monospace',
-                          fontWeight: 900,
-                          fontSize: '0.58rem',
-                          cursor: 'pointer',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {d === 'in' ? 'Zoom In' : 'Zoom Out'}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>Intensity</span>
-                    <input
-                      type="range"
-                      min="0.03"
-                      max="0.25"
-                      step="0.01"
-                      value={zoomIntensity}
-                      onChange={(e) => setZoomIntensity(parseFloat(e.target.value))}
-                      style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                      {Math.round(zoomIntensity * 100)}%
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Headline Scale */}
-            <div>
-              <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block', marginBottom: 4 }}>
-                Headline Scale
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>0.5x</span>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.05"
-                  value={headlineScale}
-                  onChange={(e) => setHeadlineScale(parseFloat(e.target.value))}
-                  style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                  {headlineScale.toFixed(1)}x
-                </span>
-              </div>
-            </div>
+              );
+            })}
           </div>
 
-          {/* Sidebar Tabs: Style vs Document Text */}
-          <div style={{ display: 'flex', border: '2px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
-            <button
-              onClick={() => setSidebarTab('style')}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                border: 'none',
-                borderRight: '2px solid #000',
-                background: sidebarTab === 'style' ? '#000' : '#fff',
-                color: sidebarTab === 'style' ? '#fff' : '#000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.72rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <Sliders size={13} />
-              HIGHLIGHT STYLE & PAPER
-            </button>
-            <button
-              onClick={() => setSidebarTab('text')}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                border: 'none',
-                background: sidebarTab === 'text' ? '#000' : '#fff',
-                color: sidebarTab === 'text' ? '#fff' : '#000',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.72rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              <FileText size={13} />
-              EDIT STORY TEXT
-            </button>
-          </div>
-
-          {sidebarTab === 'style' ? (
-            /* Style Controls Card */
+          {/* TAB 1: Style & Ink Controls */}
+          {sidebarTab === 'style' && (
             <div
               className="brutalist-card"
               style={{
-                padding: 14,
+                padding: 16,
                 background: '#ffffff',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 14,
+                gap: 16,
                 borderRadius: 4,
               }}
             >
-              {/* Highlighter Style Mode */}
+              {/* Highlighting Style */}
               <div>
                 <label
                   style={{
@@ -1728,7 +1280,7 @@ export default function TextHighlighterPage() {
                     marginBottom: 6,
                   }}
                 >
-                  Highlighting Style
+                  Highlighting Mode
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                   {[
@@ -1756,6 +1308,7 @@ export default function TextHighlighterPage() {
                         fontSize: '0.68rem',
                         cursor: 'pointer',
                         textTransform: 'uppercase',
+                        textAlign: 'center',
                       }}
                     >
                       {s.label}
@@ -1765,7 +1318,7 @@ export default function TextHighlighterPage() {
               </div>
 
               {/* Ink Color */}
-              <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label
                   style={{
                     fontSize: '0.68rem',
@@ -1774,31 +1327,276 @@ export default function TextHighlighterPage() {
                     textTransform: 'uppercase',
                     color: '#000',
                     display: 'block',
-                    marginBottom: 6,
                   }}
                 >
-                  Highlighter Color
+                  Highlighter Ink Color
                 </label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div className="tool-page-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   {HIGHLIGHT_COLORS.map((c) => (
                     <button
                       key={c.hex}
                       onClick={() => setHighlightColor(c.hex)}
                       style={{
-                        width: 28,
-                        height: 28,
-                        background: c.hex,
-                        border: highlightColor === c.hex ? '3px solid #000' : '1.5px solid #000',
-                        borderRadius: 4,
+                        width: 32,
+                        height: 32,
+                        backgroundColor: c.hex,
+                        border: highlightColor === c.hex ? '3px solid #000' : '2px solid #ccc',
+                        boxShadow: highlightColor === c.hex ? '2px 2px 0 #000' : 'none',
                         cursor: 'pointer',
+                        borderRadius: 4,
+                        transform: highlightColor === c.hex ? 'scale(1.1)' : 'none',
                       }}
                       title={c.name}
                     />
                   ))}
+                  <input
+                    type="color"
+                    value={highlightColor}
+                    onChange={(e) => setHighlightColor(e.target.value)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      border: '2px solid #000',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      padding: 1,
+                      background: '#fff',
+                    }}
+                    title="Custom hex color"
+                  />
                 </div>
               </div>
 
-              {/* Paper Theme */}
+              {/* Marker Opacity Slider */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
+                  <span>INK OPACITY:</span>
+                  <span>{Math.round(markerOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.3"
+                  max="1.0"
+                  step="0.05"
+                  value={markerOpacity}
+                  onChange={(e) => setMarkerOpacity(parseFloat(e.target.value))}
+                  style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Sector Placement */}
+              <div>
+                <label
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginBottom: 6,
+                  }}
+                >
+                  <MoveVertical size={13} />
+                  Document Sector Position
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {[
+                    { id: 'top-masthead' as const, label: 'Top (Header)' },
+                    { id: 'center-headline' as const, label: 'Center (Main)' },
+                    { id: 'body-paragraph' as const, label: 'Bottom (Body)' },
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setHighlightSector(s.id)}
+                      style={{
+                        padding: '6px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        background: highlightSector === s.id ? '#000' : '#fff',
+                        color: highlightSector === s.id ? '#fff' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.65rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: Typography & 52 Google Fonts */}
+          {sidebarTab === 'typography' && (
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 16,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+                borderRadius: 4,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label
+                  style={{
+                    fontSize: '0.72rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Type size={14} />
+                  Font Selection (52 Google Fonts)
+                </label>
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    color: '#000',
+                    background: '#FFE500',
+                    padding: '2px 6px',
+                    border: '1px solid #000',
+                    borderRadius: 4,
+                  }}
+                >
+                  {GOOGLE_FONTS_LIST.find((f) => f.fontFamily === fontFamily)?.name || 'Custom'}
+                </span>
+              </div>
+
+              {/* Category Filter Tabs */}
+              <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+                {['All', 'Serif', 'Typewriter', 'Tabloid', 'Sans', 'Display'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedFontCategory(cat)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 2px',
+                      border: 'none',
+                      borderRight: cat !== 'Display' ? '1px solid #000' : 'none',
+                      background: selectedFontCategory === cat ? '#000' : '#fff',
+                      color: selectedFontCategory === cat ? '#fff' : '#000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.62rem',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Main Font Select Dropdown */}
+              <select
+                value={fontFamily}
+                onChange={(e) => setFontFamily(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  border: '2px solid #000',
+                  borderRadius: 4,
+                  background: '#fff',
+                  color: '#000',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                {filteredFonts.map((f) => (
+                  <option key={f.id} value={f.fontFamily}>
+                    {f.name} ({f.category})
+                  </option>
+                ))}
+              </select>
+
+              {/* Quick Popular Font Pills */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {[
+                  { label: 'Playfair Serif', font: '"Playfair Display", Georgia, serif' },
+                  { label: 'Special Elite', font: '"Special Elite", monospace' },
+                  { label: 'Bebas Tabloid', font: '"Bebas Neue", Impact, sans-serif' },
+                  { label: 'Cinzel Roman', font: '"Cinzel", "Times New Roman", serif' },
+                  { label: 'Perm Marker', font: '"Permanent Marker", cursive' },
+                  { label: 'Inter Sans', font: '"Inter", sans-serif' },
+                ].map((qf) => (
+                  <button
+                    key={qf.label}
+                    onClick={() => setFontFamily(qf.font)}
+                    style={{
+                      padding: '6px 4px',
+                      border: '1.5px solid #000',
+                      borderRadius: 4,
+                      background: fontFamily === qf.font ? '#000' : '#fff',
+                      color: fontFamily === qf.font ? '#fff' : '#000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.62rem',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {qf.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Headline Scale */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
+                  <span>HEADLINE SCALE:</span>
+                  <span>{headlineScale.toFixed(1)}x</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>0.5x</span>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.05"
+                    value={headlineScale}
+                    onChange={(e) => setHeadlineScale(parseFloat(e.target.value))}
+                    style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>2.0x</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: Optics & Canvas Scene */}
+          {sidebarTab === 'scene' && (
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 16,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                borderRadius: 4,
+              }}
+            >
+              {/* Paper Archetype */}
               <div>
                 <label
                   style={{
@@ -1819,7 +1617,7 @@ export default function TextHighlighterPage() {
                       key={theme.id}
                       onClick={() => setPaperTheme(theme.id as any)}
                       style={{
-                        padding: '6px 4px',
+                        padding: '8px 4px',
                         border: '2px solid #000',
                         borderRadius: 4,
                         background: paperTheme === theme.id ? '#000' : theme.bg,
@@ -1828,6 +1626,7 @@ export default function TextHighlighterPage() {
                         fontWeight: 900,
                         fontSize: '0.65rem',
                         cursor: 'pointer',
+                        textAlign: 'center',
                       }}
                     >
                       {theme.label.split(' ')[0]}
@@ -1835,13 +1634,281 @@ export default function TextHighlighterPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Canvas Environment */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000' }}>
+                  Canvas Environment
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                  {[
+                    { id: 'paper' as const, label: 'Newspaper', icon: '📰' },
+                    { id: 'dark' as const, label: 'Dark', icon: '⬛' },
+                    { id: 'image' as const, label: 'Image', icon: '🖼' },
+                    { id: 'custom' as const, label: 'Custom', icon: '🎨' },
+                  ].map((e) => (
+                    <button
+                      key={e.id}
+                      onClick={() => handleEnvironmentSwitch(e.id)}
+                      style={{
+                        padding: '8px 6px',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        background: canvasEnvironment === e.id ? '#000' : '#fff',
+                        color: canvasEnvironment === e.id ? '#fff' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.66rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {e.icon} {e.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Image Upload (only when image env selected) */}
+                {canvasEnvironment === 'image' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                      Upload Screenshot Image
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleImageUpload}
+                      style={{ fontSize: '0.72rem', fontFamily: 'monospace' }}
+                    />
+                    {uploadedImageUrl && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444', minWidth: 52 }}>OPACITY</span>
+                          <input
+                            type="range"
+                            min="0.05"
+                            max="1.0"
+                            step="0.05"
+                            value={imageOpacity}
+                            onChange={(e) => setImageOpacity(parseFloat(e.target.value))}
+                            style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                            {Math.round(imageOpacity * 100)}%
+                          </span>
+                        </div>
+                        <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #ccc', borderRadius: 2 }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom Color Picker (only when custom env selected) */}
+                {canvasEnvironment === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>BG COLOR</span>
+                    <input
+                      type="color"
+                      value={customBgColor}
+                      onChange={(e) => setCustomBgColor(e.target.value)}
+                      style={{ width: 32, height: 28, border: '2px solid #000', borderRadius: 4, cursor: 'pointer', padding: 0 }}
+                    />
+                    <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>{customBgColor}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Element Visibility Toggles */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666', display: 'block' }}>
+                  Show Elements
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  {[
+                    { key: 'showTopColumns', label: 'Top Columns', val: showTopColumns, set: setShowTopColumns },
+                    { key: 'showMasthead', label: 'Masthead', val: showMasthead, set: setShowMasthead },
+                    { key: 'showSubhead', label: 'Subhead', val: showSubhead, set: setShowSubhead },
+                    { key: 'showByline', label: 'Byline', val: showByline, set: setShowByline },
+                    { key: 'showBottomColumns', label: 'Bottom Cols', val: showBottomColumns, set: setShowBottomColumns },
+                    { key: 'showDividerRules', label: 'Dividers', val: showDividerRules, set: setShowDividerRules },
+                  ].map((t) => (
+                    <label
+                      key={t.key}
+                      style={{
+                        fontSize: '0.68rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        color: '#000',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '4px 0',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={t.val}
+                        onChange={(e) => t.set(e.target.checked)}
+                        style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                      />
+                      {t.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Circular Optical Lens Blur */}
+              <div
+                style={{
+                  padding: 10,
+                  border: '2px solid #000',
+                  borderRadius: 4,
+                  background: depthOfField ? '#fef08a' : '#f4f4f5',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label
+                    style={{
+                      fontSize: '0.68rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      color: '#000',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={depthOfField}
+                      onChange={(e) => setDepthOfField(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    <Disc size={13} />
+                    Circular Optical Lens Blur
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                    {depthOfField ? `${Math.round(dofIntensity * 100)}%` : 'OFF'}
+                  </span>
+                </div>
+
+                {depthOfField && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                      SOFT
+                    </span>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1.0"
+                      step="0.05"
+                      value={dofIntensity}
+                      onChange={(e) => setDofIntensity(parseFloat(e.target.value))}
+                      style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
+                      HEAVY
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Camera Zoom & Grain Effects */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={zoomEnabled}
+                      onChange={(e) => setZoomEnabled(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    Camera Zoom Effect
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                    {zoomEnabled ? `${Math.round(zoomIntensity * 100)}%` : 'OFF'}
+                  </span>
+                </div>
+
+                {zoomEnabled && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {(['in', 'out'] as const).map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => setZoomDirection(d)}
+                          style={{
+                            flex: 1,
+                            padding: '6px 0',
+                            border: '1.5px solid #000',
+                            borderRadius: 3,
+                            background: zoomDirection === d ? '#000' : '#fff',
+                            color: zoomDirection === d ? '#fff' : '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.64rem',
+                            cursor: 'pointer',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {d === 'in' ? 'Zoom In' : 'Zoom Out'}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="range"
+                      min="0.03"
+                      max="0.25"
+                      step="0.01"
+                      value={zoomIntensity}
+                      onChange={(e) => setZoomIntensity(parseFloat(e.target.value))}
+                      style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={filmGrain}
+                      onChange={(e) => setFilmGrain(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    Authentic Paper Grain & Halftone
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={cameraShake}
+                      onChange={(e) => setCameraShake(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    Micro Handheld Camera Jitter
+                  </label>
+                </div>
+              </div>
             </div>
-          ) : (
-            /* Custom Story Text Editor Card */
+          )}
+
+          {/* TAB 4: Story & Article Copy Editor */}
+          {sidebarTab === 'text' && (
             <div
               className="brutalist-card"
               style={{
-                padding: 14,
+                padding: 16,
                 background: '#ffffff',
                 display: 'flex',
                 flexDirection: 'column',
@@ -1927,7 +1994,7 @@ export default function TextHighlighterPage() {
               <button
                 onClick={handleApplyCustomText}
                 className="brutalist-button brutalist-button-primary"
-                style={{ padding: '8px', fontSize: '0.74rem', borderRadius: 4, width: '100%' }}
+                style={{ padding: '10px', fontSize: '0.76rem', borderRadius: 4, width: '100%', marginTop: 4 }}
               >
                 Apply Text to Document
               </button>

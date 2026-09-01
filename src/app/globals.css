@@ -850,6 +850,10 @@
     -webkit-overflow-scrolling: touch !important;
   }
 
+  .tool-tab-bar button {
+    flex-shrink: 0 !important;
+  }
+
   /* === BRUTALIST CARD: tighter shadow === */
   .brutalist-card {
     box-shadow: 2px 2px 0 #000 !important;

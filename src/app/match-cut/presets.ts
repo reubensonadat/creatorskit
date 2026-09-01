@@ -81,24 +81,41 @@ export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[]
     `Engineers reveal how {W} replaced entire legacy hardware rigs`,
     `Archived documents show sudden adoption of {W} across top channels`,
     `Witnesses describe the new {W} update as completely game-changing`,
+    `Executive committee orders immediate investigation into {W}`,
+    `Whistleblower releases confidential dossier explaining {W}`,
+    `Studio records reveal {W} was developed in complete secrecy`,
+    `How top creators turned {W} into an unstoppable cultural phenomenon`,
+    `Internal audit reveals {W} saved hundreds of production hours`,
+    `Critics questioned {W} until the first live demo went viral`,
+    `The hidden story behind {W} and the team that built it`,
+    `Unprecedented demand for {W} causes widespread industry shockwaves`,
+    `Key witnesses testify about {W} before packed emergency session`,
+    `Breaking investigation: The truth about {W} finally comes to light`,
   ];
+
+  // Shuffle templates on every generation call for fresh dynamic variations
+  const shuffledTemplates = [...sentenceTemplates].sort(() => Math.random() - 0.5);
+  const shuffledMastheads = [...MASTHEADS].sort(() => Math.random() - 0.5);
+  const shuffledSubheads = [...SUBHEADS].sort(() => Math.random() - 0.5);
+  const shuffledLocations = [...LOCATIONS].sort(() => Math.random() - 0.5);
+  const shuffledBylines = [...BYLINES].sort(() => Math.random() - 0.5);
 
   const cuts: NewspaperCut[] = [];
 
   for (let i = 0; i < count; i++) {
-    const masthead = MASTHEADS[i % MASTHEADS.length];
-    const subhead = SUBHEADS[i % SUBHEADS.length];
-    const location = LOCATIONS[i % LOCATIONS.length];
-    const byline = BYLINES[i % BYLINES.length];
-    const template = sentenceTemplates[i % sentenceTemplates.length];
+    const masthead = shuffledMastheads[i % shuffledMastheads.length];
+    const subhead = shuffledSubheads[i % shuffledSubheads.length];
+    const location = shuffledLocations[i % shuffledLocations.length];
+    const byline = shuffledBylines[i % shuffledBylines.length];
+    const template = shuffledTemplates[i % shuffledTemplates.length];
     const headline = template.replace(/\{W\}/g, clean);
 
     const year = 2026 - (i % 3);
-    const day = 1 + ((i * 4) % 28);
+    const day = 1 + ((i * 4 + Math.floor(Math.random() * 5)) % 28);
     const months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
-    const month = months[(i * 2) % 12];
-    const vol = 48 + (i % 15);
-    const issue = 14200 + i * 82;
+    const month = months[(i * 2 + Math.floor(Math.random() * 3)) % 12];
+    const vol = 48 + ((i * 3 + Math.floor(Math.random() * 10)) % 25);
+    const issue = 14200 + i * 82 + Math.floor(Math.random() * 50);
     const dateString = `VOL. ${vol} NO. ${issue} • ${month} ${day}, ${year} • PRICE 25 CENTS`;
 
     const shuffledBody = [
@@ -108,7 +125,7 @@ export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[]
     ];
 
     cuts.push({
-      id: `cut-${i + 1}`,
+      id: `cut-${Date.now()}-${i + 1}`,
       masthead,
       subhead,
       headline,

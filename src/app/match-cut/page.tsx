@@ -100,6 +100,7 @@ export default function TextMatchCutStudioPage() {
 
   // Export Progress State
   const [isExporting, setIsExporting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
 
@@ -214,10 +215,15 @@ export default function TextMatchCutStudioPage() {
 
   // Generate 8 new headlines for any custom anchor phrase
   const handleAutoGenerate = () => {
-    if (!anchorPhrase.trim()) return;
-    const newCuts = generateCutsForPhrase(anchorPhrase.trim(), 8);
+    const phrase = anchorPhrase.trim();
+    if (!phrase) return;
+    setIsGenerating(true);
+    const newCuts = generateCutsForPhrase(phrase, 8);
     setCuts(newCuts);
     setCurrentCutIndex(0);
+    lastCutTimeRef.current = performance.now();
+    playCutSound(soundEffect, soundVolume);
+    setTimeout(() => setIsGenerating(false), 250);
   };
 
   // Add a blank custom headline cut
@@ -1169,12 +1175,18 @@ export default function TextMatchCutStudioPage() {
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
               <input
                 type="text"
                 maxLength={23}
                 value={anchorPhrase}
                 onChange={(e) => setAnchorPhrase(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAutoGenerate();
+                  }
+                }}
                 placeholder="Enter word (max 23 chars)"
                 style={{
                   flex: 1,
@@ -1190,6 +1202,7 @@ export default function TextMatchCutStudioPage() {
               />
               <button
                 onClick={handleAutoGenerate}
+                disabled={isGenerating}
                 className="brutalist-button brutalist-button-primary"
                 style={{
                   fontSize: '0.8rem',
@@ -1202,11 +1215,13 @@ export default function TextMatchCutStudioPage() {
                   gap: 6,
                   boxShadow: '3px 3px 0 #000',
                   textTransform: 'uppercase',
+                  transform: isGenerating ? 'scale(0.96)' : 'none',
+                  transition: 'transform 0.1s ease',
                 }}
                 title="Generate newspaper articles containing this anchor phrase"
               >
-                <Zap size={15} />
-                Generate Cuts
+                <Zap size={15} className={isGenerating ? 'animate-bounce' : ''} />
+                {isGenerating ? 'GENERATING...' : 'GENERATE CUTS'}
               </button>
             </div>
 
