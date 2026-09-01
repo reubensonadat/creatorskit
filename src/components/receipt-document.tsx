@@ -59,6 +59,8 @@ export type ReceiptDocumentProps = {
     qrUrl?: string;
     /** Show the "Powered by CreatorKit" badge. Default true. */
     showBranding?: boolean;
+    /** Document kind — adapts title/labels for shared invoices, agreements & letterheads. Default: receipt. */
+    docKind?: 'invoice' | 'receipt' | 'agreement' | 'letterhead';
     style?: CSSProperties;
 };
 
@@ -108,6 +110,7 @@ export default function ReceiptDocument({
     maxItems = 6,
     qrUrl,
     showBranding = true,
+    docKind,
     style,
 }: ReceiptDocumentProps) {
     const { sym } = data;
@@ -138,6 +141,7 @@ export default function ReceiptDocument({
     const visibleItems = data.items.slice(0, maxItems);
     const hiddenCount = data.items.length - visibleItems.length;
     const paidInFull = data.amountPaid >= data.totalAmount;
+    const isReceipt = docKind === undefined || docKind === 'receipt';
 
     return (
         <div style={{ fontFamily: MONO_FONT, color: 'inherit', ...style }}>
@@ -163,10 +167,16 @@ export default function ReceiptDocument({
 
             <Divider />
 
-            {/* ─── Receipt title ─── */}
+            {/* ─── Document title ─── */}
             <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3em' }}>
-                    Payment Receipt
+                    {docKind === 'invoice'
+                        ? 'Invoice'
+                        : docKind === 'agreement'
+                          ? 'Sponsorship Agreement'
+                          : docKind === 'letterhead'
+                            ? 'Pitch Letterhead'
+                            : 'Payment Receipt'}
                 </div>
                 <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', opacity: MUTED_OPACITY, marginTop: 2 }}>
                     {data.receiptNumber} · {data.issueDate}
@@ -177,7 +187,7 @@ export default function ReceiptDocument({
 
             {/* ─── Parties + payment channel ─── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Row label="Received from" value={data.clientName} />
+                <Row label={isReceipt ? 'Received from' : 'Billed to'} value={data.clientName} />
                 <Row label="Channel" value={data.payChannel} />
             </div>
 
@@ -235,18 +245,22 @@ export default function ReceiptDocument({
 
             <Divider />
 
-            {/* ─── Emphasized amount paid ─── */}
+            {/* ─── Emphasized headline amount ─── */}
             <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.3em', opacity: MUTED_OPACITY }}>
-                    Amount paid
+                    {isReceipt ? 'Amount paid' : 'Total due'}
                 </div>
                 <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-                    {sym}{data.amountPaid.toLocaleString()}
+                    {sym}{(isReceipt ? data.amountPaid : data.totalAmount).toLocaleString()}
                 </div>
                 <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', opacity: MUTED_OPACITY }}>
-                    {paidInFull
-                        ? 'Paid in full'
-                        : `Balance due: ${sym}${data.balanceDue.toLocaleString()}`}
+                    {isReceipt
+                        ? paidInFull
+                            ? 'Paid in full'
+                            : `Balance due: ${sym}${data.balanceDue.toLocaleString()}`
+                        : data.amountPaid > 0
+                          ? `Paid: ${sym}${data.amountPaid.toLocaleString()} · Balance: ${sym}${data.balanceDue.toLocaleString()}`
+                          : `Balance due: ${sym}${data.balanceDue.toLocaleString()}`}
                 </div>
             </div>
 

@@ -69,16 +69,16 @@ function BusinessSuiteContent() {
   }, [searchParams]);
 
   // ─── GENERAL CREATOR & CLIENT STATE ──────────────────────────
-  const [creatorName, setCreatorName] = useState('Kofi Visuals / Ama K');
-  const [creatorHandle, setCreatorHandle] = useState('@kofi_creates');
-  const [creatorEmail, setCreatorEmail] = useState('contact@kofivisuals.com');
+  const [creatorName, setCreatorName] = useState('Creators Kit / Reubenson Adat');
+  const [creatorHandle, setCreatorHandle] = useState('@reubenson_creates');
+  const [creatorEmail, setCreatorEmail] = useState('hello@creatorskit.com');
   const [creatorPhone, setCreatorPhone] = useState('+233 24 000 0000');
   const [creatorLocation, setCreatorLocation] = useState('Accra, Ghana');
   const [creatorNiche, setCreatorNiche] = useState('Tech & Lifestyle Creator');
 
-  const [clientName, setClientName] = useState('Pulse Media / Brand X');
-  const [clientContact, setClientContact] = useState('Marketing Lead (Kwame Mensah)');
-  const [clientEmail, setClientEmail] = useState('partnerships@brandx.com');
+  const [clientName, setClientName] = useState('Synapse');
+  const [clientContact, setClientContact] = useState('Synapse');
+  const [clientEmail, setClientEmail] = useState('partnerships@synapse.com');
   const [clientAddress, setClientAddress] = useState('Airport Residential, Accra');
 
   const [currency, setCurrency] = useState<CurrencyType>('GHS');
@@ -102,6 +102,54 @@ function BusinessSuiteContent() {
   const [accentColor, setAccentColor] = useState('#e15b3c');
   // ─── BRANDING TOGGLE (Powered by CreatorKit badge on printed documents) ──
   const [brandingOn, setBrandingOn] = useState(true);
+  // ─── COLLAPSIBLE BUILDER SECTIONS ─────────────────────────────────────
+  // Every layer starts OFF — open only what you need, so the builder never
+  // becomes an overwhelming wall of controls.
+  const [openSections, setOpenSections] = useState({
+    design: false,
+    details: false,
+    deliverables: false,
+    payment: false,
+    terms: false,
+  });
+  const toggleSection = (key: keyof typeof openSections) =>
+    setOpenSections((s) => ({ ...s, [key]: !s[key] }));
+
+  const SectionToggle = ({ id, title }: { id: keyof typeof openSections; title: string }) => (
+    <button
+      type="button"
+      onClick={() => toggleSection(id)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        background: openSections[id] ? '#FFE500' : '#000',
+        color: openSections[id] ? '#000' : '#fff',
+        border: '2px solid #000',
+        boxShadow: '3px 3px 0 #000',
+        padding: '10px 14px',
+        fontFamily: 'monospace',
+        fontWeight: 900,
+        fontSize: '0.72rem',
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+        cursor: 'pointer',
+      }}
+    >
+      <span>{openSections[id] ? '▾' : '▸'} {title}</span>
+      <span
+        style={{
+          background: openSections[id] ? '#000' : '#fff',
+          color: openSections[id] ? '#FFE500' : '#000',
+          padding: '2px 8px',
+          fontSize: '0.62rem',
+        }}
+      >
+        {openSections[id] ? 'ON' : 'OFF'}
+      </span>
+    </button>
+  );
 
   // ─── CONTRACT TEMPLATE, CLAUSES & META STATE ─────────────────
   const [contractTemplate, setContractTemplate] = useState<ContractTemplateId>('service');
@@ -244,11 +292,11 @@ function BusinessSuiteContent() {
   // MoMo Details
   const [momoNetwork, setMomoNetwork] = useState('MTN Mobile Money');
   const [momoNumber, setMomoNumber] = useState('024 123 4567');
-  const [momoName, setMomoName] = useState('Kofi Visuals Ent');
+  const [momoName, setMomoName] = useState('Reubenson Adat');
 
   // Bank Details
   const [bankName, setBankName] = useState('Stanbic Bank Ghana / Zenith Bank');
-  const [bankAccountName, setBankAccountName] = useState('Kofi Visuals Creative Studio');
+  const [bankAccountName, setBankAccountName] = useState('Creators Kit / Reubenson Adat');
   const [bankAccountNumber, setBankAccountNumber] = useState('9040001234567');
 
   // Online / International
@@ -322,6 +370,93 @@ function BusinessSuiteContent() {
   // ─── SHAREABLE CLIENT RECEIPT LINK ────────────────────────────
   const [clientLinkCopied, setClientLinkCopied] = useState(false);
 
+  // Per-tab template extras stored alongside the payload in the database, so
+  // shared links render the creator's real invoice/agreement/letterhead template
+  // instead of a receipt-shaped summary.
+  const buildShareExtras = (): Record<string, any> | undefined => {
+    if (activeTab === 'invoice') {
+      return {
+        tpl: invoiceTemplate,
+        niche: creatorNiche,
+        ce: clientEmail,
+        ca: clientAddress,
+        sa: shippingAddress,
+        po: poNumber,
+        due: dueDate,
+        dep: depositPercentage,
+        depr: depositRequired,
+        mnm: momoName,
+        ban: bankAccountName,
+        ps: paystackLink,
+        sw: wireSwift,
+        ib: wireIban,
+        up: usagePeriod,
+        rr: revisionRounds,
+        td: turnaroundDays,
+        sig: signatureName,
+        nts: customNotes,
+        hf: headingFont,
+        bf: bodyFont,
+        sf: signatureFont,
+        pc: primaryColor,
+        ac: accentColor,
+      };
+    }
+    if (activeTab === 'agreement') {
+      return {
+        tpl: contractTemplate,
+        ct: contractTitle,
+        ced: contractEndDate,
+        csd: contractScopeDescription,
+        ce: clientEmail,
+        ca: clientAddress,
+        dep: depositPercentage,
+        depr: depositRequired,
+        pmd:
+          paymentType === 'momo'
+            ? `MTN / Vodafone Mobile Money (${momoNetwork}: ${momoNumber} - ${momoName})`
+            : paymentType === 'bank'
+              ? `Bank Transfer (${bankName} - Acct: ${bankAccountNumber} / ${bankAccountName})`
+              : paymentType === 'paystack'
+                ? 'Paystack Payment Link'
+                : `USD Wire Transfer (SWIFT: ${wireSwift})`,
+        up: usagePeriod,
+        rr: revisionRounds,
+        td: turnaroundDays,
+        conf: contractConfidentiality,
+        law: contractGoverningLaw,
+        excl: contractExclusivity,
+        cust: contractCustomTerms,
+        kill: contractKillFee,
+        sig: signatureName,
+        hf: headingFont,
+        bf: bodyFont,
+        sf: signatureFont,
+        pc: primaryColor,
+        ac: accentColor,
+      };
+    }
+    if (activeTab === 'letterhead') {
+      return {
+        tpl: letterheadTemplate,
+        niche: creatorNiche,
+        ce: clientEmail,
+        ca: clientAddress,
+        lt: letterheadTitle,
+        af: letterheadAudienceFocus,
+        er: letterheadEngagementRate,
+        tr: letterheadTrackRecord,
+        it: letterheadIntro,
+        bt: letterheadBody,
+        hf: headingFont,
+        bf: bodyFont,
+        pc: primaryColor,
+        ac: accentColor,
+      };
+    }
+    return undefined;
+  };
+
   const buildReceiptPayload = (): ReceiptPayload => {
     return {
       n: creatorName,
@@ -332,7 +467,7 @@ function BusinessSuiteContent() {
       c: clientName,
       a: clientContact,
       cu: currency,
-      rn: receiptNumber,
+      rn: activeTab === 'invoice' ? invoiceNumber : receiptNumber,
       dt: issueDate,
       it: items.map((i) => ({ d: i.description, q: i.quantity, r: i.rate })),
       da: discountAmount,
@@ -345,6 +480,8 @@ function BusinessSuiteContent() {
       ba: bankAccountNumber,
       lg: logoUrl ?? undefined,
       br: brandingOn ? 1 : 0,
+      k: activeTab as ReceiptPayload['k'],
+      x: buildShareExtras(),
     };
   };
 
@@ -354,7 +491,7 @@ function BusinessSuiteContent() {
 
     // Save to Supabase for clean short link
     const shortId = await saveReceiptToDatabase({
-      receiptNumber,
+      receiptNumber: payload.rn,
       creatorName,
       creatorEmail,
       creatorPhone,
@@ -365,6 +502,7 @@ function BusinessSuiteContent() {
       balanceDue,
       paymentChannel: paymentType,
       payloadString: encoded,
+      metadata: { kind: payload.k ?? 'receipt' },
     });
 
     if (shortId) {
@@ -372,8 +510,8 @@ function BusinessSuiteContent() {
     }
 
     // Offline fallback: keep the URL lean — never embed the heavy branding
-    // payload (logo data URL) in a shareable link.
-    const leanPayload = { ...payload, lg: undefined };
+    // payload (logo data URL) or template extras in a shareable link.
+    const leanPayload = { ...payload, lg: undefined, x: undefined };
     return `${window.location.origin}/receipt?r=${encodeReceipt(leanPayload)}`;
   };
 
@@ -399,6 +537,21 @@ function BusinessSuiteContent() {
     setReceiptShortUrl(link);
     return link;
   };
+
+  // Invalidate the cached short link whenever the document changes, so every
+  // share stores the latest state in the database (never a stale link).
+  const lastSharedPayloadRef = useRef<string | null>(null);
+  useEffect(() => {
+    const current = encodeReceipt(buildReceiptPayload());
+    if (lastSharedPayloadRef.current === null) {
+      lastSharedPayloadRef.current = current;
+      return;
+    }
+    if (current !== lastSharedPayloadRef.current) {
+      lastSharedPayloadRef.current = current;
+      setReceiptShortUrl(null);
+    }
+  });
 
   const addItem = (preset?: typeof PRESET_DELIVERABLES[0]) => {
     if (preset) {
@@ -436,69 +589,32 @@ function BusinessSuiteContent() {
     );
   };
 
-  // WhatsApp / Email Summary Copy
-  const buildWhatsAppText = () => {
+  // ─── WHATSAPP / SHARE — always a DB-backed short link, never a fat text blob ───
+  const buildShareMessage = (link: string): string => {
     const sym = CURRENCY_SYMBOLS[currency];
-    const itemsList = items.map((i) => `• ${i.quantity}x ${i.description} — ${sym}${i.rate * i.quantity}`).join('\n');
-
-    let payDetails = '';
-    if (paymentType === 'momo') {
-      payDetails = `MoMo: ${momoNetwork} | ${momoNumber} (${momoName})`;
-    } else if (paymentType === 'bank') {
-      payDetails = `Bank: ${bankName} | Acc: ${bankAccountNumber} (${bankAccountName})`;
-    } else {
-      payDetails = `Payment Link: ${paystackLink}`;
-    }
-
-    let text = '';
+    const who = clientContact || clientName;
     if (activeTab === 'invoice') {
-      text = `*INVOICE: ${invoiceNumber}*
-Hi ${clientName}, here is the invoice summary for our campaign deliverables:
-
-*Deliverables:*
-${itemsList}
-
-*Financial Breakdown:*
-• Subtotal: ${sym}${subtotal.toLocaleString()}
-• *Total Due:* ${sym}${totalAmount.toLocaleString()}
-• *Required 50% Deposit:* ${sym}${depositRequired.toLocaleString()}
-• Balance upon completion: ${sym}${balanceDue.toLocaleString()}
-
-*Payment Details:*
-${payDetails}
-
-*Terms:* 50% deposit before shoot date. Max ${revisionRounds} rounds of minor edits. Usage: ${usagePeriod}.
-Thank you! — ${creatorName} (${creatorHandle})`;
-    } else if (activeTab === 'receipt') {
-      text = `*OFFICIAL PAYMENT RECEIPT: ${receiptNumber}*
-Received from: ${clientName}
-Amount Received: ${sym}${amountPaid.toLocaleString()}
-Date: ${issueDate}
-Payment Channel: ${paymentType.toUpperCase()}
-Status: ${amountPaid >= totalAmount ? 'PAID IN FULL [CONFIRMED]' : 'PARTIAL DEPOSIT RECEIVED [CONFIRMED]'}
-
-Thank you for your business! — ${creatorName}`;
-    } else {
-      text = `*CREATOR SPONSORSHIP AGREEMENT*
-Creator: ${creatorName} (${creatorHandle})
-Brand/Client: ${clientName}
-Total Fee: ${sym}${totalAmount.toLocaleString()}
-Deliverables: ${items.map((i) => i.description).join(', ')}
-Usage Rights: ${usagePeriod}
-Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
+      return `Hello ${who}! Here is invoice ${invoiceNumber} from ${creatorName} — total ${sym}${totalAmount.toLocaleString()}. Open it to view, print or download: ${link}`;
     }
-
-    return text;
+    if (activeTab === 'receipt') {
+      return `Hello ${who}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${link}`;
+    }
+    if (activeTab === 'agreement') {
+      return `Hello ${who}! Here is the sponsorship agreement from ${creatorName} — total fee ${sym}${totalAmount.toLocaleString()}. Open it to review, print or download: ${link}`;
+    }
+    return `Hello ${who}! Here is the pitch document from ${creatorName}. Open it to view, print or download: ${link}`;
   };
 
-  const copyWhatsAppSummary = () => {
-    navigator.clipboard.writeText(buildWhatsAppText());
+  const copyWhatsAppSummary = async () => {
+    const link = await ensureReceiptShortUrl();
+    navigator.clipboard.writeText(buildShareMessage(link));
     setCopiedNotification(true);
     setTimeout(() => setCopiedNotification(false), 2500);
   };
 
-  const sendWhatsAppSummary = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppText())}`, '_blank');
+  const sendWhatsAppSummary = async () => {
+    const link = await ensureReceiptShortUrl();
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildShareMessage(link))}`, '_blank');
   };
 
   const [isSavingImage, setIsSavingImage] = useState(false);
@@ -589,7 +705,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
   const receiptQrUrl =
     receiptShortUrl ??
     (typeof window !== 'undefined'
-      ? `${window.location.origin}/receipt?r=${encodeReceipt({ ...buildReceiptPayload(), lg: undefined })}`
+      ? `${window.location.origin}/receipt?r=${encodeReceipt({ ...buildReceiptPayload(), lg: undefined, x: undefined })}`
       : undefined);
 
   // Full invoice data object passed to the chosen template
@@ -998,620 +1114,637 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
         >
           {/* ─── LEFT COLUMN: BUILDER & SETTINGS CONTROLS ─── */}
           <div className="ck-noprint" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* 0. Invoice Template Picker (When on Invoice Tab) */}
-            {activeTab === 'invoice' && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    INVOICE DESIGN TEMPLATE
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                    4 STYLES
-                  </span>
-                </div>
+            {/* ─── CUSTOMIZATION LAYER — collapsible (templates · fonts · colors).
+                  Receipts have no templates, so the whole layer hides on the
+                  receipt tab. ─── */}
+            {activeTab !== 'receipt' && (
+              <>
+            <SectionToggle id="design" title="Customize Design — Templates · Fonts · Colors" />
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {[
-                    { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
-                    { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
-                    { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
-                    { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
-                  ].map((tpl) => {
-                    const isCurrent = invoiceTemplate === tpl.id;
-                    return (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        onClick={() => handleSelectTemplate(tpl.id as InvoiceTemplateId)}
-                        style={{
-                          textAlign: 'left',
-                          padding: '10px 10px',
-                          background: isCurrent ? '#FFE500' : '#f9fafb',
-                          color: '#000',
-                          border: '2px solid #000',
-                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 3,
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                          {isCurrent ? '✓ ' : ''}{tpl.title}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                          {tpl.desc}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Typography Customization (When on Invoice Tab) */}
-            {activeTab === 'invoice' && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    TYPOGRAPHY (52 GOOGLE FONTS)
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                    CUSTOMIZE FONTS
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      TITLE / HEADING FONT
-                    </label>
-                    <select
-                      value={headingFont}
-                      onChange={(e) => setHeadingFont(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {GOOGLE_FONTS_LIST.map((f) => (
-                        <option key={`heading-${f.id}`} value={f.name}>
-                          {f.name} ({f.category})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      BODY &amp; TABLE FONT
-                    </label>
-                    <select
-                      value={bodyFont}
-                      onChange={(e) => setBodyFont(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {GOOGLE_FONTS_LIST.map((f) => (
-                        <option key={`body-${f.id}`} value={f.name}>
-                          {f.name} ({f.category})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                    SIGNATURE &amp; SCRIPT FONT
-                  </label>
-                  <select
-                    value={signatureFont}
-                    onChange={(e) => setSignatureFont(e.target.value)}
-                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+            {openSections.design && (
+              <>
+                {/* 0. Invoice Template Picker (When on Invoice Tab) */}
+                {activeTab === 'invoice' && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
                   >
-                    {GOOGLE_FONTS_LIST.map((f) => (
-                      <option key={`sig-${f.id}`} value={f.name}>
-                        {f.name} ({f.category})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Color & Accent Highlights Customization (When on Invoice Tab) */}
-            {activeTab === 'invoice' && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    COLOR THEME &amp; HIGHLIGHTS
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                    LIVE PALETTE
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  {/* Primary / Frame Color */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                      PRIMARY COLOR
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <input
-                        type="color"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
-                        {primaryColor.toUpperCase()}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        INVOICE DESIGN TEMPLATE
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                        4 STYLES
                       </span>
                     </div>
-                    {/* Quick Swatches */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       {[
-                        { label: 'Navy', hex: '#162a45' },
-                        { label: 'Slate', hex: '#283548' },
-                        { label: 'Black', hex: '#000000' },
-                        { label: 'Royal', hex: '#1e3a8a' },
-                        { label: 'Pine', hex: '#064e3b' },
-                        { label: 'Wine', hex: '#7f1d1d' },
-                      ].map((swatch) => (
-                        <button
-                          key={swatch.hex}
-                          type="button"
-                          title={swatch.label}
-                          onClick={() => setPrimaryColor(swatch.hex)}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: '50%',
-                            background: swatch.hex,
-                            border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
-                            boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
-                            cursor: 'pointer',
-                          }}
-                        />
-                      ))}
+                        { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
+                        { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
+                        { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
+                        { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
+                      ].map((tpl) => {
+                        const isCurrent = invoiceTemplate === tpl.id;
+                        return (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => handleSelectTemplate(tpl.id as InvoiceTemplateId)}
+                            style={{
+                              textAlign: 'left',
+                              padding: '10px 10px',
+                              background: isCurrent ? '#FFE500' : '#f9fafb',
+                              color: '#000',
+                              border: '2px solid #000',
+                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 3,
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                              {isCurrent ? '✓ ' : ''}{tpl.title}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                              {tpl.desc}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
+                )}
 
-                  {/* Accent / Highlight Color */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                      ACCENT / HIGHLIGHT
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <input
-                        type="color"
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
-                        {accentColor.toUpperCase()}
+                {/* Typography Customization (When on Invoice Tab) */}
+                {activeTab === 'invoice' && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        TYPOGRAPHY (52 GOOGLE FONTS)
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                        CUSTOMIZE FONTS
                       </span>
                     </div>
-                    {/* Quick Swatches */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {[
-                        { label: 'Terracotta', hex: '#e15b3c' },
-                        { label: 'Gold', hex: '#eab308' },
-                        { label: 'Emerald', hex: '#10b981' },
-                        { label: 'Cyan', hex: '#06b6d4' },
-                        { label: 'Rose', hex: '#e11d48' },
-                        { label: 'Neon', hex: '#FFE500' },
-                      ].map((swatch) => (
-                        <button
-                          key={swatch.hex}
-                          type="button"
-                          title={swatch.label}
-                          onClick={() => setAccentColor(swatch.hex)}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: '50%',
-                            background: swatch.hex,
-                            border: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
-                            boxShadow: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #000' : 'none',
-                            cursor: 'pointer',
-                          }}
-                        />
-                      ))}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          TITLE / HEADING FONT
+                        </label>
+                        <select
+                          value={headingFont}
+                          onChange={(e) => setHeadingFont(e.target.value)}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          {GOOGLE_FONTS_LIST.map((f) => (
+                            <option key={`heading-${f.id}`} value={f.name}>
+                              {f.name} ({f.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          BODY &amp; TABLE FONT
+                        </label>
+                        <select
+                          value={bodyFont}
+                          onChange={(e) => setBodyFont(e.target.value)}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          {GOOGLE_FONTS_LIST.map((f) => (
+                            <option key={`body-${f.id}`} value={f.name}>
+                              {f.name} ({f.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* 0. Contract Template & Clause Customizer (When on Agreement Tab) */}
-            {activeTab === 'agreement' && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    CONTRACT LEGAL TEMPLATE
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                    3 FORMATS
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
-                  {[
-                    { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
-                    { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
-                    { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
-                  ].map((tpl) => {
-                    const isCurrent = contractTemplate === tpl.id;
-                    return (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        onClick={() => handleSelectContractTemplate(tpl.id as ContractTemplateId)}
-                        style={{
-                          textAlign: 'left',
-                          padding: '10px 10px',
-                          background: isCurrent ? '#FFE500' : '#f9fafb',
-                          color: '#000',
-                          border: '2px solid #000',
-                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 3,
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                          {isCurrent ? '✓ ' : ''}{tpl.title}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                          {tpl.desc}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Quick Presets */}
-                <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                    QUICK LEGAL PRESETS (1-CLICK LOAD)
-                  </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {[
-                      { id: 'service', label: 'Standard Service' },
-                      { id: 'sponsorship', label: 'Influencer Deal' },
-                      { id: 'business', label: 'Agency Agreement' },
-                      { id: 'nda', label: 'Mutual NDA' },
-                      { id: 'contractor', label: 'Contractor' },
-                    ].map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSelectContractPreset(p.id)}
-                        style={{
-                          background: '#fff',
-                          border: '1px solid #000',
-                          padding: '4px 8px',
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        + {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Contract Meta & Clauses Customization */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      CONTRACT TITLE
-                    </label>
-                    <input
-                      type="text"
-                      value={contractTitle}
-                      onChange={(e) => setContractTitle(e.target.value)}
-                      placeholder="SERVICE CONTRACT"
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      SCOPE OVERVIEW &amp; CAMPAIGN BRIEF
-                    </label>
-                    <textarea
-                      value={contractScopeDescription}
-                      onChange={(e) => setContractScopeDescription(e.target.value)}
-                      placeholder="Describe the nature of the campaign and deliverables..."
-                      rows={2}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        EXCLUSIVITY CLAUSE
+                        SIGNATURE &amp; SCRIPT FONT
                       </label>
                       <select
-                        value={contractExclusivity}
-                        onChange={(e) => setContractExclusivity(e.target.value)}
+                        value={signatureFont}
+                        onChange={(e) => setSignatureFont(e.target.value)}
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
                       >
-                        <option value="None">None (Non-Exclusive)</option>
-                        <option value="30 Days Category Exclusive">30 Days Category Exclusive</option>
-                        <option value="60 Days Category Exclusive">60 Days Category Exclusive</option>
-                        <option value="90 Days Competitor Lockout">90 Days Competitor Lockout</option>
+                        {GOOGLE_FONTS_LIST.map((f) => (
+                          <option key={`sig-${f.id}`} value={f.name}>
+                            {f.name} ({f.category})
+                          </option>
+                        ))}
                       </select>
                     </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        KILL FEE / CANCEL DEPOSIT %
-                      </label>
-                      <input
-                        type="number"
-                        value={contractKillFee}
-                        onChange={(e) => setContractKillFee(parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                      />
-                    </div>
                   </div>
+                )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        GOVERNING LAW
-                      </label>
-                      <input
-                        type="text"
-                        value={contractGoverningLaw}
-                        onChange={(e) => setContractGoverningLaw(e.target.value)}
-                        placeholder="Ghana"
-                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                      />
+                {/* Color & Accent Highlights Customization (When on Invoice Tab) */}
+                {activeTab === 'invoice' && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        COLOR THEME &amp; HIGHLIGHTS
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                        LIVE PALETTE
+                      </span>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        CONFIDENTIALITY (NDA)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setContractConfidentiality((v) => !v)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          border: '1.5px solid #000',
-                          background: contractConfidentiality ? '#000' : '#fff',
-                          color: contractConfidentiality ? '#fff' : '#000',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          fontFamily: 'monospace',
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {contractConfidentiality ? '✓ INCLUDED' : '✕ EXCLUDED'}
-                      </button>
-                    </div>
-                  </div>
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      ADDITIONAL TERMS &amp; CUSTOM COVENANTS (OPTIONAL)
-                    </label>
-                    <textarea
-                      value={contractCustomTerms}
-                      onChange={(e) => setContractCustomTerms(e.target.value)}
-                      placeholder="Add any specific conditions, delivery dates, or sponsor obligations..."
-                      rows={2}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 0. Letterhead Template & Proposal Customizer (When on Letterhead Tab) */}
-            {activeTab === 'letterhead' && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    PITCH LETTERHEAD TEMPLATE
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                    2 FORMATS
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-                  {[
-                    { id: 'creative', title: 'Creative Pitch', desc: 'Media Kit & Highlights with Package table' },
-                    { id: 'executive', title: 'Executive Proposal', desc: 'Corporate proposal layout with deliverables' },
-                  ].map((tpl) => {
-                    const isCurrent = letterheadTemplate === tpl.id;
-                    return (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        onClick={() => setLetterheadTemplate(tpl.id as LetterheadTemplateId)}
-                        style={{
-                          textAlign: 'left',
-                          padding: '10px 10px',
-                          background: isCurrent ? '#FFE500' : '#f9fafb',
-                          color: '#000',
-                          border: '2px solid #000',
-                          boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 3,
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                          {isCurrent ? '✓ ' : ''}{tpl.title}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      {/* Primary / Frame Color */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                          PRIMARY COLOR
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <input
+                            type="color"
+                            value={primaryColor}
+                            onChange={(e) => setPrimaryColor(e.target.value)}
+                            style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {primaryColor.toUpperCase()}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                          {tpl.desc}
+                        {/* Quick Swatches */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {[
+                            { label: 'Navy', hex: '#162a45' },
+                            { label: 'Slate', hex: '#283548' },
+                            { label: 'Black', hex: '#000000' },
+                            { label: 'Royal', hex: '#1e3a8a' },
+                            { label: 'Pine', hex: '#064e3b' },
+                            { label: 'Wine', hex: '#7f1d1d' },
+                          ].map((swatch) => (
+                            <button
+                              key={swatch.hex}
+                              type="button"
+                              title={swatch.label}
+                              onClick={() => setPrimaryColor(swatch.hex)}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: '50%',
+                                background: swatch.hex,
+                                border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                                boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
+                                cursor: 'pointer',
+                              }}
+                            />
+                          ))}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                      </div>
 
-                {/* Letterhead Customization Inputs */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      PROPOSAL TITLE
-                    </label>
-                    <input
-                      type="text"
-                      value={letterheadTitle}
-                      onChange={(e) => setLetterheadTitle(e.target.value)}
-                      placeholder="Campaign Proposal"
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        AUDIENCE FOCUS
-                      </label>
-                      <input
-                        type="text"
-                        value={letterheadAudienceFocus}
-                        onChange={(e) => setLetterheadAudienceFocus(e.target.value)}
-                        placeholder="Ghana & Diaspora"
-                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                      />
+                      {/* Accent / Highlight Color */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                          ACCENT / HIGHLIGHT
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <input
+                            type="color"
+                            value={accentColor}
+                            onChange={(e) => setAccentColor(e.target.value)}
+                            style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {accentColor.toUpperCase()}
+                          </span>
+                        </div>
+                        {/* Quick Swatches */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {[
+                            { label: 'Terracotta', hex: '#e15b3c' },
+                            { label: 'Gold', hex: '#eab308' },
+                            { label: 'Emerald', hex: '#10b981' },
+                            { label: 'Cyan', hex: '#06b6d4' },
+                            { label: 'Rose', hex: '#e11d48' },
+                            { label: 'Neon', hex: '#FFE500' },
+                          ].map((swatch) => (
+                            <button
+                              key={swatch.hex}
+                              type="button"
+                              title={swatch.label}
+                              onClick={() => setAccentColor(swatch.hex)}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: '50%',
+                                background: swatch.hex,
+                                border: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                                boxShadow: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #000' : 'none',
+                                cursor: 'pointer',
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        ENGAGEMENT HIGHLIGHT
+                  </div>
+                )}
+
+                {/* 0. Contract Template & Clause Customizer (When on Agreement Tab) */}
+                {activeTab === 'agreement' && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        CONTRACT LEGAL TEMPLATE
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                        3 FORMATS
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+                      {[
+                        { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
+                        { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
+                        { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
+                      ].map((tpl) => {
+                        const isCurrent = contractTemplate === tpl.id;
+                        return (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => handleSelectContractTemplate(tpl.id as ContractTemplateId)}
+                            style={{
+                              textAlign: 'left',
+                              padding: '10px 10px',
+                              background: isCurrent ? '#FFE500' : '#f9fafb',
+                              color: '#000',
+                              border: '2px solid #000',
+                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 3,
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                              {isCurrent ? '✓ ' : ''}{tpl.title}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                              {tpl.desc}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                        QUICK LEGAL PRESETS (1-CLICK LOAD)
                       </label>
-                      <input
-                        type="text"
-                        value={letterheadEngagementRate}
-                        onChange={(e) => setLetterheadEngagementRate(e.target.value)}
-                        placeholder="82% Mobile · High Conversion"
-                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                      />
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {[
+                          { id: 'service', label: 'Standard Service' },
+                          { id: 'sponsorship', label: 'Influencer Deal' },
+                          { id: 'business', label: 'Agency Agreement' },
+                          { id: 'nda', label: 'Mutual NDA' },
+                          { id: 'contractor', label: 'Contractor' },
+                        ].map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleSelectContractPreset(p.id)}
+                            style={{
+                              background: '#fff',
+                              border: '1px solid #000',
+                              padding: '4px 8px',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Contract Meta & Clauses Customization */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          CONTRACT TITLE
+                        </label>
+                        <input
+                          type="text"
+                          value={contractTitle}
+                          onChange={(e) => setContractTitle(e.target.value)}
+                          placeholder="SERVICE CONTRACT"
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          SCOPE OVERVIEW &amp; CAMPAIGN BRIEF
+                        </label>
+                        <textarea
+                          value={contractScopeDescription}
+                          onChange={(e) => setContractScopeDescription(e.target.value)}
+                          placeholder="Describe the nature of the campaign and deliverables..."
+                          rows={2}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            EXCLUSIVITY CLAUSE
+                          </label>
+                          <select
+                            value={contractExclusivity}
+                            onChange={(e) => setContractExclusivity(e.target.value)}
+                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                          >
+                            <option value="None">None (Non-Exclusive)</option>
+                            <option value="30 Days Category Exclusive">30 Days Category Exclusive</option>
+                            <option value="60 Days Category Exclusive">60 Days Category Exclusive</option>
+                            <option value="90 Days Competitor Lockout">90 Days Competitor Lockout</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            KILL FEE / CANCEL DEPOSIT %
+                          </label>
+                          <input
+                            type="number"
+                            value={contractKillFee}
+                            onChange={(e) => setContractKillFee(parseInt(e.target.value) || 0)}
+                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            GOVERNING LAW
+                          </label>
+                          <input
+                            type="text"
+                            value={contractGoverningLaw}
+                            onChange={(e) => setContractGoverningLaw(e.target.value)}
+                            placeholder="Ghana"
+                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            CONFIDENTIALITY (NDA)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setContractConfidentiality((v) => !v)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              border: '1.5px solid #000',
+                              background: contractConfidentiality ? '#000' : '#fff',
+                              color: contractConfidentiality ? '#fff' : '#000',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              fontFamily: 'monospace',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {contractConfidentiality ? '✓ INCLUDED' : '✕ EXCLUDED'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          ADDITIONAL TERMS &amp; CUSTOM COVENANTS (OPTIONAL)
+                        </label>
+                        <textarea
+                          value={contractCustomTerms}
+                          onChange={(e) => setContractCustomTerms(e.target.value)}
+                          placeholder="Add any specific conditions, delivery dates, or sponsor obligations..."
+                          rows={2}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                        />
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      CUSTOM INTRO / PROPOSAL HOOK (OPTIONAL)
-                    </label>
-                    <textarea
-                      value={letterheadIntro}
-                      onChange={(e) => setLetterheadIntro(e.target.value)}
-                      placeholder="Leave blank to use smart generated intro or write custom..."
-                      rows={2}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                    />
+                {/* 0. Letterhead Template & Proposal Customizer (When on Letterhead Tab) */}
+                {activeTab === 'letterhead' && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        PITCH LETTERHEAD TEMPLATE
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                        2 FORMATS
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                      {[
+                        { id: 'creative', title: 'Creative Pitch', desc: 'Media Kit & Highlights with Package table' },
+                        { id: 'executive', title: 'Executive Proposal', desc: 'Corporate proposal layout with deliverables' },
+                      ].map((tpl) => {
+                        const isCurrent = letterheadTemplate === tpl.id;
+                        return (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => setLetterheadTemplate(tpl.id as LetterheadTemplateId)}
+                            style={{
+                              textAlign: 'left',
+                              padding: '10px 10px',
+                              background: isCurrent ? '#FFE500' : '#f9fafb',
+                              color: '#000',
+                              border: '2px solid #000',
+                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 3,
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                              {isCurrent ? '✓ ' : ''}{tpl.title}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                              {tpl.desc}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Letterhead Customization Inputs */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          PROPOSAL TITLE
+                        </label>
+                        <input
+                          type="text"
+                          value={letterheadTitle}
+                          onChange={(e) => setLetterheadTitle(e.target.value)}
+                          placeholder="Campaign Proposal"
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            AUDIENCE FOCUS
+                          </label>
+                          <input
+                            type="text"
+                            value={letterheadAudienceFocus}
+                            onChange={(e) => setLetterheadAudienceFocus(e.target.value)}
+                            placeholder="Ghana & Diaspora"
+                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                            ENGAGEMENT HIGHLIGHT
+                          </label>
+                          <input
+                            type="text"
+                            value={letterheadEngagementRate}
+                            onChange={(e) => setLetterheadEngagementRate(e.target.value)}
+                            placeholder="82% Mobile · High Conversion"
+                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          CUSTOM INTRO / PROPOSAL HOOK (OPTIONAL)
+                        </label>
+                        <textarea
+                          value={letterheadIntro}
+                          onChange={(e) => setLetterheadIntro(e.target.value)}
+                          placeholder="Leave blank to use smart generated intro or write custom..."
+                          rows={2}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+
+                {/* Typography Customization (When on Agreement or Letterhead Tab) */}
+                {(activeTab === 'agreement' || activeTab === 'letterhead') && (
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '3px 3px 0 #000',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        DOCUMENT TYPOGRAPHY (52 GOOGLE FONTS)
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                        CUSTOMIZE FONTS
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          TITLE / HEADING FONT
+                        </label>
+                        <select
+                          value={headingFont}
+                          onChange={(e) => setHeadingFont(e.target.value)}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          {GOOGLE_FONTS_LIST.map((f) => (
+                            <option key={`doc-heading-${f.id}`} value={f.name}>
+                              {f.name} ({f.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          BODY &amp; CLAUSE FONT
+                        </label>
+                        <select
+                          value={bodyFont}
+                          onChange={(e) => setBodyFont(e.target.value)}
+                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          {GOOGLE_FONTS_LIST.map((f) => (
+                            <option key={`doc-body-${f.id}`} value={f.name}>
+                              {f.name} ({f.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </>
+            )}
+              </>
             )}
 
-            {/* Typography Customization (When on Agreement or Letterhead Tab) */}
-            {(activeTab === 'agreement' || activeTab === 'letterhead') && (
-              <div
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    DOCUMENT TYPOGRAPHY (52 GOOGLE FONTS)
-                  </span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                    CUSTOMIZE FONTS
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      TITLE / HEADING FONT
-                    </label>
-                    <select
-                      value={headingFont}
-                      onChange={(e) => setHeadingFont(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {GOOGLE_FONTS_LIST.map((f) => (
-                        <option key={`doc-heading-${f.id}`} value={f.name}>
-                          {f.name} ({f.category})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                      BODY &amp; CLAUSE FONT
-                    </label>
-                    <select
-                      value={bodyFont}
-                      onChange={(e) => setBodyFont(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {GOOGLE_FONTS_LIST.map((f) => (
-                        <option key={`doc-body-${f.id}`} value={f.name}>
-                          {f.name} ({f.category})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
+            <SectionToggle id="details" title="1. Creator & Client Details" />
 
             {/* 1. Creator & Brand Info */}
             <div
               style={{
+                display: openSections.details ? 'block' : 'none',
                 background: '#fff',
                 border: '2px solid #000',
                 boxShadow: '3px 3px 0 #000',
@@ -1813,9 +1946,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </div>
             </div>
 
+            <SectionToggle id="deliverables" title="2. Campaign Deliverables & Pricing" />
+
             {/* 2. Deliverables & Pricing */}
             <div
               style={{
+                display: openSections.deliverables ? 'block' : 'none',
                 background: '#fff',
                 border: '2px solid #000',
                 boxShadow: '3px 3px 0 #000',
@@ -1983,9 +2119,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </button>
             </div>
 
+            <SectionToggle id="payment" title="3. Payment Details (MoMo · Bank · Paystack · Wire)" />
+
             {/* 3. Payment Methods (MoMo, Bank, Paystack) */}
             <div
               style={{
+                display: openSections.payment ? 'block' : 'none',
                 background: '#fff',
                 border: '2px solid #000',
                 boxShadow: '3px 3px 0 #000',
@@ -2143,9 +2282,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               )}
             </div>
 
+            <SectionToggle id="terms" title="4. Deal Terms & Protection" />
+
             {/* 4. Protection Terms & Contract Settings */}
             <div
               style={{
+                display: openSections.terms ? 'block' : 'none',
                 background: '#fff',
                 border: '2px solid #000',
                 boxShadow: '3px 3px 0 #000',

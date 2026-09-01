@@ -65,6 +65,14 @@ export type ReceiptPayload = {
     lg?: string;
     /** "Powered by CreatorKit" badge on the printed document: 1 = on (default), 0 = off */
     br?: 0 | 1;
+    // ── Document kind ─────────────────────────────────────────
+    /** Which business-suite document this payload represents (client view adapts title/labels) */
+    k?: 'invoice' | 'receipt' | 'agreement' | 'letterhead';
+    // ── Template extras ───────────────────────────────────────
+    /** Per-kind template data (template id, styling, kind-specific fields) so the
+     *  client view renders the creator's real invoice/agreement/letterhead template.
+     *  Lives in the database payload_string — stripped from offline fallback URLs. */
+    x?: Record<string, any>;
 };
 
 export const RECEIPT_CURRENCY_SYMBOLS: Record<string, string> = {
