@@ -468,7 +468,7 @@ export default function BeatSyncPage() {
     if (pacingPreset === 'adaptive') {
       const isNearDrop = (t: number) => dropTimestamps.some((d) => Math.abs(d - t) < 0.15);
 
-      for (let t = firstBeatOffset; t < totalDuration; ) {
+      for (let t = firstBeatOffset; t < totalDuration;) {
         const beatNum = Math.round((t - firstBeatOffset) / beatInterval);
         const currentSection = songSections.find((s) => t >= s.startTime && t < s.endTime);
 
@@ -669,7 +669,7 @@ export default function BeatSyncPage() {
     if (audioSourceRef.current) {
       try {
         audioSourceRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       audioSourceRef.current.disconnect();
       audioSourceRef.current = null;
     }
@@ -684,7 +684,7 @@ export default function BeatSyncPage() {
     if (audioSourceRef.current) {
       try {
         audioSourceRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       audioSourceRef.current.disconnect();
       audioSourceRef.current = null;
     }
@@ -761,7 +761,6 @@ export default function BeatSyncPage() {
     if (!file) return;
 
     setTrackName(file.name);
-    setIsAnalyzing(true);
     handleStop();
 
     let ctx = audioContext;
@@ -803,10 +802,12 @@ export default function BeatSyncPage() {
             try {
               const sampleRate = ctx!.sampleRate || 44100;
               const offlineCtx = new OfflineAudioContext(1, Math.ceil(sampleRate * Math.min(dur, 600)), sampleRate);
-              const source = offlineCtx.createMediaElementSource(media);
+              // createMediaElementSource exists on OfflineAudioContext per the Web Audio spec
+              // (BaseAudioContext), but TS DOM lib only declares it on AudioContext.
+              const source = (offlineCtx as unknown as AudioContext).createMediaElementSource(media);
               source.connect(offlineCtx.destination);
               media.currentTime = 0;
-              media.play().catch(() => {});
+              media.play().catch(() => { });
 
               const rendered = await offlineCtx.startRendering();
               URL.revokeObjectURL(blobUrl);
@@ -831,7 +832,6 @@ export default function BeatSyncPage() {
     } catch (err) {
       console.error('Audio decoding error:', err);
       alert('Could not decode audio from this file. Please ensure it contains a valid audio stream (MP3, WAV, M4A, AAC, WebM, MP4).');
-      setIsAnalyzing(false);
     }
   };
 
@@ -1051,8 +1051,8 @@ export default function BeatSyncPage() {
 
   return (
     <div
+      className="fs-app-root"
       style={{
-        height: '100vh',
         width: '100vw',
         overflow: 'hidden',
         background: '#09090b',

@@ -371,7 +371,10 @@ function BusinessSuiteContent() {
       return `${window.location.origin}/r/${shortId}`;
     }
 
-    return `${window.location.origin}/receipt?r=${encoded}`;
+    // Offline fallback: keep the URL lean — never embed the heavy branding
+    // payload (logo data URL) in a shareable link.
+    const leanPayload = { ...payload, lg: undefined };
+    return `${window.location.origin}/receipt?r=${encodeReceipt(leanPayload)}`;
   };
 
   const copyClientLink = async () => {
@@ -500,6 +503,16 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
   const [isSavingImage, setIsSavingImage] = useState(false);
 
+  // ─── DEVICE-ADAPTIVE EXPORT (one action, no paradox of choice) ──
+  // Desktop → print a PDF. Mobile → save/share a PNG image.
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const mobileUA = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+    setIsMobileDevice(coarsePointer || mobileUA);
+  }, []);
+
   const handlePrint = () => {
     window.print();
   };
@@ -507,7 +520,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
   const saveDocumentAsImage = async () => {
     setIsSavingImage(true);
     try {
-      const node = document.getElementById('printable-document');
+      // On the receipt tab capture ONLY the thermal paper itself — never the
+      // surrounding controls — so the saved image is the document, nothing else.
+      const node =
+        activeTab === 'receipt'
+          ? document.getElementById('receipt-capture-root') ?? document.getElementById('printable-document')
+          : document.getElementById('printable-document');
       if (!node) {
         setIsSavingImage(false);
         return;
@@ -526,6 +544,16 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
       console.error('Error saving image:', err);
     } finally {
       setIsSavingImage(false);
+    }
+  };
+
+  // Single export entry point for every action bar: desktop prints a PDF
+  // (through the animated printer overlay), mobile saves the document image.
+  const handleExport = () => {
+    if (isMobileDevice) {
+      saveDocumentAsImage();
+    } else {
+      startAnimatedPrint();
     }
   };
 
@@ -717,11 +745,18 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
   );
 
   return (
-    <div style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
+    <div className="ck-page" style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
       <style>{`
         .ck-tab { transition: transform 0.12s ease, box-shadow 0.12s ease; }
         .ck-tab:hover { transform: translate(-1px, -1px); }
         .ck-tab:active { transform: translate(1px, 1px); }
+        #printable-document { outline: none; }
+        @media (max-width: 900px) {
+          .ck-page { padding: 12px 12px 96px !important; }
+          .ck-workspace { gap: 16px !important; }
+          /* Mobile: live document first, builder controls below it */
+          .ck-preview-col { order: -1; }
+        }
         @media print {
           .ck-noprint { display: none !important; }
           body * { visibility: hidden; }
@@ -855,7 +890,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
             </button>
 
             <button
-              onClick={handlePrint}
+              onClick={handleExport}
+              disabled={isMobileDevice && isSavingImage}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -871,8 +907,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                 boxShadow: '2px 2px 0 #000',
               }}
             >
-              <Printer size={14} />
-              PRINT / SAVE PDF
+              {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
+              {isMobileDevice ? (isSavingImage ? 'SAVING…' : 'SAVE IMAGE') : 'PRINT / SAVE PDF'}
             </button>
           </div>
         </div>
@@ -952,6 +988,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
         {/* Workspace: 2-Column Split (Controls on Left, Live Branded Document on Right) */}
         <div
+          className="ck-workspace"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))',
@@ -2199,7 +2236,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
           </div>
 
           {/* ─── RIGHT COLUMN: PREVIEW & ACTIONS ─── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="ck-preview-col" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Top Document Action Bar (Only when not on receipt tab) */}
             {activeTab !== 'receipt' && (
               <div
@@ -2237,7 +2274,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, width: '100%', maxWidth: 540 }}>
                   <button
-                    onClick={startAnimatedPrint}
+                    onClick={handleExport}
+                    disabled={isMobileDevice && isSavingImage}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -2257,31 +2295,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Printer size={14} /> Print
-                  </button>
-                  <button
-                    onClick={saveDocumentAsImage}
-                    disabled={isSavingImage}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: '#000',
-                      color: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 900,
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
+                    {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
+                    {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print / PDF'}
                   </button>
                   <button
                     onClick={copyWhatsAppSummary}
@@ -2330,10 +2345,21 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
               </div>
             )}
 
-            {/* ─── LIVE BRANDED DOCUMENT CANVAS (PRINTABLE) ─── */}
+            {/* Edit hint — the live document below is directly editable */}
+            <div
+              className="ck-noprint"
+              style={{ fontSize: '0.62rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', color: '#666', textAlign: 'center', marginBottom: 8, letterSpacing: '0.04em' }}
+            >
+              ✎ Tap Any Text In The Document To Edit It Directly — Edits Are Included In Your Export
+            </div>
+
+            {/* ─── LIVE BRANDED DOCUMENT CANVAS (PRINTABLE + DIRECTLY EDITABLE) ─── */}
             <div
               ref={printAreaRef}
               id="printable-document"
+              contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
               style={
                 activeTab === 'receipt'
                   ? {}
@@ -2358,6 +2384,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   {/* ─── THERMAL RECEIPT PREVIEW ─── */}
                   <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
                     <div
+                      id="receipt-capture-root"
                       style={{
                         width: 355,
                         background: '#fafafa',
@@ -2372,7 +2399,7 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                   </div>
 
                   {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
-                  <div className="ck-noprint" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: 8, marginBottom: 24 }}>
+                  <div className="ck-noprint" contentEditable={false} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: 8, marginBottom: 24 }}>
                     <input
                       ref={logoFileInputRef}
                       type="file"
@@ -2396,20 +2423,15 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                     )}
 
                     <button
-                      onClick={startAnimatedPrint}
+                      onClick={handleExport}
+                      disabled={isMobileDevice && isSavingImage}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      <Printer size={14} /> Print
+                      {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
+                      {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print'}
                     </button>
                     <button
-                      onClick={saveDocumentAsImage}
-                      disabled={isSavingImage}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
-                    </button>
-                    <button
-                      onClick={copyReceiptClientLink}
+                      onClick={copyClientLink}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
                       {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Copied' : 'Client Link'}
@@ -2444,11 +2466,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                 }}
               >
                 <div style={{ fontSize: '0.75rem', color: '#666', fontWeight: 600 }}>
-                  Ready to bill? Print or save image directly to your device.
+                  Ready to bill? Export your document in one tap.
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, width: '100%' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, width: '100%' }}>
                   <button
-                    onClick={startAnimatedPrint}
+                    onClick={handleExport}
+                    disabled={isMobileDevice && isSavingImage}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -2468,31 +2491,8 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Printer size={13} /> Print
-                  </button>
-                  <button
-                    onClick={saveDocumentAsImage}
-                    disabled={isSavingImage}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      background: '#000',
-                      color: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 4px',
-                      fontSize: '0.72rem',
-                      fontWeight: 900,
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Download size={13} /> {isSavingImage ? 'Saving…' : 'Image'}
+                    {isMobileDevice ? <Download size={13} /> : <Printer size={13} />}
+                    {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print / PDF'}
                   </button>
                   <button
                     onClick={copyWhatsAppSummary}
@@ -2631,17 +2631,12 @@ Turnaround: ${turnaroundDays} business days after product delivery & deposit.`;
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 8, width: '100%', maxWidth: 480, marginTop: 4 }}>
               <button
-                onClick={handlePrint}
+                onClick={isMobileDevice ? saveDocumentAsImage : handlePrint}
+                disabled={isMobileDevice && isSavingImage}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
-                <Printer size={14} /> Print PDF
-              </button>
-              <button
-                onClick={saveDocumentAsImage}
-                disabled={isSavingImage}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
+                {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
+                {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print PDF'}
               </button>
               <button
                 onClick={copyWhatsAppSummary}

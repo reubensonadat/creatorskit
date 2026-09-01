@@ -555,8 +555,8 @@ Tested on YouTube Simulator.`;
 
   return (
     <div
+      className="fs-app-root"
       style={{
-        height: '100vh',
         width: '100vw',
         overflow: 'hidden',
         background: '#09090b',

@@ -30,7 +30,7 @@ import {
 
 import { ALL_TOOLS } from "@/data/tools";
 
-const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
   "/business": FileText,
   "/invoice": FileText,
   "/receipt": FileText,
@@ -64,7 +64,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
   const [sideAdOpen, setSideAdOpen] = useState(true);
 
   return (
-    <div className="tool-layout-root" style={{ display: "grid", gridTemplateRows: "52px 1fr", height: "100vh", background: "#f4f4f5", overflow: "hidden" }}>
+    <div className="tool-layout-root" style={{ display: "grid", gridTemplateRows: "52px 1fr", background: "#f4f4f5", overflow: "hidden" }}>
       {/* Topbar */}
       <header
         style={{
@@ -82,12 +82,14 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
           <button
             className="tool-layout-mobile-sidebar-toggle"
             onClick={() => setMobileSidebarOpen((v) => !v)}
+            aria-label={mobileSidebarOpen ? "Close tools navigation" : "Open tools navigation"}
+            aria-expanded={mobileSidebarOpen}
             style={{
               display: "none",
               alignItems: "center",
               justifyContent: "center",
-              width: 36,
-              height: 36,
+              width: 40,
+              height: 40,
               background: mobileSidebarOpen ? "#000" : "transparent",
               border: "2px solid #000",
               cursor: "pointer",
@@ -150,7 +152,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
       </header>
 
       {/* Main area with clean workspace */}
-      <div style={{ display: "flex", overflow: "hidden", height: "calc(100vh - 52px)", position: "relative" }}>
+      <div className="tool-layout-body" style={{ display: "flex", overflow: "hidden", position: "relative" }}>
         {/* Desktop Sidebar */}
         <aside
           className="tool-layout-desktop-sidebar"
@@ -276,6 +278,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             </div>
             <button
               onClick={() => setMobileSidebarOpen(false)}
+              aria-label="Close tools navigation"
               style={{ background: "none", border: "none", cursor: "pointer", color: "#000", padding: 4, display: "flex", alignItems: "center" }}
             >
               <X size={16} />
@@ -318,7 +321,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         {/* Clean Workspace */}
-        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
+        <main className="tool-layout-main" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
           {children}
 
           {/* NON-INTRUSIVE SIDE POPUP AD (For In-House Tools) */}

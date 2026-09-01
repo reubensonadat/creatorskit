@@ -135,6 +135,8 @@ export default function Navbar() {
           <div ref={rootRef} style={{ position: "relative" }}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -312,6 +314,8 @@ export default function Navbar() {
         <div ref={mobileRootRef} style={{ position: "relative" }}>
           <button
             onClick={() => setMobileMenuOpen((v) => !v)}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
             style={{
               display: "flex",
               alignItems: "center",

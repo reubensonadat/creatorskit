@@ -20,6 +20,8 @@ export function injectInvoiceGoogleFont(fontFamily: string) {
   const link = document.createElement('link');
   link.id = id;
   link.rel = 'stylesheet';
+  // crossorigin makes cssRules readable so html-to-image can embed fonts during export
+  link.crossOrigin = 'anonymous';
   link.href = `https://fonts.googleapis.com/css2?family=${slug}:wght@300;400;500;600;700;800;900&display=swap`;
   document.head.appendChild(link);
 }
