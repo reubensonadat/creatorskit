@@ -41,6 +41,7 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
     const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
     const [isSavingImage, setIsSavingImage] = useState(false);
     const paperRef = useRef<HTMLDivElement>(null);
+    const captureRef = useRef<HTMLDivElement>(null);
     const [paperHeight, setPaperHeight] = useState<number | null>(null);
 
     useEffect(() => {
@@ -76,7 +77,7 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
     const saveImage = async () => {
         setIsSavingImage(true);
         try {
-            const node = paperRef.current;
+            const node = captureRef.current;
             if (!node) {
                 setIsSavingImage(false);
                 return;
@@ -85,6 +86,10 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
             await exportDocumentAsImage({
                 node,
                 filename: `${(data.k ?? 'receipt').toLowerCase()}-${data.rn || 'document'}.png`,
+                // Capture at the document's original design width — 307px
+                // thermal (355px sheet minus the thermal paper's 24px side
+                // padding) or 820px full sheet — never the squeezed screen width.
+                designWidth: isThermal ? 307 : 820,
                 title: `${docLabel(data.k)} ${data.rn} - ${data.n}`,
                 text: `${docLabel(data.k)} from ${data.n}`,
             });
@@ -158,11 +163,15 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                             transition: `height ${FEED_MS}ms linear`,
                         }}
                     >
-                        <ReceiptPrinter.Paper variant={isThermal ? 'receipt' : 'document'}>
-                            <div ref={paperRef}>
-                                <SharedDocumentView data={data} qrUrl={qrUrl} showBranding={data.br !== 0} />
-                            </div>
-                        </ReceiptPrinter.Paper>
+                        {/* paperRef wraps the WHOLE paper (padding + tear edge
+                            included) so the tray height never clips the bottom. */}
+                        <div ref={paperRef}>
+                            <ReceiptPrinter.Paper variant={isThermal ? 'receipt' : 'document'}>
+                                <div ref={captureRef}>
+                                    <SharedDocumentView data={data} qrUrl={qrUrl} showBranding={data.br !== 0} />
+                                </div>
+                            </ReceiptPrinter.Paper>
+                        </div>
                     </ReceiptPrinter.Output>
                 </ReceiptPrinter.Root>
 

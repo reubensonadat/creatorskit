@@ -7,6 +7,14 @@ export interface ExportImageOptions {
   filename: string;
   title?: string;
   text?: string;
+  /**
+   * Original design width (px) the document must be captured at. When the live
+   * node renders narrower than this (mobile / split preview), an off-screen
+   * clone is laid out at exactly this width before rasterizing — so the saved
+   * image keeps the document's true proportions instead of the squeezed
+   * on-screen size. When the live node already matches, it is captured as-is.
+   */
+  designWidth?: number;
 }
 
 /**
@@ -38,12 +46,51 @@ function dataUrlToBlob(dataUrl: string, fallbackType = 'image/png'): Blob | null
  * those functions and throws
  * "Attempting to parse an unsupported color function" — do not regress to it.
  */
-async function captureNodeAsPngBlob(node: HTMLElement): Promise<Blob | null> {
+async function captureNodeAsPngBlob(node: HTMLElement, designWidth?: number): Promise<Blob | null> {
   // Let web fonts settle so the capture matches the live on-screen document.
   try {
     await document.fonts?.ready;
   } catch {
     // document.fonts unavailable — proceed without waiting.
+  }
+
+  // When the live node is squeezed below its design width (mobile screens,
+  // narrow split previews), capturing "as is" would bake the squeezed layout
+  // into the PNG. Stage an off-screen clone at the full design width so the
+  // browser re-lays the document out at its true proportions first.
+  let captureTarget = node;
+  let stage: HTMLDivElement | null = null;
+  const currentWidth = node.getBoundingClientRect().width;
+  if (designWidth && designWidth > 0 && Math.abs(currentWidth - designWidth) > 1) {
+    stage = document.createElement('div');
+    stage.setAttribute('aria-hidden', 'true');
+    stage.style.position = 'fixed';
+    stage.style.left = '-99999px';
+    stage.style.top = '0';
+    stage.style.width = `${designWidth}px`;
+    stage.style.background = '#ffffff';
+
+    const clone = node.cloneNode(true) as HTMLElement;
+    // Neutralize responsive shrink-wrap so the clone occupies the full design width.
+    clone.style.width = `${designWidth}px`;
+    clone.style.maxWidth = 'none';
+    clone.style.margin = '0';
+
+    stage.appendChild(clone);
+    document.body.appendChild(stage);
+
+    // Two animation frames guarantee the clone has been laid out at the
+    // design width before html-to-image measures it.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    try {
+      await document.fonts?.ready;
+    } catch {
+      // document.fonts unavailable — proceed without waiting.
+    }
+
+    captureTarget = clone;
   }
 
   const options = {
@@ -55,19 +102,23 @@ async function captureNodeAsPngBlob(node: HTMLElement): Promise<Blob | null> {
   };
 
   try {
-    const blob = await toBlob(node, options);
-    if (blob && blob.size > 0) return blob;
-  } catch (err) {
-    console.warn('Document image capture (toBlob) failed, retrying via toPng:', err);
-  }
+    try {
+      const blob = await toBlob(captureTarget, options);
+      if (blob && blob.size > 0) return blob;
+    } catch (err) {
+      console.warn('Document image capture (toBlob) failed, retrying via toPng:', err);
+    }
 
-  // Fallback: rasterize to a data URL, then decode it into a Blob.
-  try {
-    const dataUrl = await toPng(node, options);
-    const blob = dataUrl ? dataUrlToBlob(dataUrl) : null;
-    if (blob && blob.size > 0) return blob;
-  } catch (err) {
-    console.error('Document image capture failed:', err);
+    // Fallback: rasterize to a data URL, then decode it into a Blob.
+    try {
+      const dataUrl = await toPng(captureTarget, options);
+      const blob = dataUrl ? dataUrlToBlob(dataUrl) : null;
+      if (blob && blob.size > 0) return blob;
+    } catch (err) {
+      console.error('Document image capture failed:', err);
+    }
+  } finally {
+    stage?.remove();
   }
 
   return null;
@@ -83,9 +134,10 @@ export async function exportDocumentAsImage({
   filename,
   title = 'Document',
   text = 'Creator document',
+  designWidth,
 }: ExportImageOptions): Promise<boolean> {
   try {
-    const blob = await captureNodeAsPngBlob(node);
+    const blob = await captureNodeAsPngBlob(node, designWidth);
     if (!blob) {
       return false;
     }

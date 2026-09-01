@@ -329,6 +329,9 @@ function BusinessSuiteContent() {
   // ─── ANIMATED THERMAL RECEIPT PRINTER STATE ───────────────────
   const [printStage, setPrintStage] = useState<'idle' | 'processing' | 'printing' | 'complete'>('idle');
   const printTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const printPaperRef = useRef<HTMLDivElement>(null);
+  const [printPaperHeight, setPrintPaperHeight] = useState<number | null>(null);
+  const isPrintOverlayOpen = printStage !== 'idle';
 
   const startAnimatedPrint = async () => {
     // Ensure the Supabase short link exists so the printed QR code is scannable (receipts only)
@@ -345,6 +348,7 @@ function BusinessSuiteContent() {
     printTimersRef.current.forEach(clearTimeout);
     printTimersRef.current = [];
     setPrintStage('idle');
+    setPrintPaperHeight(null);
   };
 
   useEffect(() => {
@@ -357,6 +361,21 @@ function BusinessSuiteContent() {
   }, [printStage]);
 
   useEffect(() => () => printTimersRef.current.forEach(clearTimeout), []);
+
+  // Measure the real paper inside the print overlay so the output tray grows to
+  // fit the FULL document (thermal padding + zigzag tear edge included). A fixed
+  // tray height clips the bottom of long receipts / contracts. ResizeObserver
+  // re-measures when late-loading content (QR code, logo) changes the height.
+  useEffect(() => {
+    if (!isPrintOverlayOpen) return;
+    const el = printPaperRef.current;
+    if (!el) return;
+    const measure = () => setPrintPaperHeight(el.scrollHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isPrintOverlayOpen]);
 
   const payChannel =
     paymentType === 'momo'
@@ -653,6 +672,10 @@ function BusinessSuiteContent() {
       await exportDocumentAsImage({
         node,
         filename,
+        // Always capture at the document's original design width — thermal
+        // receipts are 355px, full-sheet documents are 820px — never at the
+        // squeezed on-screen preview width.
+        designWidth: activeTab === 'receipt' ? 355 : 820,
         title: `${activeTab.toUpperCase()} - ${creatorName}`,
         text: `${creatorName} - ${activeTab.toUpperCase()} (${docId})`,
       });
@@ -1119,623 +1142,623 @@ function BusinessSuiteContent() {
                   receipt tab. ─── */}
             {activeTab !== 'receipt' && (
               <>
-            <SectionToggle id="design" title="Customize Design — Templates · Fonts · Colors" />
+                <SectionToggle id="design" title="Customize Design — Templates · Fonts · Colors" />
 
-            {openSections.design && (
-              <>
-                {/* 0. Invoice Template Picker (When on Invoice Tab) */}
-                {activeTab === 'invoice' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        INVOICE DESIGN TEMPLATE
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                        4 STYLES
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {[
-                        { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
-                        { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
-                        { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
-                        { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
-                      ].map((tpl) => {
-                        const isCurrent = invoiceTemplate === tpl.id;
-                        return (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => handleSelectTemplate(tpl.id as InvoiceTemplateId)}
-                            style={{
-                              textAlign: 'left',
-                              padding: '10px 10px',
-                              background: isCurrent ? '#FFE500' : '#f9fafb',
-                              color: '#000',
-                              border: '2px solid #000',
-                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 3,
-                            }}
-                          >
-                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                              {isCurrent ? '✓ ' : ''}{tpl.title}
-                            </div>
-                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                              {tpl.desc}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Typography Customization (When on Invoice Tab) */}
-                {activeTab === 'invoice' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        TYPOGRAPHY (52 GOOGLE FONTS)
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                        CUSTOMIZE FONTS
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          TITLE / HEADING FONT
-                        </label>
-                        <select
-                          value={headingFont}
-                          onChange={(e) => setHeadingFont(e.target.value)}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                        >
-                          {GOOGLE_FONTS_LIST.map((f) => (
-                            <option key={`heading-${f.id}`} value={f.name}>
-                              {f.name} ({f.category})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          BODY &amp; TABLE FONT
-                        </label>
-                        <select
-                          value={bodyFont}
-                          onChange={(e) => setBodyFont(e.target.value)}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                        >
-                          {GOOGLE_FONTS_LIST.map((f) => (
-                            <option key={`body-${f.id}`} value={f.name}>
-                              {f.name} ({f.category})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        SIGNATURE &amp; SCRIPT FONT
-                      </label>
-                      <select
-                        value={signatureFont}
-                        onChange={(e) => setSignatureFont(e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                {openSections.design && (
+                  <>
+                    {/* 0. Invoice Template Picker (When on Invoice Tab) */}
+                    {activeTab === 'invoice' && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
                       >
-                        {GOOGLE_FONTS_LIST.map((f) => (
-                          <option key={`sig-${f.id}`} value={f.name}>
-                            {f.name} ({f.category})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {/* Color & Accent Highlights Customization (When on Invoice Tab) */}
-                {activeTab === 'invoice' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        COLOR THEME &amp; HIGHLIGHTS
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                        LIVE PALETTE
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      {/* Primary / Frame Color */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                          PRIMARY COLOR
-                        </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <input
-                            type="color"
-                            value={primaryColor}
-                            onChange={(e) => setPrimaryColor(e.target.value)}
-                            style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
-                          />
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
-                            {primaryColor.toUpperCase()}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            INVOICE DESIGN TEMPLATE
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                            4 STYLES
                           </span>
                         </div>
-                        {/* Quick Swatches */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           {[
-                            { label: 'Navy', hex: '#162a45' },
-                            { label: 'Slate', hex: '#283548' },
-                            { label: 'Black', hex: '#000000' },
-                            { label: 'Royal', hex: '#1e3a8a' },
-                            { label: 'Pine', hex: '#064e3b' },
-                            { label: 'Wine', hex: '#7f1d1d' },
-                          ].map((swatch) => (
-                            <button
-                              key={swatch.hex}
-                              type="button"
-                              title={swatch.label}
-                              onClick={() => setPrimaryColor(swatch.hex)}
-                              style={{
-                                width: 18,
-                                height: 18,
-                                borderRadius: '50%',
-                                background: swatch.hex,
-                                border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
-                                boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
-                                cursor: 'pointer',
-                              }}
-                            />
-                          ))}
+                            { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
+                            { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
+                            { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
+                            { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
+                          ].map((tpl) => {
+                            const isCurrent = invoiceTemplate === tpl.id;
+                            return (
+                              <button
+                                key={tpl.id}
+                                type="button"
+                                onClick={() => handleSelectTemplate(tpl.id as InvoiceTemplateId)}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '10px 10px',
+                                  background: isCurrent ? '#FFE500' : '#f9fafb',
+                                  color: '#000',
+                                  border: '2px solid #000',
+                                  boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 3,
+                                }}
+                              >
+                                <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                                  {isCurrent ? '✓ ' : ''}{tpl.title}
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                  {tpl.desc}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
+                    )}
 
-                      {/* Accent / Highlight Color */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                          ACCENT / HIGHLIGHT
-                        </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <input
-                            type="color"
-                            value={accentColor}
-                            onChange={(e) => setAccentColor(e.target.value)}
-                            style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
-                          />
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
-                            {accentColor.toUpperCase()}
+                    {/* Typography Customization (When on Invoice Tab) */}
+                    {activeTab === 'invoice' && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            TYPOGRAPHY (52 GOOGLE FONTS)
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                            CUSTOMIZE FONTS
                           </span>
                         </div>
-                        {/* Quick Swatches */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {[
-                            { label: 'Terracotta', hex: '#e15b3c' },
-                            { label: 'Gold', hex: '#eab308' },
-                            { label: 'Emerald', hex: '#10b981' },
-                            { label: 'Cyan', hex: '#06b6d4' },
-                            { label: 'Rose', hex: '#e11d48' },
-                            { label: 'Neon', hex: '#FFE500' },
-                          ].map((swatch) => (
-                            <button
-                              key={swatch.hex}
-                              type="button"
-                              title={swatch.label}
-                              onClick={() => setAccentColor(swatch.hex)}
-                              style={{
-                                width: 18,
-                                height: 18,
-                                borderRadius: '50%',
-                                background: swatch.hex,
-                                border: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
-                                boxShadow: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #000' : 'none',
-                                cursor: 'pointer',
-                              }}
-                            />
-                          ))}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              TITLE / HEADING FONT
+                            </label>
+                            <select
+                              value={headingFont}
+                              onChange={(e) => setHeadingFont(e.target.value)}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              {GOOGLE_FONTS_LIST.map((f) => (
+                                <option key={`heading-${f.id}`} value={f.name}>
+                                  {f.name} ({f.category})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              BODY &amp; TABLE FONT
+                            </label>
+                            <select
+                              value={bodyFont}
+                              onChange={(e) => setBodyFont(e.target.value)}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              {GOOGLE_FONTS_LIST.map((f) => (
+                                <option key={`body-${f.id}`} value={f.name}>
+                                  {f.name} ({f.category})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* 0. Contract Template & Clause Customizer (When on Agreement Tab) */}
-                {activeTab === 'agreement' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        CONTRACT LEGAL TEMPLATE
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                        3 FORMATS
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
-                      {[
-                        { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
-                        { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
-                        { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
-                      ].map((tpl) => {
-                        const isCurrent = contractTemplate === tpl.id;
-                        return (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => handleSelectContractTemplate(tpl.id as ContractTemplateId)}
-                            style={{
-                              textAlign: 'left',
-                              padding: '10px 10px',
-                              background: isCurrent ? '#FFE500' : '#f9fafb',
-                              color: '#000',
-                              border: '2px solid #000',
-                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 3,
-                            }}
-                          >
-                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                              {isCurrent ? '✓ ' : ''}{tpl.title}
-                            </div>
-                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                              {tpl.desc}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Quick Presets */}
-                    <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
-                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
-                        QUICK LEGAL PRESETS (1-CLICK LOAD)
-                      </label>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {[
-                          { id: 'service', label: 'Standard Service' },
-                          { id: 'sponsorship', label: 'Influencer Deal' },
-                          { id: 'business', label: 'Agency Agreement' },
-                          { id: 'nda', label: 'Mutual NDA' },
-                          { id: 'contractor', label: 'Contractor' },
-                        ].map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => handleSelectContractPreset(p.id)}
-                            style={{
-                              background: '#fff',
-                              border: '1px solid #000',
-                              padding: '4px 8px',
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            + {p.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Contract Meta & Clauses Customization */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          CONTRACT TITLE
-                        </label>
-                        <input
-                          type="text"
-                          value={contractTitle}
-                          onChange={(e) => setContractTitle(e.target.value)}
-                          placeholder="SERVICE CONTRACT"
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          SCOPE OVERVIEW &amp; CAMPAIGN BRIEF
-                        </label>
-                        <textarea
-                          value={contractScopeDescription}
-                          onChange={(e) => setContractScopeDescription(e.target.value)}
-                          placeholder="Describe the nature of the campaign and deliverables..."
-                          rows={2}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                        />
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            EXCLUSIVITY CLAUSE
+                            SIGNATURE &amp; SCRIPT FONT
                           </label>
                           <select
-                            value={contractExclusivity}
-                            onChange={(e) => setContractExclusivity(e.target.value)}
+                            value={signatureFont}
+                            onChange={(e) => setSignatureFont(e.target.value)}
                             style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
                           >
-                            <option value="None">None (Non-Exclusive)</option>
-                            <option value="30 Days Category Exclusive">30 Days Category Exclusive</option>
-                            <option value="60 Days Category Exclusive">60 Days Category Exclusive</option>
-                            <option value="90 Days Competitor Lockout">90 Days Competitor Lockout</option>
+                            {GOOGLE_FONTS_LIST.map((f) => (
+                              <option key={`sig-${f.id}`} value={f.name}>
+                                {f.name} ({f.category})
+                              </option>
+                            ))}
                           </select>
                         </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            KILL FEE / CANCEL DEPOSIT %
-                          </label>
-                          <input
-                            type="number"
-                            value={contractKillFee}
-                            onChange={(e) => setContractKillFee(parseInt(e.target.value) || 0)}
-                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                          />
-                        </div>
                       </div>
+                    )}
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            GOVERNING LAW
-                          </label>
-                          <input
-                            type="text"
-                            value={contractGoverningLaw}
-                            onChange={(e) => setContractGoverningLaw(e.target.value)}
-                            placeholder="Ghana"
-                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                          />
+                    {/* Color & Accent Highlights Customization (When on Invoice Tab) */}
+                    {activeTab === 'invoice' && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            COLOR THEME &amp; HIGHLIGHTS
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                            LIVE PALETTE
+                          </span>
                         </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            CONFIDENTIALITY (NDA)
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setContractConfidentiality((v) => !v)}
-                            style={{
-                              width: '100%',
-                              padding: '6px 8px',
-                              border: '1.5px solid #000',
-                              background: contractConfidentiality ? '#000' : '#fff',
-                              color: contractConfidentiality ? '#fff' : '#000',
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              fontFamily: 'monospace',
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {contractConfidentiality ? '✓ INCLUDED' : '✕ EXCLUDED'}
-                          </button>
-                        </div>
-                      </div>
 
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          ADDITIONAL TERMS &amp; CUSTOM COVENANTS (OPTIONAL)
-                        </label>
-                        <textarea
-                          value={contractCustomTerms}
-                          onChange={(e) => setContractCustomTerms(e.target.value)}
-                          placeholder="Add any specific conditions, delivery dates, or sponsor obligations..."
-                          rows={2}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 0. Letterhead Template & Proposal Customizer (When on Letterhead Tab) */}
-                {activeTab === 'letterhead' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        PITCH LETTERHEAD TEMPLATE
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                        2 FORMATS
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-                      {[
-                        { id: 'creative', title: 'Creative Pitch', desc: 'Media Kit & Highlights with Package table' },
-                        { id: 'executive', title: 'Executive Proposal', desc: 'Corporate proposal layout with deliverables' },
-                      ].map((tpl) => {
-                        const isCurrent = letterheadTemplate === tpl.id;
-                        return (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => setLetterheadTemplate(tpl.id as LetterheadTemplateId)}
-                            style={{
-                              textAlign: 'left',
-                              padding: '10px 10px',
-                              background: isCurrent ? '#FFE500' : '#f9fafb',
-                              color: '#000',
-                              border: '2px solid #000',
-                              boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 3,
-                            }}
-                          >
-                            <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                              {isCurrent ? '✓ ' : ''}{tpl.title}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                          {/* Primary / Frame Color */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                              PRIMARY COLOR
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                              <input
+                                type="color"
+                                value={primaryColor}
+                                onChange={(e) => setPrimaryColor(e.target.value)}
+                                style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                              />
+                              <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                                {primaryColor.toUpperCase()}
+                              </span>
                             </div>
-                            <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
-                              {tpl.desc}
+                            {/* Quick Swatches */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {[
+                                { label: 'Navy', hex: '#162a45' },
+                                { label: 'Slate', hex: '#283548' },
+                                { label: 'Black', hex: '#000000' },
+                                { label: 'Royal', hex: '#1e3a8a' },
+                                { label: 'Pine', hex: '#064e3b' },
+                                { label: 'Wine', hex: '#7f1d1d' },
+                              ].map((swatch) => (
+                                <button
+                                  key={swatch.hex}
+                                  type="button"
+                                  title={swatch.label}
+                                  onClick={() => setPrimaryColor(swatch.hex)}
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    borderRadius: '50%',
+                                    background: swatch.hex,
+                                    border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                                    boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
+                                    cursor: 'pointer',
+                                  }}
+                                />
+                              ))}
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                          </div>
 
-                    {/* Letterhead Customization Inputs */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          PROPOSAL TITLE
-                        </label>
-                        <input
-                          type="text"
-                          value={letterheadTitle}
-                          onChange={(e) => setLetterheadTitle(e.target.value)}
-                          placeholder="Campaign Proposal"
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
-                        />
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            AUDIENCE FOCUS
-                          </label>
-                          <input
-                            type="text"
-                            value={letterheadAudienceFocus}
-                            onChange={(e) => setLetterheadAudienceFocus(e.target.value)}
-                            placeholder="Ghana & Diaspora"
-                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                          />
+                          {/* Accent / Highlight Color */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                              ACCENT / HIGHLIGHT
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                              <input
+                                type="color"
+                                value={accentColor}
+                                onChange={(e) => setAccentColor(e.target.value)}
+                                style={{ width: 34, height: 28, border: '1.5px solid #000', padding: 0, cursor: 'pointer' }}
+                              />
+                              <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>
+                                {accentColor.toUpperCase()}
+                              </span>
+                            </div>
+                            {/* Quick Swatches */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {[
+                                { label: 'Terracotta', hex: '#e15b3c' },
+                                { label: 'Gold', hex: '#eab308' },
+                                { label: 'Emerald', hex: '#10b981' },
+                                { label: 'Cyan', hex: '#06b6d4' },
+                                { label: 'Rose', hex: '#e11d48' },
+                                { label: 'Neon', hex: '#FFE500' },
+                              ].map((swatch) => (
+                                <button
+                                  key={swatch.hex}
+                                  type="button"
+                                  title={swatch.label}
+                                  onClick={() => setAccentColor(swatch.hex)}
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    borderRadius: '50%',
+                                    background: swatch.hex,
+                                    border: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
+                                    boxShadow: accentColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #000' : 'none',
+                                    cursor: 'pointer',
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                            ENGAGEMENT HIGHLIGHT
+                      </div>
+                    )}
+
+                    {/* 0. Contract Template & Clause Customizer (When on Agreement Tab) */}
+                    {activeTab === 'agreement' && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            CONTRACT LEGAL TEMPLATE
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                            3 FORMATS
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+                          {[
+                            { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
+                            { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
+                            { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
+                          ].map((tpl) => {
+                            const isCurrent = contractTemplate === tpl.id;
+                            return (
+                              <button
+                                key={tpl.id}
+                                type="button"
+                                onClick={() => handleSelectContractTemplate(tpl.id as ContractTemplateId)}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '10px 10px',
+                                  background: isCurrent ? '#FFE500' : '#f9fafb',
+                                  color: '#000',
+                                  border: '2px solid #000',
+                                  boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 3,
+                                }}
+                              >
+                                <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                                  {isCurrent ? '✓ ' : ''}{tpl.title}
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                  {tpl.desc}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
+                          <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                            QUICK LEGAL PRESETS (1-CLICK LOAD)
                           </label>
-                          <input
-                            type="text"
-                            value={letterheadEngagementRate}
-                            onChange={(e) => setLetterheadEngagementRate(e.target.value)}
-                            placeholder="82% Mobile · High Conversion"
-                            style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
-                          />
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {[
+                              { id: 'service', label: 'Standard Service' },
+                              { id: 'sponsorship', label: 'Influencer Deal' },
+                              { id: 'business', label: 'Agency Agreement' },
+                              { id: 'nda', label: 'Mutual NDA' },
+                              { id: 'contractor', label: 'Contractor' },
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => handleSelectContractPreset(p.id)}
+                                style={{
+                                  background: '#fff',
+                                  border: '1px solid #000',
+                                  padding: '4px 8px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                + {p.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Contract Meta & Clauses Customization */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              CONTRACT TITLE
+                            </label>
+                            <input
+                              type="text"
+                              value={contractTitle}
+                              onChange={(e) => setContractTitle(e.target.value)}
+                              placeholder="SERVICE CONTRACT"
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              SCOPE OVERVIEW &amp; CAMPAIGN BRIEF
+                            </label>
+                            <textarea
+                              value={contractScopeDescription}
+                              onChange={(e) => setContractScopeDescription(e.target.value)}
+                              placeholder="Describe the nature of the campaign and deliverables..."
+                              rows={2}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                EXCLUSIVITY CLAUSE
+                              </label>
+                              <select
+                                value={contractExclusivity}
+                                onChange={(e) => setContractExclusivity(e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                              >
+                                <option value="None">None (Non-Exclusive)</option>
+                                <option value="30 Days Category Exclusive">30 Days Category Exclusive</option>
+                                <option value="60 Days Category Exclusive">60 Days Category Exclusive</option>
+                                <option value="90 Days Competitor Lockout">90 Days Competitor Lockout</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                KILL FEE / CANCEL DEPOSIT %
+                              </label>
+                              <input
+                                type="number"
+                                value={contractKillFee}
+                                onChange={(e) => setContractKillFee(parseInt(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                GOVERNING LAW
+                              </label>
+                              <input
+                                type="text"
+                                value={contractGoverningLaw}
+                                onChange={(e) => setContractGoverningLaw(e.target.value)}
+                                placeholder="Ghana"
+                                style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                CONFIDENTIALITY (NDA)
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setContractConfidentiality((v) => !v)}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  border: '1.5px solid #000',
+                                  background: contractConfidentiality ? '#000' : '#fff',
+                                  color: contractConfidentiality ? '#fff' : '#000',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  fontFamily: 'monospace',
+                                  cursor: 'pointer',
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {contractConfidentiality ? '✓ INCLUDED' : '✕ EXCLUDED'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              ADDITIONAL TERMS &amp; CUSTOM COVENANTS (OPTIONAL)
+                            </label>
+                            <textarea
+                              value={contractCustomTerms}
+                              onChange={(e) => setContractCustomTerms(e.target.value)}
+                              placeholder="Add any specific conditions, delivery dates, or sponsor obligations..."
+                              rows={2}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                            />
+                          </div>
                         </div>
                       </div>
+                    )}
 
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          CUSTOM INTRO / PROPOSAL HOOK (OPTIONAL)
-                        </label>
-                        <textarea
-                          value={letterheadIntro}
-                          onChange={(e) => setLetterheadIntro(e.target.value)}
-                          placeholder="Leave blank to use smart generated intro or write custom..."
-                          rows={2}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
-                        />
+                    {/* 0. Letterhead Template & Proposal Customizer (When on Letterhead Tab) */}
+                    {activeTab === 'letterhead' && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            PITCH LETTERHEAD TEMPLATE
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
+                            2 FORMATS
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                          {[
+                            { id: 'creative', title: 'Creative Pitch', desc: 'Media Kit & Highlights with Package table' },
+                            { id: 'executive', title: 'Executive Proposal', desc: 'Corporate proposal layout with deliverables' },
+                          ].map((tpl) => {
+                            const isCurrent = letterheadTemplate === tpl.id;
+                            return (
+                              <button
+                                key={tpl.id}
+                                type="button"
+                                onClick={() => setLetterheadTemplate(tpl.id as LetterheadTemplateId)}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '10px 10px',
+                                  background: isCurrent ? '#FFE500' : '#f9fafb',
+                                  color: '#000',
+                                  border: '2px solid #000',
+                                  boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 3,
+                                }}
+                              >
+                                <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                                  {isCurrent ? '✓ ' : ''}{tpl.title}
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                  {tpl.desc}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Letterhead Customization Inputs */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 12 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              PROPOSAL TITLE
+                            </label>
+                            <input
+                              type="text"
+                              value={letterheadTitle}
+                              onChange={(e) => setLetterheadTitle(e.target.value)}
+                              placeholder="Campaign Proposal"
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 700 }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                AUDIENCE FOCUS
+                              </label>
+                              <input
+                                type="text"
+                                value={letterheadAudienceFocus}
+                                onChange={(e) => setLetterheadAudienceFocus(e.target.value)}
+                                placeholder="Ghana & Diaspora"
+                                style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                                ENGAGEMENT HIGHLIGHT
+                              </label>
+                              <input
+                                type="text"
+                                value={letterheadEngagementRate}
+                                onChange={(e) => setLetterheadEngagementRate(e.target.value)}
+                                placeholder="82% Mobile · High Conversion"
+                                style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 600 }}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              CUSTOM INTRO / PROPOSAL HOOK (OPTIONAL)
+                            </label>
+                            <textarea
+                              value={letterheadIntro}
+                              onChange={(e) => setLetterheadIntro(e.target.value)}
+                              placeholder="Leave blank to use smart generated intro or write custom..."
+                              rows={2}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 500, resize: 'vertical' }}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    )}
+
+                    {/* Typography Customization (When on Agreement or Letterhead Tab) */}
+                    {(activeTab === 'agreement' || activeTab === 'letterhead') && (
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2px solid #000',
+                          boxShadow: '3px 3px 0 #000',
+                          padding: 18,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                            DOCUMENT TYPOGRAPHY (52 GOOGLE FONTS)
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
+                            CUSTOMIZE FONTS
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              TITLE / HEADING FONT
+                            </label>
+                            <select
+                              value={headingFont}
+                              onChange={(e) => setHeadingFont(e.target.value)}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              {GOOGLE_FONTS_LIST.map((f) => (
+                                <option key={`doc-heading-${f.id}`} value={f.name}>
+                                  {f.name} ({f.category})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                              BODY &amp; CLAUSE FONT
+                            </label>
+                            <select
+                              value={bodyFont}
+                              onChange={(e) => setBodyFont(e.target.value)}
+                              style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              {GOOGLE_FONTS_LIST.map((f) => (
+                                <option key={`doc-body-${f.id}`} value={f.name}>
+                                  {f.name} ({f.category})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  </>
                 )}
-
-                {/* Typography Customization (When on Agreement or Letterhead Tab) */}
-                {(activeTab === 'agreement' || activeTab === 'letterhead') && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '3px 3px 0 #000',
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        DOCUMENT TYPOGRAPHY (52 GOOGLE FONTS)
-                      </span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', color: '#666' }}>
-                        CUSTOMIZE FONTS
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          TITLE / HEADING FONT
-                        </label>
-                        <select
-                          value={headingFont}
-                          onChange={(e) => setHeadingFont(e.target.value)}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                        >
-                          {GOOGLE_FONTS_LIST.map((f) => (
-                            <option key={`doc-heading-${f.id}`} value={f.name}>
-                              {f.name} ({f.category})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          BODY &amp; CLAUSE FONT
-                        </label>
-                        <select
-                          value={bodyFont}
-                          onChange={(e) => setBodyFont(e.target.value)}
-                          style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                        >
-                          {GOOGLE_FONTS_LIST.map((f) => (
-                            <option key={`doc-body-${f.id}`} value={f.name}>
-                              {f.name} ({f.category})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              </>
-            )}
               </>
             )}
 
@@ -2759,15 +2782,24 @@ function BusinessSuiteContent() {
                 </ReceiptPrinter.Screen>
               </ReceiptPrinter.Machine>
 
-              <ReceiptPrinter.Output className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem] px-0'}>
-                <ReceiptPrinter.Paper variant={activeTab === 'receipt' ? 'receipt' : 'document'}>
-                  {activeTab === 'receipt' && (
-                    <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
-                  )}
-                  {activeTab === 'invoice' && invoiceDocument}
-                  {activeTab === 'agreement' && agreementDocument}
-                  {activeTab === 'letterhead' && letterheadDocument}
-                </ReceiptPrinter.Paper>
+              <ReceiptPrinter.Output
+                className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem] px-0'}
+                style={
+                  printPaperHeight
+                    ? { height: printPaperHeight + 24, transition: 'height 1850ms linear' }
+                    : undefined
+                }
+              >
+                <div ref={printPaperRef}>
+                  <ReceiptPrinter.Paper variant={activeTab === 'receipt' ? 'receipt' : 'document'}>
+                    {activeTab === 'receipt' && (
+                      <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
+                    )}
+                    {activeTab === 'invoice' && invoiceDocument}
+                    {activeTab === 'agreement' && agreementDocument}
+                    {activeTab === 'letterhead' && letterheadDocument}
+                  </ReceiptPrinter.Paper>
+                </div>
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>
 
