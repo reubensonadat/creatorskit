@@ -37,7 +37,7 @@ export interface RenderOptions {
   fontCycleList?: string[]; // 5 fonts for rapid match cuts
 
   // Canvas Environment
-  canvasEnvironment?: 'paper' | 'dark' | 'image' | 'custom';
+  canvasEnvironment?: 'paper' | 'dark' | 'image';
   showTopColumns?: boolean;
   showMasthead?: boolean;
   showSubhead?: boolean;
@@ -46,7 +46,6 @@ export interface RenderOptions {
   showDividerRules?: boolean;
   uploadedImage?: HTMLImageElement | null;
   imageOpacity?: number;
-  customBgColor?: string;
 
   // Camera Zoom
   zoomEnabled?: boolean;
@@ -176,7 +175,7 @@ function safeRoundRect(
     try {
       (ctx as any).roundRect(x, y, w, h, radii);
       return;
-    } catch {}
+    } catch { }
   }
   ctx.rect(x, y, w, h);
 }
@@ -334,69 +333,40 @@ export function renderNewspaperMatchCut(
   options: RenderOptions,
   frameIndex = 0
 ) {
-  const theme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.vintage;
-  const isDark = options.paperTheme === 'noir';
   const env = options.canvasEnvironment || 'paper';
 
+  // If modern digital environment (Dark Studio or Image Backdrop)
+  if (env === 'dark' || env === 'image') {
+    renderModernDigitalArticle(targetCanvasCtx, width, height, cut, options, frameIndex);
+    return;
+  }
+
+  const theme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.vintage;
+  const isDark = options.paperTheme === 'noir';
+
   // Use offscreen canvas buffer if depth of field is active (paper env only)
-  const useDof = options.depthOfField && env === 'paper' && typeof document !== 'undefined';
+  const useDof = Boolean(options.depthOfField && typeof document !== 'undefined');
   const renderBuffer = useDof ? getBufferCanvas(width, height, 'main') : null;
   const ctx = renderBuffer ? renderBuffer.getContext('2d')! : targetCanvasCtx;
 
   ctx.save();
 
-  // 1. Draw Canvas Background based on environment
-
-  if (env === 'dark') {
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, width, height);
-    const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.8);
-    vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, width, height);
-  } else if (env === 'image' && options.uploadedImage) {
-    ctx.globalAlpha = options.imageOpacity ?? 0.4;
-    const img = options.uploadedImage;
-    const imgAspect = img.width / img.height;
-    const canvasAspect = width / height;
-    let sw: number, sh: number, sx: number, sy: number;
-    if (imgAspect > canvasAspect) {
-      sh = img.height;
-      sw = sh * canvasAspect;
-      sx = (img.width - sw) / 2;
-      sy = 0;
-    } else {
-      sw = img.width;
-      sh = sw / canvasAspect;
-      sx = 0;
-      sy = (img.height - sh) / 2;
-    }
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, width, height);
-  } else if (env === 'custom') {
-    ctx.fillStyle = options.customBgColor || '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-  } else {
-    // Paper (default)
-    ctx.fillStyle = theme.bg;
-    ctx.fillRect(0, 0, width, height);
-    const vignette = ctx.createRadialGradient(
-      width / 2, height / 2, Math.min(width, height) * 0.35,
-      width / 2, height / 2, Math.max(width, height) * 0.88
-    );
-    vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(0.7, isDark ? 'rgba(0,0,0,0.25)' : 'rgba(80,60,30,0.04)');
-    vignette.addColorStop(1, isDark ? 'rgba(0,0,0,0.55)' : 'rgba(70,50,20,0.12)');
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, width, height);
-    if (options.filmGrain) {
-      const noise = getNoisePattern();
-      const pattern = ctx.createPattern(noise, 'repeat');
-      if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
-    }
+  // 1. Draw Paper Canvas Background
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, width, height);
+  const vignette = ctx.createRadialGradient(
+    width / 2, height / 2, Math.min(width, height) * 0.35,
+    width / 2, height / 2, Math.max(width, height) * 0.88
+  );
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(0.7, isDark ? 'rgba(0,0,0,0.25)' : 'rgba(80,60,30,0.04)');
+  vignette.addColorStop(1, isDark ? 'rgba(0,0,0,0.55)' : 'rgba(70,50,20,0.12)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  if (options.filmGrain) {
+    const noise = getNoisePattern();
+    const pattern = ctx.createPattern(noise, 'repeat');
+    if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
   }
 
   // 2. Optical Center Coordinates
@@ -522,55 +492,55 @@ export function renderNewspaperMatchCut(
   // SECTION A: Dense Top Columns (Stage text above the headline)
   // ------------------------------------------------------------
   if (options.showTopColumns !== false) {
-  const topColumnsY = 40;
-  const topColumnsBottomY = docHeadlineY - 140;
-  drawDenseColumns(
-    ctx,
-    pageLeftX,
-    topColumnsY,
-    pageWidth,
-    topColumnsBottomY - topColumnsY,
-    bodyParas.slice(0, 2),
-    bodyFont,
-    bodyFontSize,
-    bodyLineHeight,
-    theme
-  );
+    const topColumnsY = 40;
+    const topColumnsBottomY = docHeadlineY - 140;
+    drawDenseColumns(
+      ctx,
+      pageLeftX,
+      topColumnsY,
+      pageWidth,
+      topColumnsBottomY - topColumnsY,
+      bodyParas.slice(0, 2),
+      bodyFont,
+      bodyFontSize,
+      bodyLineHeight,
+      theme
+    );
   }
 
   // ------------------------------------------------------------
   // SECTION B: Masthead & Dateline
   // ------------------------------------------------------------
   if (options.showMasthead !== false) {
-  const mastheadY = docHeadlineY - 75;
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.fillStyle = theme.ink;
-  ctx.font = `900 ${Math.max(16, Math.round(width * 0.022))}px "Playfair Display", Georgia, serif`;
-  ctx.fillText(cut.masthead.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY);
+    const mastheadY = docHeadlineY - 75;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = theme.ink;
+    ctx.font = `900 ${Math.max(16, Math.round(width * 0.022))}px "Playfair Display", Georgia, serif`;
+    ctx.fillText(cut.masthead.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY);
 
-  if (cut.dateString) {
-    ctx.font = `bold ${Math.max(9, Math.round(width * 0.012))}px "Courier New", monospace`;
-    ctx.fillStyle = theme.inkMuted;
-    ctx.fillText(cut.dateString.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 18);
-  }
+    if (cut.dateString) {
+      ctx.font = `bold ${Math.max(9, Math.round(width * 0.012))}px "Courier New", monospace`;
+      ctx.fillStyle = theme.inkMuted;
+      ctx.fillText(cut.dateString.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 18);
+    }
 
-  // Thin double divider rules above headline
-  if (options.showDividerRules !== false) {
-  ctx.strokeStyle = theme.ruleColor;
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  ctx.moveTo(pageLeftX, mastheadY + 30);
-  ctx.lineTo(pageLeftX + pageWidth, mastheadY + 30);
-  ctx.stroke();
+    // Thin double divider rules above headline
+    if (options.showDividerRules !== false) {
+      ctx.strokeStyle = theme.ruleColor;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(pageLeftX, mastheadY + 30);
+      ctx.lineTo(pageLeftX + pageWidth, mastheadY + 30);
+      ctx.stroke();
 
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(pageLeftX, mastheadY + 34);
-  ctx.lineTo(pageLeftX + pageWidth, mastheadY + 34);
-  ctx.stroke();
-  }
-  ctx.restore();
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(pageLeftX, mastheadY + 34);
+      ctx.lineTo(pageLeftX + pageWidth, mastheadY + 34);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ------------------------------------------------------------
@@ -587,8 +557,7 @@ export function renderNewspaperMatchCut(
   drawAnchorHighlight(ctx, anchorDrawX, docHeadlineY, matchW, headlineFontSize, options);
 
   // 1. Draw Prefix Words (Exact same font size)
-  const isNonPaper = env === 'dark' || env === 'image' || env === 'custom';
-  ctx.fillStyle = isNonPaper ? '#ffffff' : theme.ink;
+  ctx.fillStyle = theme.ink;
   ctx.textAlign = 'left';
   if (prefix) {
     ctx.fillText(prefix, docHeadlineX, docHeadlineY);
@@ -596,21 +565,21 @@ export function renderNewspaperMatchCut(
 
   // 2. Draw Anchor Words (Exact same font size)
   if (options.highlightStyle === 'box') {
-    ctx.fillStyle = isNonPaper ? '#000000' : '#ffffff'; // Knockout on solid box
+    ctx.fillStyle = '#ffffff'; // Knockout on solid box
   } else {
-    ctx.fillStyle = isNonPaper ? '#ffffff' : (isDark ? '#ffffff' : theme.ink);
+    ctx.fillStyle = isDark ? '#ffffff' : theme.ink;
   }
   ctx.fillText(matchText, anchorDrawX, docHeadlineY);
 
   // 3. Draw Suffix Words (Exact same font size)
-  ctx.fillStyle = isNonPaper ? '#ffffff' : theme.ink;
+  ctx.fillStyle = theme.ink;
   if (suffix) {
     ctx.fillText(suffix, anchorDrawX + matchW, docHeadlineY);
   }
 
   // Thin rule below headline
   if (options.showDividerRules !== false) {
-    ctx.strokeStyle = isNonPaper ? 'rgba(255,255,255,0.2)' : theme.ruleColor;
+    ctx.strokeStyle = theme.ruleColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pageLeftX, docHeadlineY + headlineFontSize * 0.85);
@@ -627,7 +596,7 @@ export function renderNewspaperMatchCut(
   if (options.showSubhead !== false && cut.subhead) {
     ctx.save();
     ctx.font = `italic ${Math.max(13, Math.round(width * 0.017))}px Georgia, serif`;
-    ctx.fillStyle = isNonPaper ? 'rgba(255,255,255,0.7)' : theme.inkMuted;
+    ctx.fillStyle = theme.inkMuted;
     ctx.textAlign = 'left';
     ctx.fillText(cut.subhead, pageLeftX, afterHeadlineY);
     afterHeadlineY += 22;
@@ -637,7 +606,7 @@ export function renderNewspaperMatchCut(
   if (options.showByline !== false && (cut.byline || cut.location)) {
     ctx.save();
     ctx.font = `bold italic ${Math.max(12, Math.round(width * 0.0155))}px Georgia, serif`;
-    ctx.fillStyle = isNonPaper ? 'rgba(255,255,255,0.5)' : theme.inkMuted;
+    ctx.fillStyle = theme.inkMuted;
     ctx.textAlign = 'left';
     const bylineStr = [cut.location, cut.byline].filter(Boolean).join(' — ') || 'From Our Special Correspondent';
     ctx.fillText(bylineStr, pageLeftX, afterHeadlineY);
@@ -649,20 +618,20 @@ export function renderNewspaperMatchCut(
   // SECTION E: Dense Bottom Columns (Stage text below the headline)
   // ------------------------------------------------------------
   if (options.showBottomColumns !== false) {
-  const bottomColumnsH = 1600;
-  drawDenseColumns(
-    ctx,
-    pageLeftX,
-    afterHeadlineY + 8,
-    pageWidth,
-    bottomColumnsH,
-    bodyParas,
-    bodyFont,
-    bodyFontSize,
-    bodyLineHeight,
-    theme,
-    3
-  );
+    const bottomColumnsH = 1600;
+    drawDenseColumns(
+      ctx,
+      pageLeftX,
+      afterHeadlineY + 8,
+      pageWidth,
+      bottomColumnsH,
+      bodyParas,
+      bodyFont,
+      bodyFontSize,
+      bodyLineHeight,
+      theme,
+      3
+    );
   }
 
   ctx.restore(); // Restore camera tracking transform
@@ -678,11 +647,11 @@ export function renderNewspaperMatchCut(
     const blurRadius = Math.max(3, Math.round(options.dofIntensity * 14));
     try {
       blurCtx.filter = `blur(${blurRadius}px)`;
-    } catch {}
+    } catch { }
     blurCtx.drawImage(renderBuffer, 0, 0);
     try {
       blurCtx.filter = 'none';
-    } catch {}
+    } catch { }
 
     // Blit blurred buffer to target canvas
     targetCanvasCtx.clearRect(0, 0, width, height);
@@ -870,6 +839,8 @@ function drawAnchorHighlight(
 
     if (options.paperTheme !== 'noir') {
       ctx.globalCompositeOperation = 'multiply';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
     }
 
     ctx.beginPath();
@@ -944,4 +915,594 @@ function drawAnchorHighlight(
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * Clean & Focused Dark Studio & Image Backdrop Renderer
+ * Supports full multi-line passages, multiple paragraphs, and simultaneous all-at-once line sweeps.
+ */
+/**
+ * Clean & Focused Dark Studio & Image Backdrop Renderer
+ * Exact pixel-faithful replication of the dark video essay screenshot card.
+ * Pure #000000 background, vibrant fluorescent yellow neon bloom, breadcrumb, [News] badge, byline, and subhead.
+ */
+/**
+ * Clean & Focused Dark Studio & Image Backdrop Renderer
+ * Exact pixel-faithful replication of the dark video essay screenshot card.
+ * Pure #000000 background, vibrant fluorescent yellow neon bloom, breadcrumb, [News] badge, byline, and subhead.
+ */
+export function renderModernDigitalArticle(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cut: NewspaperCut,
+  options: RenderOptions,
+  frameIndex = 0
+) {
+  const env = options.canvasEnvironment || 'dark';
+  const isImage = env === 'image' && options.uploadedImage;
+
+  // 1. Pure #000000 Deep Pitch Black Canvas
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, width, height);
+
+  // If image backdrop is active
+  if (isImage && options.uploadedImage) {
+    const img = options.uploadedImage;
+    const imgAspect = img.width / img.height;
+    const canvasAspect = width / height;
+    let sw: number, sh: number, sx: number, sy: number;
+    if (imgAspect > canvasAspect) {
+      sh = img.height;
+      sw = sh * canvasAspect;
+      sx = (img.width - sw) / 2;
+      sy = 0;
+    } else {
+      sw = img.width;
+      sh = sw / canvasAspect;
+      sx = 0;
+      sy = (img.height - sh) / 2;
+    }
+    ctx.save();
+    ctx.globalAlpha = options.imageOpacity ?? 0.6;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+    ctx.restore();
+
+    // Dark scrim overlay for legibility
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // Film grain if enabled
+  if (options.filmGrain) {
+    const noise = getNoisePattern();
+    const pattern = ctx.createPattern(noise, 'repeat');
+    if (pattern) {
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
+  }
+
+  // 2. Modern Clean Typography
+  const chosenFont = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  const padX = Math.max(32, Math.round(width * 0.12));
+  const cardW = width - padX * 2;
+  const contentLeft = padX;
+
+  const anchor = (options.anchorPhrase || '').trim();
+
+  // Typography Scaling
+  const headlineScale = options.headlineScale ?? 1.0;
+  const headlineFontSize = Math.max(22, Math.round(width * 0.052 * headlineScale));
+  const headlineLineHeight = Math.round(headlineFontSize * 1.42);
+  const headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
+
+  const subheadFontSize = Math.max(13, Math.round(width * 0.026));
+  const subheadLineHeight = Math.round(subheadFontSize * 1.48);
+  const subheadFont = `500 ${subheadFontSize}px ${chosenFont}`;
+
+  // Content Strings
+  const headlineRaw = (cut.headline || '').trim() || 'AI-generated code contains more bugs and errors than human output';
+  const mastheadText = (cut.masthead || 'Pro  >  Security').trim();
+  const bylineText = cut.byline || 'Craig Hale';
+  const dateText = cut.dateString || 'Published December 18, 2025';
+  const subheadRaw = (cut.subhead || 'AI-generated code produces 1.7x more issues than human code').trim();
+
+  // Wrap headline lines with anchor
+  ctx.font = headlineFont;
+  const headlineLines = wrapHeadlineWithAnchor(ctx, headlineRaw, anchor, cardW);
+
+  // If no anchor in headline, check if anchor is in subhead
+  ctx.font = subheadFont;
+  const subheadLines = (options.showSubhead !== false && subheadRaw)
+    ? wrapHeadlineWithAnchor(ctx, subheadRaw, anchor, cardW)
+    : [];
+
+  // If entire anchor wasn't matched anywhere, default highlight the entire headline
+  const anyHeadlineAnchor = headlineLines.some(l => l.words.some(w => w.isAnchor));
+  const anySubheadAnchor = subheadLines.some(l => l.words.some(w => w.isAnchor));
+  if (!anyHeadlineAnchor && !anySubheadAnchor && headlineLines.length > 0) {
+    headlineLines.forEach(l => l.words.forEach(w => { w.isAnchor = true; }));
+  }
+
+  // Section Heights and Spacing
+  const breadcrumbH = options.showMasthead !== false && mastheadText ? 22 : 0;
+  const headlineH = headlineLines.length * headlineLineHeight;
+  const metaH = options.showByline !== false ? 26 : 0;
+  const subheadH = subheadLines.length * subheadLineHeight;
+
+  const gap1 = breadcrumbH > 0 ? 14 : 0;
+  const gap2 = metaH > 0 ? 22 : 0;
+  const gap3 = subheadH > 0 ? 18 : 0;
+
+  const totalContentH = breadcrumbH + gap1 + headlineH + gap2 + metaH + gap3 + subheadH;
+
+  // Vertical Centering
+  let curY = Math.max(32, Math.round((height - totalContentH) / 2));
+
+  // Sector offset
+  const sector = options.highlightSector || 'center-headline';
+  if (sector === 'top-masthead') {
+    curY = Math.max(20, curY - 45);
+  } else if (sector === 'body-paragraph') {
+    curY = Math.max(20, curY + 45);
+  }
+
+  // Camera Shake & Zoom
+  ctx.save();
+  if (options.cameraShake) {
+    const angle = (cut.rotationOffset ?? 0) * 0.002;
+    const scale = 1 + (cut.scaleOffset ?? 0) * 0.003;
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
+    ctx.scale(scale, scale);
+    ctx.translate(-width / 2, -height / 2);
+  }
+
+  if (options.zoomEnabled) {
+    const p = options.highlightProgress ?? 1;
+    const dir = options.zoomDirection === 'out' ? -1 : 1;
+    const zoomScale = 1 + dir * (options.zoomIntensity ?? 0.08) * p;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(zoomScale, zoomScale);
+    ctx.translate(-width / 2, -height / 2);
+  }
+
+  // Animation settings
+  const isAnimated = options.animationMode === 'animated-highlight';
+  const progress = isAnimated ? Math.min(1, Math.max(0, options.highlightProgress ?? 1)) : 1;
+  const highlightColor = options.highlightColor || '#FFE500';
+  const markerOpacity = options.markerOpacity ?? 0.94;
+
+  // ------------------------------------------------------------
+  // A. Top Breadcrumb Header (e.g. Pro > Security)
+  // ------------------------------------------------------------
+  if (options.showMasthead !== false && mastheadText) {
+    ctx.save();
+    ctx.font = `700 ${Math.max(12, Math.round(width * 0.018))}px ${chosenFont}`;
+    ctx.fillStyle = '#f59e0b'; // Vibrant amber/orange
+    ctx.textBaseline = 'top';
+    ctx.fillText(mastheadText, contentLeft, curY);
+    ctx.restore();
+    curY += breadcrumbH + gap1;
+  }
+
+  // ------------------------------------------------------------
+  // B. Main Headline with Fluorescent Glowing Highlighter
+  // ------------------------------------------------------------
+  if (headlineLines.length > 0) {
+    ctx.save();
+    ctx.font = headlineFont;
+    ctx.textBaseline = 'top';
+
+    // 1. Draw highlighter marker chunks across all lines simultaneously
+    headlineLines.forEach((line, lineIdx) => {
+      const lineY = curY + lineIdx * headlineLineHeight;
+      let groupStartX = -1;
+      let groupEndX = -1;
+
+      for (let i = 0; i < line.words.length; i++) {
+        const w = line.words[i];
+        if (w.isAnchor) {
+          if (groupStartX === -1) groupStartX = w.x;
+          groupEndX = w.x + w.w;
+        } else {
+          if (groupStartX !== -1) {
+            drawModernHighlightChunk(
+              ctx,
+              groupStartX,
+              lineY,
+              groupEndX - groupStartX,
+              headlineFontSize,
+              highlightColor,
+              options.highlightStyle,
+              markerOpacity,
+              progress,
+              false,
+              env
+            );
+            groupStartX = -1;
+            groupEndX = -1;
+          }
+        }
+      }
+      if (groupStartX !== -1) {
+        drawModernHighlightChunk(
+          ctx,
+          groupStartX,
+          lineY,
+          groupEndX - groupStartX,
+          headlineFontSize,
+          highlightColor,
+          options.highlightStyle,
+          markerOpacity,
+          progress,
+          false,
+          env
+        );
+      }
+    });
+
+    // 2. Draw Headline Text Words cleanly over the highlights
+    headlineLines.forEach((line, lineIdx) => {
+      const lineY = curY + lineIdx * headlineLineHeight;
+      line.words.forEach((w) => {
+        if (w.isAnchor && options.highlightStyle === 'marker' && progress > 0.05) {
+          ctx.fillStyle = '#24243a'; // High contrast ink inside yellow marker
+        } else if (w.isAnchor && options.highlightStyle === 'box') {
+          ctx.fillStyle = '#000000';
+        } else {
+          ctx.fillStyle = '#FFFFFF';
+        }
+        ctx.fillText(w.word, w.x, lineY);
+      });
+    });
+
+    ctx.restore();
+    curY += headlineH;
+  }
+
+  // ------------------------------------------------------------
+  // C. Metadata Row ([News] By Craig Hale • Published December 18, 2025)
+  // ------------------------------------------------------------
+  if (options.showByline !== false) {
+    curY += gap2;
+    ctx.save();
+    let metaX = contentLeft;
+    const metaY = curY;
+
+    // Emerald Green News Badge Pill
+    const badgeText = 'News';
+    ctx.font = `bold ${Math.max(10, Math.round(width * 0.015))}px ${chosenFont}`;
+    const badgeW = ctx.measureText(badgeText).width + 16;
+    const badgeH = 22;
+
+    ctx.fillStyle = '#10b981'; // Vibrant emerald badge
+    safeRoundRect(ctx, metaX, metaY - 2, badgeW, badgeH, 3);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(badgeText, metaX + badgeW / 2, metaY - 2 + badgeH / 2);
+
+    metaX += badgeW + 10;
+
+    // Byline (e.g. By Craig Hale)
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d1d5db';
+    ctx.font = `600 ${Math.max(11, Math.round(width * 0.016))}px ${chosenFont}`;
+    const bylineStr = `By ${bylineText}`;
+    ctx.fillText(bylineStr, metaX, metaY + badgeH / 2 - 2);
+    metaX += ctx.measureText(bylineStr).width + 12;
+
+    // Published Date (e.g. Published December 18, 2025)
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = `400 ${Math.max(10, Math.round(width * 0.014))}px ${chosenFont}`;
+    const dateStr = dateText.startsWith('Published') ? dateText : `Published ${dateText}`;
+    ctx.fillText(dateStr, metaX, metaY + badgeH / 2 - 2);
+
+    ctx.restore();
+    curY += metaH;
+  }
+
+  // ------------------------------------------------------------
+  // D. Subhead / Secondary Takeaway Row
+  // ------------------------------------------------------------
+  if (subheadLines.length > 0) {
+    curY += gap3;
+    ctx.save();
+    ctx.font = subheadFont;
+    ctx.textBaseline = 'top';
+
+    // 1. Draw subhead highlights if any
+    subheadLines.forEach((line, lineIdx) => {
+      const lineY = curY + lineIdx * subheadLineHeight;
+      let groupStartX = -1;
+      let groupEndX = -1;
+
+      for (let i = 0; i < line.words.length; i++) {
+        const w = line.words[i];
+        if (w.isAnchor) {
+          if (groupStartX === -1) groupStartX = w.x;
+          groupEndX = w.x + w.w;
+        } else {
+          if (groupStartX !== -1) {
+            drawModernHighlightChunk(
+              ctx,
+              groupStartX,
+              lineY,
+              groupEndX - groupStartX,
+              subheadFontSize,
+              highlightColor,
+              options.highlightStyle,
+              markerOpacity,
+              progress,
+              false,
+              env
+            );
+            groupStartX = -1;
+            groupEndX = -1;
+          }
+        }
+      }
+      if (groupStartX !== -1) {
+        drawModernHighlightChunk(
+          ctx,
+          groupStartX,
+          lineY,
+          groupEndX - groupStartX,
+          subheadFontSize,
+          highlightColor,
+          options.highlightStyle,
+          markerOpacity,
+          progress,
+          false,
+          env
+        );
+      }
+    });
+
+    // 2. Draw Subhead Text
+    subheadLines.forEach((line, lineIdx) => {
+      const lineY = curY + lineIdx * subheadLineHeight;
+      line.words.forEach((w) => {
+        if (w.isAnchor && options.highlightStyle === 'marker' && progress > 0.05) {
+          ctx.fillStyle = '#24243a';
+        } else {
+          ctx.fillStyle = '#e5e7eb';
+        }
+        ctx.fillText(w.word, w.x, lineY);
+      });
+    });
+
+    ctx.restore();
+  }
+
+  ctx.restore(); // Restore camera/zoom
+}
+
+/**
+ * Helper to draw modern highlight strokes with fluorescent glow on dark backgrounds
+ */
+function drawModernHighlightChunk(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  fontSize: number,
+  color: string,
+  style: string,
+  opacity: number,
+  progress: number,
+  isLightBg: boolean,
+  env: string
+) {
+  if (progress <= 0 || w <= 0) return;
+
+  const drawnW = w * progress;
+  const padX = fontSize * 0.12;
+  const padY = fontSize * 0.14;
+  const hx = x - padX;
+  const hy = y - padY;
+  const hh = fontSize + padY * 2;
+
+  ctx.save();
+
+  if (style === 'marker') {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = Math.min(0.98, Math.max(0.75, opacity));
+
+    if (!isLightBg) {
+      ctx.globalCompositeOperation = 'source-over';
+      // Vibrant neon fluorescent bloom radiating around the highlight
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 24;
+    } else {
+      ctx.globalCompositeOperation = 'multiply';
+    }
+
+    ctx.beginPath();
+    safeRoundRect(ctx, hx, hy, drawnW + padX * 2, hh, 2);
+    ctx.fill();
+
+    // Second pass for intense solid core with soft neon bloom edges
+    if (!isLightBg) {
+      ctx.shadowBlur = 10;
+      ctx.fill();
+    }
+  } else if (style === 'underline') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, fontSize * 0.12);
+    ctx.lineCap = 'round';
+    if (!isLightBg) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + fontSize + 4);
+    ctx.lineTo(x - 2 + (w + 4) * progress, y + fontSize + 4);
+    ctx.stroke();
+  } else if (style === 'double-underline') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, fontSize * 0.08);
+    ctx.lineCap = 'round';
+    if (!isLightBg) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + fontSize + 3);
+    ctx.lineTo(x - 2 + (w + 4) * progress, y + fontSize + 3);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + fontSize + 8);
+    ctx.lineTo(x - 2 + (w + 4) * progress, y + fontSize + 8);
+    ctx.stroke();
+  } else if (style === 'box') {
+    ctx.fillStyle = color;
+    if (!isLightBg) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 16;
+    }
+    ctx.beginPath();
+    safeRoundRect(ctx, hx, hy, drawnW + padX * 2, hh, 3);
+    ctx.fill();
+  } else if (style === 'circle') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, fontSize * 0.1);
+    if (!isLightBg) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+    }
+    ctx.beginPath();
+    const sweep = (Math.PI * 2) * progress;
+    ctx.ellipse(x + w / 2, y + fontSize / 2, w * 0.58 + 8, fontSize * 0.68 + 4, -0.03, 0, sweep);
+    ctx.stroke();
+  } else if (style === 'tape') {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.88;
+    ctx.beginPath();
+    safeRoundRect(ctx, hx - 6, hy, drawnW + padX * 2 + 12, hh, 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Wraps headline or paragraph text and computes exact anchor word positions
+ */
+function wrapHeadlineWithAnchor(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  anchor: string,
+  maxWidth: number
+) {
+  const cleanText = text.trim();
+  if (!cleanText) return [];
+
+  const cleanAnchor = anchor.trim().toLowerCase();
+  const rawWords = cleanText.split(/\s+/).filter(Boolean);
+
+  const textLower = cleanText.toLowerCase();
+  const anchorIdx = cleanAnchor ? textLower.indexOf(cleanAnchor) : -1;
+
+  const wordObjects: { word: string; isAnchor: boolean }[] = [];
+  let searchFrom = 0;
+
+  for (let i = 0; i < rawWords.length; i++) {
+    const w = rawWords[i];
+    const wLower = w.toLowerCase();
+    const wStart = textLower.indexOf(wLower, searchFrom);
+    const wEnd = wStart >= 0 ? wStart + w.length : searchFrom + w.length;
+    searchFrom = wEnd;
+
+    let isAnchor = false;
+    if (anchorIdx !== -1 && wStart >= 0) {
+      const anchorEnd = anchorIdx + cleanAnchor.length;
+      if (wEnd > anchorIdx && wStart < anchorEnd) {
+        isAnchor = true;
+      }
+    }
+    wordObjects.push({ word: w, isAnchor });
+  }
+
+  const lines: {
+    text: string;
+    words: { word: string; isAnchor: boolean; x: number; w: number }[];
+    w: number;
+  }[] = [];
+
+  let currentLineWords: { word: string; isAnchor: boolean; w: number }[] = [];
+  let currentLineWidth = 0;
+  const spaceW = ctx.measureText(' ').width;
+
+  for (let i = 0; i < wordObjects.length; i++) {
+    const wObj = wordObjects[i];
+    const wW = ctx.measureText(wObj.word).width;
+    const testW = currentLineWidth === 0 ? wW : currentLineWidth + spaceW + wW;
+
+    if (testW > maxWidth && currentLineWords.length > 0) {
+      lines.push(buildLineObj(currentLineWords, spaceW));
+      currentLineWords = [{ word: wObj.word, isAnchor: wObj.isAnchor, w: wW }];
+      currentLineWidth = wW;
+    } else {
+      currentLineWords.push({ word: wObj.word, isAnchor: wObj.isAnchor, w: wW });
+      currentLineWidth = testW;
+    }
+  }
+
+  if (currentLineWords.length > 0) {
+    lines.push(buildLineObj(currentLineWords, spaceW));
+  }
+
+  return lines;
+}
+
+function buildLineObj(
+  words: { word: string; isAnchor: boolean; w: number }[],
+  spaceW: number
+) {
+  let curX = 0;
+  const positionedWords = words.map(w => {
+    const item = { word: w.word, isAnchor: w.isAnchor, x: curX, w: w.w };
+    curX += w.w + spaceW;
+    return item;
+  });
+  return {
+    text: words.map(w => w.word).join(' '),
+    words: positionedWords,
+    w: curX - spaceW,
+  };
+}
+
+function wrapSimpleText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  font: string,
+  maxWidth: number
+): string[] {
+  ctx.save();
+  ctx.font = font;
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    if (ctx.measureText(test).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  ctx.restore();
+  return lines;
 }

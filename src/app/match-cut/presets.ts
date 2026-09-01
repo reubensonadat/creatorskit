@@ -68,7 +68,7 @@ export const BODY_CORPUS = [
  * Creates dynamic, richly formatted newspaper cuts for any arbitrary user phrase.
  */
 export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[] {
-  const clean = (phrase.trim() || 'Studio Space Planner').slice(0, 23);
+  const clean = phrase.trim() || 'Studio Space Planner';
 
   const sentenceTemplates = [
     `Leaked memo mentions {W} seventeen times`,
@@ -144,6 +144,29 @@ export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[]
 }
 
 export const PRESET_TOPICS: PresetTopic[] = [
+  {
+    id: 'ai-code-bugs',
+    name: 'Tech Security',
+    anchor: 'AI-generated code contains more bugs and errors than human output',
+    category: 'Tech & Security',
+    highlightColor: '#FFE500',
+    highlightStyle: 'marker',
+    paperTheme: 'noir',
+    cuts: [
+      {
+        id: 'ai-code-1',
+        masthead: 'Pro  >  Security',
+        subhead: 'AI-generated code produces 1.7x more issues than human code',
+        headline: 'AI-generated code contains more bugs and errors than human output',
+        byline: 'Craig Hale',
+        location: 'SAN FRANCISCO',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'December 18, 2025',
+        columnCount: 2,
+        rotationOffset: 0,
+      },
+    ],
+  },
   {
     id: 'space-planner',
     name: 'Studio Space Planner',

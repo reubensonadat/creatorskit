@@ -100,7 +100,7 @@ export default function TextHighlighterPage() {
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
 
   // Canvas Environment
-  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image' | 'custom'>('paper');
+  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image'>('paper');
   const [showTopColumns, setShowTopColumns] = useState(true);
   const [showMasthead, setShowMasthead] = useState(true);
   const [showSubhead, setShowSubhead] = useState(true);
@@ -109,8 +109,7 @@ export default function TextHighlighterPage() {
   const [showDividerRules, setShowDividerRules] = useState(true);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [uploadedImageEl, setUploadedImageEl] = useState<HTMLImageElement | null>(null);
-  const [imageOpacity, setImageOpacity] = useState(0.4);
-  const [customBgColor, setCustomBgColor] = useState('#ffffff');
+  const [imageOpacity, setImageOpacity] = useState(0.5);
 
   // Camera Zoom
   const [zoomEnabled, setZoomEnabled] = useState(false);
@@ -220,7 +219,6 @@ export default function TextHighlighterPage() {
     showDividerRules,
     uploadedImage: uploadedImageEl,
     imageOpacity,
-    customBgColor,
     zoomEnabled,
     zoomDirection,
     zoomIntensity,
@@ -281,9 +279,14 @@ export default function TextHighlighterPage() {
     setHighlightColor(p.highlightColor);
     setHighlightStyle(p.highlightStyle);
     setPaperTheme(p.paperTheme);
+    if (p.id === 'ai-code-bugs' || p.paperTheme === 'noir') {
+      setCanvasEnvironment('dark');
+    }
     setCuts(p.cuts);
     setCurrentCutIndex(0);
     animStartTimeRef.current = performance.now();
+    setHighlightProgress(0);
+    setIsPlaying(true);
   };
 
   // Generate Custom Phrase Cuts
@@ -310,15 +313,14 @@ export default function TextHighlighterPage() {
   };
 
   // Environment Switch Handler
-  const handleEnvironmentSwitch = (env: 'paper' | 'dark' | 'image' | 'custom') => {
+  const handleEnvironmentSwitch = (env: 'paper' | 'dark' | 'image') => {
     setCanvasEnvironment(env);
-    if (env === 'paper') {
-      setShowTopColumns(true); setShowMasthead(true); setShowSubhead(true);
-      setShowByline(true); setShowBottomColumns(true); setShowDividerRules(true);
-    } else {
-      setShowTopColumns(false); setShowMasthead(false); setShowSubhead(false);
-      setShowByline(false); setShowBottomColumns(false); setShowDividerRules(false);
-    }
+    setShowMasthead(true);
+    setShowSubhead(true);
+    setShowByline(true);
+    setShowBottomColumns(true);
+    setShowDividerRules(true);
+    setShowTopColumns(env === 'paper');
   };
 
   // Image Upload Handler
@@ -1120,21 +1122,20 @@ export default function TextHighlighterPage() {
                   fontSize: '0.68rem',
                   fontFamily: 'monospace',
                   fontWeight: 900,
-                  color: anchorPhrase.length >= 23 ? '#dc2626' : '#666',
-                  background: anchorPhrase.length >= 23 ? '#fee2e2' : '#f4f4f5',
+                  color: '#000',
+                  background: '#FFE500',
                   padding: '2px 6px',
                   border: '1px solid #000',
                   borderRadius: 4,
                 }}
               >
-                {anchorPhrase.length}/23 CHARS
+                {anchorPhrase.trim().length} CHARS • {anchorPhrase.trim().split(/\s+/).filter(Boolean).length} WORDS
               </span>
             </div>
 
             <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
               <input
                 type="text"
-                maxLength={23}
                 value={anchorPhrase}
                 onChange={(e) => setAnchorPhrase(e.target.value)}
                 onKeyDown={(e) => {
@@ -1143,7 +1144,7 @@ export default function TextHighlighterPage() {
                     handleAutoGenerate();
                   }
                 }}
-                placeholder="Enter word to highlight (max 23 chars)"
+                placeholder="Enter words, sentence, or passage to highlight..."
                 style={{
                   flex: 1,
                   padding: '8px 12px',
@@ -1597,86 +1598,104 @@ export default function TextHighlighterPage() {
               }}
             >
               {/* Paper Archetype */}
-              <div>
-                <label
-                  style={{
-                    fontSize: '0.68rem',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    textTransform: 'uppercase',
-                    color: '#000',
-                    display: 'block',
-                    marginBottom: 6,
-                  }}
-                >
-                  Paper Archetype
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                  {Object.values(PAPER_THEMES).map((theme) => (
-                    <button
-                      key={theme.id}
-                      onClick={() => setPaperTheme(theme.id as any)}
-                      style={{
-                        padding: '8px 4px',
-                        border: '2px solid #000',
-                        borderRadius: 4,
-                        background: paperTheme === theme.id ? '#000' : theme.bg,
-                        color: paperTheme === theme.id ? '#fff' : theme.ink,
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.65rem',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {theme.label.split(' ')[0]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Canvas Environment */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000' }}>
                   Canvas Environment
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                   {[
                     { id: 'paper' as const, label: 'Newspaper', icon: '📰' },
-                    { id: 'dark' as const, label: 'Dark', icon: '⬛' },
-                    { id: 'image' as const, label: 'Image', icon: '🖼' },
-                    { id: 'custom' as const, label: 'Custom', icon: '🎨' },
+                    { id: 'dark' as const, label: 'Dark Studio', icon: '⬛' },
+                    { id: 'image' as const, label: 'Image Backdrop', icon: '🖼' },
                   ].map((e) => (
                     <button
                       key={e.id}
                       onClick={() => handleEnvironmentSwitch(e.id)}
                       style={{
-                        padding: '8px 6px',
+                        padding: '9px 4px',
                         border: '2px solid #000',
                         borderRadius: 4,
                         background: canvasEnvironment === e.id ? '#000' : '#fff',
                         color: canvasEnvironment === e.id ? '#fff' : '#000',
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        fontSize: '0.66rem',
+                        fontSize: '0.64rem',
                         cursor: 'pointer',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: 4,
+                        boxShadow: canvasEnvironment === e.id ? '2px 2px 0 #FFE500' : 'none',
                       }}
                     >
-                      {e.icon} {e.label}
+                      <span style={{ fontSize: '1rem' }}>{e.icon}</span>
+                      <span>{e.label}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Image Upload (only when image env selected) */}
-                {canvasEnvironment === 'image' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                      Upload Screenshot Image
+                {/* Paper Archetypes (Only for Newspaper env) */}
+                {canvasEnvironment === 'paper' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6 }}>
+                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666' }}>
+                      Paper Archetype
                     </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                      {Object.values(PAPER_THEMES).map((theme) => (
+                        <button
+                          key={theme.id}
+                          onClick={() => setPaperTheme(theme.id as any)}
+                          style={{
+                            padding: '7px 4px',
+                            border: '2px solid #000',
+                            borderRadius: 4,
+                            background: paperTheme === theme.id ? '#000' : theme.bg,
+                            color: paperTheme === theme.id ? '#fff' : theme.ink,
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.65rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {theme.label.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Image Upload (Only for Image Backdrop env) */}
+                {canvasEnvironment === 'image' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: '#f9f9f9', border: '1.5px solid #000', borderRadius: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase' }}>
+                        Upload Backdrop Image
+                      </label>
+                      {uploadedImageUrl && (
+                        <button
+                          onClick={() => {
+                            setUploadedImageUrl(null);
+                            setUploadedImageEl(null);
+                          }}
+                          style={{
+                            fontSize: '0.6rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 800,
+                            padding: '2px 6px',
+                            background: '#ff4d4f',
+                            color: '#fff',
+                            border: '1px solid #000',
+                            borderRadius: 3,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -1684,7 +1703,7 @@ export default function TextHighlighterPage() {
                       style={{ fontSize: '0.72rem', fontFamily: 'monospace' }}
                     />
                     {uploadedImageUrl && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444', minWidth: 52 }}>OPACITY</span>
                           <input
@@ -1700,23 +1719,9 @@ export default function TextHighlighterPage() {
                             {Math.round(imageOpacity * 100)}%
                           </span>
                         </div>
-                        <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #ccc', borderRadius: 2 }} />
+                        <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #000', borderRadius: 3 }} />
                       </div>
                     )}
-                  </div>
-                )}
-
-                {/* Custom Color Picker (only when custom env selected) */}
-                {canvasEnvironment === 'custom' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>BG COLOR</span>
-                    <input
-                      type="color"
-                      value={customBgColor}
-                      onChange={(e) => setCustomBgColor(e.target.value)}
-                      style={{ width: 32, height: 28, border: '2px solid #000', borderRadius: 4, cursor: 'pointer', padding: 0 }}
-                    />
-                    <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>{customBgColor}</span>
                   </div>
                 )}
               </div>
