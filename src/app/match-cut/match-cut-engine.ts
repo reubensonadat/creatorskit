@@ -38,6 +38,13 @@ export interface RenderOptions {
 
   // Canvas Environment
   canvasEnvironment?: 'paper' | 'dark' | 'image';
+  backdropType?: 'blurred-code' | 'deep-pitch' | 'obsidian-card' | 'custom-image';
+  backdropBlur?: number;
+  ambientGlow?: boolean;
+  codeOpacity?: number;
+  highlightSubhead?: boolean;
+  badgeText?: string;
+  badgeColor?: string;
   showTopColumns?: boolean;
   showMasthead?: boolean;
   showSubhead?: boolean;
@@ -927,6 +934,159 @@ function drawAnchorHighlight(
  * Pure #000000 background, vibrant fluorescent yellow neon bloom, breadcrumb, [News] badge, byline, and subhead.
  */
 /**
+ * Draw syntax-highlighted code editor backdrop matching authentic documentary video essays
+ */
+function drawBlurredCodeBackdrop(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opacity = 0.45,
+  blurAmount = 4
+) {
+  const codeBuffer = getBufferCanvas(width, height, 'blur');
+  const bCtx = codeBuffer.getContext('2d')!;
+  bCtx.clearRect(0, 0, width, height);
+
+  // Dark IDE editor base
+  bCtx.fillStyle = '#0f111a';
+  bCtx.fillRect(0, 0, width, height);
+
+  const codeFont = '14px "Fira Code", "Cascadia Code", Consolas, "Courier New", monospace';
+  bCtx.font = codeFont;
+  bCtx.textBaseline = 'top';
+
+  const codeTokens: { text: string; color: string }[][] = [
+    [
+      { text: '// Security & Code Quality Benchmark Suite v2.4', color: '#6a9955' },
+    ],
+    [
+      { text: 'if', color: '#c586c0' },
+      { text: ' ($(window).', color: '#d4d4d4' },
+      { text: 'scrollTop', color: '#dcdcaa' },
+      { text: '() > ', color: '#d4d4d4' },
+      { text: 'header1_InitialDistance', color: '#9cdcfe' },
+      { text: ') {', color: '#ffd700' },
+    ],
+    [
+      { text: '    if', color: '#c586c0' },
+      { text: ' (', color: '#d4d4d4' },
+      { text: 'parseInt', color: '#dcdcaa' },
+      { text: '(header1.', color: '#d4d4d4' },
+      { text: 'css', color: '#dcdcaa' },
+      { text: "('padding-top')", color: '#ce9178' },
+      { text: ') === ', color: '#d4d4d4' },
+      { text: '0', color: '#b5cea8' },
+      { text: ') {', color: '#da70d6' },
+    ],
+    [
+      { text: '        header1.', color: '#d4d4d4' },
+      { text: 'css', color: '#dcdcaa' },
+      { text: "('padding-top'", color: '#ce9178' },
+      { text: ', header1_InitialPadding);', color: '#d4d4d4' },
+    ],
+    [
+      { text: '    }', color: '#da70d6' },
+    ],
+    [
+      { text: '} ', color: '#ffd700' },
+      { text: 'else', color: '#c586c0' },
+      { text: ' {', color: '#ffd700' },
+    ],
+    [
+      { text: '    header1.', color: '#d4d4d4' },
+      { text: 'css', color: '#dcdcaa' },
+      { text: "('padding-top'", color: '#ce9178' },
+      { text: ', header1_InitialPadding);', color: '#d4d4d4' },
+    ],
+    [
+      { text: '}', color: '#ffd700' },
+    ],
+    [
+      { text: '', color: '#d4d4d4' },
+    ],
+    [
+      { text: 'async function', color: '#569cd6' },
+      { text: ' auditAIGeneratedOutput', color: '#dcdcaa' },
+      { text: '(modelContext) {', color: '#ffd700' },
+    ],
+    [
+      { text: '    const', color: '#569cd6' },
+      { text: ' metrics = ', color: '#d4d4d4' },
+      { text: 'await', color: '#c586c0' },
+      { text: ' testModelReliability(modelContext);', color: '#dcdcaa' },
+    ],
+    [
+      { text: '    if', color: '#c586c0' },
+      { text: ' (metrics.errorFrequency > ', color: '#d4d4d4' },
+      { text: '1.7', color: '#b5cea8' },
+      { text: ') {', color: '#da70d6' },
+    ],
+    [
+      { text: '        return', color: '#c586c0' },
+      { text: " { status: 'rejected', severity: 'critical' };", color: '#ce9178' },
+    ],
+    [
+      { text: '    }', color: '#da70d6' },
+    ],
+    [
+      { text: '    return', color: '#c586c0' },
+      { text: " { status: 'passed', errorThreshold: 0.05 };", color: '#ce9178' },
+    ],
+    [
+      { text: '}', color: '#ffd700' },
+    ],
+    [
+      { text: '', color: '#d4d4d4' },
+    ],
+    [
+      { text: 'export default', color: '#c586c0' },
+      { text: ' { auditAIGeneratedOutput, header1 };', color: '#9cdcfe' },
+    ],
+  ];
+
+  const startY = height * 0.38;
+  const startX = width * 0.14;
+  const lineHeight = 24;
+
+  // Draw line numbers and code tokens
+  codeTokens.forEach((line, idx) => {
+    const y = startY + idx * lineHeight;
+    if (y > height + 50) return;
+
+    // Line number
+    bCtx.fillStyle = '#4b5263';
+    bCtx.font = '12px "Fira Code", monospace';
+    bCtx.fillText(`${idx + 1}`.padStart(3, ' '), startX - 36, y + 2);
+
+    bCtx.font = codeFont;
+    let x = startX;
+    line.forEach((token) => {
+      bCtx.fillStyle = token.color;
+      bCtx.fillText(token.text, x, y);
+      x += bCtx.measureText(token.text).width;
+    });
+  });
+
+  // Apply optical depth of field / blur & draw back onto main canvas
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, Math.max(0.1, opacity));
+  if (typeof (ctx as any).filter !== 'undefined' && blurAmount > 0) {
+    ctx.filter = `blur(${blurAmount}px)`;
+  }
+  ctx.drawImage(codeBuffer, 0, 0);
+  ctx.restore();
+
+  // Dark gradient scrim over the code so text in front has pristine contrast
+  const scrim = ctx.createLinearGradient(0, 0, 0, height);
+  scrim.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+  scrim.addColorStop(0.35, 'rgba(5, 5, 8, 0.85)');
+  scrim.addColorStop(0.7, 'rgba(10, 10, 16, 0.55)');
+  scrim.addColorStop(1, 'rgba(5, 5, 8, 0.88)');
+  ctx.fillStyle = scrim;
+  ctx.fillRect(0, 0, width, height);
+}
+
+/**
  * Clean & Focused Dark Studio & Image Backdrop Renderer
  * Exact pixel-faithful replication of the dark video essay screenshot card.
  * Pure #000000 background, vibrant fluorescent yellow neon bloom, breadcrumb, [News] badge, byline, and subhead.
@@ -940,13 +1100,14 @@ export function renderModernDigitalArticle(
   frameIndex = 0
 ) {
   const env = options.canvasEnvironment || 'dark';
-  const isImage = env === 'image' && options.uploadedImage;
+  const isImage = (env === 'image' || options.backdropType === 'custom-image') && options.uploadedImage;
+  const backdropType = options.backdropType || (env === 'dark' ? 'blurred-code' : 'deep-pitch');
 
-  // 1. Pure #000000 Deep Pitch Black Canvas
-  ctx.fillStyle = '#000000';
+  // 1. Deep Pitch Black Canvas Base
+  ctx.fillStyle = '#050508';
   ctx.fillRect(0, 0, width, height);
 
-  // If image backdrop is active
+  // 2. Render Selected Backdrop
   if (isImage && options.uploadedImage) {
     const img = options.uploadedImage;
     const imgAspect = img.width / img.height;
@@ -965,11 +1126,45 @@ export function renderModernDigitalArticle(
     }
     ctx.save();
     ctx.globalAlpha = options.imageOpacity ?? 0.6;
+    if (typeof (ctx as any).filter !== 'undefined' && (options.backdropBlur ?? 0) > 0) {
+      ctx.filter = `blur(${options.backdropBlur}px)`;
+    }
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
     ctx.restore();
 
     // Dark scrim overlay for legibility
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.fillRect(0, 0, width, height);
+  } else if (backdropType === 'blurred-code') {
+    drawBlurredCodeBackdrop(
+      ctx,
+      width,
+      height,
+      options.codeOpacity ?? 0.48,
+      options.backdropBlur ?? 5
+    );
+  } else if (backdropType === 'obsidian-card') {
+    // Subtle frosted glass radial gradient
+    const glassGrad = ctx.createRadialGradient(
+      width / 2, height / 2, 50,
+      width / 2, height / 2, Math.max(width, height) * 0.7
+    );
+    glassGrad.addColorStop(0, '#13141f');
+    glassGrad.addColorStop(1, '#050508');
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // 3. Top Amber / Orange Cinematic Ambient Glow
+  if (options.ambientGlow !== false) {
+    const amberGlow = ctx.createRadialGradient(
+      width * 0.12, height * 0.08, 0,
+      width * 0.12, height * 0.08, Math.max(width, height) * 0.68
+    );
+    amberGlow.addColorStop(0, 'rgba(245, 158, 11, 0.16)');
+    amberGlow.addColorStop(0.35, 'rgba(245, 158, 11, 0.05)');
+    amberGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = amberGlow;
     ctx.fillRect(0, 0, width, height);
   }
 
@@ -979,16 +1174,16 @@ export function renderModernDigitalArticle(
     const pattern = ctx.createPattern(noise, 'repeat');
     if (pattern) {
       ctx.save();
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.22;
       ctx.fillStyle = pattern;
       ctx.fillRect(0, 0, width, height);
       ctx.restore();
     }
   }
 
-  // 2. Modern Clean Typography
-  const chosenFont = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-  const padX = Math.max(32, Math.round(width * 0.12));
+  // 4. Modern Clean Typography
+  const chosenFont = options.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  const padX = Math.max(32, Math.round(width * 0.08));
   const cardW = width - padX * 2;
   const contentLeft = padX;
 
@@ -996,12 +1191,12 @@ export function renderModernDigitalArticle(
 
   // Typography Scaling
   const headlineScale = options.headlineScale ?? 1.0;
-  const headlineFontSize = Math.max(22, Math.round(width * 0.052 * headlineScale));
-  const headlineLineHeight = Math.round(headlineFontSize * 1.42);
-  const headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
+  const headlineFontSize = Math.max(22, Math.round(width * 0.046 * headlineScale));
+  const headlineLineHeight = Math.round(headlineFontSize * 1.38);
+  const headlineFont = `700 ${headlineFontSize}px ${chosenFont}`;
 
-  const subheadFontSize = Math.max(13, Math.round(width * 0.026));
-  const subheadLineHeight = Math.round(subheadFontSize * 1.48);
+  const subheadFontSize = Math.max(13, Math.round(width * 0.024));
+  const subheadLineHeight = Math.round(subheadFontSize * 1.45);
   const subheadFont = `500 ${subheadFontSize}px ${chosenFont}`;
 
   // Content Strings
@@ -1028,15 +1223,20 @@ export function renderModernDigitalArticle(
     headlineLines.forEach(l => l.words.forEach(w => { w.isAnchor = true; }));
   }
 
+  // If subhead highlight is enabled explicitly in options
+  if (options.highlightSubhead && subheadLines.length > 0 && !anySubheadAnchor) {
+    subheadLines.forEach(l => l.words.forEach(w => { w.isAnchor = true; }));
+  }
+
   // Section Heights and Spacing
-  const breadcrumbH = options.showMasthead !== false && mastheadText ? 22 : 0;
+  const breadcrumbH = options.showMasthead !== false && mastheadText ? 24 : 0;
   const headlineH = headlineLines.length * headlineLineHeight;
-  const metaH = options.showByline !== false ? 26 : 0;
+  const metaH = options.showByline !== false ? 28 : 0;
   const subheadH = subheadLines.length * subheadLineHeight;
 
   const gap1 = breadcrumbH > 0 ? 14 : 0;
-  const gap2 = metaH > 0 ? 22 : 0;
-  const gap3 = subheadH > 0 ? 18 : 0;
+  const gap2 = metaH > 0 ? 20 : 0;
+  const gap3 = subheadH > 0 ? 16 : 0;
 
   const totalContentH = breadcrumbH + gap1 + headlineH + gap2 + metaH + gap3 + subheadH;
 
@@ -1082,7 +1282,7 @@ export function renderModernDigitalArticle(
   // ------------------------------------------------------------
   if (options.showMasthead !== false && mastheadText) {
     ctx.save();
-    ctx.font = `700 ${Math.max(12, Math.round(width * 0.018))}px ${chosenFont}`;
+    ctx.font = `700 ${Math.max(12, Math.round(width * 0.016))}px ${chosenFont}`;
     ctx.fillStyle = '#f59e0b'; // Vibrant amber/orange
     ctx.textBaseline = 'top';
     ctx.fillText(mastheadText, contentLeft, curY);
@@ -1150,8 +1350,8 @@ export function renderModernDigitalArticle(
     headlineLines.forEach((line, lineIdx) => {
       const lineY = curY + lineIdx * headlineLineHeight;
       line.words.forEach((w) => {
-        if (w.isAnchor && options.highlightStyle === 'marker' && progress > 0.05) {
-          ctx.fillStyle = '#24243a'; // High contrast ink inside yellow marker
+        if (w.isAnchor && (options.highlightStyle === 'marker' || options.highlightStyle === 'tape') && progress > 0.05) {
+          ctx.fillStyle = '#1c1c28'; // High contrast dark charcoal ink inside yellow marker
         } else if (w.isAnchor && options.highlightStyle === 'box') {
           ctx.fillStyle = '#000000';
         } else {
@@ -1175,12 +1375,13 @@ export function renderModernDigitalArticle(
     const metaY = curY;
 
     // Emerald Green News Badge Pill
-    const badgeText = 'News';
-    ctx.font = `bold ${Math.max(10, Math.round(width * 0.015))}px ${chosenFont}`;
+    const badgeText = options.badgeText || 'News';
+    const badgeColor = options.badgeColor || '#10b981';
+    ctx.font = `bold ${Math.max(10, Math.round(width * 0.014))}px ${chosenFont}`;
     const badgeW = ctx.measureText(badgeText).width + 16;
     const badgeH = 22;
 
-    ctx.fillStyle = '#10b981'; // Vibrant emerald badge
+    ctx.fillStyle = badgeColor; // Vibrant emerald badge
     safeRoundRect(ctx, metaX, metaY - 2, badgeW, badgeH, 3);
     ctx.fill();
 
@@ -1194,14 +1395,14 @@ export function renderModernDigitalArticle(
     // Byline (e.g. By Craig Hale)
     ctx.textAlign = 'left';
     ctx.fillStyle = '#d1d5db';
-    ctx.font = `600 ${Math.max(11, Math.round(width * 0.016))}px ${chosenFont}`;
+    ctx.font = `600 ${Math.max(11, Math.round(width * 0.015))}px ${chosenFont}`;
     const bylineStr = `By ${bylineText}`;
     ctx.fillText(bylineStr, metaX, metaY + badgeH / 2 - 2);
     metaX += ctx.measureText(bylineStr).width + 12;
 
     // Published Date (e.g. Published December 18, 2025)
     ctx.fillStyle = '#9ca3af';
-    ctx.font = `400 ${Math.max(10, Math.round(width * 0.014))}px ${chosenFont}`;
+    ctx.font = `400 ${Math.max(10, Math.round(width * 0.013))}px ${chosenFont}`;
     const dateStr = dateText.startsWith('Published') ? dateText : `Published ${dateText}`;
     ctx.fillText(dateStr, metaX, metaY + badgeH / 2 - 2);
 
@@ -1270,8 +1471,8 @@ export function renderModernDigitalArticle(
     subheadLines.forEach((line, lineIdx) => {
       const lineY = curY + lineIdx * subheadLineHeight;
       line.words.forEach((w) => {
-        if (w.isAnchor && options.highlightStyle === 'marker' && progress > 0.05) {
-          ctx.fillStyle = '#24243a';
+        if (w.isAnchor && (options.highlightStyle === 'marker' || options.highlightStyle === 'tape') && progress > 0.05) {
+          ctx.fillStyle = '#1c1c28';
         } else {
           ctx.fillStyle = '#e5e7eb';
         }

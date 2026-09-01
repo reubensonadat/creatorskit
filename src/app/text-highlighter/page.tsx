@@ -88,20 +88,27 @@ export default function TextHighlighterPage() {
   const [soundVolume, setSoundVolume] = useState(0.4);
 
   // Visual & Style Options
-  const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('9:16');
+  const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('16:9');
   const [highlightColor, setHighlightColor] = useState('#FFE500');
   const [highlightStyle, setHighlightStyle] = useState<'marker' | 'underline' | 'double-underline' | 'box' | 'circle' | 'tape'>('marker');
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
-  const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('vintage');
+  const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('noir');
   const [depthOfField, setDepthOfField] = useState(true); // Circular lens blur
   const [dofIntensity, setDofIntensity] = useState(0.75); // Blur strength
   const [filmGrain, setFilmGrain] = useState(true);
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
 
-  // Canvas Environment
-  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image'>('paper');
-  const [showTopColumns, setShowTopColumns] = useState(true);
+  // Canvas Environment & Modern Backdrop Scene
+  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image'>('dark');
+  const [backdropType, setBackdropType] = useState<'blurred-code' | 'deep-pitch' | 'obsidian-card' | 'custom-image'>('blurred-code');
+  const [backdropBlur, setBackdropBlur] = useState(5);
+  const [ambientGlow, setAmbientGlow] = useState(true);
+  const [codeOpacity, setCodeOpacity] = useState(0.48);
+  const [highlightSubhead, setHighlightSubhead] = useState(true);
+  const [badgeText, setBadgeText] = useState('News');
+  const [badgeColor, setBadgeColor] = useState('#10b981');
+  const [showTopColumns, setShowTopColumns] = useState(false);
   const [showMasthead, setShowMasthead] = useState(true);
   const [showSubhead, setShowSubhead] = useState(true);
   const [showByline, setShowByline] = useState(true);
@@ -211,6 +218,13 @@ export default function TextHighlighterPage() {
     highlightSector,
     fontFamily,
     canvasEnvironment,
+    backdropType,
+    backdropBlur,
+    ambientGlow,
+    codeOpacity,
+    highlightSubhead,
+    badgeText,
+    badgeColor,
     showTopColumns,
     showMasthead,
     showSubhead,
@@ -1636,6 +1650,159 @@ export default function TextHighlighterPage() {
                   ))}
                 </div>
 
+                {/* Dark Studio Archetypes & Lighting */}
+                {canvasEnvironment === 'dark' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10, background: '#18181b', border: '1.5px solid #27272a', borderRadius: 4, color: '#f4f4f5' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#fbbf24' }}>
+                        Dark Studio Backdrop
+                      </label>
+                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#a1a1aa' }}>Reference Polish</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+                      {[
+                        { id: 'blurred-code' as const, label: 'Blurred Code' },
+                        { id: 'deep-pitch' as const, label: 'Deep Pitch' },
+                        { id: 'obsidian-card' as const, label: 'Obsidian' },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => setBackdropType(t.id)}
+                          style={{
+                            padding: '6px 2px',
+                            border: '1.5px solid #3f3f46',
+                            borderRadius: 4,
+                            background: backdropType === t.id ? '#fbbf24' : '#27272a',
+                            color: backdropType === t.id ? '#000' : '#e4e4e7',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.62rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Ambient Glow Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #27272a' }}>
+                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#e4e4e7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={ambientGlow}
+                          onChange={(e) => setAmbientGlow(e.target.checked)}
+                          style={{ width: 13, height: 13, accentColor: '#fbbf24', cursor: 'pointer' }}
+                        />
+                        Cinematic Ambient Amber Glow
+                      </label>
+                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: ambientGlow ? '#fbbf24' : '#71717a' }}>
+                        {ambientGlow ? 'ACTIVE' : 'OFF'}
+                      </span>
+                    </div>
+
+                    {/* Code Backdrop Opacity & Blur Sliders */}
+                    {backdropType === 'blurred-code' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4, borderTop: '1px solid #27272a' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa', minWidth: 64 }}>CODE OPACITY</span>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="0.8"
+                            step="0.05"
+                            value={codeOpacity}
+                            onChange={(e) => setCodeOpacity(parseFloat(e.target.value))}
+                            style={{ flex: 1, accentColor: '#fbbf24', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#fbbf24' }}>
+                            {Math.round(codeOpacity * 100)}%
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa', minWidth: 64 }}>BLUR STRENGTH</span>
+                          <input
+                            type="range"
+                            min="1"
+                            max="12"
+                            step="1"
+                            value={backdropBlur}
+                            onChange={(e) => setBackdropBlur(parseInt(e.target.value))}
+                            style={{ flex: 1, accentColor: '#fbbf24', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#fbbf24' }}>
+                            {backdropBlur}px
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Article Badge Configuration */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6, borderTop: '1px solid #27272a' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa' }}>ARTICLE BADGE</span>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {[
+                            { color: '#10b981', name: 'Emerald' },
+                            { color: '#f59e0b', name: 'Amber' },
+                            { color: '#ef4444', name: 'Red' },
+                            { color: '#3b82f6', name: 'Blue' },
+                            { color: '#8b5cf6', name: 'Purple' },
+                          ].map((b) => (
+                            <button
+                              key={b.color}
+                              onClick={() => setBadgeColor(b.color)}
+                              style={{
+                                width: 14,
+                                height: 14,
+                                borderRadius: '50%',
+                                background: b.color,
+                                border: badgeColor === b.color ? '2px solid #fff' : '1px solid #000',
+                                cursor: 'pointer',
+                              }}
+                              title={b.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={badgeText}
+                        onChange={(e) => setBadgeText(e.target.value)}
+                        placeholder="e.g. News, Exclusive, Report"
+                        style={{
+                          padding: '4px 6px',
+                          border: '1px solid #3f3f46',
+                          borderRadius: 3,
+                          background: '#09090b',
+                          color: '#fff',
+                          fontSize: '0.72rem',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                    </div>
+
+                    {/* Highlight Subhead Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #27272a' }}>
+                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#e4e4e7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={highlightSubhead}
+                          onChange={(e) => setHighlightSubhead(e.target.checked)}
+                          style={{ width: 13, height: 13, accentColor: '#fbbf24', cursor: 'pointer' }}
+                        />
+                        Highlight Subhead Sentence
+                      </label>
+                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: highlightSubhead ? '#fbbf24' : '#71717a' }}>
+                        {highlightSubhead ? 'ENABLED' : 'HEADLINE ONLY'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Paper Archetypes (Only for Newspaper env) */}
                 {canvasEnvironment === 'paper' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6 }}>
@@ -1666,8 +1833,6 @@ export default function TextHighlighterPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Image Upload (Only for Image Backdrop env) */}
                 {canvasEnvironment === 'image' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: '#f9f9f9', border: '1.5px solid #000', borderRadius: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
