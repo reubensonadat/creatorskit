@@ -274,3 +274,101 @@ export async function migrateAllLocalPostsToSupabase(): Promise<{ total: number;
 
   return { total, successCount, errors };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// THUMBNAIL LAB: COMPETITOR THUMBNAIL DATABASE INTEGRATION
+// ═══════════════════════════════════════════════════════════════
+
+export interface StoredCompetitor {
+  id: string;
+  youtube_video_id: string;
+  title: string;
+  channel_name: string;
+  channel_avatar?: string;
+  views?: string;
+  time_ago?: string;
+  duration?: string;
+  format?: 'longform' | 'shorts';
+  category?: string;
+  verified?: boolean;
+  thumbnail_url?: string;
+  created_at?: string;
+}
+
+/**
+ * Fetch competitor thumbnails from Supabase.
+ */
+export async function fetchCompetitorsFromDatabase(format?: 'longform' | 'shorts'): Promise<StoredCompetitor[]> {
+  try {
+    let query = supabase
+      .from('competitor_thumbnails')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (format) {
+      query = query.eq('format', format);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Supabase competitor_thumbnails error (falling back to built-in presets):', error.message);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.warn('Failed to fetch competitor_thumbnails from Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Save / Insert a competitor thumbnail into Supabase with automatic deduplication.
+ */
+export async function saveCompetitorToDatabase(competitor: Partial<StoredCompetitor>): Promise<{ success: boolean; data?: StoredCompetitor; alreadyExists?: boolean; error?: string }> {
+  try {
+    if (!competitor.youtube_video_id) {
+      return { success: false, error: 'youtube_video_id is required' };
+    }
+
+    // Deduplication check: check if this video already exists in the database
+    const { data: existing } = await supabase
+      .from('competitor_thumbnails')
+      .select('*')
+      .eq('youtube_video_id', competitor.youtube_video_id)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: true, alreadyExists: true, data: existing };
+    }
+
+    const payload = {
+      youtube_video_id: competitor.youtube_video_id,
+      title: competitor.title || 'YouTube Video',
+      channel_name: competitor.channel_name || 'YouTube Creator',
+      channel_avatar: competitor.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(competitor.channel_name || 'Creator')}`,
+      views: competitor.views || '1.2M views',
+      time_ago: competitor.time_ago || '3 days ago',
+      duration: competitor.duration || (competitor.format === 'shorts' ? '0:58' : '14:20'),
+      format: competitor.format || 'longform',
+      category: competitor.category || 'Technology & AI',
+      verified: competitor.verified ?? true,
+      thumbnail_url: competitor.thumbnail_url || `https://img.youtube.com/vi/${competitor.youtube_video_id}/maxresdefault.jpg`,
+    };
+
+    const { data, error } = await supabase
+      .from('competitor_thumbnails')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, alreadyExists: false, data };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unknown error' };
+  }
+}
+

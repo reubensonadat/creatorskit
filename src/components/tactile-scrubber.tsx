@@ -17,6 +17,7 @@ export interface TactileScrubberProps {
   label?: string;
   formatValue?: (value: number) => string;
   presets?: (TactileScrubberPreset | number)[];
+  presetsLayout?: 'inline' | 'below';
   width?: number | string;
   height?: number;
   fillColor?: string;
@@ -35,6 +36,7 @@ export function TactileScrubber({
   label,
   formatValue,
   presets,
+  presetsLayout = 'inline',
   width = '100%',
   height = 15,
   fillColor = '#FFE500',
@@ -108,6 +110,56 @@ export function TactileScrubber({
 
   const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
 
+  const renderPresets = () => {
+    if (!presets || presets.length === 0) return null;
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          border: '1.5px solid #000',
+          background: '#fff',
+          borderRadius: 3,
+          overflow: 'hidden',
+          boxShadow: '1.5px 1.5px 0 #000',
+          flexShrink: 0,
+          width: presetsLayout === 'below' ? '100%' : 'auto',
+        }}
+      >
+        {presets.map((preset, idx) => {
+          const pVal = typeof preset === 'number' ? preset : preset.value;
+          const pLabel = typeof preset === 'number' ? `${preset}` : preset.label;
+          const isSelected = Math.abs(value - pVal) < 0.001;
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onChange(pVal)}
+              style={{
+                flex: presetsLayout === 'below' ? 1 : 'none',
+                padding: '4px 6px',
+                border: 'none',
+                borderRight: idx !== presets.length - 1 ? '1px solid #000' : 'none',
+                background: isSelected ? '#000' : '#fff',
+                color: isSelected ? fillColor : '#000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.62rem',
+                cursor: 'pointer',
+                transition: 'all 0.1s',
+                textAlign: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {pLabel}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div
       className={className}
@@ -151,7 +203,14 @@ export function TactileScrubber({
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: presetsLayout === 'below' ? 'column' : 'row',
+          alignItems: presetsLayout === 'below' ? 'stretch' : 'center',
+          gap: 6,
+        }}
+      >
         {/* Capsule Container */}
         <div
           style={{
@@ -289,47 +348,7 @@ export function TactileScrubber({
         </div>
 
         {/* Optional Presets */}
-        {presets && presets.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              border: '2px solid #000',
-              background: '#fff',
-              borderRadius: 3,
-              overflow: 'hidden',
-              boxShadow: '1.5px 1.5px 0 #000',
-              flexShrink: 0,
-            }}
-          >
-            {presets.map((preset, idx) => {
-              const pVal = typeof preset === 'number' ? preset : preset.value;
-              const pLabel = typeof preset === 'number' ? `${preset}` : preset.label;
-              const isSelected = Math.abs(value - pVal) < 0.001;
-
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onChange(pVal)}
-                  style={{
-                    padding: '4px 6px',
-                    border: 'none',
-                    borderRight: idx !== presets.length - 1 ? '1px solid #000' : 'none',
-                    background: isSelected ? '#000' : '#fff',
-                    color: isSelected ? fillColor : '#000',
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.64rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.1s',
-                  }}
-                >
-                  {pLabel}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {renderPresets()}
       </div>
     </div>
   );

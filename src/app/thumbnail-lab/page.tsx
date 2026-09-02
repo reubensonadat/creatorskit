@@ -41,7 +41,11 @@ import {
   Timer,
   Edit3,
   Check,
+  PanelLeftOpen,
+  Link2,
 } from 'lucide-react';
+import { ALL_TOOLS } from '@/data/tools';
+import { fetchCompetitorsFromDatabase, saveCompetitorToDatabase } from '@/lib/supabase';
 
 export type ContentFormat = 'longform' | 'shorts';
 export type PlatformView = 'yt-mobile' | 'yt-desktop' | 'shorts-shelf' | 'shorts-player' | 'side-by-side';
@@ -70,6 +74,7 @@ export interface YouTubeVideoItem {
   timeAgo: string;
   duration: string;
   imageUrl: string;
+  category?: string;
   verified?: boolean;
   isLive?: boolean;
   isSponsored?: boolean;
@@ -87,23 +92,39 @@ export interface YouTubeShortItem {
   comments: string;
   soundTitle: string;
   imageUrl: string;
+  category?: string;
   isCandidate?: boolean;
 }
 
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import { TactileScrubber } from '@/components/tactile-scrubber';
+
+export const PRESET_CATEGORIES = [
+  'All',
+  'Technology & AI',
+  'Business & Finance',
+  'Education & Science',
+  'Gaming & Esports',
+  'Entertainment & Comedy',
+  'Podcasts & Interviews',
+  'Africa & Diaspora',
+  'Storytelling & Animation',
+  'Lifestyle & Fitness',
+  'News & Documentaries',
+] as const;
 
 // Default 16:9 Long-Form Thumbnail
 const DEFAULT_LONGFORM_THUMBNAIL: ThumbnailCandidate = {
   id: 'cand-long-1',
   name: 'My Video Thumbnail',
   label: '16:9 Long-Form',
-  imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
+  imageUrl: 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
   title: 'How I Built a $100K Studio in 24 Hours (Full Breakdown)',
   channelName: 'My Channel',
-  channelAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+  channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyChannel',
   views: '1.2M views',
   timeAgo: '4 hours ago',
-  duration: '18:42',
+  duration: '14:20',
   verified: true,
 };
 
@@ -112,128 +133,128 @@ const DEFAULT_SHORTS_COVER: ThumbnailCandidate = {
   id: 'cand-short-1',
   name: 'My Shorts Cover',
   label: '9:16 Vertical Short',
-  imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+  imageUrl: 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg',
   title: 'Stop Making This Huge Camera Mistake in 2026! 😱',
   channelName: 'My Channel',
-  channelAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+  channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyShorts',
   views: '3.4M views',
   timeAgo: '2 hours ago',
   duration: '0:58',
   verified: true,
 };
 
-// 16:9 Competitors
+// Curated 16:9 Competitors (Real YouTube Thumbnails)
 const LONGFORM_COMPETITORS: YouTubeVideoItem[] = [
   {
-    id: 'honobread-poor',
-    title: 'Growing Up POOR in AMERICA',
-    channelName: 'Honobread',
-    channelAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-    views: '138K views',
-    timeAgo: '18 hours ago',
-    duration: '5:58',
-    imageUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80',
-    verified: true,
-  },
-  {
-    id: 'ddoi-neighbors',
-    title: 'She Outsmarted Her Neighbors',
-    channelName: 'Daily Dose Of Internet',
-    channelAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=80',
-    views: '921K views',
-    timeAgo: '1 day ago',
-    duration: '15:12',
-    imageUrl: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80',
-    verified: true,
-  },
-  {
-    id: 'mkbhd-toilet',
-    title: 'I Said Yes to Every Email for a Month! (Again)',
-    channelName: 'Marques Brownlee',
-    channelAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-    views: '848K views',
-    timeAgo: '17 hours ago',
-    duration: '30:51',
-    imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&auto=format&fit=crop&q=80',
-    verified: true,
-  },
-  {
-    id: 'mrbeast-island',
+    id: 'kX3nB4PpJko',
     title: '$1 vs $1,000,000 Private Island Vacation!',
     channelName: 'MrBeast',
-    channelAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=80',
-    views: '54M views',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MrBeast',
+    views: '64M views',
     timeAgo: '3 days ago',
     duration: '18:40',
-    imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80',
+    imageUrl: 'https://img.youtube.com/vi/kX3nB4PpJko/hqdefault.jpg',
+    category: 'Entertainment & Comedy',
     verified: true,
   },
   {
-    id: 'ceo-miserable',
-    title: 'The MISERABLE Lives Of CEOs... (What Do They Actually Do?)',
-    channelName: 'How People Make Money',
-    channelAvatar: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=120&auto=format&fit=crop&q=80',
-    views: '587K views',
-    timeAgo: '3 months ago',
-    duration: '9:28',
-    imageUrl: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=800&auto=format&fit=crop&q=80',
-    verified: false,
+    id: 'M7lc1UVf-VE',
+    title: 'Nigeria is Now So Much Worse Than You Think',
+    channelName: 'Places',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=PlacesChannel',
+    views: '242K views',
+    timeAgo: '22 hours ago',
+    duration: '59:38',
+    imageUrl: 'https://img.youtube.com/vi/M7lc1UVf-VE/hqdefault.jpg',
+    category: 'Africa & Diaspora',
+    verified: true,
   },
   {
-    id: 'veritasium-hacks',
-    title: 'Testing Illegal Life Hacks to See If They Actually Work',
+    id: 'fJ9rUzIMcZQ',
+    title: 'Inside America\'s Richest Black Suburbs',
+    channelName: 'RocaNews',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=RocaNews',
+    views: '1.1M views',
+    timeAgo: '2 days ago',
+    duration: '21:31',
+    imageUrl: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/hqdefault.jpg',
+    category: 'News & Documentaries',
+    verified: true,
+  },
+  {
+    id: '9bZkp7q19f0',
+    title: 'Testing Counterintuitive Physics Experiments!',
     channelName: 'Veritasium',
-    channelAvatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=120&auto=format&fit=crop&q=80',
-    views: '4.2M views',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=Veritasium',
+    views: '4.9M views',
     timeAgo: '5 days ago',
     duration: '17:09',
-    imageUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&auto=format&fit=crop&q=80',
+    imageUrl: 'https://img.youtube.com/vi/9bZkp7q19f0/hqdefault.jpg',
+    category: 'Education & Science',
+    verified: true,
+  },
+  {
+    id: 'kJQP7kiw5Fk',
+    title: 'We\'re Dumb (Animation Collab)',
+    channelName: 'BrodyAnimates & Haminations',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=BrodyAnimates',
+    views: '1.3M views',
+    timeAgo: '3 days ago',
+    duration: '9:50',
+    imageUrl: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
+    category: 'Storytelling & Animation',
     verified: true,
   },
 ];
 
-// 9:16 Shorts Competitors
+// Curated 9:16 Shorts Competitors (Real YouTube Shorts)
 const SHORTS_COMPETITORS: YouTubeShortItem[] = [
   {
-    id: 'short-1',
-    title: 'Performance 54 Tensor Chip in Real Life 🔥',
-    channelName: 'TechDaily',
-    channelAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
-    views: '2.4M views',
-    likes: '142K',
-    comments: '1.2K',
-    soundTitle: 'Original Audio - TechDaily',
-    imageUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'short-2',
-    title: 'Coconut Tree Harvesting in 30 Seconds 🌴',
-    channelName: 'IslandLife',
-    channelAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=80',
-    views: '12M views',
-    likes: '890K',
-    comments: '4.5K',
-    soundTitle: 'Tropical Vibe - SunsetSound',
-    imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'short-3',
-    title: 'Secret MacBook Shortcut Nobody Uses 💻',
-    channelName: 'MacMaster',
-    channelAvatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=120&auto=format&fit=crop&q=80',
+    id: 'hT_nvWreIhg',
+    title: 'How The Flow State Works 🧠',
+    channelName: 'Zack D. Films',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=ZackDFilms',
     views: '4.1M views',
-    likes: '320K',
-    comments: '2.8K',
-    soundTitle: 'Focus Beats - LoFi Daily',
-    imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop&q=80',
+    likes: '480K',
+    comments: '3.4K',
+    soundTitle: 'Original Audio - Zack D. Films',
+    imageUrl: 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg',
+    category: 'Education & Science',
+  },
+  {
+    id: '60ItHLz5WEA',
+    title: 'Can You Hear This Silent Frequency? 🎧',
+    channelName: 'SoundLab',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=SoundLab',
+    views: '6.8M views',
+    likes: '890K',
+    comments: '5.2K',
+    soundTitle: 'Original Audio - SoundLab',
+    imageUrl: 'https://img.youtube.com/vi/60ItHLz5WEA/hqdefault.jpg',
+    category: 'Technology & AI',
+  },
+  {
+    id: 'jNQXAC9IVRw',
+    title: 'The First Video Ever Uploaded to YouTube 🐘',
+    channelName: 'jawed',
+    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=Jawed',
+    views: '340M views',
+    likes: '16M',
+    comments: '11M',
+    soundTitle: 'Original Audio - jawed',
+    imageUrl: 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg',
+    category: 'Entertainment & Comedy',
   },
 ];
 
-const YOUTUBE_FILTER_PILLS = ['All', 'Music', 'Display devices', 'Podcasts', 'Gaming', 'Live', 'AI'];
+const YOUTUBE_FILTER_PILLS = PRESET_CATEGORIES;
 
 export default function ThumbnailLabPage() {
   // Format Selection: Long-Form (16:9) vs Shorts (9:16)
   const [contentFormat, setContentFormat] = useState<ContentFormat>('longform');
+  const [selectedFilterPill, setSelectedFilterPill] = useState<string>('All');
+  const [importCategory, setImportCategory] = useState<string>('Technology & AI');
+  const [importFormat, setImportFormat] = useState<ContentFormat>('longform');
 
   // Candidate State
   const [longformCandidates, setLongformCandidates] = useState<ThumbnailCandidate[]>([DEFAULT_LONGFORM_THUMBNAIL]);
@@ -246,14 +267,39 @@ export default function ThumbnailLabPage() {
   const [slotPosition, setSlotPosition] = useState<number>(1);
   const [randomSeed, setRandomSeed] = useState<number>(42);
   const [revealHighlight, setRevealHighlight] = useState<boolean>(false);
-  const [selectedFilterPill, setSelectedFilterPill] = useState<string>('All');
   const [showToolsDropdown, setShowToolsDropdown] = useState<boolean>(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'audit' | 'candidates' | 'export'>('audit');
+  const [mobileActiveView, setMobileActiveView] = useState<'feed' | 'grader' | 'variations'>('feed');
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
+  const [toolsSidebarOpen, setToolsSidebarOpen] = useState<boolean>(false);
+  const [mounted, setMounted] = useState<boolean>(false);
 
-  // 3-Second Glance Test Mode
-  const [isGlanceTesting, setIsGlanceTesting] = useState<boolean>(false);
-  const [glanceCountdown, setGlanceCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMob = window.innerWidth <= 860;
+      setIsMobileScreen(isMob);
+      if (isMob) {
+        setPlatformView((prev) => {
+          if (contentFormat === 'longform') return 'yt-mobile';
+          return 'shorts-shelf';
+        });
+      }
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [contentFormat]);
+
+  // 3-Second Glance Test Mode (Phases: idle -> countdown -> glancing -> finished)
+  const [glanceState, setGlanceState] = useState<'idle' | 'countdown' | 'glancing' | 'finished'>('idle');
+  const [glanceCountdown, setGlanceCountdown] = useState<number>(3);
+  const [glanceSecondsLeft, setGlanceSecondsLeft] = useState<number>(3);
+  const glanceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Grader Filters
   const [blurAmount, setBlurAmount] = useState<number>(0);
@@ -304,23 +350,46 @@ export default function ThumbnailLabPage() {
   };
 
   // 3-Second Glance Test Trigger
-  const startGlanceTest = () => {
-    setIsGlanceTesting(true);
+  const startGlanceTest = useCallback(() => {
+    if (glanceTimerRef.current) clearInterval(glanceTimerRef.current);
+
+    // If on mobile, immediately switch to the Feed Simulator
+    if (isMobileScreen) {
+      setMobileActiveView('feed');
+    }
+    setGlanceState('countdown');
     setGlanceCountdown(3);
-    const interval = setInterval(() => {
-      setGlanceCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setIsGlanceTesting(false);
-            setGlanceCountdown(null);
-          }, 3000); // reveals for 3s then finishes
-          return 0;
-        }
-        return prev - 1;
-      });
+
+    let count = 3;
+    const countInterval = setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setGlanceCountdown(count);
+      } else {
+        clearInterval(countInterval);
+        setGlanceState('glancing');
+        setGlanceSecondsLeft(3);
+
+        let sec = 3;
+        const glanceInterval = setInterval(() => {
+          sec -= 1;
+          if (sec > 0) {
+            setGlanceSecondsLeft(sec);
+          } else {
+            clearInterval(glanceInterval);
+            setGlanceState('finished');
+          }
+        }, 1000);
+        glanceTimerRef.current = glanceInterval;
+      }
     }, 1000);
-  };
+    glanceTimerRef.current = countInterval;
+  }, [isMobileScreen]);
+
+  const stopGlanceTest = useCallback(() => {
+    if (glanceTimerRef.current) clearInterval(glanceTimerRef.current);
+    setGlanceState('idle');
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -357,9 +426,157 @@ export default function ThumbnailLabPage() {
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, []);
 
+  // Dynamic Competitors & YouTube Importer
+  const [dbLongformCompetitors, setDbLongformCompetitors] = useState<YouTubeVideoItem[]>(LONGFORM_COMPETITORS);
+  const [dbShortsCompetitors, setDbShortsCompetitors] = useState<YouTubeShortItem[]>(SHORTS_COMPETITORS);
+  const [youtubeImportOpen, setYoutubeImportOpen] = useState<boolean>(false);
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState<string>('');
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // Fetch initial competitors from Supabase
+  useEffect(() => {
+    async function loadSupabaseCompetitors() {
+      const stored = await fetchCompetitorsFromDatabase();
+      if (stored && stored.length > 0) {
+        const lf = stored
+          .filter((c) => c.format === 'longform')
+          .map((c) => ({
+            id: c.id || c.youtube_video_id,
+            title: c.title,
+            channelName: c.channel_name,
+            channelAvatar: c.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+            views: c.views || '1.2M views',
+            timeAgo: c.time_ago || '2 days ago',
+            duration: c.duration || '14:20',
+            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+            verified: c.verified ?? true,
+          }));
+        const sh = stored
+          .filter((c) => c.format === 'shorts')
+          .map((c) => ({
+            id: c.id || c.youtube_video_id,
+            title: c.title,
+            channelName: c.channel_name,
+            channelAvatar: c.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+            views: c.views || '2.4M views',
+            likes: '140K',
+            comments: '1.2K',
+            soundTitle: 'Original Audio',
+            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+          }));
+        if (lf.length > 0) setDbLongformCompetitors(lf);
+        if (sh.length > 0) setDbShortsCompetitors(sh);
+      }
+    }
+    loadSupabaseCompetitors();
+  }, []);
+
+  const handleImportYouTubeUrl = async () => {
+    if (!youtubeUrlInput.trim()) return;
+    setIsImporting(true);
+    setImportStatus('Extracting YouTube thumbnail & metadata...');
+    try {
+      const res = await fetch('/api/youtube-oembed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: youtubeUrlInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setImportStatus(`Error: ${data.error || 'Failed to fetch'}`);
+        setIsImporting(false);
+        return;
+      }
+
+      const isShortVideo = data.isShort;
+
+      if (isShortVideo) {
+        const newShort: YouTubeShortItem = {
+          id: data.videoId,
+          title: data.title,
+          channelName: data.authorName,
+          channelAvatar: data.channelAvatar,
+          views: data.views || '1.4M views',
+          likes: '85K',
+          comments: '940',
+          soundTitle: `Original sound - ${data.authorName}`,
+          imageUrl: data.thumbnailUrl,
+          category: importCategory,
+        };
+        setDbShortsCompetitors((prev) => [newShort, ...prev.filter((item) => item.id !== data.videoId)]);
+        setContentFormat('shorts');
+        setSelectedFilterPill('All');
+        setPlatformView((prev) => (isMobileScreen ? 'shorts-shelf' : prev === 'yt-desktop' ? 'shorts-shelf' : prev));
+
+        const saveRes = await saveCompetitorToDatabase({
+          youtube_video_id: data.videoId,
+          title: data.title,
+          channel_name: data.authorName,
+          views: data.views,
+          duration: data.duration,
+          category: importCategory,
+          format: 'shorts',
+          thumbnail_url: data.thumbnailUrl,
+        });
+        if (saveRes.alreadyExists) {
+          setImportStatus('✓ Video already in database! Feed updated.');
+        } else {
+          setImportStatus('✓ Saved to database & feed refreshed!');
+        }
+      } else {
+        const newLong: YouTubeVideoItem = {
+          id: data.videoId,
+          title: data.title,
+          channelName: data.authorName,
+          channelAvatar: data.channelAvatar,
+          views: data.views || '840K views',
+          timeAgo: data.timeAgo || '1 day ago',
+          duration: data.duration || '14:20',
+          imageUrl: data.thumbnailUrl,
+          category: importCategory,
+          verified: true,
+        };
+        setDbLongformCompetitors((prev) => [newLong, ...prev.filter((item) => item.id !== data.videoId)]);
+        setContentFormat('longform');
+        setSelectedFilterPill('All');
+        setPlatformView((prev) => (isMobileScreen ? 'yt-mobile' : prev));
+
+        const saveRes = await saveCompetitorToDatabase({
+          youtube_video_id: data.videoId,
+          title: data.title,
+          channel_name: data.authorName,
+          views: data.views,
+          duration: data.duration,
+          category: importCategory,
+          format: 'longform',
+          thumbnail_url: data.thumbnailUrl,
+        });
+        if (saveRes.alreadyExists) {
+          setImportStatus('✓ Video already in database! Feed updated.');
+        } else {
+          setImportStatus('✓ Saved to database & feed refreshed!');
+        }
+      }
+
+      setTimeout(() => {
+        setYoutubeImportOpen(false);
+        setYoutubeUrlInput('');
+        setImportStatus(null);
+      }, 700);
+    } catch (e: any) {
+      setImportStatus(`Error: ${e?.message || 'Network error'}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   // Long-form combined feed
   const longformFeed = useMemo(() => {
-    const base = [...LONGFORM_COMPETITORS];
+    let base = [...dbLongformCompetitors];
+    if (selectedFilterPill !== 'All') {
+      base = base.filter((v) => v.category === selectedFilterPill || !v.category);
+    }
     const candidateVideo: YouTubeVideoItem = {
       id: activeCandidate.id,
       title: activeCandidate.title,
@@ -370,17 +587,21 @@ export default function ThumbnailLabPage() {
       duration: activeCandidate.duration,
       imageUrl: activeCandidate.imageUrl,
       verified: activeCandidate.verified,
+      category: selectedFilterPill !== 'All' ? selectedFilterPill : 'Technology & AI',
       isCandidate: true,
     };
     const targetPos = Math.max(0, Math.min(base.length, slotPosition));
     const list = [...base];
     list.splice(targetPos, 0, candidateVideo);
     return list;
-  }, [activeCandidate, slotPosition, randomSeed]);
+  }, [activeCandidate, slotPosition, randomSeed, dbLongformCompetitors, selectedFilterPill]);
 
   // Shorts combined feed
   const shortsFeed = useMemo(() => {
-    const base = [...SHORTS_COMPETITORS];
+    let base = [...dbShortsCompetitors];
+    if (selectedFilterPill !== 'All') {
+      base = base.filter((v) => v.category === selectedFilterPill || !v.category);
+    }
     const candidateShort: YouTubeShortItem = {
       id: activeCandidate.id,
       title: activeCandidate.title,
@@ -391,13 +612,14 @@ export default function ThumbnailLabPage() {
       comments: '3.2K',
       soundTitle: 'Original Audio - ' + activeCandidate.channelName,
       imageUrl: activeCandidate.imageUrl,
+      category: selectedFilterPill !== 'All' ? selectedFilterPill : 'Technology & AI',
       isCandidate: true,
     };
     const targetPos = Math.max(0, Math.min(base.length, slotPosition));
     const list = [...base];
     list.splice(targetPos, 0, candidateShort);
     return list;
-  }, [activeCandidate, slotPosition, randomSeed]);
+  }, [activeCandidate, slotPosition, randomSeed, dbShortsCompetitors, selectedFilterPill]);
 
   // Image Contrast & Badge Analysis
   const analyzeThumbnailImage = useCallback((imgUrl: string) => {
@@ -553,6 +775,28 @@ Tested on YouTube Simulator.`;
     return filter.trim() || 'none';
   }, [blurAmount, isGrayscale, colorBlindMode]);
 
+  if (!mounted) {
+    return (
+      <div
+        className="fs-app-root"
+        style={{
+          width: '100vw',
+          height: '100vh',
+          background: '#09090b',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#FFE500',
+          fontFamily: 'monospace',
+          fontWeight: 900,
+          fontSize: '0.86rem',
+        }}
+      >
+        INITIALIZING THUMBNAIL LAB...
+      </div>
+    );
+  }
+
   return (
     <div
       className="fs-app-root"
@@ -578,43 +822,75 @@ Tested on YouTube Simulator.`;
         </filter>
       </svg>
 
-      {/* ── Single Ultra-Compact Studio Top HUD Bar (Zero Redundant Header) ── */}
+      {/* ── Single Ultra-Compact Studio Top HUD Bar (Fluid & Mobile Optimized) ── */}
       <header
-        className="fs-header"
+        className="fs-header no-scrollbar"
         style={{
-          height: 44,
+          minHeight: 44,
           background: '#000000',
           borderBottom: '1.5px solid #27272a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          padding: '0 10px',
           zIndex: 50,
           flexShrink: 0,
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
+          gap: 8,
         }}
       >
-        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {/* Standard Sidebar Drawer Toggle Button */}
+          <button
+            onClick={() => setToolsSidebarOpen((v) => !v)}
+            aria-label={toolsSidebarOpen ? 'Close tools navigation' : 'Open tools navigation'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              background: toolsSidebarOpen ? '#FFE500' : '#27272a',
+              color: toolsSidebarOpen ? '#000000' : '#ffffff',
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              fontWeight: 900,
+              borderRadius: 3,
+              border: '1.5px solid #000',
+              boxShadow: '1.5px 1.5px 0 #000',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Tools Navigation"
+          >
+            <PanelLeftOpen size={15} />
+          </button>
+
+          {/* Standard Home Back Button */}
           <Link
             href="/"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              padding: '4px 10px',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
               background: '#27272a',
               color: '#ffffff',
               fontFamily: 'monospace',
-              fontSize: '11px',
+              fontSize: '14px',
               fontWeight: 900,
               textDecoration: 'none',
               borderRadius: 3,
-              border: '1px solid #3f3f46',
+              border: '1.5px solid #000',
+              boxShadow: '1.5px 1.5px 0 #000',
+              flexShrink: 0,
             }}
+            title="Home"
           >
-            ‹ HOME
+            ‹
           </Link>
-          {/* Unified Tools Dropdown */}
-          <StudioToolsDropdown currentHref="/thumbnail-lab" theme="dark" />
 
           <span
             className="fs-header-badge"
@@ -624,20 +900,18 @@ Tested on YouTube Simulator.`;
               fontWeight: 900,
               background: '#FFE500',
               color: '#000',
-              padding: '2px 6px',
+              padding: '4px 6px',
               borderRadius: 3,
               textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
+              border: '1.5px solid #000',
+              boxShadow: '1.5px 1.5px 0 #000',
             }}
           >
-            <Flame size={12} />
             THUMBNAIL LAB
           </span>
 
           {/* Format Selector: 16:9 Long-Form vs 9:16 Shorts */}
-          <div style={{ display: 'flex', border: '1px solid #FFE500', borderRadius: 3, overflow: 'hidden', background: '#09090b' }}>
+          <div style={{ display: 'flex', border: '1px solid #FFE500', borderRadius: 3, overflow: 'hidden', background: '#09090b', flexShrink: 0 }}>
             <button
               onClick={() => {
                 setContentFormat('longform');
@@ -655,7 +929,7 @@ Tested on YouTube Simulator.`;
                 cursor: 'pointer',
               }}
             >
-              🎬 16:9 Long-Form
+              16:9 LONG
             </button>
 
             <button
@@ -674,165 +948,167 @@ Tested on YouTube Simulator.`;
                 cursor: 'pointer',
               }}
             >
-              ⚡ 9:16 Shorts
+              9:16 SHORTS
             </button>
           </div>
 
-          {/* View Selector */}
-          <div style={{ display: 'flex', border: '1px solid #3f3f46', borderRadius: 3, overflow: 'hidden', background: '#18181b' }}>
-            {contentFormat === 'longform' ? (
-              <>
-                <button
-                  onClick={() => setPlatformView('yt-mobile')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    borderRight: '1px solid #3f3f46',
-                    background: platformView === 'yt-mobile' ? '#FFE500' : '#18181b',
-                    color: platformView === 'yt-mobile' ? '#000' : '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  📱 Mobile (390px)
-                </button>
-                <button
-                  onClick={() => setPlatformView('yt-desktop')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    borderRight: '1px solid #3f3f46',
-                    background: platformView === 'yt-desktop' ? '#FFE500' : '#18181b',
-                    color: platformView === 'yt-desktop' ? '#000' : '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  💻 3-Grid Desktop
-                </button>
-                <button
-                  onClick={() => setPlatformView('side-by-side')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    background: platformView === 'side-by-side' ? '#FFE500' : '#18181b',
-                    color: platformView === 'side-by-side' ? '#000' : '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  🔀 A/B Matrix
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setPlatformView('shorts-shelf')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    borderRight: '1px solid #3f3f46',
-                    background: platformView === 'shorts-shelf' ? '#ff0000' : '#18181b',
-                    color: '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  📱 Shorts Shelf
-                </button>
-                <button
-                  onClick={() => setPlatformView('shorts-player')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    borderRight: '1px solid #3f3f46',
-                    background: platformView === 'shorts-player' ? '#ff0000' : '#18181b',
-                    color: '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ▶️ Shorts Player
-                </button>
-                <button
-                  onClick={() => setPlatformView('side-by-side')}
-                  style={{
-                    padding: '3px 8px',
-                    border: 'none',
-                    background: platformView === 'side-by-side' ? '#ff0000' : '#18181b',
-                    color: '#fff',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '0.6rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  🔀 A/B Matrix
-                </button>
-              </>
-            )}
-          </div>
+          {/* View Selector: Desktop screens only. Mobile devices are locked to mobile feed */}
+          {!isMobileScreen && (
+            <div style={{ display: 'flex', border: '1px solid #3f3f46', borderRadius: 3, overflow: 'hidden', background: '#18181b', flexShrink: 0 }}>
+              {contentFormat === 'longform' ? (
+                <>
+                  <button
+                    onClick={() => setPlatformView('yt-mobile')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      borderRight: '1px solid #3f3f46',
+                      background: platformView === 'yt-mobile' ? '#FFE500' : '#18181b',
+                      color: platformView === 'yt-mobile' ? '#000' : '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    MOBILE
+                  </button>
+                  <button
+                    onClick={() => setPlatformView('yt-desktop')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      borderRight: '1px solid #3f3f46',
+                      background: platformView === 'yt-desktop' ? '#FFE500' : '#18181b',
+                      color: platformView === 'yt-desktop' ? '#000' : '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    DESKTOP
+                  </button>
+                  <button
+                    onClick={() => setPlatformView('side-by-side')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      background: platformView === 'side-by-side' ? '#FFE500' : '#18181b',
+                      color: platformView === 'side-by-side' ? '#000' : '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    A/B MATRIX
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setPlatformView('shorts-shelf')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      borderRight: '1px solid #3f3f46',
+                      background: platformView === 'shorts-shelf' ? '#ff0000' : '#18181b',
+                      color: '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    SHELF
+                  </button>
+                  <button
+                    onClick={() => setPlatformView('shorts-player')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      borderRight: '1px solid #3f3f46',
+                      background: platformView === 'shorts-player' ? '#ff0000' : '#18181b',
+                      color: '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    PLAYER
+                  </button>
+                  <button
+                    onClick={() => setPlatformView('side-by-side')}
+                    style={{
+                      padding: '3px 8px',
+                      border: 'none',
+                      background: platformView === 'side-by-side' ? '#ff0000' : '#18181b',
+                      color: '#fff',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.6rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    A/B MATRIX
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 1-Click Upload Button Directly in Header */}
-        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <label
             style={{
               background: contentFormat === 'longform' ? '#FFE500' : '#ff0000',
               color: contentFormat === 'longform' ? '#000000' : '#ffffff',
               borderRadius: 3,
-              padding: '3px 10px',
-              fontSize: '0.66rem',
+              padding: '3px 8px',
+              fontSize: '0.64rem',
               fontFamily: 'monospace',
               fontWeight: 900,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
+              flexShrink: 0,
             }}
           >
-            <Upload size={12} />
-            {contentFormat === 'longform' ? 'Upload 16:9 Thumbnail' : 'Upload 9:16 Shorts Cover'}
+            <span>UPLOAD {contentFormat === 'longform' ? '16:9' : '9:16'}</span>
             <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, activeCandidate.id)} style={{ display: 'none' }} />
           </label>
 
           <button
             onClick={startGlanceTest}
             style={{
-              padding: '3px 8px',
-              fontSize: '0.64rem',
+              padding: '3px 7px',
+              fontSize: '0.62rem',
               borderRadius: 3,
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              background: isGlanceTesting ? '#FFE500' : '#27272a',
-              color: isGlanceTesting ? '#000' : '#fff',
+              background: glanceState !== 'idle' ? '#FFE500' : '#27272a',
+              color: glanceState !== 'idle' ? '#000' : '#fff',
               border: '1px solid #3f3f46',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontWeight: 800,
+              flexShrink: 0,
             }}
             title="Starts a 3-second rapid glance timer (Spacebar)"
           >
-            <Timer size={12} />
-            <span>3s Glance Test</span>
+            <span>3S GLANCE</span>
           </button>
 
           <button
             onClick={handleShuffleFeed}
             style={{
-              padding: '3px 8px',
-              fontSize: '0.64rem',
+              padding: '3px 7px',
+              fontSize: '0.62rem',
               borderRadius: 3,
               display: 'flex',
               alignItems: 'center',
@@ -843,11 +1119,11 @@ Tested on YouTube Simulator.`;
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontWeight: 800,
+              flexShrink: 0,
             }}
             title="Randomize competitor positions (R)"
           >
-            <Shuffle size={12} color="#FFE500" />
-            <span>Shuffle (R)</span>
+            <span>SHUFFLE</span>
           </button>
 
           <div
@@ -855,17 +1131,312 @@ Tested on YouTube Simulator.`;
               fontSize: '0.64rem',
               fontFamily: 'monospace',
               fontWeight: 900,
-              background: '#27272a',
-              color: '#FFE500',
-              padding: '3px 7px',
+              background: '#FFE500',
+              color: '#000',
+              padding: '2px 6px',
               borderRadius: 3,
-              border: '1px solid #3f3f46',
+              border: '1px solid #000',
+              flexShrink: 0,
             }}
           >
-            SCORE: {overallPopoutScore}/100
+            {overallPopoutScore}/100
           </div>
         </div>
       </header>
+
+      {/* ── Mobile 1-Line Neo-Brutalist Tabs Bar ── */}
+      <div
+        className="mobile-only-tabs-bar"
+        style={{
+          display: isMobileScreen ? 'flex' : 'none',
+          background: '#000000',
+          borderBottom: '2px solid #FFE500',
+          padding: '4px 8px',
+          gap: 4,
+          flexShrink: 0,
+          zIndex: 40,
+        }}
+      >
+        {[
+          { id: 'feed' as const, label: 'FEED SIMULATOR' },
+          { id: 'grader' as const, label: `CTR GRADER (${overallPopoutScore})` },
+          { id: 'variations' as const, label: `A/B VARS (${currentCandidates.length})` },
+        ].map((tab) => {
+          const isActive = mobileActiveView === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setMobileActiveView(tab.id);
+                if (tab.id === 'grader') setActiveSidebarTab('audit');
+                if (tab.id === 'variations') setActiveSidebarTab('candidates');
+              }}
+              style={{
+                flex: 1,
+                padding: '7px 3px',
+                border: '1.5px solid #000',
+                borderRadius: 3,
+                background: isActive ? '#FFE500' : '#18181b',
+                color: isActive ? '#000000' : '#ffffff',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.62rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                textAlign: 'center',
+                boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                transition: 'all 0.1s ease',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Quick Candidate Variation Strip Above Feed ── */}
+      <div
+        style={{
+          display: !isMobileScreen || mobileActiveView === 'feed' ? 'flex' : 'none',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '5px 12px',
+          background: '#141416',
+          borderBottom: '1.5px solid #27272a',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
+          gap: 6,
+          flexShrink: 0,
+        }}
+        className="no-scrollbar"
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', textTransform: 'uppercase' }}>
+            A/B VARS:
+          </span>
+          {currentCandidates.map((cand, idx) => {
+            const isSelected = cand.id === currentActiveId;
+            return (
+              <button
+                key={cand.id}
+                onClick={() => {
+                  if (contentFormat === 'longform') setActiveLongformId(cand.id);
+                  else setActiveShortsId(cand.id);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  borderRadius: 3,
+                  border: isSelected ? '1.5px solid #FFE500' : '1px solid #3f3f46',
+                  background: isSelected ? '#FFE500' : '#27272a',
+                  color: isSelected ? '#000000' : '#ffffff',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.62rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <img
+                  src={cand.imageUrl}
+                  alt=""
+                  onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                  style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'cover' }}
+                />
+                <span>Var {String.fromCharCode(65 + idx)} {isSelected ? '★' : ''}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <button
+            onClick={() => setYoutubeImportOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              borderRadius: 3,
+              border: '1px solid #FFE500',
+              background: '#FFE500',
+              color: '#000000',
+              fontFamily: 'monospace',
+              fontWeight: 900,
+              fontSize: '0.62rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '1.5px 1.5px 0 #000',
+            }}
+            title="Import any real YouTube thumbnail by URL"
+          >
+            <Link2 size={11} />
+            <span>+ YOUTUBE URL</span>
+          </button>
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              borderRadius: 3,
+              border: '1px dashed #FFE500',
+              background: 'transparent',
+              color: '#FFE500',
+              fontFamily: 'monospace',
+              fontWeight: 900,
+              fontSize: '0.62rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            <Plus size={11} />
+            <span>+ UPLOAD VAR</span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleFileUpload(e)}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* ── YouTube Link Importer Modal ── */}
+      {youtubeImportOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              background: '#18181b',
+              border: '2px solid #FFE500',
+              borderRadius: 6,
+              padding: 20,
+              boxShadow: '6px 6px 0 #000',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #27272a', paddingBottom: 10 }}>
+              <div style={{ fontSize: '0.86rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Link2 size={16} />
+                <span>Import YouTube Competitor</span>
+              </div>
+              <button
+                onClick={() => {
+                  setYoutubeImportOpen(false);
+                  setImportStatus(null);
+                }}
+                style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.74rem', color: '#ccc', margin: 0, lineHeight: 1.4 }}>
+              Paste any YouTube video or Shorts link (e.g. <code>youtube.com/watch?v=...</code> or <code>youtu.be/...</code>). We automatically extract the 1080p high-res thumbnail, title, and channel name into your feed!
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#fff', textTransform: 'uppercase' }}>
+                YouTube Video or Shorts URL
+              </label>
+              <input
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={youtubeUrlInput}
+                onChange={(e) => setYoutubeUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleImportYouTubeUrl()}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  background: '#09090b',
+                  border: '1.5px solid #3f3f46',
+                  borderRadius: 4,
+                  color: '#fff',
+                  fontSize: '0.78rem',
+                  fontFamily: 'monospace',
+                }}
+              />
+            </div>
+
+            {importStatus && (
+              <div
+                style={{
+                  fontSize: '0.7rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 800,
+                  color: importStatus.startsWith('Error') ? '#ef4444' : '#FFE500',
+                  padding: '6px 10px',
+                  background: '#09090b',
+                  borderRadius: 3,
+                  border: '1px solid #27272a',
+                }}
+              >
+                {importStatus}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button
+                onClick={() => {
+                  setYoutubeImportOpen(false);
+                  setImportStatus(null);
+                }}
+                style={{
+                  padding: '8px 14px',
+                  background: '#27272a',
+                  color: '#fff',
+                  border: '1px solid #3f3f46',
+                  borderRadius: 3,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleImportYouTubeUrl}
+                disabled={isImporting || !youtubeUrlInput.trim()}
+                style={{
+                  padding: '8px 18px',
+                  background: isImporting || !youtubeUrlInput.trim() ? '#52525b' : '#FFE500',
+                  color: '#000000',
+                  border: '1.5px solid #000',
+                  borderRadius: 3,
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  cursor: isImporting || !youtubeUrlInput.trim() ? 'not-allowed' : 'pointer',
+                  boxShadow: '2px 2px 0 #000',
+                }}
+              >
+                {isImporting ? 'FETCHING...' : 'FETCH & ADD TO FEED'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Main Canvas Viewport (Starts Immediately from Pixel 44) ── */}
       <div className="fs-workspace" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -876,7 +1447,7 @@ Tested on YouTube Simulator.`;
             background: '#09090b',
             color: '#f1f1f1',
             overflowY: 'auto',
-            display: 'flex',
+            display: !isMobileScreen || mobileActiveView === 'feed' ? 'flex' : 'none',
             justifyContent: 'center',
             alignItems: 'flex-start',
             padding: (platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player') ? '16px 0 40px' : '0',
@@ -884,27 +1455,162 @@ Tested on YouTube Simulator.`;
           }}
           className="no-scrollbar"
         >
-          {/* 3s Glance Test Overlay */}
-          {isGlanceTesting && glanceCountdown !== null && glanceCountdown > 0 && (
+          {/* 3s Glance Test: 1. COUNTDOWN MODAL */}
+          {glanceState === 'countdown' && (
             <div
               style={{
-                position: 'absolute',
+                position: 'fixed',
                 inset: 0,
-                background: 'rgba(0,0,0,0.85)',
-                backdropFilter: 'blur(16px)',
-                zIndex: 100,
+                background: 'rgba(0,0,0,0.92)',
+                backdropFilter: 'blur(20px)',
+                zIndex: 9999,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 12,
+                gap: 16,
+                padding: 20,
               }}
             >
-              <div style={{ fontSize: '3rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500' }}>
+              <div style={{ fontSize: '5rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', textShadow: '4px 4px 0 #000' }}>
                 {glanceCountdown}
               </div>
-              <div style={{ fontSize: '0.86rem', fontFamily: 'monospace', color: '#fff' }}>
-                Get ready to glance at the feed...
+              <div style={{ fontSize: '0.9rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#fff', letterSpacing: '0.05em' }}>
+                PREPARING 3-SECOND GLANCE TEST...
+              </div>
+              <p style={{ fontSize: '0.74rem', color: '#aaa', maxWidth: 320, textAlign: 'center', margin: 0 }}>
+                Look at the screen naturally. In a moment, the feed will reveal for 3 seconds. Notice which thumbnail your eye hits first.
+              </p>
+              <button
+                onClick={stopGlanceTest}
+                style={{
+                  marginTop: 10,
+                  padding: '6px 14px',
+                  background: '#27272a',
+                  color: '#fff',
+                  border: '1px solid #52525b',
+                  borderRadius: 3,
+                  fontSize: '0.7rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
+          )}
+
+          {/* 3s Glance Test: 2. LIVE GLANCE HUD FLOATING BANNER */}
+          {glanceState === 'glancing' && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 44,
+                left: 0,
+                right: 0,
+                width: '100vw',
+                zIndex: 9998,
+                background: '#FFE500',
+                color: '#000000',
+                padding: '8px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: '2px solid #000000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                fontSize: '0.78rem',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
+              }}
+            >
+              <span>GLANCE NOW: {glanceSecondsLeft}S REMAINING</span>
+              <button
+                onClick={stopGlanceTest}
+                style={{
+                  padding: '3px 10px',
+                  background: '#000000',
+                  color: '#FFE500',
+                  border: 'none',
+                  borderRadius: 2,
+                  fontWeight: 900,
+                  fontSize: '0.64rem',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                STOP
+              </button>
+            </div>
+          )}
+
+          {/* 3s Glance Test: 3. FINISHED / RE-TEST MODAL */}
+          {glanceState === 'finished' && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.92)',
+                backdropFilter: 'blur(20px)',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 16,
+                padding: 24,
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ background: '#FFE500', color: '#000', padding: '4px 10px', borderRadius: 3, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem' }}>
+                TIME&apos;S UP!
+              </div>
+              <h2 style={{ fontSize: '1.25rem', fontFamily: 'monospace', fontWeight: 900, color: '#fff', margin: 0, textTransform: 'uppercase' }}>
+                3-Second Glance Test Complete
+              </h2>
+              <p style={{ fontSize: '0.78rem', color: '#d4d4d8', maxWidth: 360, margin: 0, lineHeight: 1.5 }}>
+                Be honest: Did your candidate thumbnail pop out first among the competitor videos?
+              </p>
+
+              <div style={{ background: '#18181b', border: '1.5px solid #3f3f46', padding: '10px 16px', borderRadius: 4, display: 'flex', gap: 16, alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', color: '#a1a1aa', fontFamily: 'monospace', fontWeight: 800 }}>CTR STANDOUT SCORE:</span>
+                <span style={{ fontSize: '1rem', color: '#FFE500', fontFamily: 'monospace', fontWeight: 900 }}>{overallPopoutScore}/100</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button
+                  onClick={startGlanceTest}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#FFE500',
+                    color: '#000',
+                    border: '2px solid #000',
+                    borderRadius: 3,
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  RETEST 3S GLANCE
+                </button>
+                <button
+                  onClick={() => setGlanceState('idle')}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#27272a',
+                    color: '#fff',
+                    border: '1px solid #52525b',
+                    borderRadius: 3,
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  BACK TO LAB
+                </button>
               </div>
             </div>
           )}
@@ -935,8 +1641,8 @@ Tested on YouTube Simulator.`;
                   boxShadow: '0 0 50px rgba(0,0,0,0.9)',
                 }}
               >
-                {/* Real YouTube Mobile Top Header */}
-                <div style={{ height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', background: '#0f0f0f', borderBottom: '1px solid #1f1f1f' }}>
+                {/* Real YouTube Mobile Top Header (Sticky Top) */}
+                <div style={{ position: 'sticky', top: 0, zIndex: 20, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', background: '#0f0f0f', borderBottom: '1px solid #1f1f1f' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Menu size={20} color="#ffffff" style={{ cursor: 'pointer' }} />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -956,8 +1662,8 @@ Tested on YouTube Simulator.`;
                   </div>
                 </div>
 
-                {/* Filter Chips Bar */}
-                <div style={{ height: 42, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', overflowX: 'auto', borderBottom: '1px solid #1f1f1f' }} className="no-scrollbar">
+                {/* Filter Chips Bar (Sticky Top below header) */}
+                <div style={{ position: 'sticky', top: 48, zIndex: 19, background: '#0f0f0f', height: 42, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', overflowX: 'auto', borderBottom: '1px solid #1f1f1f' }} className="no-scrollbar">
                   {YOUTUBE_FILTER_PILLS.map((p) => (
                     <button
                       key={p}
@@ -988,7 +1694,12 @@ Tested on YouTube Simulator.`;
                       <React.Fragment key={video.id + idx}>
                         <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 20, position: 'relative', border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none' }}>
                           <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', background: '#1c1c1c', overflow: 'hidden' }}>
-                            <img src={video.imageUrl} alt={video.title} style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }} />
+                            <img
+                              src={video.imageUrl}
+                              alt={video.title}
+                              onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }}
+                            />
                             {showDurationBadge && (
                               <div style={{ position: 'absolute', bottom: 6, right: 6, background: video.isLive ? '#cc0000' : 'rgba(0,0,0,0.85)', color: '#ffffff', fontSize: '0.68rem', fontWeight: 700, padding: '2px 4px', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
                                 {video.isLive && <Radio size={10} />}
@@ -998,7 +1709,12 @@ Tested on YouTube Simulator.`;
                           </div>
 
                           <div style={{ display: 'flex', padding: '10px 12px 0', gap: 12 }}>
-                            <img src={video.channelAvatar} alt={video.channelName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                            <img
+                              src={video.channelAvatar}
+                              alt={video.channelName}
+                              onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(video.channelName)}`; }}
+                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                            />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.92rem', fontWeight: 600, lineHeight: 1.35, color: '#ffffff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                                 {video.title}
@@ -1018,20 +1734,28 @@ Tested on YouTube Simulator.`;
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.94rem' }}>
                                 <div style={{ width: 18, height: 22, background: '#ff0000', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <div style={{ width: 0, height: 0, borderTop: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '6px solid #fff' }} />
+                                  <Zap size={13} color="#ffffff" />
                                 </div>
                                 <span>Shorts</span>
                               </div>
-                              <MoreVertical size={16} color="#aaa" />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                              {SHORTS_COMPETITORS.slice(0, 2).map((s) => (
-                                <div key={s.id} style={{ aspectRatio: '9/16', borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#1c1c1c' }}>
-                                  <img src={s.imageUrl} alt={s.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 60%)' }} />
-                                  <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, color: '#fff' }}>
-                                    <div style={{ fontSize: '0.74rem', fontWeight: 700, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
-                                    <div style={{ fontSize: '0.62rem', color: '#ccc', marginTop: 2 }}>{s.views}</div>
+
+                            <div style={{ display: 'flex', gap: 10, overflowX: 'auto' }} className="no-scrollbar">
+                              {SHORTS_COMPETITORS.slice(0, 3).map((short) => (
+                                <div key={short.id} style={{ width: 140, flexShrink: 0 }}>
+                                  <div style={{ width: '100%', height: 220, borderRadius: 8, overflow: 'hidden', background: '#272727', position: 'relative' }}>
+                                    <img
+                                      src={short.imageUrl}
+                                      alt={short.title}
+                                      onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                    <div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: '0.66rem', fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                                      {short.views}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, marginTop: 6, color: '#fff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25 }}>
+                                    {short.title}
                                   </div>
                                 </div>
                               ))}
@@ -1042,106 +1766,76 @@ Tested on YouTube Simulator.`;
                     );
                   })}
                 </div>
-              </div>
-            )}
 
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* 2. LONG-FORM: YOUTUBE DESKTOP FEED (3-COLUMN GRID)             */}
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            {contentFormat === 'longform' && platformView === 'yt-desktop' && (
-              <div style={{ display: 'flex', minHeight: '100%', fontFamily: '"Roboto", sans-serif', background: '#0f0f0f' }}>
-                <aside style={{ width: 72, flexShrink: 0, background: '#0f0f0f', borderRight: '1px solid #1f1f1f', padding: '12px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 4px', background: '#272727', borderRadius: 8, width: '100%', cursor: 'pointer' }}>
-                    <HomeIcon size={20} color="#fff" />
-                    <span style={{ fontSize: '0.62rem', color: '#fff', fontWeight: 600 }}>Home</span>
+                {/* Mobile Bottom Navigation Bar (Sticky to bottom) */}
+                <div
+                  style={{
+                    position: 'sticky',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 48,
+                    background: '#0f0f0f',
+                    borderTop: '1px solid #1f1f1f',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                    zIndex: 30,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                    <HomeIcon size={18} color="#ffffff" />
+                    <span style={{ fontSize: '0.55rem' }}>Home</span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 4px', width: '100%', cursor: 'pointer' }}>
-                    <Flame size={20} color="#aaa" />
-                    <span style={{ fontSize: '0.62rem', color: '#aaa', fontWeight: 600 }}>Shorts</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                    <Zap size={18} color="#aaaaaa" />
+                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>Shorts</span>
                   </div>
-                </aside>
-
-                <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <div style={{ height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', background: '#0f0f0f', borderBottom: '1px solid #1f1f1f' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <Menu size={19} color="#fff" style={{ cursor: 'pointer' }} />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <div style={{ width: 24, height: 17, background: '#ff0000', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{ width: 0, height: 0, borderTop: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '6px solid #fff' }} />
-                        </div>
-                        <span style={{ fontWeight: 800, fontSize: '1.02rem', letterSpacing: '-0.04em', color: '#fff' }}>YouTube</span>
-                        <span style={{ fontSize: '0.55rem', color: '#888', alignSelf: 'flex-start', marginLeft: 1 }}>NL</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 520, flex: 1, margin: '0 24px' }}>
-                      <div style={{ display: 'flex', flex: 1, border: '1px solid #303030', borderRadius: '40px 0 0 40px', background: '#121212', padding: '0 14px', height: 36, alignItems: 'center' }}>
-                        <input type="text" placeholder="Search" style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '0.84rem' }} />
-                      </div>
-                      <button style={{ height: 36, padding: '0 18px', border: '1px solid #303030', borderLeft: 'none', borderRadius: '0 40px 40px 0', background: '#222222', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: -8 }}>
-                        <Search size={15} />
-                      </button>
-                    </div>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', border: '1px solid #666' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <Plus size={20} color="#ffffff" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                    <Radio size={18} color="#aaaaaa" />
+                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>Subscriptions</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ff0000', overflow: 'hidden' }}>
                       <img src={activeCandidate.channelAvatar} alt="User" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
+                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>You</span>
                   </div>
-
-                  <div style={{ padding: '16px 20px 60px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '20px 14px' }}>
-                    {longformFeed.map((video, idx) => {
-                      const isCandidate = video.isCandidate;
-                      return (
-                        <div key={video.id + idx} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative', borderRadius: 10, padding: revealHighlight && isCandidate ? 4 : 0, border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none' }}>
-                          <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#1c1c1c' }}>
-                            <img src={video.imageUrl} alt={video.title} style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }} />
-                            {showDurationBadge && (
-                              <div style={{ position: 'absolute', bottom: 6, right: 6, background: video.isLive ? '#cc0000' : 'rgba(0, 0, 0, 0.85)', color: '#ffffff', fontSize: '0.68rem', fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>
-                                {video.duration}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: 10, padding: '0 2px' }}>
-                            <img src={video.channelAvatar} alt={video.channelName} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.86rem', fontWeight: 600, lineHeight: 1.3, color: '#f1f1f1', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: 3 }}>
-                                {video.title}
-                              </div>
-                              <div style={{ fontSize: '0.72rem', color: '#aaaaaa' }}>{video.channelName}</div>
-                              <div style={{ fontSize: '0.72rem', color: '#aaaaaa', marginTop: 1 }}>{video.views} • {video.timeAgo}</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </main>
+                </div>
               </div>
             )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* 3. SHORTS: YOUTUBE HOME SHORTS SHELF (2-COLUMN CARDS)           */}
+            {/* 2. LONG-FORM: YOUTUBE DESKTOP FEED (3-GRID BROWSE)             */}
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {contentFormat === 'shorts' && platformView === 'shorts-shelf' && (
-              <div style={{ width: '390px', background: '#0f0f0f', color: '#ffffff', border: '1px solid #27272a', borderRadius: 0, overflow: 'hidden', fontFamily: '"Roboto", sans-serif', boxShadow: '0 0 50px rgba(0,0,0,0.9)', padding: '16px 12px 30px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '1.05rem' }}>
-                    <div style={{ width: 22, height: 26, background: '#ff0000', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderLeft: '8px solid #fff' }} />
-                    </div>
-                    <span>Shorts Shelf (YouTube Home)</span>
-                  </div>
-                  <MoreVertical size={18} color="#aaa" />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                  {shortsFeed.map((s, idx) => {
-                    const isCandidate = s.isCandidate;
+            {contentFormat === 'longform' && platformView === 'yt-desktop' && (
+              <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '20px 24px', background: '#0f0f0f', minHeight: '100vh', fontFamily: '"Roboto", sans-serif' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px 16px' }}>
+                  {longformFeed.map((video, idx) => {
+                    const isCandidate = video.isCandidate;
                     return (
-                      <div key={s.id + idx} style={{ aspectRatio: '9/16', borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#1c1c1c', border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none' }}>
-                        <img src={s.imageUrl} alt={s.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 60%)' }} />
-                        <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, color: '#fff' }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
-                          <div style={{ fontSize: '0.66rem', color: '#ccc', marginTop: 3 }}>{s.views}</div>
+                      <div key={video.id + idx} style={{ display: 'flex', flexDirection: 'column', position: 'relative', border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none', borderRadius: 8, padding: 4 }}>
+                        <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: 12, overflow: 'hidden', position: 'relative', background: '#272727' }}>
+                          <img src={video.imageUrl} alt={video.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          {showDurationBadge && (
+                            <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '2px 5px', borderRadius: 4 }}>
+                              {video.duration}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                          <img src={video.channelAvatar} alt={video.channelName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.96rem', fontWeight: 600, color: '#fff', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                              {video.title}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#aaa', marginTop: 4 }}>{video.channelName} {video.verified && '✓'}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#aaa' }}>{video.views} • {video.timeAgo}</div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1151,73 +1845,102 @@ Tested on YouTube Simulator.`;
             )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* 4. SHORTS: FULL YOUTUBE SHORTS APP PLAYER (9:16 VERTICAL HUD)  */}
+            {/* 3. SHORTS: DEDICATED VERTICAL SHELF VIEW (390px)               */}
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {contentFormat === 'shorts' && platformView === 'shorts-shelf' && (
+              <div style={{ width: '390px', background: '#0f0f0f', color: '#fff', border: '1px solid #27272a', padding: '16px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <Zap size={20} color="#ff0000" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>YouTube Shorts Shelf</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                  {shortsFeed.map((short, idx) => (
+                    <div key={short.id + idx} style={{ width: '100%', position: 'relative', border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none', borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ width: '100%', height: 260, background: '#1c1c1c', position: 'relative' }}>
+                        <img src={short.imageUrl} alt={short.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {short.title}
+                          </div>
+                          <div style={{ fontSize: '0.66rem', opacity: 0.85, marginTop: 4 }}>{short.views}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {/* 4. SHORTS: FULL IMMERSIVE SHORTS PLAYER (390px)                */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'shorts' && platformView === 'shorts-player' && (
-              <div style={{ width: '390px', height: '693px', background: '#000000', color: '#ffffff', border: '1px solid #27272a', borderRadius: 0, overflow: 'hidden', position: 'relative', fontFamily: '"Roboto", sans-serif', boxShadow: '0 0 50px rgba(0,0,0,0.9)' }}>
+              <div style={{ width: '390px', height: '690px', background: '#000000', position: 'relative', overflow: 'hidden', border: '1px solid #27272a', boxShadow: '0 0 50px rgba(0,0,0,0.9)' }}>
                 <img src={activeCandidate.imageUrl} alt={activeCandidate.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 40%, rgba(0,0,0,0.4) 100%)' }} />
 
-                <div style={{ position: 'absolute', top: 14, left: 14, right: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shorts</span>
-                  <div style={{ display: 'flex', gap: 16 }}>
+                {/* UI Overlay */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '16px 12px', background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>Shorts</span>
                     <Search size={20} color="#fff" />
-                    <MoreVertical size={20} color="#fff" />
                   </div>
-                </div>
 
-                <div style={{ position: 'absolute', right: 12, bottom: 90, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, zIndex: 10 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <ThumbsUp size={20} color="#fff" />
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1, marginRight: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <img src={activeCandidate.channelAvatar} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>{activeCandidate.channelName}</span>
+                        <button style={{ padding: '4px 10px', background: '#cc0000', color: '#fff', border: 'none', borderRadius: 16, fontSize: '0.7rem', fontWeight: 700 }}>
+                          Subscribe
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>
+                        {activeCandidate.title}
+                      </div>
                     </div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700 }}>1.4M</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <ThumbsDown size={20} color="#fff" />
-                    </div>
-                    <span style={{ fontSize: '0.64rem', color: '#ccc' }}>Dislike</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <MessageSquare size={19} color="#fff" />
-                    </div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700 }}>3.2K</span>
-                  </div>
-                </div>
 
-                <div style={{ position: 'absolute', bottom: 18, left: 14, right: 70, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <img src={activeCandidate.channelAvatar} alt={activeCandidate.channelName} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700 }}>@{activeCandidate.channelName.toLowerCase().replace(/\s+/g, '')}</span>
-                    <button style={{ padding: '4px 10px', background: '#ffffff', color: '#000000', border: 'none', borderRadius: 14, fontSize: '0.72rem', fontWeight: 800 }}>
-                      Subscribe
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {activeCandidate.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#eee' }}>
-                    <Music2 size={14} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Original Sound • {activeCandidate.channelName}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ThumbsUp size={22} color="#fff" />
+                        <span style={{ fontSize: '0.65rem', color: '#fff', marginTop: 4 }}>142K</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <ThumbsDown size={22} color="#fff" />
+                        <span style={{ fontSize: '0.65rem', color: '#fff', marginTop: 4 }}>Dislike</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <MessageSquare size={22} color="#fff" />
+                        <span style={{ fontSize: '0.65rem', color: '#fff', marginTop: 4 }}>1.2K</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <Share2 size={22} color="#fff" />
+                        <span style={{ fontSize: '0.65rem', color: '#fff', marginTop: 4 }}>Share</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* 5. SIDE-BY-SIDE MATRIX COMPARISON                              */}
+            {/* 5. A/B MATRIX: SIDE-BY-SIDE ALL CANDIDATES                     */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {platformView === 'side-by-side' && (
-              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16, fontFamily: '"Roboto", sans-serif' }}>
-                <div style={{ fontSize: '0.92rem', fontFamily: 'monospace', fontWeight: 900, borderBottom: '1px solid #333', paddingBottom: 8 }}>
-                  🔀 {contentFormat === 'longform' ? '16:9 LONG-FORM' : '9:16 YOUTUBE SHORTS'} VARIATION MATRIX
+              <div style={{ width: '100%', maxWidth: 1000, margin: '0 auto', padding: '24px', background: '#09090b', minHeight: '100vh' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.2rem', fontWeight: 900, fontFamily: 'monospace', color: '#FFE500', margin: 0 }}>
+                      A/B VARIATIONS COMPARISON MATRIX
+                    </h2>
+                    <p style={{ fontSize: '0.72rem', color: '#aaa', margin: '4px 0 0' }}>
+                      Simultaneously compare thumbnail brightness, text readability, and focal points across variations.
+                    </p>
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: contentFormat === 'longform' ? 'repeat(auto-fill, minmax(260px, 1fr))' : 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
                   {currentCandidates.map((cand, idx) => {
-                    const isSelected = cand.id === activeCandidate.id;
-                    const letter = String.fromCharCode(65 + idx);
+                    const isSelected = cand.id === currentActiveId;
                     return (
                       <div
                         key={cand.id}
@@ -1226,32 +1949,29 @@ Tested on YouTube Simulator.`;
                           else setActiveShortsId(cand.id);
                         }}
                         style={{
-                          border: isSelected ? '2px solid #FFE500' : '1px solid #333',
+                          background: '#18181b',
+                          border: isSelected ? '2px solid #FFE500' : '1px solid #27272a',
                           borderRadius: 8,
-                          padding: 10,
-                          background: isSelected ? '#1a1a1a' : '#141414',
-                          boxShadow: isSelected ? '0 0 16px rgba(255,229,0,0.35)' : 'none',
-                          cursor: 'pointer',
+                          padding: 12,
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: 8,
+                          gap: 10,
+                          cursor: 'pointer',
+                          boxShadow: isSelected ? '0 0 20px rgba(255, 229, 0, 0.2)' : 'none',
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.78rem', fontFamily: 'monospace', fontWeight: 900 }}>
-                            Version {letter} ({cand.name})
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, color: isSelected ? '#FFE500' : '#fff' }}>
+                            {cand.name}
                           </span>
                           {isSelected && (
-                            <span style={{ background: '#FFE500', color: '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, padding: '1px 5px', borderRadius: 2 }}>
+                            <span style={{ background: '#FFE500', color: '#000', fontSize: '0.6rem', fontWeight: 900, padding: '2px 6px', borderRadius: 3 }}>
                               ACTIVE
                             </span>
                           )}
                         </div>
                         <div style={{ width: '100%', aspectRatio: contentFormat === 'longform' ? '16/9' : '9/16', borderRadius: 6, overflow: 'hidden', position: 'relative', background: '#000' }}>
                           <img src={cand.imageUrl} alt={cand.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {cand.title}
                         </div>
                       </div>
                     );
@@ -1262,72 +1982,74 @@ Tested on YouTube Simulator.`;
           </div>
         </div>
 
-        {/* Right Side: CTR Grader Sidebar */}
+        {/* Right Side: CTR Grader Sidebar / Mobile Inspector */}
         <aside
           style={{
-            width: 320,
+            width: isMobileScreen ? '100%' : 340,
             background: '#18181b',
-            borderLeft: '1.5px solid #27272a',
-            display: 'flex',
+            borderLeft: isMobileScreen ? 'none' : '1.5px solid #27272a',
+            display: !isMobileScreen || mobileActiveView !== 'feed' ? 'flex' : 'none',
             flexDirection: 'column',
             overflowY: 'auto',
             flexShrink: 0,
+            flex: isMobileScreen ? 1 : 'none',
           }}
           className="no-scrollbar"
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderBottom: '1px solid #27272a', background: '#09090b' }}>
-            {[
-              { id: 'audit', label: 'Grader', icon: Activity },
-              { id: 'candidates', label: 'Edit Info', icon: SlidersHorizontal },
-              { id: 'export', label: 'Export', icon: Share2 },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveSidebarTab(tab.id as any)}
-                style={{
-                  padding: '9px 2px',
-                  border: 'none',
-                  borderRight: '1px solid #27272a',
-                  background: activeSidebarTab === tab.id ? '#18181b' : '#09090b',
-                  color: activeSidebarTab === tab.id ? '#FFE500' : '#a1a1aa',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  fontSize: '0.62rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 3,
-                  textTransform: 'uppercase',
-                }}
-              >
-                <tab.icon size={13} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {/* Desktop Sub-Tabs */}
+          {!isMobileScreen && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderBottom: '1px solid #27272a', background: '#09090b' }}>
+              {[
+                { id: 'audit', label: 'GRADER' },
+                { id: 'candidates', label: 'EDIT INFO' },
+                { id: 'export', label: 'EXPORT' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveSidebarTab(tab.id as any)}
+                  style={{
+                    padding: '9px 2px',
+                    border: 'none',
+                    borderRight: '1px solid #27272a',
+                    background: activeSidebarTab === tab.id ? '#18181b' : '#09090b',
+                    color: activeSidebarTab === tab.id ? '#FFE500' : '#a1a1aa',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.66rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {/* GRADER TAB */}
-            {activeSidebarTab === 'audit' && (
+            {(activeSidebarTab === 'audit' || (isMobileScreen && mobileActiveView === 'grader')) && (
               <>
-                <div style={{ padding: 10, background: '#27272a', border: '1px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ padding: 12, background: '#27272a', border: '1.5px solid #000', boxShadow: '3px 3px 0 #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
+                    <span style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
                       CTR Standout Score
                     </span>
-                    <span style={{ fontSize: '1.1rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500' }}>
+                    <span style={{ fontSize: '1.2rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', background: '#000', padding: '2px 8px', borderRadius: 3, border: '1px solid #FFE500' }}>
                       {overallPopoutScore}/100
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800 }}>
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
                         <span>Luminance & Contrast:</span>
                         <span>{contrastLuminanceScore}%</span>
                       </div>
-                      <div style={{ height: 4, background: '#18181b', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: '#18181b', borderRadius: 2, overflow: 'hidden' }}>
                         <div style={{ width: `${contrastLuminanceScore}%`, height: '100%', background: '#FFE500' }} />
                       </div>
                     </div>
@@ -1337,7 +2059,7 @@ Tested on YouTube Simulator.`;
                         <span>Safe Zone Margin:</span>
                         <span>{badgeCollisionScore}%</span>
                       </div>
-                      <div style={{ height: 4, background: '#18181b', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: '#18181b', borderRadius: 2, overflow: 'hidden' }}>
                         <div style={{ width: `${badgeCollisionScore}%`, height: '100%', background: hasBadgeHazard ? '#ef4444' : '#FFE500' }} />
                       </div>
                     </div>
@@ -1345,62 +2067,92 @@ Tested on YouTube Simulator.`;
                 </div>
 
                 {/* 3-Second Glance Test Card */}
-                <div style={{ padding: 10, background: '#27272a', border: '1px solid #FFE500', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Timer size={13} />
+                <div style={{ padding: 12, background: '#27272a', border: '1.5px solid #FFE500', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '3px 3px 0 #000' }}>
+                  <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
                     3-Second Human Glance Test
                   </span>
-                  <p style={{ fontSize: '0.62rem', color: '#ccc', margin: 0, lineHeight: 1.3 }}>
-                    Blurs the screen, counts down 3-2-1, and reveals the feed for 3 seconds to measure which video your eye catches first.
+                  <p style={{ fontSize: '0.64rem', color: '#ccc', margin: 0, lineHeight: 1.4 }}>
+                    Blurs the screen, counts down 3-2-1, and reveals the feed for 3 seconds to test what catches the eye first.
                   </p>
                   <button
                     onClick={startGlanceTest}
-                    style={{ padding: '6px 10px', background: '#FFE500', color: '#000', border: 'none', borderRadius: 3, fontWeight: 900, fontSize: '0.66rem', cursor: 'pointer', fontFamily: 'monospace' }}
+                    style={{ padding: '8px 12px', background: '#FFE500', color: '#000', border: '1.5px solid #000', borderRadius: 3, fontWeight: 900, fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'monospace', boxShadow: '2px 2px 0 #000' }}
                   >
                     Start 3s Glance Test (Spacebar)
                   </button>
                 </div>
 
-                {/* Squint / Blur Slider */}
-                <div style={{ padding: 10, background: '#27272a', border: '1px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <Eye size={13} color="#FFE500" />
-                      Squint / Blur Test ({blurAmount}px)
-                    </label>
-                    {blurAmount > 0 && (
-                      <button onClick={() => setBlurAmount(0)} style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, background: 'none', border: 'none', color: '#FFE500', cursor: 'pointer' }}>
-                        Reset
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="1"
+                {/* Squint / Blur Test using TactileScrubber */}
+                <div style={{ padding: 12, background: '#27272a', border: '1.5px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 6, boxShadow: '2px 2px 0 #000' }}>
+                  <TactileScrubber
+                    label="Squint / Blur Test"
                     value={blurAmount}
-                    onChange={(e) => setBlurAmount(parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: '#FFE500' }}
+                    min={0}
+                    max={10}
+                    step={1}
+                    stepDelta={1}
+                    onChange={setBlurAmount}
+                    formatValue={(v) => `${v}px`}
+                    presetsLayout="below"
+                    presets={[
+                      { label: '0px (Clear)', value: 0 },
+                      { label: '3px (Glance)', value: 3 },
+                      { label: '6px (Squint)', value: 6 },
+                      { label: '10px (Max)', value: 10 },
+                    ]}
                   />
                 </div>
 
-                {/* B&W Contrast Check */}
-                <div style={{ padding: 10, background: '#27272a', border: '1px solid #3f3f46', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* Accessibility Color Vision Chips */}
+                <div style={{ padding: 12, background: '#27272a', border: '1.5px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '2px 2px 0 #000' }}>
+                  <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
+                    Color Vision Accessibility
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 5 }}>
+                    {[
+                      { id: 'none' as const, label: 'Normal' },
+                      { id: 'deuteranopia' as const, label: 'Deuteranopia' },
+                      { id: 'protanopia' as const, label: 'Protanopia' },
+                      { id: 'tritanopia' as const, label: 'Tritanopia' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setColorBlindMode(mode.id)}
+                        style={{
+                          padding: '6px 4px',
+                          border: '1.5px solid #000',
+                          borderRadius: 3,
+                          background: colorBlindMode === mode.id ? '#FFE500' : '#18181b',
+                          color: colorBlindMode === mode.id ? '#000000' : '#ffffff',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.62rem',
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* B&W Tonal Contrast Check */}
+                <div style={{ padding: 10, background: '#27272a', border: '1.5px solid #3f3f46', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '2px 2px 0 #000' }}>
                   <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
                     B&W Tonal Contrast
                   </span>
                   <button
                     onClick={() => setIsGrayscale(!isGrayscale)}
                     style={{
-                      padding: '3px 8px',
-                      border: '1px solid #3f3f46',
+                      padding: '4px 10px',
+                      border: '1.5px solid #000',
                       borderRadius: 3,
                       background: isGrayscale ? '#FFE500' : '#18181b',
                       color: isGrayscale ? '#000000' : '#ffffff',
                       fontFamily: 'monospace',
                       fontWeight: 900,
-                      fontSize: '0.62rem',
+                      fontSize: '0.64rem',
                       cursor: 'pointer',
                     }}
                   >
@@ -1410,49 +2162,109 @@ Tested on YouTube Simulator.`;
               </>
             )}
 
-            {/* EDIT INFO TAB */}
-            {activeSidebarTab === 'candidates' && (
-              <div style={{ padding: 10, background: '#27272a', border: '1px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
-                  Edit {activeCandidate.name}
-                </span>
+            {/* EDIT INFO / VARIATIONS TAB */}
+            {(activeSidebarTab === 'candidates' || (isMobileScreen && mobileActiveView === 'variations')) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ padding: 12, background: '#27272a', border: '1.5px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '3px 3px 0 #000' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
+                      Edit {activeCandidate.name}
+                    </span>
+                    <label
+                      style={{
+                        padding: '3px 8px',
+                        background: '#FFE500',
+                        color: '#000',
+                        border: '1px solid #000',
+                        borderRadius: 3,
+                        fontSize: '0.62rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      Replace Image
+                      <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, activeCandidate.id)} style={{ display: 'none' }} />
+                    </label>
+                  </div>
 
-                <div>
-                  <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, display: 'block', marginBottom: 2 }}>
-                    Title
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={activeCandidate.title}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (contentFormat === 'longform') {
-                        setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, title: val } : c)));
-                      } else {
-                        setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, title: val } : c)));
-                      }
-                    }}
-                    style={{ width: '100%', padding: 6, border: '1px solid #3f3f46', borderRadius: 3, fontSize: '0.72rem', background: '#18181b', color: '#fff' }}
-                  />
+                  <div>
+                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                      Video Title
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={activeCandidate.title}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (contentFormat === 'longform') {
+                          setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, title: val } : c)));
+                        } else {
+                          setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, title: val } : c)));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.76rem', background: '#141416', color: '#fff', fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                      Channel Name
+                    </label>
+                    <input
+                      type="text"
+                      value={activeCandidate.channelName}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (contentFormat === 'longform') {
+                          setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, channelName: val } : c)));
+                        } else {
+                          setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, channelName: val } : c)));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', background: '#141416', color: '#fff' }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, display: 'block', marginBottom: 2 }}>
-                    Channel Name
-                  </label>
-                  <input
-                    type="text"
-                    value={activeCandidate.channelName}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (contentFormat === 'longform') {
-                        setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, channelName: val } : c)));
-                      } else {
-                        setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, channelName: val } : c)));
-                      }
-                    }}
-                    style={{ width: '100%', padding: '4px 6px', border: '1px solid #3f3f46', borderRadius: 3, fontSize: '0.68rem', background: '#18181b', color: '#fff' }}
-                  />
+                {/* Candidate Variations List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
+                    All Variations ({currentCandidates.length})
+                  </span>
+
+                  {currentCandidates.map((cand, idx) => {
+                    const isSelected = cand.id === currentActiveId;
+                    return (
+                      <div
+                        key={cand.id}
+                        onClick={() => {
+                          if (contentFormat === 'longform') setActiveLongformId(cand.id);
+                          else setActiveShortsId(cand.id);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: 8,
+                          background: '#27272a',
+                          border: isSelected ? '2px solid #FFE500' : '1px solid #3f3f46',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <img src={cand.imageUrl} alt="" style={{ width: 44, height: 28, borderRadius: 2, objectFit: 'cover' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', color: isSelected ? '#FFE500' : '#fff' }}>
+                            Var {String.fromCharCode(65 + idx)} {isSelected ? '★ ACTIVE' : ''}
+                          </div>
+                          <div style={{ fontSize: '0.62rem', color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {cand.title}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1475,6 +2287,120 @@ Tested on YouTube Simulator.`;
           </div>
         </aside>
       </div>
+
+      {/* ── Tools Navigation Sidebar Drawer Overlay ── */}
+      {toolsSidebarOpen && (
+        <div
+          onClick={() => setToolsSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(3px)',
+            zIndex: 9900,
+          }}
+        />
+      )}
+
+      {/* ── Tools Navigation Sidebar Drawer ── */}
+      <aside
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: toolsSidebarOpen ? 0 : '-300px',
+          width: 280,
+          bottom: 0,
+          background: '#141416',
+          borderRight: '2px solid #000',
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          transition: 'left 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+          zIndex: 9901,
+          boxShadow: toolsSidebarOpen ? '6px 0 25px rgba(0,0,0,0.9)' : 'none',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 16px',
+            borderBottom: '2px solid #27272a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#09090b',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+          }}
+        >
+          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#FFE500', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'monospace' }}>
+            TOOLS NAVIGATION
+          </div>
+          <button
+            onClick={() => setToolsSidebarOpen(false)}
+            aria-label="Close tools navigation"
+            style={{
+              background: '#27272a',
+              border: '1px solid #3f3f46',
+              borderRadius: 3,
+              cursor: 'pointer',
+              color: '#fff',
+              padding: '3px 6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {ALL_TOOLS.map((tool) => {
+            const isActive = tool.href === '/thumbnail-lab';
+            return (
+              <Link
+                key={tool.href}
+                href={tool.href}
+                onClick={() => setToolsSidebarOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 12px',
+                  borderRadius: 4,
+                  textDecoration: 'none',
+                  background: isActive ? '#FFE500' : 'transparent',
+                  color: isActive ? '#000000' : '#e4e4e7',
+                  fontWeight: isActive ? 900 : 700,
+                  fontSize: '0.78rem',
+                  fontFamily: 'monospace',
+                  border: isActive ? '1.5px solid #000' : '1.5px solid transparent',
+                  boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                  transition: 'all 0.1s ease',
+                }}
+              >
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.label}</span>
+                <span
+                  style={{
+                    fontSize: '0.55rem',
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    background: isActive ? '#000000' : '#27272a',
+                    color: isActive ? '#FFE500' : '#a1a1aa',
+                    fontFamily: 'monospace',
+                    fontWeight: 800,
+                    flexShrink: 0,
+                  }}
+                >
+                  {tool.hint}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </aside>
     </div>
   );
 }
