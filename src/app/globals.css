@@ -656,6 +656,25 @@
   align-items: start;
 }
 
+/* === DESKTOP STICKY VIDEO STUDIO ===
+   The video frame (left column) pins in place once it comes into view,
+   while the controls column (right) scrolls past it — so settings can
+   be adjusted while watching the live preview in real time without
+   scrolling back up and down. Applies to both Text Match Cut and Text Highlighter. */
+@media (min-width: 1024px) {
+  .matchcut-workspace-grid {
+    align-items: start;
+  }
+
+  .matchcut-workspace-grid > *:first-child {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    z-index: 20;
+  }
+}
+
 .tool-inner-grid {
   display: grid;
   gap: 24px;

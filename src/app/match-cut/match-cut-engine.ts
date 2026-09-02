@@ -14,6 +14,7 @@
 // src/app/text-highlighter/highlighter-engine.ts.
 
 import {
+  applyTodayDateline,
   BACKGROUND_BODY_PARAGRAPHS,
   PAPER_THEMES,
   drawAnchorHighlight,
@@ -332,7 +333,8 @@ export function renderNewspaperMatchCut(
     if (cut.dateString) {
       ctx.font = `bold ${Math.max(10, Math.round(width * 0.012))}px "Courier New", monospace`;
       ctx.fillStyle = theme.inkMuted;
-      ctx.fillText(cut.dateString.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 28);
+      // The printed calendar date always shows TODAY's device date.
+      ctx.fillText(applyTodayDateline(cut.dateString).toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 28);
     }
 
     // Thin double divider rules above the headline line

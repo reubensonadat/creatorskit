@@ -508,7 +508,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const audioChunksRef = useRef<Blob[]>([]);
 
   // Adaptive Velocity & Cadence Learner Refs
-  const learnedWpmRef = useRef<number>(150); // Default natural speaking pace (150 WPM)
+  const learnedWpmRef = useRef<number>(135); // Default natural speaking pace (135 WPM)
   const lastMatchTimestampRef = useRef<number>(Date.now());
   const lastMatchIndexRef = useRef<number>(0);
   const speechVelocityPxPerSecRef = useRef<number>(0);
@@ -526,8 +526,8 @@ Control your speed, adjust your font size, and download your voice recording in 
   const lastDisplayedWordRef = useRef<number>(-1);
   // Manual reading pace: the user seeds the AI learner with their own WPM so
   // it does not have to learn from scratch; the tracker keeps refining from it.
-  const [manualWpm, setManualWpm] = useState<number>(150);
-  const [learnedWpmDisplay, setLearnedWpmDisplay] = useState<number>(150);
+  const [manualWpm, setManualWpm] = useState<number>(135);
+  const [learnedWpmDisplay, setLearnedWpmDisplay] = useState<number>(135);
   // Mic-gated pause detection: the live audio meter stamps the last moment
   // the room was actually loud. When it has been quiet for ~700ms the user
   // has genuinely paused, so the teleprompter glide freezes in place.
@@ -617,7 +617,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       const savedManual = localStorage.getItem('creatorKit_manualWpm');
       if (savedManual) {
         const parsedManual = parseInt(savedManual, 10);
-        if (!isNaN(parsedManual) && parsedManual >= 50 && parsedManual <= 300) {
+        if (!isNaN(parsedManual) && parsedManual >= 50 && parsedManual <= 200) {
           setManualWpm(parsedManual);
           setLearnedWpmDisplay(parsedManual);
           learnedWpmRef.current = parsedManual;
@@ -626,7 +626,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         const savedWpm = localStorage.getItem('creatorKit_learnedWpm');
         if (savedWpm) {
           const parsed = parseInt(savedWpm, 10);
-          if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
+          if (!isNaN(parsed) && parsed >= 50 && parsed <= 180) {
             learnedWpmRef.current = parsed;
             setLearnedWpmDisplay(parsed);
           }
@@ -948,11 +948,9 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          if (Math.abs(targetWordFloatRef.current - phraseMatch.matchIndex) > 20) {
-            virtualWordFloatRef.current = phraseMatch.matchIndex;
-            lastDisplayedWordRef.current = phraseMatch.matchIndex;
-          }
-          targetWordFloatRef.current = Math.max(targetWordFloatRef.current, phraseMatch.matchIndex);
+          // Never teleport: advance target by at most 3 words per speech event
+          const cappedTarget = Math.min(targetWordFloatRef.current + 3, phraseMatch.matchIndex);
+          targetWordFloatRef.current = Math.max(targetWordFloatRef.current, cappedTarget);
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
       };
@@ -1032,23 +1030,17 @@ Control your speed, adjust your font size, and download your voice recording in 
           // quiet for ~700ms (only enforced while the live audio meter runs).
           const micQuiet =
             audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
-          // Velocity-limited easing: the prompt never moves faster than
-          // ~450 px/s, so word-to-word movement stays eye-trackable.
-          const maxStep = (450 * Math.min(delta, 50)) / 1000;
+          // Strict physical velocity ceiling: maximum ~140 px/s so it is physically
+          // impossible for text to sprint or skip ahead of your eye level.
+          const maxStep = (140 * Math.min(delta, 50)) / 1000;
 
-          // 1. Continuous word-clock follower. Confirmed matches only move
-          // the TARGET; the virtual timeline chases it every frame at
-          // cruise pace plus a bounded catch-up boost. The highlight
-          // therefore advances one word at a time at a steady cadence —
-          // ASR bursts never teleport it, and it never stalls between
-          // bursts.
+          // 1. Continuous word-clock follower.
           if (!micQuiet && isSpeakingCadenceActiveRef.current) {
             const cruise = learnedWpmRef.current / 60; // words/sec at natural pace
             const gap = targetWordFloatRef.current - virtualWordFloatRef.current;
             if (gap > 0) {
-              // Catch-up is proportional to the gap but capped at 2x
-              // cruise, so bursts converge quickly yet visibly.
-              const catchUp = Math.min(gap * 2.5, cruise * 2.0);
+              // Smooth, steady convergence (capped at 1.15x cruise)
+              const catchUp = Math.min(gap * 1.2, cruise * 1.15);
               const advance = Math.min((cruise + catchUp) * (delta / 1000), gap);
               virtualWordFloatRef.current += advance;
             }

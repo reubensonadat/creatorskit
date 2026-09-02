@@ -1,12 +1,14 @@
 /**
  * Smoke test for the voice matching engine improvements:
- * multi-hypothesis scoring, number normalization, lost-tracking recovery.
+ * sentence leash, sequential anchor lock, burst-resistant WPM, and leap governor.
  * Run: npx tsx tests/voice-engine-smoke.ts
  */
 import {
     isFuzzyMatch,
     numericValue,
     createVoiceMatchEngine,
+    createWPMTracker,
+    findBestPhraseMatch,
     type TranscriptHypothesis,
 } from '../src/lib/teleprompter/voice-matching-engine';
 
@@ -38,62 +40,60 @@ check('"water" matches "wata"', isFuzzyMatch('water', 'wata').match);
 check('"three" matches "tree"', isFuzzyMatch('three', 'tree').match);
 check('"ask" matches "hask" (h-add)', isFuzzyMatch('ask', 'hask').match);
 
-// ---------- 3. Multi-hypothesis + recovery on a real-ish script ----------
-const script = `welcome back creators today i am breaking down the exact 3 part framework
+// ---------- 3. Hard Sentence Leash & Anti-Skip Protection ----------
+const testScript = `welcome back creators today i am breaking down the exact 3 part framework
 that doubled our audience in under 90 days first stop spending 80 percent of your
 time on editing and only 20 percent on your packaging the thumbnail and the first
 5 seconds determine 90 percent of your video reach`.split(/\s+/);
 
-const engine = createVoiceMatchEngine({ initialWpm: 140 });
+// 1-word far-away match should NOT match
+const farSingleWord = findBestPhraseMatch(['editing'], testScript, 0, 6);
+check('1-word far lookahead is gated (cannot match 20 words ahead)', farSingleWord === null);
 
-// a) Normal progression: primary hypothesis is correct
-let r = engine.process('welcome back creators today i am'.split(' '), script);
-check(`primary match at word 5 (got ${r.matchIndex})`, r.matched && r.matchIndex === 5);
+// 1-word stop word should NOT match
+const stopWordMatch = findBestPhraseMatch(['the'], testScript, 0, 6);
+check('1-word stop word is suppressed from leaping ahead', stopWordMatch === null);
 
-// b) Multi-hypothesis: primary is garbage, alternative 2 is correct
-const bad: TranscriptHypothesis[] = [
-    { words: 'welcomb act creator today hi am'.split(' '), rank: 0 },
-    { words: 'welcome bag creators to day i am'.split(' '), rank: 1 },
-    { words: 'welcome back creators today i am breaking'.split(' '), rank: 2 },
-];
-r = engine.processAlternatives(bad, script);
-check(`alt-hypothesis match advanced to "breaking" idx 6 (got ${r.matchIndex})`, r.matched && r.matchIndex === 6);
+// 1-word adjacent distinctive word SHOULD match at immediate next word
+const closeSingleWord = findBestPhraseMatch(['welcome'], testScript, 0, 6);
+check('1-word close distinctive word matches within leash', closeSingleWord !== null && closeSingleWord.matchIndex === 0);
 
-// c) Lost-tracking recovery: simulate 6s of no progress, then speak a phrase
-//    that only exists ~25 words ahead of the current position.
-const noise: TranscriptHypothesis[] = [
-    { words: 'zzz qqq vvv xxx yyy'.split(' '), rank: 0 },
-];
-r = engine.processAlternatives(noise, script);
-check('noise does not match', !r.matched);
+// ---------- 4. Burst-resistant WPM Tracker ----------
+const tracker = createWPMTracker(135);
+const startTime = Date.now();
+tracker.update(2, 0.9, startTime + 100);
+tracker.update(4, 0.9, startTime + 200);
+tracker.update(6, 0.9, startTime + 300);
+tracker.update(8, 0.9, startTime + 800);
+check(`Rapid ASR bursts do not spike WPM to crazy numbers (WPM is ${tracker.wpm})`, tracker.wpm <= 160);
 
-async function main() {
-    // Wait past RECOVERY_AFTER_MS (5s) then speak words far ahead of position
-    await new Promise((res) => setTimeout(res, 5200));
-    r = engine.processAlternatives(
-        [{ words: 'the thumbnail and the first 5 seconds'.split(' '), rank: 0 }],
-        script
-    );
-    check(
-      `recovery re-anchored ahead at "seconds" idx 44 (got ${r.matchIndex})`,
-      r.matched && r.matchIndex >= 42 && r.matchIndex <= 44
-    );
+// ---------- 5. Sequential sentence-by-sentence progression on a real script ----------
+const script = testScript;
+const engine = createVoiceMatchEngine({ initialWpm: 135 });
 
-    // d) Monotonic forward progression: a re-read echo (ASR re-emitting
-    //    an earlier phrase, here words from idx 37-40) must never pull
-    //    the tracked position backwards.
-    const before = engine.currentIndex;
-    r = engine.processAlternatives(
-        [{ words: 'packaging the thumbnail and the'.split(' '), rank: 0 }],
-        script
-    );
-    check(
-      `re-read echo does not regress position (before ${before}, after ${r.matchIndex})`,
-      r.matchIndex >= before
-    );
+// a) Sentence 1 start
+let r = engine.process('welcome back creators'.split(' '), script);
+check(`Sentence 1 start matched (got word ${r.matchIndex})`, r.matched && r.matchIndex === 2);
 
-    console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
-    process.exit(failures === 0 ? 0 : 1);
-}
+// b) Next phrase
+r = engine.process('today i am breaking'.split(' '), script);
+check(`Sentence 1 continuation matched (got word ${r.matchIndex})`, r.matched && r.matchIndex >= 3 && r.matchIndex <= 5);
 
-main();
+// c) Stray future paragraph words must NOT skip paragraphs
+const strayFarWords = ['packaging', 'the', 'thumbnail'];
+const rStray = engine.process(strayFarWords, script);
+check('Stray words from future paragraphs are strictly blocked by leash', !rStray.matched || rStray.matchIndex <= 8);
+
+// d) Monotonic forward progression
+const before = engine.currentIndex;
+r = engine.processAlternatives(
+    [{ words: 'today i am breaking'.split(' '), rank: 0 }],
+    script
+);
+check(
+  `re-read echo does not regress position (before ${before}, after ${r.matchIndex})`,
+  r.matchIndex >= before
+);
+
+console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
+process.exit(failures === 0 ? 0 : 1);

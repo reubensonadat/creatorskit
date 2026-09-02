@@ -63,17 +63,17 @@ export interface VoiceMatchEngineResult {
 export interface VoiceMatchEngineOptions {
     /** Minimum confidence to accept a phrase match (default 0.55) */
     confidenceThreshold?: number;
-    /** Base forward search window in words (default 12) */
+    /** Base forward search window in words (default 4) */
     baseLookahead?: number;
-    /** Maximum forward search window when user is ahead (default 30) */
+    /** Maximum forward search window when user is ahead (default 6) */
     maxLookahead?: number;
     /** Allow backward jumps when the speaker re-reads (default true) */
     allowBacktracking?: boolean;
-    /** Initial learned WPM (default 140) */
+    /** Initial learned WPM (default 135) */
     initialWpm?: number;
     /** Min plausible instant WPM (default 40) */
     minWpm?: number;
-    /** Max plausible instant WPM (default 320) */
+    /** Max plausible instant WPM (default 200) */
     maxWpm?: number;
 }
 
@@ -752,10 +752,25 @@ export function findBestPhraseMatch(
 
     // Try phrase lengths from longest (most signal) to shortest
     for (let phraseLen = Math.min(spoken.length, 4); phraseLen >= 1; phraseLen--) {
+        // Strict Leash by phrase length:
+        // 1-word matches can ONLY look at the immediate 1-2 words ahead (offset <= 1).
+        // 2-word matches can look up to 3 words ahead.
+        // 3+ word matches can look up to 5 words ahead.
+        const effectiveLookahead = phraseLen === 1
+            ? Math.min(maxLookahead, 1)
+            : phraseLen === 2
+                ? Math.min(maxLookahead, 3)
+                : Math.min(maxLookahead, 5);
+
         // Align the END of the spoken n-gram with the script window
         const spokenSlice = spoken.slice(spoken.length - phraseLen);
 
-        for (let offset = 0; offset <= maxLookahead; offset++) {
+        // Disallow 1-word matches if the only spoken word is a low-signal stop word
+        if (phraseLen === 1 && STOP_WORDS.has(spokenSlice[0])) {
+            continue;
+        }
+
+        for (let offset = 0; offset <= effectiveLookahead; offset++) {
             const scriptStartIdx = start + offset;
             if (scriptStartIdx + phraseLen > scriptWords.length) break;
 
@@ -781,10 +796,12 @@ export function findBestPhraseMatch(
             const avgConfidence = weightSum > 0 ? weightedConfSum / weightSum : 0;
             // Require at least half the words to match for multi-word phrases
             if (phraseLen > 1 && matchCount < Math.ceil(phraseLen / 2)) continue;
+            // For 1-word matches, require a high confidence threshold (>= 0.88)
+            if (phraseLen === 1 && avgConfidence < 0.88) continue;
 
             // Proximity bonus: closer to current position = more likely correct
-            const proximityBonus = Math.max(0, 1 - offset / (maxLookahead + 1)) * 0.08;
-            const lengthBonus = (phraseLen - 1) * 0.04; // longer matches are stronger
+            const proximityBonus = Math.max(0, 1 - offset / (effectiveLookahead + 1)) * 0.08;
+            const lengthBonus = (phraseLen - 1) * 0.05; // longer matches are stronger
             const finalConfidence = Math.min(1, avgConfidence + proximityBonus + lengthBonus);
 
             if (!bestMatch || finalConfidence > bestMatch.confidence) {
@@ -802,9 +819,8 @@ export function findBestPhraseMatch(
 }
 
 /**
- * Context-aware matching: like findBestPhraseMatch but with an adaptive
- * search window that widens when the speaker has jumped ahead (fast
- * reading / skipped words) and a small backward window for re-reads.
+ * Context-aware matching: locks search strictly to the immediate forward
+ * words (tight leash), preventing skips across sentences or paragraphs.
  */
 export function findContextAwareMatch(
     spokenPhrase: string[],
@@ -818,26 +834,26 @@ export function findContextAwareMatch(
     } = {}
 ): PhraseMatchResult | null {
     const {
-        baseLookahead = 12,
-        maxLookahead = 30,
+        baseLookahead = 4,
+        maxLookahead = 6,
         allowBacktracking = true,
         recentDelta = 0,
     } = options;
 
     if (spokenPhrase.length === 0 || scriptWords.length === 0) return null;
 
-    // Widen the window when the user has recently been moving fast
-    const speedFactor = Math.min(1, Math.max(0, recentDelta / 10));
+    // Hard leash: lookahead is strictly capped between baseLookahead and maxLookahead (4..6 words)
+    const speedFactor = Math.min(1, Math.max(0, recentDelta / 6));
     const lookahead = Math.round(baseLookahead + (maxLookahead - baseLookahead) * speedFactor);
 
-    // Backward search: user re-read a sentence
+    // Backward search: user re-read a sentence (within immediate 4 words)
     if (allowBacktracking) {
-        const backWindow = Math.min(10, currentIndex);
+        const backWindow = Math.min(4, currentIndex);
         const backStart = Math.max(0, currentIndex - backWindow);
         if (backStart < currentIndex) {
             const backMatch = findBestPhraseMatch(spokenPhrase, scriptWords, backStart, backWindow - 1);
-            // Only accept a backward match if it is clearly strong
-            if (backMatch && backMatch.confidence >= 0.8) {
+            // Only accept a backward match if it is clearly strong and multi-word
+            if (backMatch && backMatch.confidence >= 0.88 && backMatch.matchedWords >= 2) {
                 return backMatch;
             }
         }
@@ -856,13 +872,16 @@ export function findContextAwareMatch(
  * takes, recognition bursts) are rejected so the scroll prediction stays
  * stable.
  */
-export function createWPMTracker(initialWpm: number = 140) {
+export function createWPMTracker(initialWpm: number = 135) {
     const state: WPMTrackerState = {
         wpm: initialWpm,
         lastTimestamp: 0,
         lastIndex: 0,
         samples: 0,
     };
+
+    // Rolling history for burst-resistant WPM calculation
+    const history: Array<{ index: number; timestamp: number }> = [];
 
     return {
         get wpm() {
@@ -872,10 +891,11 @@ export function createWPMTracker(initialWpm: number = 140) {
             return state.samples;
         },
         reset(wpm: number = initialWpm) {
-            state.wpm = wpm;
+            state.wpm = Math.max(50, Math.min(200, Math.round(wpm)));
             state.lastTimestamp = 0;
             state.lastIndex = 0;
             state.samples = 0;
+            history.length = 0;
         },
         /**
          * Record a confirmed match and update the learned WPM.
@@ -886,24 +906,41 @@ export function createWPMTracker(initialWpm: number = 140) {
             confidence: number,
             now: number = Date.now(),
             minWpm = 40,
-            maxWpm = 320
+            maxWpm = 200
         ): number | null {
-            const wordsSpoken = matchIndex - state.lastIndex;
-            const timeElapsedSec = state.lastTimestamp === 0 ? 0 : (now - state.lastTimestamp) / 1000;
+            if (matchIndex <= state.lastIndex) {
+                state.lastTimestamp = now;
+                return null;
+            }
+
+            history.push({ index: matchIndex, timestamp: now });
+            // Keep at most 6 recent points or within 4.5 seconds
+            while (history.length > 6 || (history.length > 2 && now - history[0].timestamp > 4500)) {
+                history.shift();
+            }
 
             let instantWpm: number | null = null;
 
-            if (timeElapsedSec > 0.2 && timeElapsedSec < 8.0 && wordsSpoken > 0) {
-                const candidate = Math.round((wordsSpoken / timeElapsedSec) * 60);
+            // Use rolling multi-point window if available (>= 0.75s span)
+            const first = history[0];
+            const spanSec = (now - first.timestamp) / 1000;
+            const wordsSpan = matchIndex - first.index;
+
+            if (spanSec >= 0.75 && wordsSpan > 0) {
+                const candidate = Math.round((wordsSpan / spanSec) * 60);
                 if (candidate >= minWpm && candidate <= maxWpm) {
                     instantWpm = candidate;
-                    // Adaptive learning rate: high-confidence matches move the EMA more
-                    const learningRate = 0.18 + confidence * 0.22;
-                    // Asymmetric learning: quick to slow down, reluctant to
-                    // speed up — a prompt that lags slightly is far less
-                    // disorienting than one that races ahead of the speaker.
-                    const lr = candidate >= state.wpm ? learningRate * 0.5 : learningRate;
-                    state.wpm = Math.round(state.wpm * (1 - lr) + candidate * lr);
+
+                    // Bound maximum WPM jump per sample to prevent sudden runaway (+10 WPM max per sample)
+                    const maxAllowedWpm = state.wpm + 10;
+                    const minAllowedWpm = state.wpm - 20;
+                    const boundedCandidate = Math.max(minAllowedWpm, Math.min(maxAllowedWpm, candidate));
+
+                    // Adaptive EMA: gentle acceleration, faster deceleration
+                    const learningRate = 0.10 + confidence * 0.12;
+                    const lr = boundedCandidate >= state.wpm ? learningRate * 0.35 : learningRate;
+                    state.wpm = Math.round(state.wpm * (1 - lr) + boundedCandidate * lr);
+                    state.wpm = Math.max(minWpm, Math.min(maxWpm, state.wpm));
                     state.samples++;
                 }
             }
@@ -935,12 +972,12 @@ export type WPMTracker = ReturnType<typeof createWPMTracker>;
 export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
     const {
         confidenceThreshold = 0.55,
-        baseLookahead = 12,
-        maxLookahead = 30,
+        baseLookahead = 4,
+        maxLookahead = 6,
         allowBacktracking = true,
-        initialWpm = 140,
+        initialWpm = 135,
         minWpm = 40,
-        maxWpm = 320,
+        maxWpm = 200,
     } = options;
 
     const wpmTracker = createWPMTracker(initialWpm);
@@ -949,10 +986,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
     let lastMatchIndex = 0;
     let recentDelta = 0;
     let lastResult: VoiceMatchEngineResult | null = null;
-    /** Timestamp of the last accepted match (drives lost-tracking recovery) */
     let lastProgressTimestamp = 0;
-    /** ms without an accepted match before triggering the recovery re-anchor scan */
-    const RECOVERY_AFTER_MS = 5000;
 
     const buildFallback = (): VoiceMatchEngineResult => ({
         matched: false,
@@ -975,32 +1009,36 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
 
     /** Apply an accepted match: update WPM learning + internal position state. */
     const applyMatch = (match: PhraseMatchResult): VoiceMatchEngineResult => {
-        // Monotonic forward progression: a match that lands behind the
-        // current position is a re-read echo (ASR re-emitting the previous
-        // phrase) — it confirms where we are but must NEVER pull the
-        // tracking backwards. Forward leaps are also clamped (~40 words)
-        // so a suspicious far anchor can never teleport the tracking
-        // way ahead of the speaker.
+        const now = Date.now();
+        const elapsedSec = lastProgressTimestamp === 0 ? 1.0 : (now - lastProgressTimestamp) / 1000;
+
+        // Strict Hard Leash:
+        // A single-word match can only advance by at most 1 word.
+        // A 2+ word match can advance by at most 3 words.
+        // It is physically impossible to leap across sentences or paragraphs.
+        const maxForwardAdvance = match.matchedWords <= 1
+            ? 1
+            : Math.min(3, Math.max(1, Math.round(elapsedSec * (maxWpm / 60)) + 1));
+
         const nextIndex = Math.min(
             Math.max(match.matchIndex, currentIndex),
-            currentIndex + 40
+            currentIndex + maxForwardAdvance
         );
 
         const instantWpm = wpmTracker.update(
             nextIndex,
             match.confidence,
-            Date.now(),
+            now,
             minWpm,
             maxWpm
         );
 
         const delta = nextIndex - currentIndex;
-        // Track recent movement speed (EMA) to size the next search window
         recentDelta = recentDelta === 0 ? delta : Math.round(recentDelta * 0.7 + delta * 0.3);
 
         currentIndex = nextIndex;
         lastMatchIndex = nextIndex;
-        lastProgressTimestamp = Date.now();
+        lastProgressTimestamp = now;
 
         lastResult = {
             matched: true,
@@ -1012,23 +1050,6 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
             delta,
         };
         return lastResult;
-    };
-
-    /**
-     * Lost-tracking recovery: after RECOVERY_AFTER_MS without an accepted
-     * match, scan far ahead (120 words) for a strong 3+ word anchor to
-     * re-lock the position instead of staying stuck behind the speaker.
-     */
-    const attemptRecovery = (spoken: string[], scriptWords: string[]): PhraseMatchResult | null => {
-        const now = Date.now();
-        if (lastProgressTimestamp !== 0 && now - lastProgressTimestamp < RECOVERY_AFTER_MS) {
-            return null;
-        }
-        const wide = findBestPhraseMatch(spoken, scriptWords, currentIndex, 60);
-        if (wide && wide.confidence >= 0.82 && wide.matchedWords >= 4) {
-            return wide;
-        }
-        return null;
     };
 
     return {
@@ -1063,7 +1084,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
          * so the user can seed it with their natural pace.
          */
         setPace(wpm: number) {
-            wpmTracker.reset(Math.max(50, Math.min(300, Math.round(wpm))));
+            wpmTracker.reset(Math.max(50, Math.min(200, Math.round(wpm))));
         },
 
         /**
@@ -1078,17 +1099,13 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
                 return fallback;
             }
 
-            // Focus on the most recent words (ASR interim results grow over time)
-            const recent = spokenWords.slice(-6);
+            // Focus on the most recent words
+            const recent = spokenWords.slice(-5);
             const match = findFromCurrent(recent, scriptWords);
 
             if (match && match.confidence >= confidenceThreshold) {
                 return applyMatch(match);
             }
-
-            // Lost-tracking recovery: re-anchor on a strong phrase far ahead
-            const recovery = attemptRecovery(recent, scriptWords);
-            if (recovery) return applyMatch(recovery);
 
             lastResult = fallback;
             return fallback;
@@ -1097,9 +1114,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
         /**
          * Multi-hypothesis matching: score EVERY ASR alternative against the
          * script and accept whichever fits best. Chrome frequently ranks the
-         * correct transcription of accented speech 2nd or 3rd, so this
-         * recovers matches the primary hypothesis loses. Rank acts as a
-         * small prior so lower alternatives must fit clearly better to win.
+         * correct transcription of accented speech 2nd or 3rd.
          */
         processAlternatives(
             hypotheses: TranscriptHypothesis[],
@@ -1115,7 +1130,7 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
             let best: PhraseMatchResult | null = null;
 
             for (const hyp of hypotheses) {
-                const recent = hyp.words.slice(-6);
+                const recent = hyp.words.slice(-5);
                 const match = findFromCurrent(recent, scriptWords);
                 if (!match || match.confidence < confidenceThreshold) continue;
 
@@ -1124,9 +1139,6 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
                 const asrBoost = hyp.asrConfidence !== undefined ? hyp.asrConfidence * 0.05 : 0;
                 const score = Math.min(1, match.confidence + rankPrior + asrBoost);
 
-                // Prefer clearly higher scores; break ties by words matched so
-                // longer, stronger phrase alignments beat single-word hits of
-                // equal (capped) confidence.
                 const isBetter =
                     !best ||
                     score > best.confidence + 1e-9 ||
@@ -1139,10 +1151,6 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
             }
 
             if (best) return applyMatch(best);
-
-            // Lost-tracking recovery using the primary hypothesis
-            const recovery = attemptRecovery(hypotheses[0].words.slice(-6), scriptWords);
-            if (recovery) return applyMatch(recovery);
 
             lastResult = fallback;
             return fallback;

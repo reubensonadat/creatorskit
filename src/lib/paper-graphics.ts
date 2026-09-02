@@ -358,6 +358,43 @@ export function parseAnchorPhrases(anchorInput: string, maxLen = 23): string[] {
         .filter(Boolean);
 }
 
+const DATELINE_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DATELINE_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * Rewrites the printed calendar date inside a paper dateline to TODAY's date
+ * on the viewing device (phone/tablet), preserving the original flavor —
+ * weekday prefix ("TUESDAY,"), trailing year and letter case. Datelines
+ * without a recognizable calendar date are returned untouched, so custom
+ * copy like "SPECIAL EDITION" survives.
+ */
+export function applyTodayDateline(dateString: string): string {
+    if (!dateString) return dateString;
+
+    const now = new Date();
+    const month = DATELINE_MONTHS[now.getMonth()];
+    const weekday = DATELINE_WEEKDAYS[now.getDay()];
+    const dayNum = now.getDate();
+    const yearNum = now.getFullYear();
+
+    // Matches "TUESDAY, MARCH 3", "March 14, 2026", "MAY 21, 2026", "January 14, 2026"…
+    const match = dateString.match(
+        /\b(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day[,\s]+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\b[,\s]*\d{1,2}(?:\s*,\s*\d{4})?/i
+    );
+    if (!match) return dateString;
+
+    const matched = match[0];
+    const isUpper = matched === matched.toUpperCase();
+
+    let datePart = `${month} ${dayNum}`;
+    if (/\d{4}/.test(matched)) datePart += `, ${yearNum}`;
+
+    const hasWeekday = /^[a-z]+day\b/i.test(matched);
+    const replacement = hasWeekday ? `${weekday}, ${datePart}` : datePart;
+
+    return dateString.replace(matched, isUpper ? replacement.toUpperCase() : replacement);
+}
+
 export interface AnchorWord {
     word: string;
     isAnchor: boolean;

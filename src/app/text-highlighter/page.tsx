@@ -492,7 +492,6 @@ export default function TextHighlighterPage() {
         maxWidth: 1380,
         margin: '0 auto',
         boxSizing: 'border-box',
-        overflow: 'hidden',
         width: '100%',
       }}
     >

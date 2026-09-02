@@ -515,7 +515,7 @@ export default function TextMatchCutStudioPage() {
   };
 
   return (
-    <div className="tool-page-padding" style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto', boxSizing: 'border-box', overflow: 'hidden', width: '100%' }}>
+    <div className="tool-page-padding" style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto', boxSizing: 'border-box', width: '100%' }}>
       {/* Top Title Section */}
       <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
