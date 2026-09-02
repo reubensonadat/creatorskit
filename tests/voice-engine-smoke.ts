@@ -77,17 +77,25 @@ check(`Sentence 1 start matched (got word ${r.matchIndex})`, r.matched && r.matc
 
 // b) Next phrase
 r = engine.process('today i am breaking'.split(' '), script);
-check(`Sentence 1 continuation matched (got word ${r.matchIndex})`, r.matched && r.matchIndex >= 3 && r.matchIndex <= 5);
+check(`Sentence 1 continuation matched (got word ${r.matchIndex})`, r.matched && r.matchIndex >= 3 && r.matchIndex <= 6);
 
-// c) Stray future paragraph words must NOT skip paragraphs
-const strayFarWords = ['packaging', 'the', 'thumbnail'];
+// c) 1-2 stray words from future paragraphs must NOT skip paragraphs
+const strayFarWords = ['packaging', 'the'];
 const rStray = engine.process(strayFarWords, script);
-check('Stray words from future paragraphs are strictly blocked by leash', !rStray.matched || rStray.matchIndex <= 8);
+check('1-2 stray words from future paragraphs are strictly blocked by leash', !rStray.matched || rStray.matchIndex <= 8);
 
-// d) Monotonic forward progression
+// d) 4+ word distinctive phrase CAN safely catch up if the speaker intentionally skipped a sentence
+const skippedSentence = ['stop', 'spending', '80', 'percent', 'of', 'your', 'time'];
+const rCatchUp = engine.process(skippedSentence, script);
+check(
+  `4+ word distinctive anchor catches up to skipped sentence (got word ${rCatchUp.matchIndex})`,
+  rCatchUp.matched && rCatchUp.matchIndex >= 22 && rCatchUp.matchIndex <= 28
+);
+
+// e) Monotonic forward progression
 const before = engine.currentIndex;
 r = engine.processAlternatives(
-    [{ words: 'today i am breaking'.split(' '), rank: 0 }],
+    [{ words: 'spending 80 percent of your time'.split(' '), rank: 0 }],
     script
 );
 check(

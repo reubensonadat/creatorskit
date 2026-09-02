@@ -948,8 +948,10 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          // Never teleport: advance target by at most 3 words per speech event
-          const cappedTarget = Math.min(targetWordFloatRef.current + 3, phraseMatch.matchIndex);
+          // 4+ words = verified distinctive anchor (safe to catch up if speaker jumped ahead)
+          // < 4 words = localized reading (strictly leashed to max +3 words)
+          const maxAdvance = phraseMatch.matchedWords >= 4 ? 25 : 3;
+          const cappedTarget = Math.min(targetWordFloatRef.current + maxAdvance, phraseMatch.matchIndex);
           targetWordFloatRef.current = Math.max(targetWordFloatRef.current, cappedTarget);
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
@@ -1030,17 +1032,16 @@ Control your speed, adjust your font size, and download your voice recording in 
           // quiet for ~700ms (only enforced while the live audio meter runs).
           const micQuiet =
             audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
-          // Strict physical velocity ceiling: maximum ~140 px/s so it is physically
-          // impossible for text to sprint or skip ahead of your eye level.
-          const maxStep = (140 * Math.min(delta, 50)) / 1000;
+          // Glided speed ceiling: max ~180 px/s ensures readable eye tracking even on catch-up.
+          const maxStep = (180 * Math.min(delta, 50)) / 1000;
 
-          // 1. Continuous word-clock follower.
+          // 1. Dual-Track follower: Audio cruise + Anchor catch-up
           if (!micQuiet && isSpeakingCadenceActiveRef.current) {
             const cruise = learnedWpmRef.current / 60; // words/sec at natural pace
             const gap = targetWordFloatRef.current - virtualWordFloatRef.current;
             if (gap > 0) {
-              // Smooth, steady convergence (capped at 1.15x cruise)
-              const catchUp = Math.min(gap * 1.2, cruise * 1.15);
+              // Smooth, glided catch-up (accelerates gently without snapping)
+              const catchUp = Math.min(gap * 1.5, cruise * 1.3);
               const advance = Math.min((cruise + catchUp) * (delta / 1000), gap);
               virtualWordFloatRef.current += advance;
             }

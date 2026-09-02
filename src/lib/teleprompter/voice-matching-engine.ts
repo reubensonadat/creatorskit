@@ -750,17 +750,20 @@ export function findBestPhraseMatch(
     let bestMatch: PhraseMatchResult | null = null;
     const start = Math.max(0, Math.min(startIndex, scriptWords.length - 1));
 
-    // Try phrase lengths from longest (most signal) to shortest
-    for (let phraseLen = Math.min(spoken.length, 4); phraseLen >= 1; phraseLen--) {
-        // Strict Leash by phrase length:
-        // 1-word matches can ONLY look at the immediate 1-2 words ahead (offset <= 1).
-        // 2-word matches can look up to 3 words ahead.
-        // 3+ word matches can look up to 5 words ahead.
+    // Try phrase lengths from longest (4+ words = highest signal) to shortest
+    for (let phraseLen = Math.min(spoken.length, 5); phraseLen >= 1; phraseLen--) {
+        // Multi-Tiered Lookahead by Signal Strength:
+        // 1-word: Locked strictly to immediate adjacent word (offset <= 1). Zero jump risk.
+        // 2-word: Locked to immediate 3 words (offset <= 3).
+        // 3-word: Locked to 6 words (offset <= 6).
+        // 4+ words (Distinctive Anchor): Can search up to 25 words ahead (safe because 4 words have ~0 false-collision probability).
         const effectiveLookahead = phraseLen === 1
             ? Math.min(maxLookahead, 1)
             : phraseLen === 2
                 ? Math.min(maxLookahead, 3)
-                : Math.min(maxLookahead, 5);
+                : phraseLen === 3
+                    ? Math.min(maxLookahead, 6)
+                    : Math.min(maxLookahead, 25);
 
         // Align the END of the spoken n-gram with the script window
         const spokenSlice = spoken.slice(spoken.length - phraseLen);
@@ -777,16 +780,19 @@ export function findBestPhraseMatch(
             let weightedConfSum = 0;
             let weightSum = 0;
             let matchCount = 0;
+            let contentWordsMatched = 0;
 
             for (let i = 0; i < phraseLen; i++) {
                 const scriptWord = cleanWordForMatch(scriptWords[scriptStartIdx + i]);
                 const spokenWord = spokenSlice[i];
-                const weight = wordWeight(scriptWord || spokenWord);
+                const isStop = STOP_WORDS.has(scriptWord || spokenWord);
+                const weight = isStop ? 0.35 : 1.0;
                 weightSum += weight;
 
                 const result = isFuzzyMatch(scriptWord, spokenWord);
                 if (result.match) {
                     matchCount++;
+                    if (!isStop) contentWordsMatched++;
                     weightedConfSum += result.confidence * weight;
                 }
             }
@@ -794,12 +800,16 @@ export function findBestPhraseMatch(
             if (matchCount === 0) continue;
 
             const avgConfidence = weightSum > 0 ? weightedConfSum / weightSum : 0;
-            // Require at least half the words to match for multi-word phrases
-            if (phraseLen > 1 && matchCount < Math.ceil(phraseLen / 2)) continue;
-            // For 1-word matches, require a high confidence threshold (>= 0.88)
+            // 1-word match: require strong single-word confidence (>= 0.88)
             if (phraseLen === 1 && avgConfidence < 0.88) continue;
+            // 2-word match: require both or high avg
+            if (phraseLen === 2 && matchCount < 2 && avgConfidence < 0.90) continue;
+            // 3-word match: require at least 2 words
+            if (phraseLen === 3 && matchCount < 2) continue;
+            // 4+ word anchor: require at least 3 matched words with at least 1 content word
+            if (phraseLen >= 4 && (matchCount < 3 || contentWordsMatched < 1 || avgConfidence < 0.82)) continue;
 
-            // Proximity bonus: closer to current position = more likely correct
+            // Proximity bonus: closer to current position = higher score
             const proximityBonus = Math.max(0, 1 - offset / (effectiveLookahead + 1)) * 0.08;
             const lengthBonus = (phraseLen - 1) * 0.05; // longer matches are stronger
             const finalConfidence = Math.min(1, avgConfidence + proximityBonus + lengthBonus);
@@ -819,8 +829,8 @@ export function findBestPhraseMatch(
 }
 
 /**
- * Context-aware matching: locks search strictly to the immediate forward
- * words (tight leash), preventing skips across sentences or paragraphs.
+ * Context-aware matching: supports tight local leash for normal speech,
+ * plus 4+ word distinctive anchor scanning if the speaker jumped ahead.
  */
 export function findContextAwareMatch(
     spokenPhrase: string[],
@@ -834,32 +844,27 @@ export function findContextAwareMatch(
     } = {}
 ): PhraseMatchResult | null {
     const {
-        baseLookahead = 4,
-        maxLookahead = 6,
+        baseLookahead = 6,
+        maxLookahead = 25,
         allowBacktracking = true,
         recentDelta = 0,
     } = options;
 
     if (spokenPhrase.length === 0 || scriptWords.length === 0) return null;
 
-    // Hard leash: lookahead is strictly capped between baseLookahead and maxLookahead (4..6 words)
-    const speedFactor = Math.min(1, Math.max(0, recentDelta / 6));
-    const lookahead = Math.round(baseLookahead + (maxLookahead - baseLookahead) * speedFactor);
-
-    // Backward search: user re-read a sentence (within immediate 4 words)
+    // Backward search: user re-read a sentence (within immediate 6 words)
     if (allowBacktracking) {
-        const backWindow = Math.min(4, currentIndex);
+        const backWindow = Math.min(6, currentIndex);
         const backStart = Math.max(0, currentIndex - backWindow);
         if (backStart < currentIndex) {
             const backMatch = findBestPhraseMatch(spokenPhrase, scriptWords, backStart, backWindow - 1);
-            // Only accept a backward match if it is clearly strong and multi-word
             if (backMatch && backMatch.confidence >= 0.88 && backMatch.matchedWords >= 2) {
                 return backMatch;
             }
         }
     }
 
-    return findBestPhraseMatch(spokenPhrase, scriptWords, currentIndex, lookahead);
+    return findBestPhraseMatch(spokenPhrase, scriptWords, currentIndex, maxLookahead);
 }
 
 // ============================================================
@@ -972,8 +977,8 @@ export type WPMTracker = ReturnType<typeof createWPMTracker>;
 export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
     const {
         confidenceThreshold = 0.55,
-        baseLookahead = 4,
-        maxLookahead = 6,
+        baseLookahead = 6,
+        maxLookahead = 25,
         allowBacktracking = true,
         initialWpm = 135,
         minWpm = 40,
@@ -1012,13 +1017,18 @@ export function createVoiceMatchEngine(options: VoiceMatchEngineOptions = {}) {
         const now = Date.now();
         const elapsedSec = lastProgressTimestamp === 0 ? 1.0 : (now - lastProgressTimestamp) / 1000;
 
-        // Strict Hard Leash:
-        // A single-word match can only advance by at most 1 word.
-        // A 2+ word match can advance by at most 3 words.
-        // It is physically impossible to leap across sentences or paragraphs.
+        // Strict Advance Rules:
+        // 1-word: Can only advance by at most +1 word.
+        // 2-word: Can advance by up to +2 words.
+        // 3-word: Can advance by up to +4 words.
+        // 4+ words (Distinctive Anchor): Can safely advance up to +25 words to catch up if speaker jumped ahead.
         const maxForwardAdvance = match.matchedWords <= 1
             ? 1
-            : Math.min(3, Math.max(1, Math.round(elapsedSec * (maxWpm / 60)) + 1));
+            : match.matchedWords === 2
+                ? 2
+                : match.matchedWords === 3
+                    ? 4
+                    : 25;
 
         const nextIndex = Math.min(
             Math.max(match.matchIndex, currentIndex),
