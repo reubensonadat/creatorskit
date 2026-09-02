@@ -146,6 +146,31 @@ export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[]
 
 export const PRESET_TOPICS: PresetTopic[] = [
   {
+    id: 'academic-research',
+    name: 'Research Paper',
+    anchor: 'racism and class-based oppression are | children through various cultural media, including toys and games',
+    category: 'Academic Journal',
+    highlightColor: '#ff6b81', // Authentic Journal Coral Highlighter
+    highlightStyle: 'marker',
+    paperTheme: 'academic' as any,
+    cuts: [
+      {
+        id: 'academic-1',
+        masthead: '© Springer Science+Business Media, LLC 2012',
+        subhead: 'Keywords  Toys • Racism • Racialization • Victorian America',
+        headline: 'Abstract The reproduction of racism and class-based oppression are taught to children through various cultural media, including toys and games. Between 1880 and 1930, the popularity of racialized toys and banks were fear-based responses to the perceived encroachment by "foreign and exotic" migrations of African American, Chinese, Irish and Native Americans into the cultural landscape of white middle-class America. This article analyzes how artifacts associated with children are part of a larger cultural structure that viewed race and class as inseparable.',
+        byline: 'Published online: 21 February 2012',
+        location: 'CAMBRIDGE',
+        bodyParagraphs: [
+          'The analysis examines historical artifacts and children literature across the late Victorian era, tracing how racial and social hierarchies were transmitted through commercial toy manufacturing and everyday play.',
+        ],
+        dateString: '21 February 2012',
+        columnCount: 1,
+        rotationOffset: 0,
+      },
+    ],
+  },
+  {
     id: 'ai-code-bugs',
     name: 'Tech Security',
     anchor: 'AI-generated code contains more bugs and errors than human output',

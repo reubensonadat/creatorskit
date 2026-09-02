@@ -46,7 +46,8 @@ const ASPECT_RATIOS = [
 ];
 
 const HIGHLIGHT_COLORS = [
-  { name: 'Cyber Yellow', hex: '#FFE500' },
+  { name: 'Chisel Yellow', hex: '#FFE500' },
+  { name: 'Coral Pink', hex: '#ff6b81' },
   { name: 'Neon Green', hex: '#00FF66' },
   { name: 'Electric Cyan', hex: '#00F0FF' },
   { name: 'Hot Pink', hex: '#FF2A85' },
@@ -92,7 +93,7 @@ export default function TextHighlighterPage() {
   const [highlightColor, setHighlightColor] = useState('#FFE500');
   const [highlightStyle, setHighlightStyle] = useState<'marker' | 'underline' | 'double-underline' | 'box' | 'circle' | 'tape'>('marker');
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
-  const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('noir');
+  const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir' | 'academic'>('academic');
   const [depthOfField, setDepthOfField] = useState(true); // Circular lens blur
   const [dofIntensity, setDofIntensity] = useState(0.75); // Blur strength
   const [filmGrain, setFilmGrain] = useState(true);
@@ -1150,6 +1151,9 @@ export default function TextHighlighterPage() {
                 {isGenerating ? 'GENERATING...' : 'GENERATE'}
               </button>
             </div>
+            <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginTop: -2 }}>
+              💡 <b>Sequential Highlight:</b> Separate multiple phrases with <code style={{ background: '#eee', padding: '1px 4px', borderRadius: 2 }}>|</code> to sweep each phrase one after another with an animated pause!
+            </span>
 
             {/* Presets */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>

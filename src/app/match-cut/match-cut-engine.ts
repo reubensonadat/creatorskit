@@ -22,7 +22,7 @@ export interface RenderOptions {
   highlightColor: string;
   highlightStyle: 'marker' | 'underline' | 'box' | 'circle' | 'tape' | 'double-underline';
   markerOpacity: number;
-  paperTheme: 'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir';
+  paperTheme: 'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir' | 'academic';
   depthOfField: boolean;
   dofIntensity: number; // 0 to 1
   filmGrain: boolean;
@@ -135,6 +135,18 @@ export const PAPER_THEMES = {
     ruleColor: '#4f4a42',
     accentColor: '#e05a47',
     paperNoiseAlpha: 22,
+  },
+  academic: {
+    id: 'academic',
+    label: 'Academic Journal',
+    bg: '#ffffff',
+    bgDark: '#f3f4f6',
+    ink: '#111827',
+    inkMuted: '#4b5563',
+    inkFaint: '#9ca3af',
+    ruleColor: '#e5e7eb',
+    accentColor: '#e11d48',
+    paperNoiseAlpha: 5,
   },
 };
 
@@ -561,44 +573,68 @@ export function renderNewspaperMatchCut(
   ctx.font = headlineFont;
   ctx.textBaseline = 'top';
 
-  // 1. Gather all headline anchor chunks across lines
-  const hlChunks: { lineIdx: number; x: number; y: number; w: number }[] = [];
+  // 1. Gather all headline anchor chunks across lines and phrases
+  const hlChunks: { phraseIndex: number; lineIdx: number; x: number; y: number; w: number }[] = [];
   headlineLines.forEach((line, lineIdx) => {
     const lineY = docHeadlineY + lineIdx * headlineLineHeight;
     const lineStartX = pageLeftX + (pageWidth - line.w) / 2;
     let groupStartX = -1;
     let groupEndX = -1;
+    let curPhraseIdx = 0;
 
     for (let i = 0; i < line.words.length; i++) {
       const w = line.words[i];
       const wx = lineStartX + w.x;
       if (w.isAnchor) {
-        if (groupStartX === -1) groupStartX = wx;
+        if (groupStartX === -1) {
+          groupStartX = wx;
+          curPhraseIdx = w.phraseIndex ?? 0;
+        } else if (w.phraseIndex !== curPhraseIdx) {
+          hlChunks.push({ phraseIndex: curPhraseIdx, lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
+          groupStartX = wx;
+          curPhraseIdx = w.phraseIndex ?? 0;
+        }
         groupEndX = wx + w.w;
       } else {
         if (groupStartX !== -1) {
-          hlChunks.push({ lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
+          hlChunks.push({ phraseIndex: curPhraseIdx, lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
           groupStartX = -1;
           groupEndX = -1;
         }
       }
     }
     if (groupStartX !== -1) {
-      hlChunks.push({ lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
+      hlChunks.push({ phraseIndex: curPhraseIdx, lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
     }
   });
 
-  const totalHlChunks = hlChunks.length;
+  const numPhrases = hlChunks.length > 0 ? Math.max(...hlChunks.map((c) => c.phraseIndex)) + 1 : 1;
   const isAnimated = options.animationMode === 'animated-highlight';
   const progress = isAnimated ? Math.min(1, Math.max(0, options.highlightProgress ?? 1)) : 1;
 
-  // Draw highlights sequentially across lines
-  hlChunks.forEach((chunk, chunkIdx) => {
-    const startP = totalHlChunks > 1 ? chunkIdx / totalHlChunks : 0;
-    const endP = totalHlChunks > 1 ? (chunkIdx + 1) / totalHlChunks : 1;
-    const chunkProg = totalHlChunks > 1
-      ? Math.min(1, Math.max(0, (progress - startP) / (endP - startP)))
-      : progress;
+  // Draw highlights sequentially with 1-second pause between distinct phrases
+  hlChunks.forEach((chunk) => {
+    const pIdx = chunk.phraseIndex;
+    const phraseWindowStart = pIdx / numPhrases;
+    const phraseSweepEnd = (pIdx + (numPhrases > 1 ? 0.78 : 1.0)) / numPhrases;
+
+    let phraseProg = 0;
+    if (progress >= phraseSweepEnd) {
+      phraseProg = 1;
+    } else if (progress > phraseWindowStart) {
+      phraseProg = (progress - phraseWindowStart) / (phraseSweepEnd - phraseWindowStart);
+    }
+
+    // Distribute progress across multiple lines within this phrase
+    const phraseChunks = hlChunks.filter((c) => c.phraseIndex === pIdx);
+    const chunkIdxInPhrase = phraseChunks.indexOf(chunk);
+    const totalInPhrase = phraseChunks.length;
+
+    const startP = totalInPhrase > 1 ? chunkIdxInPhrase / totalInPhrase : 0;
+    const endP = totalInPhrase > 1 ? (chunkIdxInPhrase + 1) / totalInPhrase : 1;
+    const chunkProg = totalInPhrase > 1
+      ? Math.min(1, Math.max(0, (phraseProg - startP) / (endP - startP)))
+      : phraseProg;
 
     const chunkOptions: RenderOptions = {
       ...options,
@@ -615,13 +651,19 @@ export function renderNewspaperMatchCut(
     );
   });
 
-  // 2. Draw Headline Text Words
+  // 2. Draw Headline Text Words (rendering "Abstract" in bold if academic)
   headlineLines.forEach((line, lineIdx) => {
     const lineY = docHeadlineY + lineIdx * headlineLineHeight;
     const lineStartX = pageLeftX + (pageWidth - line.w) / 2;
 
     line.words.forEach((w) => {
       const wx = lineStartX + w.x;
+      if (w.word === 'Abstract' && options.paperTheme === 'academic') {
+        ctx.font = `900 ${headlineFontSize}px ${chosenFont}`;
+      } else {
+        ctx.font = headlineFont;
+      }
+
       if (w.isAnchor && options.highlightStyle === 'box') {
         ctx.fillStyle = '#ffffff';
       } else {
@@ -1009,24 +1051,38 @@ function drawAnchorHighlight(
 }
 
 /**
- * Wraps headline or paragraph text and computes exact anchor word positions
+ * Wraps headline or paragraph text and computes exact anchor word positions across multiple phrases
  */
 function wrapHeadlineWithAnchor(
   ctx: CanvasRenderingContext2D,
   text: string,
-  anchor: string,
+  anchorInput: string | string[],
   maxWidth: number
 ) {
   const cleanText = text.trim();
   if (!cleanText) return [];
 
-  const cleanAnchor = anchor.trim().toLowerCase();
+  const phraseList = Array.isArray(anchorInput)
+    ? anchorInput
+    : anchorInput.split(/[|\n]+/).map((p) => p.trim()).filter(Boolean);
+
+  const cleanPhrases = phraseList.map((p) => p.toLowerCase());
   const rawWords = cleanText.split(/\s+/).filter(Boolean);
-
   const textLower = cleanText.toLowerCase();
-  const anchorIdx = cleanAnchor ? textLower.indexOf(cleanAnchor) : -1;
 
-  const wordObjects: { word: string; isAnchor: boolean }[] = [];
+  // Find occurrences of each phrase
+  const phraseSpans: { start: number; end: number; phraseIndex: number }[] = [];
+  cleanPhrases.forEach((phrase, pIdx) => {
+    let searchPos = 0;
+    while (searchPos < textLower.length && phrase.length > 0) {
+      const idx = textLower.indexOf(phrase, searchPos);
+      if (idx === -1) break;
+      phraseSpans.push({ start: idx, end: idx + phrase.length, phraseIndex: pIdx });
+      searchPos = idx + phrase.length;
+    }
+  });
+
+  const wordObjects: { word: string; isAnchor: boolean; phraseIndex: number }[] = [];
   let searchFrom = 0;
 
   for (let i = 0; i < rawWords.length; i++) {
@@ -1037,22 +1093,25 @@ function wrapHeadlineWithAnchor(
     searchFrom = wEnd;
 
     let isAnchor = false;
-    if (anchorIdx !== -1 && wStart >= 0) {
-      const anchorEnd = anchorIdx + cleanAnchor.length;
-      if (wEnd > anchorIdx && wStart < anchorEnd) {
+    let phraseIndex = 0;
+
+    for (const span of phraseSpans) {
+      if (wStart >= 0 && wEnd > span.start && wStart < span.end) {
         isAnchor = true;
+        phraseIndex = span.phraseIndex;
+        break;
       }
     }
-    wordObjects.push({ word: w, isAnchor });
+    wordObjects.push({ word: w, isAnchor, phraseIndex });
   }
 
   const lines: {
     text: string;
-    words: { word: string; isAnchor: boolean; x: number; w: number }[];
+    words: { word: string; isAnchor: boolean; phraseIndex: number; x: number; w: number }[];
     w: number;
   }[] = [];
 
-  let currentLineWords: { word: string; isAnchor: boolean; w: number }[] = [];
+  let currentLineWords: { word: string; isAnchor: boolean; phraseIndex: number; w: number }[] = [];
   let currentLineWidth = 0;
   const spaceW = ctx.measureText(' ').width;
 
@@ -1063,10 +1122,10 @@ function wrapHeadlineWithAnchor(
 
     if (testW > maxWidth && currentLineWords.length > 0) {
       lines.push(buildLineObj(currentLineWords, spaceW));
-      currentLineWords = [{ word: wObj.word, isAnchor: wObj.isAnchor, w: wW }];
+      currentLineWords = [{ word: wObj.word, isAnchor: wObj.isAnchor, phraseIndex: wObj.phraseIndex, w: wW }];
       currentLineWidth = wW;
     } else {
-      currentLineWords.push({ word: wObj.word, isAnchor: wObj.isAnchor, w: wW });
+      currentLineWords.push({ word: wObj.word, isAnchor: wObj.isAnchor, phraseIndex: wObj.phraseIndex, w: wW });
       currentLineWidth = testW;
     }
   }
@@ -1079,12 +1138,12 @@ function wrapHeadlineWithAnchor(
 }
 
 function buildLineObj(
-  words: { word: string; isAnchor: boolean; w: number }[],
+  words: { word: string; isAnchor: boolean; phraseIndex?: number; w: number }[],
   spaceW: number
 ) {
   let curX = 0;
   const positionedWords = words.map((w) => {
-    const item = { word: w.word, isAnchor: w.isAnchor, x: curX, w: w.w };
+    const item = { word: w.word, isAnchor: w.isAnchor, phraseIndex: w.phraseIndex ?? 0, x: curX, w: w.w };
     curX += w.w + spaceW;
     return item;
   });
