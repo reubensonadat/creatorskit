@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
+
 export function extractYouTubeVideoId(url: string): { videoId: string | null; isShort: boolean } {
   if (!url) return { videoId: null, isShort: false };
 
