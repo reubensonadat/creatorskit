@@ -25,14 +25,22 @@ import {
   Disc,
 } from 'lucide-react';
 import {
-  RenderOptions,
+  HighlighterRenderOptions,
   PAPER_THEMES,
-  renderNewspaperMatchCut,
+  renderHighlighterStory,
   synthesizeCutSound,
+  easeHighlightSweep,
   playCutSound,
   NewspaperCut,
-} from '../match-cut/match-cut-engine';
-import { PRESET_TOPICS, generateCutsForPhrase, BODY_CORPUS, MASTHEADS, SUBHEADS, LOCATIONS, BYLINES } from '../match-cut/presets';
+} from './highlighter-engine';
+import {
+  exportCanvasVideoToMp4,
+  renderOfflineAudio,
+  downloadBlob,
+} from '@/lib/canvas-video-exporter';
+// Dedicated highlighter presets — intentionally separate from the match-cut
+// presets module (journal sweep vs. rapid whip-cut montage).
+import { PRESET_TOPICS, generateCutsForPhrase, BODY_CORPUS, MASTHEADS, SUBHEADS, LOCATIONS, BYLINES } from './highlighter-presets';
 import { SimpleGifEncoder } from '../match-cut/gif-encoder';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 
@@ -85,8 +93,8 @@ export default function TextHighlighterPage() {
   const [highlightDuration, setHighlightDuration] = useState(2.0); // 2.0s smooth animation
   const [highlightDirection, setHighlightDirection] = useState<'ltr' | 'rtl'>('ltr');
   const [highlightProgress, setHighlightProgress] = useState(1.0); // 0 to 1
-  const [soundEffect, setSoundEffect] = useState<'shutter' | 'typewriter' | 'motor' | 'paper' | 'mute'>('paper');
-  const [soundVolume, setSoundVolume] = useState(0.4);
+  const [soundEffect, setSoundEffect] = useState<'highlighter-1' | 'highlighter-2' | 'paper' | 'shutter' | 'typewriter' | 'motor' | 'mute'>('highlighter-1');
+  const [soundVolume, setSoundVolume] = useState(0.5);
 
   // Visual & Style Options
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('16:9');
@@ -191,7 +199,7 @@ export default function TextHighlighterPage() {
     handleReplay();
   };
 
-  const renderOptions: RenderOptions = {
+  const renderOptions: HighlighterRenderOptions = {
     anchorPhrase,
     highlightColor,
     highlightStyle,
@@ -231,7 +239,7 @@ export default function TextHighlighterPage() {
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
-    renderNewspaperMatchCut(ctx, canvas.width, canvas.height, cut, renderOptions, currentCutIndex);
+    renderHighlighterStory(ctx, canvas.width, canvas.height, cut, renderOptions, currentCutIndex);
   }, [cuts, currentCutIndex, renderOptions]);
 
   // Live Smooth Animation Loop
@@ -248,7 +256,7 @@ export default function TextHighlighterPage() {
         const elapsed = (timestamp - animStartTimeRef.current) % totalCycleMs;
 
         if (elapsed <= drawDurationMs) {
-          const p = elapsed / drawDurationMs;
+          const p = easeHighlightSweep(elapsed / drawDurationMs);
           setHighlightProgress(p);
         } else {
           setHighlightProgress(1.0);
@@ -275,11 +283,25 @@ export default function TextHighlighterPage() {
     setHighlightColor(p.highlightColor);
     setHighlightStyle(p.highlightStyle);
     setPaperTheme(p.paperTheme);
-    setCuts(p.cuts);
+
+    const freshCuts = p.cuts.length > 0 ? JSON.parse(JSON.stringify(p.cuts)) : generateCutsForPhrase(p.anchor, 6);
+    setCuts(freshCuts);
     setCurrentCutIndex(0);
+
+    const firstCut = freshCuts[0];
+    if (firstCut) {
+      setCustomHeadline(firstCut.headline || '');
+      setCustomMasthead(firstCut.masthead || 'CREATOR KIT');
+      setCustomSubhead(firstCut.subhead || '');
+      setCustomByline(firstCut.byline || '');
+      setCustomBodyText((firstCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
+    }
+
+    const presetPhrases = p.anchor.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
     setIsPlaying(true);
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, presetPhrases);
   };
 
   // Generate Custom Phrase Cuts
@@ -293,7 +315,8 @@ export default function TextHighlighterPage() {
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
     setIsPlaying(true);
-    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume);
+    const phrasesCount = phrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, phrasesCount);
     setTimeout(() => setIsGenerating(false), 250);
   };
 
@@ -302,7 +325,8 @@ export default function TextHighlighterPage() {
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
     setIsPlaying(true);
-    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume);
+    const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, phrasesCount);
   };
 
   // Single Frame PNG Copy
@@ -331,178 +355,82 @@ export default function TextHighlighterPage() {
     link.click();
   };
 
-  // Export 1080p Video MP4/WebM of the Animated Highlighter
+  // Export High-Definition Video via deterministic WebCodecs encoding.
+  // Renders each frame exactly once with explicit timestamps — constant frame
+  // rate, zero dropped frames, High-profile H.264 + offline-rendered AAC audio.
   const handleExportVideo = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     setIsExporting(true);
     setIsPlaying(false);
-    setExportProgress('Initializing video encoder...');
-
-    let exportCanvas: HTMLCanvasElement | null = null;
-    let audioContext: AudioContext | null = null;
+    setExportProgress('Preparing HD encoder...');
 
     try {
-      exportCanvas = document.createElement('canvas');
-      exportCanvas.width = selectedAspect.width;
-      exportCanvas.height = selectedAspect.height;
-      exportCanvas.style.position = 'fixed';
-      exportCanvas.style.left = '-9999px';
-      exportCanvas.style.top = '-9999px';
-      exportCanvas.style.width = '200px';
-      exportCanvas.style.height = '200px';
-      exportCanvas.style.opacity = '0';
-      exportCanvas.style.pointerEvents = 'none';
-      exportCanvas.style.zIndex = '-9999';
-      document.body.appendChild(exportCanvas);
+      // 60fps constant frame rate — buttery sweep, matching the live preview.
+      const fps = 60;
+      const sweepFrames = Math.max(20, Math.round(highlightDuration * fps));
+      const totalFrames = Math.max(40, Math.round((highlightDuration + 1.0) * fps));
+      const currentCut = cuts[currentCutIndex] || cuts[0];
+      const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
 
-      const ctx = exportCanvas.getContext('2d', { alpha: false })!;
-
-      const mimeCandidates = [
-        { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4' },
-        { mime: 'video/mp4;codecs=avc1', ext: 'mp4' },
-        { mime: 'video/mp4', ext: 'mp4' },
-        { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
-        { mime: 'video/webm;codecs=vp9', ext: 'webm' },
-        { mime: 'video/webm', ext: 'webm' },
-      ];
-
-      let selectedMime = '';
-      let targetExt = 'webm';
-
-      if (typeof MediaRecorder !== 'undefined') {
-        for (const candidate of mimeCandidates) {
-          try {
-            if (MediaRecorder.isTypeSupported(candidate.mime)) {
-              selectedMime = candidate.mime;
-              targetExt = candidate.ext;
-              break;
-            }
-          } catch {}
-        }
-      }
-
-      const stream = (exportCanvas as any).captureStream
-        ? (exportCanvas as any).captureStream(30)
-        : (exportCanvas as any).mozCaptureStream(30);
-
-      const videoTrack = stream.getVideoTracks()[0];
-
-      let audioDest: MediaStreamAudioDestinationNode | null = null;
-      if (soundEffect !== 'mute' && typeof window !== 'undefined') {
-        try {
-          const AudioContextClass =
-            window.AudioContext ||
-            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-          if (AudioContextClass) {
-            audioContext = new AudioContextClass();
-            if (audioContext.state === 'suspended') {
-              await audioContext.resume();
-            }
-            audioDest = audioContext.createMediaStreamDestination();
-            const audioTrack = audioDest.stream.getAudioTracks()[0];
-            if (audioTrack) {
-              stream.addTrack(audioTrack);
-            }
-          }
-        } catch (audioErr) {
-          console.warn('Audio track setup bypassed:', audioErr);
-        }
-      }
-
-      let recorder: MediaRecorder;
-      const chunks: Blob[] = [];
-
+      // Make sure webfonts are ready before any frame renders.
       try {
-        recorder = new MediaRecorder(
-          stream,
-          selectedMime
-            ? { mimeType: selectedMime, videoBitsPerSecond: 12000000 }
-            : undefined
-        );
-      } catch {
-        recorder = new MediaRecorder(stream);
+        await document.fonts?.ready;
+      } catch { }
+
+      // Deterministic offline audio track (exact same timeline as the frames).
+      let audioBuffer: AudioBuffer | null = null;
+      if (soundEffect !== 'mute') {
+        setExportProgress('Rendering audio track...');
+        try {
+          audioBuffer = await renderOfflineAudio({
+            durationSec: totalFrames / fps,
+            schedule: (ctx, dest) => {
+              synthesizeCutSound(ctx, dest, soundEffect, soundVolume, 0, highlightDuration, phrasesCount);
+            },
+          });
+        } catch (audioErr) {
+          console.warn('Offline audio render bypassed:', audioErr);
+          audioBuffer = null;
+        }
       }
 
-      recorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
+      const result = await exportCanvasVideoToMp4({
+        width: selectedAspect.width,
+        height: selectedAspect.height,
+        fps,
+        totalFrames,
+        bitrate: 20_000_000,
+        audioBuffer,
+        onProgress: (p) => setExportProgress(`Encoding HD video: ${Math.round(p * 100)}%`),
+        renderFrame: (frameIndex, ctx) => {
+          const p = frameIndex < sweepFrames ? easeHighlightSweep(frameIndex / sweepFrames) : 1.0;
+          if (frameIndex % 10 === 0) setHighlightProgress(p);
 
-      const recordPromise = new Promise<Blob>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          if (chunks.length > 0) {
-            const finalMime = recorder.mimeType || selectedMime || 'video/webm';
-            resolve(new Blob(chunks, { type: finalMime }));
-          } else {
-            reject(new Error('Recording timed out without producing frames.'));
-          }
-        }, 20000);
+          const frameRenderOptions: HighlighterRenderOptions = {
+            ...renderOptions,
+            highlightProgress: p,
+          };
 
-        recorder.onstop = () => {
-          clearTimeout(timeoutId);
-          const finalMime = recorder.mimeType || selectedMime || 'video/webm';
-          resolve(new Blob(chunks, { type: finalMime }));
-        };
-
-        recorder.onerror = (err) => {
-          clearTimeout(timeoutId);
-          reject(err);
-        };
+          renderHighlighterStory(ctx, ctx.canvas.width, ctx.canvas.height, currentCut, frameRenderOptions, currentCutIndex);
+        },
       });
 
-      recorder.start(100);
-
-      const fps = 30;
-      const drawFrames = Math.max(15, Math.round(highlightDuration * fps));
-      const holdFrames = Math.round(0.8 * fps);
-      const totalFrames = drawFrames + holdFrames;
-
-      if (audioContext && audioDest && soundEffect !== 'mute') {
-        synthesizeCutSound(audioContext, audioDest, soundEffect, soundVolume);
-      }
-
-      for (let f = 0; f < totalFrames; f++) {
-        const p = f < drawFrames ? f / drawFrames : 1.0;
-        const currentCut = cuts[currentCutIndex] || cuts[0];
-        const frameRenderOptions: RenderOptions = {
-          ...renderOptions,
-          highlightProgress: p,
-        };
-
-        renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, currentCut, frameRenderOptions, 0);
-
-        if (typeof (videoTrack as any)?.requestFrame === 'function') {
-          try {
-            (videoTrack as any).requestFrame();
-          } catch {}
-        }
-        setExportProgress(`Recording animated highlight: ${Math.round(((f + 1) / totalFrames) * 100)}%`);
-        await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-      }
-
-      setExportProgress('Finalizing video file...');
-      recorder.stop();
-      const videoBlob = await recordPromise;
-
-      const url = URL.createObjectURL(videoBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.${targetExt}`;
-      a.click();
+      const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
+      downloadBlob(
+        result.blob,
+        `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.${ext}`
+      );
       setExportProgress(null);
     } catch (err) {
       console.error('Video Export failed:', err);
       setExportProgress('Export failed.');
       setTimeout(() => setExportProgress(null), 3000);
     } finally {
-      if (exportCanvas && exportCanvas.parentNode) {
-        exportCanvas.parentNode.removeChild(exportCanvas);
-      }
-      if (audioContext) {
-        try {
-          audioContext.close();
-        } catch {}
-      }
       setIsExporting(false);
       setIsPlaying(true);
+      animStartTimeRef.current = performance.now();
     }
   };
 
@@ -525,11 +453,11 @@ export default function TextHighlighterPage() {
       for (let i = 0; i < totalFrames; i++) {
         const p = i / (totalFrames - 1);
         setExportProgress(`Encoding GIF frame ${i + 1} of ${totalFrames}...`);
-        const frameRenderOptions: RenderOptions = {
+        const frameRenderOptions: HighlighterRenderOptions = {
           ...renderOptions,
           highlightProgress: p,
         };
-        renderNewspaperMatchCut(ctx, gifWidth, gifHeight, cuts[currentCutIndex] || cuts[0], frameRenderOptions, 0);
+        renderHighlighterStory(ctx, gifWidth, gifHeight, cuts[currentCutIndex] || cuts[0], frameRenderOptions, 0);
         gifEncoder.addFrame(ctx);
       }
 
@@ -639,7 +567,7 @@ export default function TextHighlighterPage() {
       >
         {/* Left Column: Canvas Viewport & Transport */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          
+
           {/* Main Stage Viewport Frame */}
           <div
             className="brutalist-card tool-canvas-frame"
@@ -893,10 +821,12 @@ export default function TextHighlighterPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  <option value="paper">Marker Friction (Paper)</option>
-                  <option value="shutter">Shutter Snap</option>
-                  <option value="typewriter">Typewriter Clack</option>
-                  <option value="mute">Muted</option>
+                  <option value="highlighter-1">🖍️ Authentic Highlighter (Fast)</option>
+                  <option value="highlighter-2">🖍️ Authentic Highlighter (Slow)</option>
+                  <option value="paper">📄 Paper Friction</option>
+                  <option value="typewriter">⌨️ Typewriter Clack</option>
+                  <option value="shutter">📸 Shutter Snap</option>
+                  <option value="mute">🔇 Muted</option>
                 </select>
               </div>
             </div>

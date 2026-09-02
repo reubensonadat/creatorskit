@@ -65,34 +65,66 @@ export const BODY_CORPUS = [
   `The suspect was later found at a nearby buffet. Police arrived three hours later. They had sandwiches. The corporation released a statement. A full refund was promised to some of the affected customers. City council voted 4-3 to table the matter indefinitely. He resigned "to spend more time with his spreadsheets." All parties described it as a misunderstanding. Funding has been allocated. Its current location is unknown. He was asked to return the trophy. He kept the trophy. The meeting was rescheduled four times and then cancelled. Nobody noticed until now. Insiders say the culture was "a lot," which means something specific. Someone say it was worse but like a new way everyday. The assistant has since resigned. Experts called the situation "not ideal" and left.`,
 ];
 
+export type AnchorPosition = 'auto' | 'start' | 'middle' | 'end';
+
 /**
- * Creates dynamic, richly formatted newspaper cuts for any arbitrary user phrase.
+ * Creates dynamic, richly formatted newspaper cuts for any arbitrary user
+ * phrase. `anchorPosition` controls WHERE the phrase sits inside the generated
+ * sentence — beginning, middle or end — so the camera-locked highlight lands
+ * exactly where the creator wants it in the line.
  */
-export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[] {
+export function generateCutsForPhrase(
+  phrase: string,
+  count = 8,
+  anchorPosition: AnchorPosition = 'auto'
+): NewspaperCut[] {
   const clean = phrase.trim() || 'Studio Space Planner';
 
-  const sentenceTemplates = [
+  const startTemplates = [
+    `{W} mentioned seventeen times in leaked memo, records show`,
+    `{W} is changing modern video workflows, new reports confirm`,
+    `{W} delivers 10x faster rendering speed, secret testing proves`,
+    `{W} replaced entire legacy hardware rigs overnight, engineers say`,
+    `{W} was developed in complete secrecy, studio records reveal`,
+    `{W} saved hundreds of production hours, internal audit finds`,
+    `{W} causes widespread industry shockwaves on unprecedented demand`,
+    `{W} turned top creators into an unstoppable cultural phenomenon`,
+  ];
+
+  const middleTemplates = [
     `Leaked memo mentions {W} seventeen times`,
-    `"Just {W}," said the man outside`,
-    `The contractor billed for work that is {W} not visible to anyone`,
-    `Why everyone in the studio suddenly fell silent over {W}`,
+    `Why everyone in the studio fell silent over {W}`,
     `New reports confirm that {W} is changing modern video workflows`,
-    `Secret testing proves that {W} delivers 10x faster rendering speed`,
     `The director called {W} the biggest breakthrough of the season`,
-    `Engineers reveal how {W} replaced entire legacy hardware rigs`,
     `Archived documents show sudden adoption of {W} across top channels`,
     `Witnesses describe the new {W} update as completely game-changing`,
     `Executive committee orders immediate investigation into {W}`,
     `Whistleblower releases confidential dossier explaining {W}`,
-    `Studio records reveal {W} was developed in complete secrecy`,
-    `How top creators turned {W} into an unstoppable cultural phenomenon`,
+    `How top creators turned {W} into an unstoppable phenomenon`,
     `Internal audit reveals {W} saved hundreds of production hours`,
     `Critics questioned {W} until the first live demo went viral`,
-    `The hidden story behind {W} and the team that built it`,
-    `Unprecedented demand for {W} causes widespread industry shockwaves`,
     `Key witnesses testify about {W} before packed emergency session`,
-    `Breaking investigation: The truth about {W} finally comes to light`,
   ];
+
+  const endTemplates = [
+    `The contractor billed for work that is not visible to anyone: {W}`,
+    `Engineers finally revealed the hidden story behind {W}`,
+    `Breaking investigation finally brings the truth about {W}`,
+    `Everyone in the studio suddenly fell silent over {W}`,
+    `The packed emergency session heard sworn testimony about {W}`,
+    `The confidential dossier explains everything about {W}`,
+    `"Just say it plainly," the man outside insisted: {W}`,
+    `The biggest breakthrough of the season, according to the director, is {W}`,
+  ];
+
+  const sentenceTemplates =
+    anchorPosition === 'start'
+      ? startTemplates
+      : anchorPosition === 'end'
+        ? endTemplates
+        : anchorPosition === 'middle'
+          ? middleTemplates
+          : [...startTemplates, ...middleTemplates, ...endTemplates];
 
   // Shuffle templates on every generation call for fresh dynamic variations
   const shuffledTemplates = [...sentenceTemplates].sort(() => Math.random() - 0.5);
@@ -146,34 +178,118 @@ export function generateCutsForPhrase(phrase: string, count = 8): NewspaperCut[]
 
 export const PRESET_TOPICS: PresetTopic[] = [
   {
-    id: 'academic-research',
-    name: 'Research Paper',
-    anchor: 'racism and class-based oppression are | children through various cultural media, including toys and games',
-    category: 'Academic Journal',
-    highlightColor: '#ff6b81', // Authentic Journal Coral Highlighter
+    id: 'red-flags',
+    name: 'Red Flags',
+    // Match-cut anchors stay ≤23 chars so the camera locks tight onto the
+    // SAME short phrase in every paper — that's the whole optical illusion.
+    anchor: 'RED FLAGS',
+    category: 'Investigations',
+    highlightColor: '#FFE500',
     highlightStyle: 'marker',
-    paperTheme: 'academic' as any,
+    paperTheme: 'tabloid',
     cuts: [
       {
-        id: 'academic-1',
-        masthead: '© Springer Science+Business Media, LLC 2012',
-        subhead: 'Keywords  Toys • Racism • Racialization • Victorian America',
-        headline: 'Abstract The reproduction of racism and class-based oppression are taught to children through various cultural media, including toys and games. Between 1880 and 1930, the popularity of racialized toys and banks were fear-based responses to the perceived encroachment by "foreign and exotic" migrations of African American, Chinese, Irish and Native Americans into the cultural landscape of white middle-class America. This article analyzes how artifacts associated with children are part of a larger cultural structure that viewed race and class as inseparable.',
-        byline: 'Published online: 21 February 2012',
-        location: 'CAMBRIDGE',
-        bodyParagraphs: [
-          'The analysis examines historical artifacts and children literature across the late Victorian era, tracing how racial and social hierarchies were transmitted through commercial toy manufacturing and everyday play.',
-        ],
-        dateString: '21 February 2012',
-        columnCount: 1,
-        rotationOffset: 0,
+        id: 'rf-1',
+        masthead: 'THE DAILY CHRONICLE',
+        subhead: 'Insiders ignored warnings for months, records show',
+        headline: 'Insiders ignored RED FLAGS in licensing deal for months',
+        byline: 'Investigative Team (Production Desk)',
+        location: 'NEW YORK',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 214 NO. 88 • TUESDAY, MARCH 3 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.08,
+      },
+      {
+        id: 'rf-2',
+        masthead: 'FINANCIAL COURIER',
+        subhead: 'Auditors described the ledger as unusual and loud',
+        headline: 'Auditors find RED FLAGS across the entire expense ledger',
+        byline: 'By Eleanor Hayes, Chief Analyst',
+        location: 'LONDON',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 88 NO. 441 • MONDAY, APRIL 14 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.07,
+      },
+      {
+        id: 'rf-3',
+        masthead: 'THE SUNDAY DISPATCH',
+        subhead: 'Packed committee room hears sworn testimony',
+        headline: '"We saw the RED FLAGS," whistleblower tells committee',
+        byline: 'By Special Correspondent',
+        location: 'WASHINGTON',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 51 NO. 9001 • SUNDAY, JUNE 8 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.04,
+      },
+      {
+        id: 'rf-4',
+        masthead: 'DAILY DRIVEL',
+        subhead: 'Timeline obtained by this newspaper contradicts earlier statements',
+        headline: 'Records show RED FLAGS raised weeks before the collapse',
+        byline: 'By Arthur Vance, Senior Tech Editor',
+        location: 'AUSTIN',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 9 NO. 12 • FRIDAY, SEPTEMBER 19 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.1,
+      },
+      {
+        id: 'rf-5',
+        masthead: 'METROPOLITAN GAZETTE',
+        subhead: 'Review board met once, adjourned, and went to lunch',
+        headline: 'Committee buried RED FLAGS report before the review board',
+        byline: 'By Marcus Vance and Staff Correspondents',
+        location: 'TORONTO',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 330 NO. 6 • TUESDAY, NOVEMBER 4 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.06,
+      },
+      {
+        id: 'rf-6',
+        masthead: 'THE RECORDING TIMES',
+        subhead: 'Insiders say the warnings were labeled optional reading',
+        headline: 'Lawmakers cite RED FLAGS in emergency hearing on licensing',
+        byline: 'From Our Media & Creator Desk',
+        location: 'TOKYO',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 65 NO. 908 • SATURDAY, MAY 30 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.05,
+      },
+      {
+        id: 'rf-7',
+        masthead: 'DAILY DRIVEL',
+        subhead: 'Newsletter readers flagged the pattern weeks ago',
+        headline: 'Analysts finally admit RED FLAGS were visible all along',
+        byline: 'By Special Correspondent',
+        location: 'LONDON',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 3 NO. 771 • WEDNESDAY, JULY 22 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.09,
+      },
+      {
+        id: 'rf-8',
+        masthead: 'THE DAMP BROADSHEET',
+        subhead: 'The second van was also seen; nobody mentioned it until now',
+        headline: 'Auditors quietly attach RED FLAGS to the licensing file',
+        byline: 'By Eleanor Hayes, Chief Analyst',
+        location: 'NEW YORK',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 150 NO. 42 • MONDAY, AUGUST 10 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.06,
       },
     ],
   },
   {
     id: 'ai-code-bugs',
     name: 'Tech Security',
-    anchor: 'AI-generated code contains more bugs and errors than human output',
+    anchor: 'AI-generated code',
     category: 'Tech & Security',
     highlightColor: '#FFE500',
     highlightStyle: 'marker',
@@ -191,9 +307,93 @@ export const PRESET_TOPICS: PresetTopic[] = [
           'The benchmark evaluated over forty thousand code generation tasks across Python, JavaScript, Rust, and Go. Researchers observed that while AI models write code rapidly, they frequently omit edge-case validation, boundary checks, and proper cryptographic safeguards.',
           'Enterprise development teams are advised to institute mandatory automated static analysis pipelines and peer review gates before deploying AI-assisted pull requests into production environments.',
         ],
-        dateString: 'December 18, 2025',
+        dateString: 'VOL. 301 NO. 77 • THURSDAY, DECEMBER 18 • PRICE 25 CENTS',
         columnCount: 2,
         rotationOffset: 0,
+      },
+      {
+        id: 'ai-code-2',
+        masthead: 'THE MORNING HERALD',
+        subhead: 'Benchmark evaluated forty thousand tasks across four languages',
+        headline: 'Security audit finds AI-generated code skips boundary checks',
+        byline: 'By Eleanor Hayes, Chief Analyst',
+        location: 'LONDON',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 214 NO. 9 • MONDAY, JANUARY 5 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.06,
+      },
+      {
+        id: 'ai-code-3',
+        masthead: 'THE GLOBAL TRIBUNE',
+        subhead: 'Developers urged to add review gates before shipping AI pull requests',
+        headline: 'Engineers warn that AI-generated code ships without edge-case validation',
+        byline: 'Investigative Team (Production Desk)',
+        location: 'BERLIN',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 77 NO. 331 • WEDNESDAY, FEBRUARY 11 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.05,
+      },
+      {
+        id: 'ai-code-4',
+        masthead: 'THE LIBERTY CITY LEDGER',
+        subhead: 'Memory vulnerabilities traced back to model hallucinations in review',
+        headline: 'Leaked report blames AI-generated code for the outage',
+        byline: 'By Arthur Vance, Senior Tech Editor',
+        location: 'AUSTIN',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 12 NO. 4402 • FRIDAY, MARCH 27 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.09,
+      },
+      {
+        id: 'ai-code-5',
+        masthead: 'FINANCIAL COURIER',
+        subhead: 'Static analysis pipelines now mandatory for AI-assisted releases',
+        headline: 'Boards order audits after AI-generated code breached production',
+        byline: 'By Special Correspondent',
+        location: 'NEW YORK',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 96 NO. 15 • TUESDAY, APRIL 7 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.07,
+      },
+      {
+        id: 'ai-code-6',
+        masthead: 'THE SUNDAY DISPATCH',
+        subhead: 'Model vendors declined to comment before press time',
+        headline: 'Critics questioned AI-generated code until the first audit',
+        byline: 'By Marcus Vance',
+        location: 'LOS ANGELES',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 143 NO. 21 • SUNDAY, JUNE 14 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.03,
+      },
+      {
+        id: 'ai-code-7',
+        masthead: 'THE MORNING HERALD',
+        subhead: 'Four languages, forty thousand tasks, one clear pattern',
+        headline: 'Researchers traced the syntax errors straight to AI-generated code',
+        byline: 'By Arthur Vance, Senior Tech Editor',
+        location: 'SAN FRANCISCO',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 208 NO. 12 • THURSDAY, JULY 2 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.04,
+      },
+      {
+        id: 'ai-code-8',
+        masthead: 'THE LIBERTY CITY LEDGER',
+        subhead: 'Vendor statement promised clarity, delivered adjectives',
+        headline: 'Memory vulnerabilities multiply inside AI-generated code',
+        byline: 'Investigative Team (Production Desk)',
+        location: 'AUSTIN',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 44 NO. 550 • FRIDAY, AUGUST 21 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.08,
       },
     ],
   },
@@ -278,6 +478,30 @@ export const PRESET_TOPICS: PresetTopic[] = [
         columnCount: 2,
         rotationOffset: 0.04,
       },
+      {
+        id: 'sp-7',
+        masthead: 'DAILY DRIVEL',
+        subhead: 'Gear desks report empty showrooms and long waiting lists',
+        headline: 'Studios race to adopt Studio Space Planner before the fall season',
+        byline: 'From Our Embedded Correspondent',
+        location: 'LOS ANGELES',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 51 NO. 300 • TUESDAY, APRIL 28 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: -0.06,
+      },
+      {
+        id: 'sp-8',
+        masthead: 'THE RECORDING TIMES',
+        subhead: 'Lighting crew says the rig practically plans itself now',
+        headline: 'Engineers confirm Studio Space Planner renders 210 items with zero drops',
+        byline: 'By Marcus Vance',
+        location: 'TOKYO',
+        bodyParagraphs: BODY_CORPUS,
+        dateString: 'VOL. 88 NO. 14 • SATURDAY, MAY 16 • PRICE 25 CENTS',
+        columnCount: 2,
+        rotationOffset: 0.07,
+      },
     ],
   },
   {
@@ -288,7 +512,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#00FF66', // Neon Green
     highlightStyle: 'marker',
     paperTheme: 'salmon',
-    cuts: generateCutsForPhrase('Auto Captions AI', 6),
+    cuts: generateCutsForPhrase('Auto Captions AI', 8),
   },
   {
     id: 'text-behind',
@@ -298,7 +522,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#FFE500',
     highlightStyle: 'box',
     paperTheme: 'noir',
-    cuts: generateCutsForPhrase('Text Behind Image', 6),
+    cuts: generateCutsForPhrase('Text Behind Image', 8),
   },
   {
     id: 'background-replace',
@@ -308,7 +532,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#00F0FF', // Electric Cyan
     highlightStyle: 'marker',
     paperTheme: 'vintage',
-    cuts: generateCutsForPhrase('Background Replace', 6),
+    cuts: generateCutsForPhrase('Background Replace', 8),
   },
   {
     id: 'silence-trimmer',
@@ -318,7 +542,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#FF7700', // Vivid Orange
     highlightStyle: 'double-underline',
     paperTheme: 'tabloid',
-    cuts: generateCutsForPhrase('Silence Trimmer', 6),
+    cuts: generateCutsForPhrase('Silence Trimmer', 8),
   },
   {
     id: 'optical-match-cut',
@@ -328,7 +552,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#FFE500',
     highlightStyle: 'marker',
     paperTheme: 'vintage',
-    cuts: generateCutsForPhrase('Optical Match Cut', 6),
+    cuts: generateCutsForPhrase('Optical Match Cut', 8),
   },
   {
     id: 'palette-extractor',
@@ -338,7 +562,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#FF2A85', // Hot Pink
     highlightStyle: 'circle',
     paperTheme: 'crisp',
-    cuts: generateCutsForPhrase('Palette Extractor', 6),
+    cuts: generateCutsForPhrase('Palette Extractor', 8),
   },
   {
     id: 'quote-card',
@@ -348,6 +572,6 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightColor: '#FFE500',
     highlightStyle: 'tape',
     paperTheme: 'dossier',
-    cuts: generateCutsForPhrase('Quote Card Studio', 6),
+    cuts: generateCutsForPhrase('Quote Card Studio', 8),
   },
 ];

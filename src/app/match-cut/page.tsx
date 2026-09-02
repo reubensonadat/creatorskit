@@ -29,10 +29,16 @@ import {
   renderNewspaperMatchCut,
   playCutSound,
   synthesizeCutSound,
+  easeHighlightSweep,
   PAPER_THEMES,
   type NewspaperCut,
   type RenderOptions,
 } from './match-cut-engine';
+import {
+  exportCanvasVideoToMp4,
+  renderOfflineAudio,
+  downloadBlob,
+} from '@/lib/canvas-video-exporter';
 import { PRESET_TOPICS, generateCutsForPhrase, MASTHEADS, LOCATIONS, BYLINES } from './presets';
 import { SimpleGifEncoder } from './gif-encoder';
 import { GOOGLE_FONTS_LIST } from './google-fonts';
@@ -73,12 +79,22 @@ export default function TextMatchCutStudioPage() {
   const [highlightColor, setHighlightColor] = useState('#FFE500');
   const [highlightStyle, setHighlightStyle] = useState<'marker' | 'underline' | 'double-underline' | 'box' | 'circle' | 'tape'>('marker');
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
+  // Where the highlighted phrase sits INSIDE the generated sentences.
+  const [anchorPosition, setAnchorPosition] = useState<'auto' | 'start' | 'middle' | 'end'>('auto');
+  // Advanced layout toggles — which document sections are visible. Rarely
+  // used, so they live collapsed under Advanced Settings.
+  const [showTopColumns, setShowTopColumns] = useState(true);
+  const [showMasthead, setShowMasthead] = useState(true);
+  const [showSubhead, setShowSubhead] = useState(true);
+  const [showByline, setShowByline] = useState(true);
+  const [showBottomColumns, setShowBottomColumns] = useState(true);
+  const [showDividerRules, setShowDividerRules] = useState(true);
   const [paperTheme, setPaperTheme] = useState<'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir'>('vintage');
   const [fontFamily, setFontFamily] = useState<string>('"Playfair Display", Georgia, serif');
   const [fontCycleList, setFontCycleList] = useState<string[]>([
     '"Playfair Display", Georgia, serif',
     '"Special Elite", monospace',
-    '"Bebas Neue", Impact, sans-serif',
+    '"Caveat", "Segoe Script", "Brush Script MT", cursive',
     '"Cinzel", "Times New Roman", serif',
     '"Inter", sans-serif',
   ]);
@@ -112,9 +128,16 @@ export default function TextMatchCutStudioPage() {
 
   const selectedAspect = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
 
-  // Bundle current render options
+  // Bundle current render options.
+  // Match-cut anchors are clamped to ≤23 chars per phrase — the optical lock
+  // only works when the camera centers on a short, identical phrase in every
+  // paper; long phrases smear the lock point across the whole headline.
   const renderOptions: RenderOptions = {
-    anchorPhrase,
+    anchorPhrase: anchorPhrase
+      .split('|')
+      .map((p) => p.trim().slice(0, 23))
+      .filter(Boolean)
+      .join(' | '),
     highlightColor,
     highlightStyle,
     markerOpacity,
@@ -131,6 +154,12 @@ export default function TextMatchCutStudioPage() {
     highlightSector,
     fontFamily,
     fontCycleList: animationMode === 'match-cut' ? fontCycleList : undefined,
+    showTopColumns,
+    showMasthead,
+    showSubhead,
+    showByline,
+    showBottomColumns,
+    showDividerRules,
   };
 
   // Redraw current cut
@@ -168,7 +197,10 @@ export default function TextMatchCutStudioPage() {
               lastCutTimeRef.current = timestamp;
               setCurrentCutIndex((prev) => {
                 const next = (prev + 1) % cuts.length;
-                playCutSound(soundEffect, soundVolume);
+                // Short percussive stroke per cut — full-length looping
+                // strokes stack into clipping distortion on rapid cuts.
+                const strokeDur = Math.min(0.28, Math.max(0.08, 0.9 / Math.max(1, cutsPerSecond)));
+                playCutSound(soundEffect, soundVolume, strokeDur);
                 return next;
               });
             }
@@ -181,7 +213,7 @@ export default function TextMatchCutStudioPage() {
           const drawDurationMs = highlightDuration * 1000;
 
           if (elapsed <= drawDurationMs) {
-            const p = elapsed / drawDurationMs;
+            const p = easeHighlightSweep(elapsed / drawDurationMs);
             setHighlightProgress(p);
           } else {
             setHighlightProgress(1.0);
@@ -218,7 +250,7 @@ export default function TextMatchCutStudioPage() {
     const phrase = anchorPhrase.trim();
     if (!phrase) return;
     setIsGenerating(true);
-    const newCuts = generateCutsForPhrase(phrase, 8);
+    const newCuts = generateCutsForPhrase(phrase, 8, anchorPosition);
     setCuts(newCuts);
     setCurrentCutIndex(0);
     lastCutTimeRef.current = performance.now();
@@ -378,243 +410,106 @@ export default function TextMatchCutStudioPage() {
     }
   };
 
-  // Export High-Definition Video via MediaRecorder with multi-codec detection and audio synthesis
+  // Export High-Definition Video via deterministic WebCodecs encoding.
+  // Every frame is rendered exactly once with an explicit timestamp — no
+  // real-time MediaRecorder capture, so no dropped frames, no stutter, and a
+  // constant frame rate at High-profile H.264 quality (with offline AAC audio).
   const handleExportVideo = async () => {
+    if (cuts.length === 0) return;
     setIsExporting(true);
     setIsPlaying(false);
-    setExportProgress('Initializing video encoder...');
-
-    let exportCanvas: HTMLCanvasElement | null = null;
-    let audioContext: AudioContext | null = null;
+    setExportProgress('Preparing HD encoder...');
 
     try {
-      exportCanvas = document.createElement('canvas');
-      exportCanvas.width = selectedAspect.width;
-      exportCanvas.height = selectedAspect.height;
-      exportCanvas.style.position = 'fixed';
-      exportCanvas.style.left = '-9999px';
-      exportCanvas.style.top = '-9999px';
-      exportCanvas.style.width = '200px';
-      exportCanvas.style.height = '200px';
-      exportCanvas.style.opacity = '0';
-      exportCanvas.style.pointerEvents = 'none';
-      exportCanvas.style.zIndex = '-9999';
-      document.body.appendChild(exportCanvas);
+      const isAnimated = animationMode === 'animated-highlight';
+      // 60fps for the cinematic sweep — buttery, matches the live preview.
+      // Rapid whip-cut sequences stay at 30fps; the staccato is the point.
+      const fps = isAnimated ? 60 : 30;
+      const framesPerCut = Math.max(3, Math.round(fps / cutsPerSecond));
 
-      const ctx = exportCanvas.getContext('2d', { alpha: false })!;
+      const totalFrames = isAnimated
+        ? Math.max(30, Math.round(highlightDuration * fps)) + Math.round(0.8 * fps)
+        : cuts.length * 3 * framesPerCut;
 
-      // Initial frame paint
-      renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, cuts[0], renderOptions, 0);
-
-      // Probe browser for supported video MIME types
-      const mimeCandidates = [
-        { mime: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4' },
-        { mime: 'video/mp4;codecs=avc1', ext: 'mp4' },
-        { mime: 'video/mp4', ext: 'mp4' },
-        { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
-        { mime: 'video/webm;codecs=vp9', ext: 'webm' },
-        { mime: 'video/webm;codecs=vp8,opus', ext: 'webm' },
-        { mime: 'video/webm;codecs=vp8', ext: 'webm' },
-        { mime: 'video/webm;codecs=h264', ext: 'webm' },
-        { mime: 'video/webm', ext: 'webm' },
-      ];
-
-      let selectedMime = '';
-      let targetExt = 'webm';
-
-      if (typeof MediaRecorder !== 'undefined') {
-        for (const candidate of mimeCandidates) {
-          try {
-            if (MediaRecorder.isTypeSupported(candidate.mime)) {
-              selectedMime = candidate.mime;
-              targetExt = candidate.ext;
-              break;
-            }
-          } catch {
-            // Check next candidate
-          }
-        }
-      }
-
-      const stream = (exportCanvas as any).captureStream
-        ? (exportCanvas as any).captureStream(30)
-        : (exportCanvas as any).mozCaptureStream(30);
-
-      const videoTrack = stream.getVideoTracks()[0];
-
-      // Audio track setup if sound is enabled
-      let audioDest: MediaStreamAudioDestinationNode | null = null;
-      if (soundEffect !== 'mute' && typeof window !== 'undefined') {
-        try {
-          const AudioContextClass =
-            window.AudioContext ||
-            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-          if (AudioContextClass) {
-            audioContext = new AudioContextClass();
-            if (audioContext.state === 'suspended') {
-              await audioContext.resume();
-            }
-            audioDest = audioContext.createMediaStreamDestination();
-            const audioTrack = audioDest.stream.getAudioTracks()[0];
-            if (audioTrack) {
-              stream.addTrack(audioTrack);
-            }
-          }
-        } catch (audioErr) {
-          console.warn('Audio track setup bypassed:', audioErr);
-        }
-      }
-
-      // Initialize MediaRecorder with fallback
-      let recorder: MediaRecorder;
-      const chunks: Blob[] = [];
-
+      // Make sure webfonts (masthead serif, etc.) are ready before any frame renders.
       try {
-        recorder = new MediaRecorder(
-          stream,
-          selectedMime
-            ? {
-                mimeType: selectedMime,
-                videoBitsPerSecond: 10_000_000,
+        await document.fonts?.ready;
+      } catch { }
+
+      // Deterministic offline audio track (exact same timeline as the video frames).
+      let audioBuffer: AudioBuffer | null = null;
+      if (soundEffect !== 'mute') {
+        setExportProgress('Rendering audio track...');
+        try {
+          audioBuffer = await renderOfflineAudio({
+            durationSec: totalFrames / fps,
+            schedule: (ctx, dest) => {
+              if (isAnimated) {
+                synthesizeCutSound(ctx, dest, soundEffect, soundVolume, 0, highlightDuration);
+              } else {
+                // Short percussive strokes synced to each cut. Full-length
+                // 1.8s highlighter drones stacked on rapid cuts is what made
+                // the old export audio distort into mush.
+                const strokeDur = Math.min(0.28, Math.max(0.08, (framesPerCut / fps) * 0.9));
+                for (let loop = 0; loop < 3; loop++) {
+                  for (let c = 0; c < cuts.length; c++) {
+                    const t = ((loop * cuts.length + c) * framesPerCut) / fps;
+                    synthesizeCutSound(ctx, dest, soundEffect, soundVolume, t, strokeDur);
+                  }
+                }
               }
-            : undefined
-        );
-      } catch {
-        // Fallback to default recorder
-        recorder = new MediaRecorder(stream);
+            },
+          });
+        } catch (audioErr) {
+          console.warn('Offline audio render bypassed:', audioErr);
+          audioBuffer = null;
+        }
       }
 
-      recorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data && e.data.size > 0) {
-          chunks.push(e.data);
-        }
-      };
+      const animatedCut = cuts[currentCutIndex] || cuts[0];
+      const drawFrames = Math.max(30, Math.round(highlightDuration * fps));
 
-      const recordPromise = new Promise<Blob>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          if (chunks.length > 0) {
-            const finalMime = recorder.mimeType || selectedMime || 'video/webm';
-            resolve(new Blob(chunks, { type: finalMime }));
+      const result = await exportCanvasVideoToMp4({
+        width: selectedAspect.width,
+        height: selectedAspect.height,
+        fps,
+        totalFrames,
+        bitrate: 20_000_000,
+        audioBuffer,
+        // Force a pristine intra frame at every whip-cut boundary so each
+        // hard cut snaps in crisp instead of smearing from the previous page.
+        isKeyFrame: (i) => !isAnimated && i % framesPerCut === 0,
+        onProgress: (p) => setExportProgress(`Encoding HD video: ${Math.round(p * 100)}%`),
+        renderFrame: (frameIndex, ctx) => {
+          if (isAnimated) {
+            const p = frameIndex < drawFrames ? easeHighlightSweep(frameIndex / drawFrames) : 1.0;
+            const frameRenderOptions: RenderOptions = {
+              ...renderOptions,
+              highlightProgress: p,
+            };
+            renderNewspaperMatchCut(ctx, ctx.canvas.width, ctx.canvas.height, animatedCut, frameRenderOptions, 0);
           } else {
-            reject(new Error('Recording timed out without producing frames.'));
+            const c = Math.floor(frameIndex / framesPerCut) % cuts.length;
+            renderNewspaperMatchCut(ctx, ctx.canvas.width, ctx.canvas.height, cuts[c], renderOptions, c);
           }
-        }, 20000);
-
-        recorder.onstop = () => {
-          clearTimeout(timeoutId);
-          const finalMime = recorder.mimeType || selectedMime || 'video/webm';
-          resolve(new Blob(chunks, { type: finalMime }));
-        };
-
-        recorder.onerror = (err) => {
-          clearTimeout(timeoutId);
-          reject(err);
-        };
+        },
       });
-
-      // Start recording with 100ms timeslice
-      recorder.start(100);
-
-      if (animationMode === 'animated-highlight') {
-        // Render smooth 30fps animated marker sweep
-        const fps = 30;
-        const drawFrames = Math.max(15, Math.round(highlightDuration * fps));
-        const holdFrames = Math.round(0.8 * fps);
-        const totalFrames = drawFrames + holdFrames;
-
-        // Trigger cut / marker sound at start
-        if (audioContext && audioDest && soundEffect !== 'mute') {
-          synthesizeCutSound(audioContext, audioDest, soundEffect, soundVolume);
-        }
-
-        for (let f = 0; f < totalFrames; f++) {
-          const p = f < drawFrames ? f / drawFrames : 1.0;
-          const currentCut = cuts[currentCutIndex] || cuts[0];
-          const frameRenderOptions: RenderOptions = {
-            ...renderOptions,
-            highlightProgress: p,
-          };
-
-          renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, currentCut, frameRenderOptions, 0);
-
-          if (typeof (videoTrack as any)?.requestFrame === 'function') {
-            try {
-              (videoTrack as any).requestFrame();
-            } catch {}
-          }
-          setExportProgress(`Recording animated highlight: ${Math.round(((f + 1) / totalFrames) * 100)}%`);
-          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-        }
-      } else {
-        // Render rapid whip-cut sequence
-        const totalLoops = 3;
-        const fps = 30;
-        const framesPerCut = Math.max(3, Math.round(fps / cutsPerSecond));
-        const totalFrames = cuts.length * totalLoops * framesPerCut;
-
-        let frameCounter = 0;
-        for (let loop = 0; loop < totalLoops; loop++) {
-          for (let c = 0; c < cuts.length; c++) {
-            renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, cuts[c], renderOptions, c);
-
-            // Trigger audio snap for this cut
-            if (audioContext && audioDest && soundEffect !== 'mute') {
-              synthesizeCutSound(audioContext, audioDest, soundEffect, soundVolume);
-            }
-
-            for (let f = 0; f < framesPerCut; f++) {
-              frameCounter++;
-              if (typeof (videoTrack as any)?.requestFrame === 'function') {
-                try {
-                  (videoTrack as any).requestFrame();
-                } catch {}
-              }
-              setExportProgress(`Recording match cut video: ${Math.round((frameCounter / totalFrames) * 100)}%`);
-              await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-            }
-          }
-        }
-      }
-
-      setExportProgress('Finalizing video file...');
-      if (recorder.state !== 'inactive') {
-        recorder.stop();
-      }
-      const videoBlob = await recordPromise;
 
       const cleanAnchor =
         anchorPhrase
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, '') || 'match-cut';
-      const actualExtension = (recorder.mimeType || selectedMime).includes('mp4') ? 'mp4' : targetExt;
-      const downloadFileName = `match-cut-${cleanAnchor}.${actualExtension}`;
+      const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
+      downloadBlob(result.blob, `match-cut-${cleanAnchor}.${ext}`);
 
-      const videoUrl = URL.createObjectURL(videoBlob);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = videoUrl;
-      downloadLink.download = downloadFileName;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-
-      setTimeout(() => URL.revokeObjectURL(videoUrl), 10000);
-      setExportProgress(null);
       setExportProgress(null);
       setIsPlaying(true);
     } catch (err) {
       console.error('Video Export failed:', err);
-      setExportProgress('Video recording failed. Try Animated GIF or PNG sequence.');
+      setExportProgress('Video export failed. Try Animated GIF or PNG sequence.');
       setTimeout(() => setExportProgress(null), 4000);
     } finally {
-      if (exportCanvas && exportCanvas.parentNode) {
-        exportCanvas.parentNode.removeChild(exportCanvas);
-      }
-      if (audioContext && audioContext.state !== 'closed') {
-        try {
-          audioContext.close();
-        } catch {}
-      }
       setIsExporting(false);
     }
   };
@@ -692,7 +587,7 @@ export default function TextMatchCutStudioPage() {
       >
         {/* Left Column: Canvas Viewport & Transport */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          
+
           {/* Main Stage Viewport Frame */}
           <div
             className="brutalist-card tool-canvas-frame"
@@ -988,7 +883,7 @@ export default function TextMatchCutStudioPage() {
                 ))}
               </div>
 
-            <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
+              <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
                 <button
                   className="brutalist-button"
                   onClick={handleDownloadSingleFrame}
@@ -1130,7 +1025,7 @@ export default function TextMatchCutStudioPage() {
 
         {/* Right Column: Control Sidebar */}
         <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          
+
           {/* Pinned Anchor Phrase Master Box with 23 Character Limit */}
           <div
             className="brutalist-card"
@@ -1429,7 +1324,7 @@ export default function TextMatchCutStudioPage() {
                 <label style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000' }}>
                   Highlighter Ink Color
                 </label>
-        <div className="tool-page-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className="tool-page-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   {HIGHLIGHT_COLORS.map((c) => (
                     <button
                       key={c.hex}
@@ -1597,6 +1492,37 @@ export default function TextMatchCutStudioPage() {
                 </div>
               </div>
 
+              {/* Anchor Position In Sentence */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000' }}>
+                  Highlight Position In Sentence
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  {(['auto', 'start', 'middle', 'end'] as const).map((pos) => (
+                    <button
+                      key={pos}
+                      onClick={() => setAnchorPosition(pos)}
+                      style={{
+                        padding: '8px 6px',
+                        border: '2px solid #000',
+                        background: anchorPosition === pos ? '#000' : '#fff',
+                        color: anchorPosition === pos ? '#fff' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.62rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {pos === 'auto' ? 'Mixed' : pos === 'start' ? 'Begin' : pos}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', lineHeight: 1.4 }}>
+                  Controls where the highlighted phrase sits inside generated sentences. Applies on Auto-Generate.
+                </span>
+              </div>
+
               {/* Depth of Field & Optics */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 10, borderTop: '2px solid #eee' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1653,6 +1579,48 @@ export default function TextMatchCutStudioPage() {
                   />
                 </div>
               </div>
+
+              {/* Advanced Settings — document section visibility */}
+              <details style={{ borderTop: '2px solid #eee', paddingTop: 10 }}>
+                <summary
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                >
+                  ⚙ Advanced Settings — Document Sections
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10 }}>
+                  <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', lineHeight: 1.4 }}>
+                    Control which parts of the paper appear around the locked headline line.
+                  </span>
+                  {([
+                    ['Top columns (above)', showTopColumns, setShowTopColumns],
+                    ['Masthead & dateline', showMasthead, setShowMasthead],
+                    ['Subhead', showSubhead, setShowSubhead],
+                    ['Byline', showByline, setShowByline],
+                    ['Bottom columns (below)', showBottomColumns, setShowBottomColumns],
+                    ['Divider rules', showDividerRules, setShowDividerRules],
+                  ] as [string, boolean, (v: boolean) => void][]).map(([label, value, setter]) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 800, color: '#000', cursor: 'pointer' }}>
+                        {label}
+                      </label>
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={(e) => setter(e.target.checked)}
+                        style={{ width: 16, height: 16, accentColor: '#000', cursor: 'pointer' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </details>
             </div>
           )}
 
