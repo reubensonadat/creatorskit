@@ -51,6 +51,7 @@ export interface RenderOptions {
 
   // Typography
   headlineScale?: number;
+  headlineWrapMode?: 'single-line' | 'auto-wrap';
 }
 
 export const AVAILABLE_FONTS = [
@@ -385,60 +386,76 @@ export function renderNewspaperMatchCut(
     chosenFont = options.fontFamily;
   }
 
-  // Headline Typography (where anchor word lives)
-  const headlineFontSize = Math.max(26, Math.round(width * 0.038)) * (options.headlineScale ?? 1);
-  const headlineLineHeight = headlineFontSize * 1.35;
-  const headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
-
   // Body Copy Typography (for background columns)
   const bodyFontSize = Math.max(12, Math.round(width * 0.0165));
   const bodyLineHeight = bodyFontSize * 1.52;
   const bodyFont = `${bodyFontSize}px Georgia, "Times New Roman", serif`;
 
-  // Parse Headline into Prefix, Match, and Suffix
+  // Headline Typography (where anchor word lives)
+  let headlineFontSize = Math.max(24, Math.round(width * 0.038)) * (options.headlineScale ?? 1);
+  let headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
+
+  // Parse Headline into structure with anchor tags
   const anchor = (options.anchorPhrase || '').trim();
-  const headlineRaw = (cut.headline || '').trim();
+  const headlineRaw = (cut.headline || '').trim() || 'AI-generated code contains more bugs and errors than human output';
 
-  let prefix = '';
-  let matchText = anchor;
-  let suffix = '';
+  const isSingleLine = options.headlineWrapMode === 'single-line';
 
-  const cleanAnchor = anchor.toLowerCase();
-  const cleanHeadline = headlineRaw.toLowerCase();
-  const anchorIndex = cleanAnchor.length > 0 ? cleanHeadline.indexOf(cleanAnchor) : -1;
-
-  if (anchorIndex !== -1 && cleanAnchor.length > 0) {
-    prefix = headlineRaw.slice(0, anchorIndex);
-    matchText = headlineRaw.slice(anchorIndex, anchorIndex + anchor.length);
-    suffix = headlineRaw.slice(anchorIndex + anchor.length);
-  } else {
-    prefix = 'Leaked report mentions ';
-    matchText = anchor || 'Rare earth minerals';
-    suffix = ' seventeen times in audit';
+  if (isSingleLine) {
+    ctx.font = headlineFont;
+    const singleLineW = ctx.measureText(headlineRaw).width;
+    const maxSingleLineAllowed = pageWidth * 0.96;
+    if (singleLineW > maxSingleLineAllowed && singleLineW > 0) {
+      const scaleDown = maxSingleLineAllowed / singleLineW;
+      headlineFontSize = Math.max(14, Math.round(headlineFontSize * scaleDown));
+      headlineFont = `bold ${headlineFontSize}px ${chosenFont}`;
+    }
   }
 
-  // Measure Headline Elements
+  const headlineLineHeight = headlineFontSize * 1.35;
+
+  // Measure and wrap Headline Elements into lines fitting pageWidth
   ctx.font = headlineFont;
-  const prefixW = ctx.measureText(prefix).width;
-  const matchW = ctx.measureText(matchText).width;
-  const suffixW = ctx.measureText(suffix).width;
-  const fullHeadlineW = prefixW + matchW + suffixW;
+  const maxHeadlineW = isSingleLine ? 99999 : pageWidth;
+  const headlineLines = wrapHeadlineWithAnchor(ctx, headlineRaw, anchor, maxHeadlineW);
+
+  // If no anchor matched in headline, tag the whole headline
+  const anyAnchor = headlineLines.some((l) => l.words.some((w) => w.isAnchor));
+  if (!anyAnchor && headlineLines.length > 0) {
+    headlineLines.forEach((l) => l.words.forEach((w) => { w.isAnchor = true; }));
+  }
 
   // Calculate Anchor Center in Document Space
-  const anchorCenterFromHeadlineStart = prefixW + matchW / 2;
-  const docHeadlineX = pageLeftX + (pageWidth - fullHeadlineW) / 2;
-  const docHeadlineY = 520; // fixed Y line in document space
+  const docHeadlineY = 500;
+  let anchorMinX = Infinity;
+  let anchorMaxX = -Infinity;
+  let anchorMinY = Infinity;
+  let anchorMaxY = -Infinity;
 
-  let docAnchorCenterX = docHeadlineX + anchorCenterFromHeadlineStart;
-  let docAnchorCenterY = docHeadlineY;
+  headlineLines.forEach((line, lineIdx) => {
+    const lineY = docHeadlineY + lineIdx * headlineLineHeight;
+    const lineStartX = pageLeftX + (pageWidth - line.w) / 2; // Center-aligned headline line
+    line.words.forEach((w) => {
+      const wx = lineStartX + w.x;
+      if (w.isAnchor) {
+        anchorMinX = Math.min(anchorMinX, wx);
+        anchorMaxX = Math.max(anchorMaxX, wx + w.w);
+        anchorMinY = Math.min(anchorMinY, lineY);
+        anchorMaxY = Math.max(anchorMaxY, lineY + headlineLineHeight);
+      }
+    });
+  });
+
+  let docAnchorCenterX = anchorMinX !== Infinity ? (anchorMinX + anchorMaxX) / 2 : pageLeftX + pageWidth / 2;
+  let docAnchorCenterY = anchorMinY !== Infinity ? (anchorMinY + anchorMaxY) / 2 : docHeadlineY + (headlineLines.length * headlineLineHeight) / 2;
 
   const sector = options.highlightSector || 'center-headline';
   if (sector === 'top-masthead') {
     docAnchorCenterX = pageLeftX + pageWidth / 2;
-    docAnchorCenterY = docHeadlineY - 75;
+    docAnchorCenterY = docHeadlineY - 90;
   } else if (sector === 'body-paragraph') {
     docAnchorCenterX = pageLeftX + pageWidth * 0.28;
-    docAnchorCenterY = docHeadlineY + 140;
+    docAnchorCenterY = docHeadlineY + 160;
   }
 
   // ============================================================
@@ -482,51 +499,56 @@ export function renderNewspaperMatchCut(
   // ------------------------------------------------------------
   if (options.showTopColumns !== false) {
     const topColumnsY = 40;
-    const topColumnsBottomY = docHeadlineY - 140;
-    drawDenseColumns(
-      ctx,
-      pageLeftX,
-      topColumnsY,
-      pageWidth,
-      topColumnsBottomY - topColumnsY,
-      bodyParas.slice(0, 2),
-      bodyFont,
-      bodyFontSize,
-      bodyLineHeight,
-      theme
-    );
+    const topColumnsBottomY = docHeadlineY - 145;
+    if (topColumnsBottomY > topColumnsY + 40) {
+      drawDenseColumns(
+        ctx,
+        pageLeftX,
+        topColumnsY,
+        pageWidth,
+        topColumnsBottomY - topColumnsY,
+        bodyParas.slice(0, 2),
+        bodyFont,
+        bodyFontSize,
+        bodyLineHeight,
+        theme
+      );
+    }
   }
 
   // ------------------------------------------------------------
   // SECTION B: Masthead & Dateline
   // ------------------------------------------------------------
   if (options.showMasthead !== false) {
-    const mastheadY = docHeadlineY - 75;
+    const mastheadText = (cut.masthead || 'CREATOR KIT').toUpperCase();
+    const mastheadY = docHeadlineY - 95;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.fillStyle = theme.ink;
-    ctx.font = `900 ${Math.max(16, Math.round(width * 0.022))}px "Playfair Display", Georgia, serif`;
-    ctx.fillText(cut.masthead.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY);
+    ctx.font = `900 ${Math.max(16, Math.round(width * 0.024))}px "Playfair Display", Georgia, serif`;
+    ctx.fillText(mastheadText, pageLeftX + pageWidth / 2, mastheadY);
 
     if (cut.dateString) {
-      ctx.font = `bold ${Math.max(9, Math.round(width * 0.012))}px "Courier New", monospace`;
+      ctx.font = `bold ${Math.max(10, Math.round(width * 0.012))}px "Courier New", monospace`;
       ctx.fillStyle = theme.inkMuted;
-      ctx.fillText(cut.dateString.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 18);
+      // Generous spacing between Title and Date
+      ctx.fillText(cut.dateString.toUpperCase(), pageLeftX + pageWidth / 2, mastheadY + 28);
     }
 
     // Thin double divider rules above headline
     if (options.showDividerRules !== false) {
+      const ruleY = mastheadY + 44;
       ctx.strokeStyle = theme.ruleColor;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(pageLeftX, mastheadY + 30);
-      ctx.lineTo(pageLeftX + pageWidth, mastheadY + 30);
+      ctx.moveTo(pageLeftX, ruleY);
+      ctx.lineTo(pageLeftX + pageWidth, ruleY);
       ctx.stroke();
 
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.moveTo(pageLeftX, mastheadY + 34);
-      ctx.lineTo(pageLeftX + pageWidth, mastheadY + 34);
+      ctx.moveTo(pageLeftX, ruleY + 4);
+      ctx.lineTo(pageLeftX + pageWidth, ruleY + 4);
       ctx.stroke();
     }
     ctx.restore();
@@ -534,61 +556,118 @@ export function renderNewspaperMatchCut(
 
   // ------------------------------------------------------------
   // SECTION C: The Headline & Highlighted Anchor Sentence
-  // (100% IDENTICAL FONT SIZE AND BASELINE ACROSS ALL WORDS)
   // ------------------------------------------------------------
   ctx.save();
   ctx.font = headlineFont;
-  ctx.textBaseline = 'middle';
+  ctx.textBaseline = 'top';
 
-  const anchorDrawX = docHeadlineX + prefixW;
+  // 1. Gather all headline anchor chunks across lines
+  const hlChunks: { lineIdx: number; x: number; y: number; w: number }[] = [];
+  headlineLines.forEach((line, lineIdx) => {
+    const lineY = docHeadlineY + lineIdx * headlineLineHeight;
+    const lineStartX = pageLeftX + (pageWidth - line.w) / 2;
+    let groupStartX = -1;
+    let groupEndX = -1;
 
-  // Draw Highlight behind/around the anchor word
-  drawAnchorHighlight(ctx, anchorDrawX, docHeadlineY, matchW, headlineFontSize, options);
+    for (let i = 0; i < line.words.length; i++) {
+      const w = line.words[i];
+      const wx = lineStartX + w.x;
+      if (w.isAnchor) {
+        if (groupStartX === -1) groupStartX = wx;
+        groupEndX = wx + w.w;
+      } else {
+        if (groupStartX !== -1) {
+          hlChunks.push({ lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
+          groupStartX = -1;
+          groupEndX = -1;
+        }
+      }
+    }
+    if (groupStartX !== -1) {
+      hlChunks.push({ lineIdx, x: groupStartX, y: lineY, w: groupEndX - groupStartX });
+    }
+  });
 
-  // 1. Draw Prefix Words (Exact same font size)
-  ctx.fillStyle = theme.ink;
-  ctx.textAlign = 'left';
-  if (prefix) {
-    ctx.fillText(prefix, docHeadlineX, docHeadlineY);
-  }
+  const totalHlChunks = hlChunks.length;
+  const isAnimated = options.animationMode === 'animated-highlight';
+  const progress = isAnimated ? Math.min(1, Math.max(0, options.highlightProgress ?? 1)) : 1;
 
-  // 2. Draw Anchor Words (Exact same font size)
-  if (options.highlightStyle === 'box') {
-    ctx.fillStyle = '#ffffff'; // Knockout on solid box
-  } else {
-    ctx.fillStyle = isDark ? '#ffffff' : theme.ink;
-  }
-  ctx.fillText(matchText, anchorDrawX, docHeadlineY);
+  // Draw highlights sequentially across lines
+  hlChunks.forEach((chunk, chunkIdx) => {
+    const startP = totalHlChunks > 1 ? chunkIdx / totalHlChunks : 0;
+    const endP = totalHlChunks > 1 ? (chunkIdx + 1) / totalHlChunks : 1;
+    const chunkProg = totalHlChunks > 1
+      ? Math.min(1, Math.max(0, (progress - startP) / (endP - startP)))
+      : progress;
 
-  // 3. Draw Suffix Words (Exact same font size)
-  ctx.fillStyle = theme.ink;
-  if (suffix) {
-    ctx.fillText(suffix, anchorDrawX + matchW, docHeadlineY);
-  }
+    const chunkOptions: RenderOptions = {
+      ...options,
+      highlightProgress: chunkProg,
+    };
+
+    drawAnchorHighlight(
+      ctx,
+      chunk.x,
+      chunk.y + headlineFontSize * 0.5,
+      chunk.w,
+      headlineFontSize,
+      chunkOptions
+    );
+  });
+
+  // 2. Draw Headline Text Words
+  headlineLines.forEach((line, lineIdx) => {
+    const lineY = docHeadlineY + lineIdx * headlineLineHeight;
+    const lineStartX = pageLeftX + (pageWidth - line.w) / 2;
+
+    line.words.forEach((w) => {
+      const wx = lineStartX + w.x;
+      if (w.isAnchor && options.highlightStyle === 'box') {
+        ctx.fillStyle = '#ffffff';
+      } else {
+        ctx.fillStyle = isDark ? '#ffffff' : theme.ink;
+      }
+      ctx.fillText(w.word, wx, lineY);
+    });
+  });
+
+  ctx.restore();
+
+  const headlineH = headlineLines.length * headlineLineHeight;
+  let afterHeadlineY = docHeadlineY + headlineH + 16;
 
   // Thin rule below headline
   if (options.showDividerRules !== false) {
+    ctx.save();
     ctx.strokeStyle = theme.ruleColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(pageLeftX, docHeadlineY + headlineFontSize * 0.85);
-    ctx.lineTo(pageLeftX + pageWidth, docHeadlineY + headlineFontSize * 0.85);
+    ctx.moveTo(pageLeftX, afterHeadlineY);
+    ctx.lineTo(pageLeftX + pageWidth, afterHeadlineY);
     ctx.stroke();
+    afterHeadlineY += 16;
+    ctx.restore();
   }
-  ctx.restore();
 
   // ------------------------------------------------------------
   // SECTION D: Subhead & Byline
   // ------------------------------------------------------------
-  let afterHeadlineY = docHeadlineY + headlineFontSize + 20;
-
   if (options.showSubhead !== false && cut.subhead) {
     ctx.save();
-    ctx.font = `italic ${Math.max(13, Math.round(width * 0.017))}px Georgia, serif`;
+    const subheadFont = `italic ${Math.max(14, Math.round(width * 0.0175))}px Georgia, "Times New Roman", serif`;
+    const subheadLines = wrapSimpleText(ctx, cut.subhead, subheadFont, pageWidth);
+    const subheadLineH = Math.max(20, Math.round(width * 0.024));
+
+    ctx.font = subheadFont;
     ctx.fillStyle = theme.inkMuted;
     ctx.textAlign = 'left';
-    ctx.fillText(cut.subhead, pageLeftX, afterHeadlineY);
-    afterHeadlineY += 22;
+    ctx.textBaseline = 'top';
+
+    subheadLines.forEach((sLine, idx) => {
+      ctx.fillText(sLine, pageLeftX, afterHeadlineY + idx * subheadLineH);
+    });
+
+    afterHeadlineY += subheadLines.length * subheadLineH + 12;
     ctx.restore();
   }
 
@@ -597,9 +676,23 @@ export function renderNewspaperMatchCut(
     ctx.font = `bold italic ${Math.max(12, Math.round(width * 0.0155))}px Georgia, serif`;
     ctx.fillStyle = theme.inkMuted;
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
     const bylineStr = [cut.location, cut.byline].filter(Boolean).join(' — ') || 'From Our Special Correspondent';
     ctx.fillText(bylineStr, pageLeftX, afterHeadlineY);
-    afterHeadlineY += 24;
+    afterHeadlineY += 26;
+    ctx.restore();
+  }
+
+  // Thin rule below byline
+  if (options.showDividerRules !== false) {
+    ctx.save();
+    ctx.strokeStyle = theme.ruleColor;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(pageLeftX, afterHeadlineY);
+    ctx.lineTo(pageLeftX + pageWidth, afterHeadlineY);
+    ctx.stroke();
+    afterHeadlineY += 14;
     ctx.restore();
   }
 
@@ -611,7 +704,7 @@ export function renderNewspaperMatchCut(
     drawDenseColumns(
       ctx,
       pageLeftX,
-      afterHeadlineY + 8,
+      afterHeadlineY,
       pageWidth,
       bottomColumnsH,
       bodyParas,
@@ -707,7 +800,7 @@ export function renderNewspaperMatchCut(
 }
 
 /**
- * Draws dense multi-column newspaper paragraphs with guaranteed full coverage
+ * Draws dense multi-column newspaper paragraphs with genuine paragraph structure and clean typography
  */
 function drawDenseColumns(
   ctx: CanvasRenderingContext2D,
@@ -728,58 +821,71 @@ function drawDenseColumns(
   ctx.textBaseline = 'top';
 
   const numCols = numColumns;
-  const gutter = 22;
+  const gutter = 24;
   const colWidth = (totalWidth - gutter * (numCols - 1)) / numCols;
+  const paragraphGap = Math.round(lineHeight * 0.45);
 
-  // Flatten and expand text pool to ensure columns never run out of copy
-  const expandedText = [...paragraphs, ...BACKGROUND_BODY_PARAGRAPHS, ...paragraphs];
-  const allWords = expandedText.join(' ').split(/\s+/).filter(Boolean);
+  // Pool of paragraphs to display
+  const rawParas = (paragraphs && paragraphs.length > 0)
+    ? paragraphs.filter((p) => p.trim().length > 0)
+    : BACKGROUND_BODY_PARAGRAPHS;
+
+  const pool = [...rawParas, ...BACKGROUND_BODY_PARAGRAPHS, ...rawParas];
 
   let colIdx = 0;
   let curY = y;
-  let wordIdx = 0;
+  let paraIdx = 0;
 
-  while (colIdx < numCols && wordIdx < allWords.length) {
-    let currentLine = '';
+  while (colIdx < numCols && paraIdx < pool.length) {
+    const paraText = pool[paraIdx];
+    const words = paraText.split(/\s+/).filter(Boolean);
+    let lineWords: string[] = [];
+    let isFirstLineOfPara = true;
 
-    while (wordIdx < allWords.length) {
-      const nextWord = allWords[wordIdx];
-      const testLine = currentLine ? `${currentLine} ${nextWord}` : nextWord;
-      const testWidth = ctx.measureText(testLine).width;
+    for (let wIdx = 0; wIdx < words.length; wIdx++) {
+      const nextWord = words[wIdx];
+      const testLine = [...lineWords, nextWord].join(' ');
+      const indent = isFirstLineOfPara ? 12 : 0;
+      const testWidth = ctx.measureText(testLine).width + indent;
 
-      if (testWidth > colWidth && currentLine) {
-        // Draw line in current column
-        const colX = x + colIdx * (colWidth + gutter);
-        ctx.fillText(currentLine, colX, curY);
+      if (testWidth > colWidth && lineWords.length > 0) {
+        // Render this line
+        const colX = x + colIdx * (colWidth + gutter) + (isFirstLineOfPara ? 12 : 0);
+        ctx.fillText(lineWords.join(' '), colX, curY);
         curY += lineHeight;
-        currentLine = '';
+        isFirstLineOfPara = false;
+        lineWords = [nextWord];
 
-        // If column bottom reached, step to next column
+        // Check if column bottom exceeded
         if (curY + lineHeight > y + maxHeight) {
           colIdx++;
           curY = y;
-          break;
+          if (colIdx >= numCols) break;
         }
       } else {
-        currentLine = testLine;
-        wordIdx++;
+        lineWords.push(nextWord);
       }
     }
 
-    // Flush trailing line if any
-    if (currentLine && colIdx < numCols && curY + lineHeight <= y + maxHeight) {
-      const colX = x + colIdx * (colWidth + gutter);
-      ctx.fillText(currentLine, colX, curY);
-      curY += lineHeight;
+    // Flush last line of paragraph
+    if (lineWords.length > 0 && colIdx < numCols && curY + lineHeight <= y + maxHeight) {
+      const colX = x + colIdx * (colWidth + gutter) + (isFirstLineOfPara ? 12 : 0);
+      ctx.fillText(lineWords.join(' '), colX, curY);
+      curY += lineHeight + paragraphGap;
     }
 
-    // Loop words if needed to guarantee 100% dense column filling
-    if (colIdx < numCols && wordIdx >= allWords.length) {
-      wordIdx = 0;
+    if (curY + lineHeight > y + maxHeight) {
+      colIdx++;
+      curY = y;
+    }
+
+    paraIdx++;
+    if (paraIdx >= pool.length && colIdx < numCols) {
+      paraIdx = 0; // loop back to guarantee full stage coverage
     }
   }
 
-  // Draw thin vertical column divider rules
+  // Draw crisp vertical column divider rules
   ctx.strokeStyle = theme.ruleColor;
   ctx.lineWidth = 0.6;
   for (let c = 1; c < numCols; c++) {
@@ -807,10 +913,10 @@ function drawAnchorHighlight(
   const isAnimated = options.animationMode === 'animated-highlight';
   const progress = isAnimated ? Math.min(1, Math.max(0, options.highlightProgress ?? 1)) : 1;
 
-  if (progress <= 0) return; // Not started yet
+  if (progress <= 0 || textWidth <= 0) return;
 
   ctx.save();
-  const padX = fontSize * 0.16;
+  const padX = fontSize * 0.14;
   const padY = fontSize * 0.12;
   const hx = x - padX;
   const hy = y - fontSize * 0.52 - padY;
@@ -822,7 +928,6 @@ function drawAnchorHighlight(
   const currentDrawX = isRtl ? hx + hw - drawnW : hx;
 
   if (options.highlightStyle === 'marker') {
-    // Fluorescent Chisel Highlighter
     ctx.fillStyle = options.highlightColor;
     ctx.globalAlpha = Math.min(0.95, Math.max(0.4, options.markerOpacity));
 
@@ -901,4 +1006,117 @@ function drawAnchorHighlight(
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * Wraps headline or paragraph text and computes exact anchor word positions
+ */
+function wrapHeadlineWithAnchor(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  anchor: string,
+  maxWidth: number
+) {
+  const cleanText = text.trim();
+  if (!cleanText) return [];
+
+  const cleanAnchor = anchor.trim().toLowerCase();
+  const rawWords = cleanText.split(/\s+/).filter(Boolean);
+
+  const textLower = cleanText.toLowerCase();
+  const anchorIdx = cleanAnchor ? textLower.indexOf(cleanAnchor) : -1;
+
+  const wordObjects: { word: string; isAnchor: boolean }[] = [];
+  let searchFrom = 0;
+
+  for (let i = 0; i < rawWords.length; i++) {
+    const w = rawWords[i];
+    const wLower = w.toLowerCase();
+    const wStart = textLower.indexOf(wLower, searchFrom);
+    const wEnd = wStart >= 0 ? wStart + w.length : searchFrom + w.length;
+    searchFrom = wEnd;
+
+    let isAnchor = false;
+    if (anchorIdx !== -1 && wStart >= 0) {
+      const anchorEnd = anchorIdx + cleanAnchor.length;
+      if (wEnd > anchorIdx && wStart < anchorEnd) {
+        isAnchor = true;
+      }
+    }
+    wordObjects.push({ word: w, isAnchor });
+  }
+
+  const lines: {
+    text: string;
+    words: { word: string; isAnchor: boolean; x: number; w: number }[];
+    w: number;
+  }[] = [];
+
+  let currentLineWords: { word: string; isAnchor: boolean; w: number }[] = [];
+  let currentLineWidth = 0;
+  const spaceW = ctx.measureText(' ').width;
+
+  for (let i = 0; i < wordObjects.length; i++) {
+    const wObj = wordObjects[i];
+    const wW = ctx.measureText(wObj.word).width;
+    const testW = currentLineWidth === 0 ? wW : currentLineWidth + spaceW + wW;
+
+    if (testW > maxWidth && currentLineWords.length > 0) {
+      lines.push(buildLineObj(currentLineWords, spaceW));
+      currentLineWords = [{ word: wObj.word, isAnchor: wObj.isAnchor, w: wW }];
+      currentLineWidth = wW;
+    } else {
+      currentLineWords.push({ word: wObj.word, isAnchor: wObj.isAnchor, w: wW });
+      currentLineWidth = testW;
+    }
+  }
+
+  if (currentLineWords.length > 0) {
+    lines.push(buildLineObj(currentLineWords, spaceW));
+  }
+
+  return lines;
+}
+
+function buildLineObj(
+  words: { word: string; isAnchor: boolean; w: number }[],
+  spaceW: number
+) {
+  let curX = 0;
+  const positionedWords = words.map((w) => {
+    const item = { word: w.word, isAnchor: w.isAnchor, x: curX, w: w.w };
+    curX += w.w + spaceW;
+    return item;
+  });
+  return {
+    text: words.map((w) => w.word).join(' '),
+    words: positionedWords,
+    w: curX - spaceW,
+  };
+}
+
+function wrapSimpleText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  font: string,
+  maxWidth: number
+): string[] {
+  ctx.save();
+  ctx.font = font;
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    if (ctx.measureText(test).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  ctx.restore();
+  return lines;
 }

@@ -71,7 +71,7 @@ export default function TextHighlighterPage() {
   // Custom Document Copy State (for active cut)
   const currentCut = cuts[currentCutIndex] || cuts[0];
   const [customHeadline, setCustomHeadline] = useState(currentCut?.headline || '');
-  const [customMasthead, setCustomMasthead] = useState(currentCut?.masthead || 'THE DAILY CHRONICLE');
+  const [customMasthead, setCustomMasthead] = useState(currentCut?.masthead || 'CREATOR KIT');
   const [customSubhead, setCustomSubhead] = useState(currentCut?.subhead || '');
   const [customByline, setCustomByline] = useState(currentCut?.byline || '');
   const [customBodyText, setCustomBodyText] = useState((currentCut?.bodyParagraphs || BODY_CORPUS).join('\n\n'));
@@ -112,8 +112,9 @@ export default function TextHighlighterPage() {
   const [zoomDirection, setZoomDirection] = useState<'in' | 'out'>('in');
   const [zoomIntensity, setZoomIntensity] = useState(0.10);
 
-  // Typography Scale
+  // Typography Scale & Layout
   const [headlineScale, setHeadlineScale] = useState(1.0);
+  const [headlineWrapMode, setHeadlineWrapMode] = useState<'single-line' | 'auto-wrap'>('auto-wrap');
 
   // Export State
   const [isExporting, setIsExporting] = useState(false);
@@ -132,7 +133,7 @@ export default function TextHighlighterPage() {
   useEffect(() => {
     if (currentCut) {
       setCustomHeadline(currentCut.headline || '');
-      setCustomMasthead(currentCut.masthead || 'THE DAILY CHRONICLE');
+      setCustomMasthead(currentCut.masthead || 'CREATOR KIT');
       setCustomSubhead(currentCut.subhead || '');
       setCustomByline(currentCut.byline || '');
       setCustomBodyText((currentCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
@@ -216,6 +217,7 @@ export default function TextHighlighterPage() {
     zoomDirection,
     zoomIntensity,
     headlineScale,
+    headlineWrapMode,
   };
 
   // Redraw Canvas Frame
@@ -1632,6 +1634,54 @@ export default function TextHighlighterPage() {
                       {t.label}
                     </label>
                   ))}
+                </div>
+              </div>
+
+              {/* Headline Layout Mode */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666' }}>
+                    Headline Layout
+                  </label>
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#000' }}>
+                    {headlineWrapMode === 'single-line' ? 'SINGLE LINE (FIT)' : 'MULTI-LINE (AUTO)'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <button
+                    onClick={() => setHeadlineWrapMode('auto-wrap')}
+                    style={{
+                      padding: '7px 4px',
+                      border: '2px solid #000',
+                      borderRadius: 4,
+                      background: headlineWrapMode === 'auto-wrap' ? '#000' : '#fff',
+                      color: headlineWrapMode === 'auto-wrap' ? '#fff' : '#000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.65rem',
+                      cursor: 'pointer',
+                      boxShadow: headlineWrapMode === 'auto-wrap' ? '2px 2px 0 #FFE500' : 'none',
+                    }}
+                  >
+                    Auto Multi-Line
+                  </button>
+                  <button
+                    onClick={() => setHeadlineWrapMode('single-line')}
+                    style={{
+                      padding: '7px 4px',
+                      border: '2px solid #000',
+                      borderRadius: 4,
+                      background: headlineWrapMode === 'single-line' ? '#000' : '#fff',
+                      color: headlineWrapMode === 'single-line' ? '#fff' : '#000',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.65rem',
+                      cursor: 'pointer',
+                      boxShadow: headlineWrapMode === 'single-line' ? '2px 2px 0 #FFE500' : 'none',
+                    }}
+                  >
+                    Single Line (Fit)
+                  </button>
                 </div>
               </div>
 
