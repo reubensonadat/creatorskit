@@ -99,24 +99,13 @@ export default function TextHighlighterPage() {
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
 
-  // Canvas Environment & Modern Backdrop Scene
-  const [canvasEnvironment, setCanvasEnvironment] = useState<'paper' | 'dark' | 'image'>('dark');
-  const [backdropType, setBackdropType] = useState<'blurred-code' | 'deep-pitch' | 'obsidian-card' | 'custom-image'>('blurred-code');
-  const [backdropBlur, setBackdropBlur] = useState(5);
-  const [ambientGlow, setAmbientGlow] = useState(true);
-  const [codeOpacity, setCodeOpacity] = useState(0.48);
-  const [highlightSubhead, setHighlightSubhead] = useState(true);
-  const [badgeText, setBadgeText] = useState('News');
-  const [badgeColor, setBadgeColor] = useState('#10b981');
-  const [showTopColumns, setShowTopColumns] = useState(false);
+  // Layout & Visibility
+  const [showTopColumns, setShowTopColumns] = useState(true);
   const [showMasthead, setShowMasthead] = useState(true);
   const [showSubhead, setShowSubhead] = useState(true);
   const [showByline, setShowByline] = useState(true);
   const [showBottomColumns, setShowBottomColumns] = useState(true);
   const [showDividerRules, setShowDividerRules] = useState(true);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
-  const [uploadedImageEl, setUploadedImageEl] = useState<HTMLImageElement | null>(null);
-  const [imageOpacity, setImageOpacity] = useState(0.5);
 
   // Camera Zoom
   const [zoomEnabled, setZoomEnabled] = useState(false);
@@ -217,22 +206,12 @@ export default function TextHighlighterPage() {
     highlightDirection,
     highlightSector,
     fontFamily,
-    canvasEnvironment,
-    backdropType,
-    backdropBlur,
-    ambientGlow,
-    codeOpacity,
-    highlightSubhead,
-    badgeText,
-    badgeColor,
     showTopColumns,
     showMasthead,
     showSubhead,
     showByline,
     showBottomColumns,
     showDividerRules,
-    uploadedImage: uploadedImageEl,
-    imageOpacity,
     zoomEnabled,
     zoomDirection,
     zoomIntensity,
@@ -293,9 +272,6 @@ export default function TextHighlighterPage() {
     setHighlightColor(p.highlightColor);
     setHighlightStyle(p.highlightStyle);
     setPaperTheme(p.paperTheme);
-    if (p.id === 'ai-code-bugs' || p.paperTheme === 'noir') {
-      setCanvasEnvironment('dark');
-    }
     setCuts(p.cuts);
     setCurrentCutIndex(0);
     animStartTimeRef.current = performance.now();
@@ -324,28 +300,6 @@ export default function TextHighlighterPage() {
     setHighlightProgress(0);
     setIsPlaying(true);
     if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume);
-  };
-
-  // Environment Switch Handler
-  const handleEnvironmentSwitch = (env: 'paper' | 'dark' | 'image') => {
-    setCanvasEnvironment(env);
-    setShowMasthead(true);
-    setShowSubhead(true);
-    setShowByline(true);
-    setShowBottomColumns(true);
-    setShowDividerRules(true);
-    setShowTopColumns(env === 'paper');
-  };
-
-  // Image Upload Handler
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setUploadedImageUrl(url);
-    const img = new Image();
-    img.onload = () => setUploadedImageEl(img);
-    img.src = url;
   };
 
   // Single Frame PNG Copy
@@ -1612,283 +1566,33 @@ export default function TextHighlighterPage() {
               }}
             >
               {/* Paper Archetype */}
-              {/* Canvas Environment */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000' }}>
-                  Canvas Environment
+                  Paper Archetype
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                  {[
-                    { id: 'paper' as const, label: 'Newspaper', icon: '📰' },
-                    { id: 'dark' as const, label: 'Dark Studio', icon: '⬛' },
-                    { id: 'image' as const, label: 'Image Backdrop', icon: '🖼' },
-                  ].map((e) => (
+                  {Object.values(PAPER_THEMES).map((theme) => (
                     <button
-                      key={e.id}
-                      onClick={() => handleEnvironmentSwitch(e.id)}
+                      key={theme.id}
+                      onClick={() => setPaperTheme(theme.id as any)}
                       style={{
                         padding: '9px 4px',
                         border: '2px solid #000',
                         borderRadius: 4,
-                        background: canvasEnvironment === e.id ? '#000' : '#fff',
-                        color: canvasEnvironment === e.id ? '#fff' : '#000',
+                        background: paperTheme === theme.id ? '#000' : theme.bg,
+                        color: paperTheme === theme.id ? '#fff' : theme.ink,
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        fontSize: '0.64rem',
+                        fontSize: '0.66rem',
                         cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        boxShadow: canvasEnvironment === e.id ? '2px 2px 0 #FFE500' : 'none',
+                        textAlign: 'center',
+                        boxShadow: paperTheme === theme.id ? '2px 2px 0 #FFE500' : 'none',
                       }}
                     >
-                      <span style={{ fontSize: '1rem' }}>{e.icon}</span>
-                      <span>{e.label}</span>
+                      {theme.label.split(' ')[0]}
                     </button>
                   ))}
                 </div>
-
-                {/* Dark Studio Archetypes & Lighting */}
-                {canvasEnvironment === 'dark' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10, background: '#18181b', border: '1.5px solid #27272a', borderRadius: 4, color: '#f4f4f5' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#fbbf24' }}>
-                        Dark Studio Backdrop
-                      </label>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#a1a1aa' }}>Reference Polish</span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                      {[
-                        { id: 'blurred-code' as const, label: 'Blurred Code' },
-                        { id: 'deep-pitch' as const, label: 'Deep Pitch' },
-                        { id: 'obsidian-card' as const, label: 'Obsidian' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => setBackdropType(t.id)}
-                          style={{
-                            padding: '6px 2px',
-                            border: '1.5px solid #3f3f46',
-                            borderRadius: 4,
-                            background: backdropType === t.id ? '#fbbf24' : '#27272a',
-                            color: backdropType === t.id ? '#000' : '#e4e4e7',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.62rem',
-                            cursor: 'pointer',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Ambient Glow Toggle */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #27272a' }}>
-                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#e4e4e7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={ambientGlow}
-                          onChange={(e) => setAmbientGlow(e.target.checked)}
-                          style={{ width: 13, height: 13, accentColor: '#fbbf24', cursor: 'pointer' }}
-                        />
-                        Cinematic Ambient Amber Glow
-                      </label>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: ambientGlow ? '#fbbf24' : '#71717a' }}>
-                        {ambientGlow ? 'ACTIVE' : 'OFF'}
-                      </span>
-                    </div>
-
-                    {/* Code Backdrop Opacity & Blur Sliders */}
-                    {backdropType === 'blurred-code' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4, borderTop: '1px solid #27272a' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa', minWidth: 64 }}>CODE OPACITY</span>
-                          <input
-                            type="range"
-                            min="0.1"
-                            max="0.8"
-                            step="0.05"
-                            value={codeOpacity}
-                            onChange={(e) => setCodeOpacity(parseFloat(e.target.value))}
-                            style={{ flex: 1, accentColor: '#fbbf24', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#fbbf24' }}>
-                            {Math.round(codeOpacity * 100)}%
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa', minWidth: 64 }}>BLUR STRENGTH</span>
-                          <input
-                            type="range"
-                            min="1"
-                            max="12"
-                            step="1"
-                            value={backdropBlur}
-                            onChange={(e) => setBackdropBlur(parseInt(e.target.value))}
-                            style={{ flex: 1, accentColor: '#fbbf24', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#fbbf24' }}>
-                            {backdropBlur}px
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Article Badge Configuration */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6, borderTop: '1px solid #27272a' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#a1a1aa' }}>ARTICLE BADGE</span>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {[
-                            { color: '#10b981', name: 'Emerald' },
-                            { color: '#f59e0b', name: 'Amber' },
-                            { color: '#ef4444', name: 'Red' },
-                            { color: '#3b82f6', name: 'Blue' },
-                            { color: '#8b5cf6', name: 'Purple' },
-                          ].map((b) => (
-                            <button
-                              key={b.color}
-                              onClick={() => setBadgeColor(b.color)}
-                              style={{
-                                width: 14,
-                                height: 14,
-                                borderRadius: '50%',
-                                background: b.color,
-                                border: badgeColor === b.color ? '2px solid #fff' : '1px solid #000',
-                                cursor: 'pointer',
-                              }}
-                              title={b.name}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <input
-                        type="text"
-                        value={badgeText}
-                        onChange={(e) => setBadgeText(e.target.value)}
-                        placeholder="e.g. News, Exclusive, Report"
-                        style={{
-                          padding: '4px 6px',
-                          border: '1px solid #3f3f46',
-                          borderRadius: 3,
-                          background: '#09090b',
-                          color: '#fff',
-                          fontSize: '0.72rem',
-                          fontFamily: 'monospace',
-                        }}
-                      />
-                    </div>
-
-                    {/* Highlight Subhead Toggle */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #27272a' }}>
-                      <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, color: '#e4e4e7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={highlightSubhead}
-                          onChange={(e) => setHighlightSubhead(e.target.checked)}
-                          style={{ width: 13, height: 13, accentColor: '#fbbf24', cursor: 'pointer' }}
-                        />
-                        Highlight Subhead Sentence
-                      </label>
-                      <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: highlightSubhead ? '#fbbf24' : '#71717a' }}>
-                        {highlightSubhead ? 'ENABLED' : 'HEADLINE ONLY'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Paper Archetypes (Only for Newspaper env) */}
-                {canvasEnvironment === 'paper' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6 }}>
-                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666' }}>
-                      Paper Archetype
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                      {Object.values(PAPER_THEMES).map((theme) => (
-                        <button
-                          key={theme.id}
-                          onClick={() => setPaperTheme(theme.id as any)}
-                          style={{
-                            padding: '7px 4px',
-                            border: '2px solid #000',
-                            borderRadius: 4,
-                            background: paperTheme === theme.id ? '#000' : theme.bg,
-                            color: paperTheme === theme.id ? '#fff' : theme.ink,
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.65rem',
-                            cursor: 'pointer',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {theme.label.split(' ')[0]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {canvasEnvironment === 'image' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: '#f9f9f9', border: '1.5px solid #000', borderRadius: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase' }}>
-                        Upload Backdrop Image
-                      </label>
-                      {uploadedImageUrl && (
-                        <button
-                          onClick={() => {
-                            setUploadedImageUrl(null);
-                            setUploadedImageEl(null);
-                          }}
-                          style={{
-                            fontSize: '0.6rem',
-                            fontFamily: 'monospace',
-                            fontWeight: 800,
-                            padding: '2px 6px',
-                            background: '#ff4d4f',
-                            color: '#fff',
-                            border: '1px solid #000',
-                            borderRadius: 3,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={handleImageUpload}
-                      style={{ fontSize: '0.72rem', fontFamily: 'monospace' }}
-                    />
-                    {uploadedImageUrl && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444', minWidth: 52 }}>OPACITY</span>
-                          <input
-                            type="range"
-                            min="0.05"
-                            max="1.0"
-                            step="0.05"
-                            value={imageOpacity}
-                            onChange={(e) => setImageOpacity(parseFloat(e.target.value))}
-                            style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                            {Math.round(imageOpacity * 100)}%
-                          </span>
-                        </div>
-                        <img src={uploadedImageUrl} alt="Upload preview" style={{ width: '100%', height: 60, objectFit: 'cover', border: '1px solid #000', borderRadius: 3 }} />
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Element Visibility Toggles */}
