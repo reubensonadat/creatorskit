@@ -379,9 +379,6 @@ Control your speed, adjust your font size, and download your voice recording in 
         setShowEyelineGuide(false);
         setCircularFocusLens(false);
         setBgDimOpacity(0.45);
-        if (!hasInitializedDefaultsRef.current) {
-          setSpeechFollowEnabled(false); // Default to butter-smooth Timed Scroll on mobile
-        }
       }
       hasInitializedDefaultsRef.current = true;
     };
@@ -859,14 +856,15 @@ Control your speed, adjust your font size, and download your voice recording in 
       recognition.interimResults = true;
       // iOS WebKit throws on maxAlternatives > 1 in older versions
       recognition.maxAlternatives = isIOS ? 1 : 5;
-      recognition.lang = 'en-GB';
+      recognition.lang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
 
       // Schedule a single backed-off restart; stale generations no-op.
       const scheduleRestart = (baseDelay: number) => {
         const restart = recognitionRestartRef.current;
         if (restart.timer) clearTimeout(restart.timer);
         const gen = restart.gen;
-        const delay = Math.min(3000, baseDelay * Math.pow(2, Math.min(restart.attempt, 4)));
+        // On mobile/iOS, keep restart instant (50-80ms) without heavy backoff so speech is never dropped
+        const delay = isMobileDevice ? (isIOS ? 50 : 80) : Math.min(2500, baseDelay * Math.pow(1.5, Math.min(restart.attempt, 3)));
         restart.attempt++;
         restart.timer = setTimeout(() => {
           restart.timer = null;
@@ -932,7 +930,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         const total = cleanWordsList.length;
         if (total === 0) return;
 
-        // Ghanaian-optimized, context-aware voice matching engine.
+        // Context-aware voice matching engine.
         const engine = voiceEngineRef.current;
         if (engine && Math.abs(engine.currentIndex - activeWordIndexRef.current) > 20) {
           engine.seek(Math.max(0, activeWordIndexRef.current));
@@ -953,27 +951,34 @@ Control your speed, adjust your font size, and download your voice recording in 
           const maxAdvance = phraseMatch.matchedWords >= 4 ? 25 : 3;
           const cappedTarget = Math.min(targetWordFloatRef.current + maxAdvance, phraseMatch.matchIndex);
           targetWordFloatRef.current = Math.max(targetWordFloatRef.current, cappedTarget);
+
           setScrollProgress(Math.round(((phraseMatch.matchIndex + 1) / total) * 100));
         }
       };
 
       recognition.onerror = (err: any) => {
-        // Permission failures, audio capture collisions or service blockage
+        // Permission failures or service blockage
         if (
           err.error === 'not-allowed' ||
-          err.error === 'service-not-allowed' ||
-          err.error === 'audio-capture'
+          err.error === 'service-not-allowed'
         ) {
-          console.warn('SpeechRecognition permission/capture denied:', err.error);
+          console.warn('SpeechRecognition permission denied:', err.error);
           setSpeechStatus('unsupported');
+          return;
+        }
+        if (err.error === 'audio-capture') {
+          // Mobile audio conflict recovery: release competing mic streams and retry
           if (isMobileDevice) {
-            // Auto fallback to timed scroll so reading is uninterrupted on mobile
-            setSpeechFollowEnabled(false);
+            if (micStreamRef.current) {
+              try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+              micStreamRef.current = null;
+            }
           }
+          scheduleRestart(150);
           return;
         }
         if (err.error === 'network') {
-          scheduleRestart(400);
+          scheduleRestart(350);
           return;
         }
         if (err.error !== 'aborted' && err.error !== 'no-speech') {
@@ -983,7 +988,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          scheduleRestart(isIOS ? 100 : 250);
+          scheduleRestart(isIOS ? 50 : 100);
         } else {
           setSpeechStatus('idle');
         }
@@ -1012,7 +1017,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   }, [speechFollowEnabled, isPlaying, startSpeechRecognition, stopSpeechRecognition]);
 
   // ─────────────────────────────────────────────────────────────
-  // 2. 60FPS SMOOTH EASING ANIMATION LOOP
+  // 2. 60FPS EXQUISITE SMOOTH EASING ANIMATION LOOP
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
@@ -1032,21 +1037,25 @@ Control your speed, adjust your font size, and download your voice recording in 
           // quiet for ~700ms (only enforced while the live audio meter runs).
           const micQuiet =
             audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
-          // Glided speed ceiling: max ~180 px/s ensures readable eye tracking even on catch-up.
-          const maxStep = (180 * Math.min(delta, 50)) / 1000;
+          // Smooth speed ceiling: max ~200 px/s ensures organic, eye-pleasing motion
+          const maxStep = (200 * Math.min(delta, 50)) / 1000;
 
-          // 1. Dual-Track follower: Audio cruise + Anchor catch-up
+          // 1. Dual-Track follower: Exquisite continuous word interpolation
           if (!micQuiet && isSpeakingCadenceActiveRef.current) {
-            const cruise = learnedWpmRef.current / 60; // words/sec at natural pace
+            const cruise = learnedWpmRef.current / 60; // words/sec at natural speaking cadence
             const gap = targetWordFloatRef.current - virtualWordFloatRef.current;
             if (gap > 0) {
-              // Smooth, glided catch-up (accelerates gently without snapping)
-              const catchUp = Math.min(gap * 1.5, cruise * 1.3);
+              // Smooth, progressive velocity ramp (critical-damped cubic curve)
+              const catchUp = Math.min(gap * 1.8, cruise * 1.4);
               const advance = Math.min((cruise + catchUp) * (delta / 1000), gap);
               virtualWordFloatRef.current += advance;
+            } else {
+              // Smooth micro-advance while vocalizing so word transitions never freeze
+              const microAdvance = Math.min(cruise * 0.3 * (delta / 1000), 0.04);
+              virtualWordFloatRef.current = Math.min(virtualWordFloatRef.current + microAdvance, targetWordFloatRef.current + 0.6);
             }
 
-            const displayWord = Math.round(virtualWordFloatRef.current);
+            const displayWord = Math.floor(virtualWordFloatRef.current);
             if (displayWord !== lastDisplayedWordRef.current) {
               lastDisplayedWordRef.current = displayWord;
               setActiveWordIndex(displayWord);
@@ -1056,7 +1065,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
           // 2. Scroll: interpolate the pixel position along the word
           // timeline (between actual DOM word anchors) and ease toward
-          // it, forward-only.
+          // it with organic spring physics.
           const wordSpans = readerRef.current?.querySelectorAll('[data-word="1"]');
           if (wordSpans && wordSpans.length > 0) {
             const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
@@ -1069,19 +1078,17 @@ Control your speed, adjust your font size, and download your voice recording in 
             targetScrollYRef.current = y0 + (y1 - y0) * frac;
 
             const diff = targetScrollYRef.current - currentScroll;
-            if (Math.abs(diff) > 0.5) {
-              let decay = 1 - Math.exp(-6.5 * (Math.min(delta, 50) / 1000));
+            if (Math.abs(diff) > 0.25) {
+              // Organic exponential decay for liquid-smooth scroll motion
+              let decay = 1 - Math.exp(-7.2 * (Math.min(delta, 50) / 1000));
               let appliedDiff = diff;
 
-              // Strict forward-only progression: small backward
-              // corrections (re-read echoes, interpolation wobble) are
-              // suppressed entirely; large ones (genuine navigation)
-              // ease back visibly but gently.
+              // Backward scroll dampening
               if (diff < 0) {
-                if (diff > -140) {
+                if (diff > -100) {
                   appliedDiff = 0;
                 } else {
-                  decay = 1 - Math.exp(-4.0 * (Math.min(delta, 50) / 1000));
+                  decay = 1 - Math.exp(-4.5 * (Math.min(delta, 50) / 1000));
                 }
               }
 
