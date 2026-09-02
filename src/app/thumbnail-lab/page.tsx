@@ -434,39 +434,70 @@ export default function ThumbnailLabPage() {
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  // Fetch initial competitors from Supabase
+  const CACHE_KEY = 'creatorskit_competitors_feed_v1';
+  const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour cache
+
+  // Fetch initial ~20 competitors with localStorage cache
   useEffect(() => {
     async function loadSupabaseCompetitors() {
-      const stored = await fetchCompetitorsFromDatabase();
-      if (stored && stored.length > 0) {
-        const lf = stored
-          .filter((c) => c.format === 'longform')
-          .map((c) => ({
-            id: c.id || c.youtube_video_id,
-            title: c.title,
-            channelName: c.channel_name,
-            channelAvatar: c.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
-            views: c.views || '1.2M views',
-            timeAgo: c.time_ago || '2 days ago',
-            duration: c.duration || '14:20',
-            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
-            verified: c.verified ?? true,
-          }));
-        const sh = stored
-          .filter((c) => c.format === 'shorts')
-          .map((c) => ({
-            id: c.id || c.youtube_video_id,
-            title: c.title,
-            channelName: c.channel_name,
-            channelAvatar: c.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
-            views: c.views || '2.4M views',
-            likes: '140K',
-            comments: '1.2K',
-            soundTitle: 'Original Audio',
-            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
-          }));
-        if (lf.length > 0) setDbLongformCompetitors(lf);
-        if (sh.length > 0) setDbShortsCompetitors(sh);
+      try {
+        // 1. Try reading from client cache first (0 network/database calls!)
+        if (typeof window !== 'undefined') {
+          const cachedStr = localStorage.getItem(CACHE_KEY);
+          if (cachedStr) {
+            const cached = JSON.parse(cachedStr);
+            if (cached && cached.timestamp && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+              if (cached.longform?.length > 0) setDbLongformCompetitors(cached.longform);
+              if (cached.shorts?.length > 0) setDbShortsCompetitors(cached.shorts);
+              return;
+            }
+          }
+        }
+
+        // 2. Otherwise fetch ~20 randomized thumbnails from Supabase
+        const stored = await fetchCompetitorsFromDatabase(undefined, 20);
+        if (stored && stored.length > 0) {
+          const lf = stored
+            .filter((c) => c.format === 'longform')
+            .map((c) => ({
+              id: c.id || c.youtube_video_id,
+              title: c.title,
+              channelName: c.channel_name,
+              channelAvatar: (c.channel_avatar || '').replace('yt3.ggpht.com', 'yt3.googleusercontent.com') || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+              views: c.views || '1.2M views',
+              timeAgo: c.time_ago || '2 days ago',
+              duration: c.duration || '14:20',
+              imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+              category: c.category || 'Technology & AI',
+              verified: c.verified ?? true,
+            }));
+          const sh = stored
+            .filter((c) => c.format === 'shorts')
+            .map((c) => ({
+              id: c.id || c.youtube_video_id,
+              title: c.title,
+              channelName: c.channel_name,
+              channelAvatar: (c.channel_avatar || '').replace('yt3.ggpht.com', 'yt3.googleusercontent.com') || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+              views: c.views || '2.4M views',
+              likes: '140K',
+              comments: '1.2K',
+              soundTitle: 'Original Audio',
+              imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+              category: c.category || 'Technology & AI',
+            }));
+          if (lf.length > 0) setDbLongformCompetitors(lf);
+          if (sh.length > 0) setDbShortsCompetitors(sh);
+
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              longform: lf,
+              shorts: sh,
+            }));
+          }
+        }
+      } catch {
+        // Fallback cleanly
       }
     }
     loadSupabaseCompetitors();
@@ -1657,7 +1688,13 @@ Tested on YouTube Simulator.`;
                     <Search size={19} color="#ffffff" style={{ cursor: 'pointer' }} />
                     <UploadCloud size={19} color="#ffffff" style={{ cursor: 'pointer' }} />
                     <div style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', border: '1px solid #555' }}>
-                      <img src={activeCandidate.channelAvatar} alt="User" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img
+                        src={activeCandidate.channelAvatar}
+                        alt="User"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(activeCandidate.channelName)}`; }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1800,7 +1837,13 @@ Tested on YouTube Simulator.`;
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
                     <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ff0000', overflow: 'hidden' }}>
-                      <img src={activeCandidate.channelAvatar} alt="User" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img
+                        src={activeCandidate.channelAvatar}
+                        alt="User"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(activeCandidate.channelName)}`; }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
                     </div>
                     <span style={{ fontSize: '0.55rem', color: '#aaa' }}>You</span>
                   </div>
@@ -1819,7 +1862,13 @@ Tested on YouTube Simulator.`;
                     return (
                       <div key={video.id + idx} style={{ display: 'flex', flexDirection: 'column', position: 'relative', border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none', borderRadius: 8, padding: 4 }}>
                         <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: 12, overflow: 'hidden', position: 'relative', background: '#272727' }}>
-                          <img src={video.imageUrl} alt={video.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img
+                            src={video.imageUrl}
+                            alt={video.title}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
                           {showDurationBadge && (
                             <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '2px 5px', borderRadius: 4 }}>
                               {video.duration}
@@ -1828,7 +1877,13 @@ Tested on YouTube Simulator.`;
                         </div>
 
                         <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                          <img src={video.channelAvatar} alt={video.channelName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                          <img
+                            src={video.channelAvatar}
+                            alt={video.channelName}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(video.channelName)}`; }}
+                            style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
+                          />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.96rem', fontWeight: 600, color: '#fff', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                               {video.title}
@@ -1857,7 +1912,13 @@ Tested on YouTube Simulator.`;
                   {shortsFeed.map((short, idx) => (
                     <div key={short.id + idx} style={{ width: '100%', position: 'relative', border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none', borderRadius: 8, overflow: 'hidden' }}>
                       <div style={{ width: '100%', height: 260, background: '#1c1c1c', position: 'relative' }}>
-                        <img src={short.imageUrl} alt={short.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img
+                          src={short.imageUrl}
+                          alt={short.title}
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
                         <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
                           <div style={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {short.title}
@@ -1876,7 +1937,13 @@ Tested on YouTube Simulator.`;
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'shorts' && platformView === 'shorts-player' && (
               <div style={{ width: '390px', height: '690px', background: '#000000', position: 'relative', overflow: 'hidden', border: '1px solid #27272a', boxShadow: '0 0 50px rgba(0,0,0,0.9)' }}>
-                <img src={activeCandidate.imageUrl} alt={activeCandidate.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img
+                  src={activeCandidate.imageUrl}
+                  alt={activeCandidate.title}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
 
                 {/* UI Overlay */}
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '16px 12px', background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%)' }}>
@@ -1888,7 +1955,13 @@ Tested on YouTube Simulator.`;
                   <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                     <div style={{ flex: 1, marginRight: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <img src={activeCandidate.channelAvatar} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                        <img
+                          src={activeCandidate.channelAvatar}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(activeCandidate.channelName)}`; }}
+                          style={{ width: 32, height: 32, borderRadius: '50%' }}
+                        />
                         <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>{activeCandidate.channelName}</span>
                         <button style={{ padding: '4px 10px', background: '#cc0000', color: '#fff', border: 'none', borderRadius: 16, fontSize: '0.7rem', fontWeight: 700 }}>
                           Subscribe

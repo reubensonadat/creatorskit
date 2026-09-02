@@ -115,7 +115,9 @@ export async function POST(req: NextRequest) {
           || html.match(/"(https:\/\/(?:yt3\.ggpht\.com|yt3\.googleusercontent\.com)\/[^"=]+)=s\d+[^"]*"/i);
 
         if (avatarMatch && avatarMatch[1]) {
-          channelAvatar = avatarMatch[1].replace(/\\u0026/g, '&');
+          channelAvatar = avatarMatch[1]
+            .replace(/\\u0026/g, '&')
+            .replace('yt3.ggpht.com', 'yt3.googleusercontent.com');
         }
       }
     } catch {

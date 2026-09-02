@@ -296,14 +296,14 @@ export interface StoredCompetitor {
 }
 
 /**
- * Fetch competitor thumbnails from Supabase.
+ * Fetch competitor thumbnails from Supabase with random sampling (default 20).
  */
-export async function fetchCompetitorsFromDatabase(format?: 'longform' | 'shorts'): Promise<StoredCompetitor[]> {
+export async function fetchCompetitorsFromDatabase(format?: 'longform' | 'shorts', limit: number = 20): Promise<StoredCompetitor[]> {
   try {
     let query = supabase
       .from('competitor_thumbnails')
       .select('*')
-      .order('created_at', { ascending: false });
+      .limit(60);
 
     if (format) {
       query = query.eq('format', format);
@@ -315,7 +315,11 @@ export async function fetchCompetitorsFromDatabase(format?: 'longform' | 'shorts
       return [];
     }
 
-    return data || [];
+    if (!data || data.length === 0) return [];
+
+    // Random shuffle and take requested limit (e.g. 20)
+    const shuffled = [...data].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, limit);
   } catch (err) {
     console.warn('Failed to fetch competitor_thumbnails from Supabase:', err);
     return [];
@@ -323,27 +327,21 @@ export async function fetchCompetitorsFromDatabase(format?: 'longform' | 'shorts
 }
 
 /**
- * Save / Insert a competitor thumbnail into Supabase with automatic deduplication.
+ * Save / Insert a competitor thumbnail into Supabase using an atomic O(1) unique key operation
+ * indexed directly on the 11-character YouTube video ID.
  */
 export async function saveCompetitorToDatabase(competitor: Partial<StoredCompetitor>): Promise<{ success: boolean; data?: StoredCompetitor; alreadyExists?: boolean; error?: string }> {
   try {
-    if (!competitor.youtube_video_id) {
+    const rawId = competitor.youtube_video_id?.trim();
+    if (!rawId) {
       return { success: false, error: 'youtube_video_id is required' };
     }
 
-    // Deduplication check: check if this video already exists in the database
-    const { data: existing } = await supabase
-      .from('competitor_thumbnails')
-      .select('*')
-      .eq('youtube_video_id', competitor.youtube_video_id)
-      .maybeSingle();
-
-    if (existing) {
-      return { success: true, alreadyExists: true, data: existing };
-    }
+    // Extract exact 11-character unique video ID
+    const videoId = rawId.length > 11 ? rawId.slice(-11) : rawId;
 
     const payload = {
-      youtube_video_id: competitor.youtube_video_id,
+      youtube_video_id: videoId,
       title: competitor.title || 'YouTube Video',
       channel_name: competitor.channel_name || 'YouTube Creator',
       channel_avatar: competitor.channel_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(competitor.channel_name || 'Creator')}`,
@@ -353,20 +351,21 @@ export async function saveCompetitorToDatabase(competitor: Partial<StoredCompeti
       format: competitor.format || 'longform',
       category: competitor.category || 'Technology & AI',
       verified: competitor.verified ?? true,
-      thumbnail_url: competitor.thumbnail_url || `https://img.youtube.com/vi/${competitor.youtube_video_id}/maxresdefault.jpg`,
+      thumbnail_url: competitor.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
     };
 
+    // Single-shot atomic O(1) write with unique constraint deduplication
     const { data, error } = await supabase
       .from('competitor_thumbnails')
-      .insert([payload])
+      .upsert([payload], { onConflict: 'youtube_video_id', ignoreDuplicates: true })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       return { success: false, error: error.message };
     }
 
-    return { success: true, alreadyExists: false, data };
+    return { success: true, alreadyExists: !data, data: data || (payload as any) };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Unknown error' };
   }
