@@ -23,6 +23,8 @@ import {
   Type,
   FileArchive,
   RefreshCw,
+  ChevronDown,
+  Shuffle,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import {
@@ -40,8 +42,74 @@ import {
   downloadBlob,
 } from '@/lib/canvas-video-exporter';
 import { PRESET_TOPICS, generateCutsForPhrase, MASTHEADS, LOCATIONS, BYLINES } from './presets';
-import { SimpleGifEncoder } from './gif-encoder';
 import { GOOGLE_FONTS_LIST } from './google-fonts';
+import { TactileScrubber } from '@/components/tactile-scrubber';
+
+const SOUND_OPTIONS = [
+  { id: 'shutter' as const, label: 'Shutter Snap' },
+  { id: 'typewriter' as const, label: 'Typewriter Clack' },
+  { id: 'motor' as const, label: 'Motor Drive' },
+  { id: 'paper' as const, label: 'Paper Rustle' },
+  { id: 'mute' as const, label: 'Muted' },
+];
+
+const FONT_CYCLE_PRESETS = [
+  {
+    id: 'broadsheet',
+    label: '📰 Broadsheet',
+    fonts: [
+      '"Playfair Display", Georgia, serif',
+      '"DM Serif Display", serif',
+      '"Bodoni Moda", serif',
+      '"Cormorant Garamond", serif',
+      '"Cinzel", "Times New Roman", serif',
+    ],
+  },
+  {
+    id: 'classified',
+    label: '⌨️ Classified',
+    fonts: [
+      '"Special Elite", monospace',
+      '"Courier Prime", "Courier New", monospace',
+      '"Space Mono", monospace',
+      '"IBM Plex Mono", monospace',
+      '"Cutive Mono", monospace',
+    ],
+  },
+  {
+    id: 'tabloid',
+    label: '🚨 Tabloid Heavy',
+    fonts: [
+      '"Bebas Neue", Impact, sans-serif',
+      '"Anton", Impact, sans-serif',
+      '"Archivo Black", sans-serif',
+      '"Oswald", sans-serif',
+      '"Ultra", serif',
+    ],
+  },
+  {
+    id: 'eclectic',
+    label: '🎨 Eclectic Mix',
+    fonts: [
+      '"Playfair Display", Georgia, serif',
+      '"Special Elite", monospace',
+      '"Caveat", "Segoe Script", "Brush Script MT", cursive',
+      '"Cinzel", "Times New Roman", serif',
+      '"Inter", sans-serif',
+    ],
+  },
+  {
+    id: 'brutalist',
+    label: '⚡ Brutalist Sans',
+    fonts: [
+      '"Inter", sans-serif',
+      '"Syne", sans-serif',
+      '"Space Grotesk", sans-serif',
+      '"Montserrat", sans-serif',
+      '"Outfit", sans-serif',
+    ],
+  },
+];
 
 const ASPECT_RATIOS = [
   { id: '9:16' as const, label: '9:16 · Story / Reels / TikTok', width: 1080, height: 1920, aspect: '9/16' },
@@ -73,6 +141,8 @@ export default function TextMatchCutStudioPage() {
   const [cutsPerSecond, setCutsPerSecond] = useState(10); // Default 10 cuts/sec
   const [soundEffect, setSoundEffect] = useState<'shutter' | 'typewriter' | 'motor' | 'paper' | 'mute'>('shutter');
   const [soundVolume, setSoundVolume] = useState(0.5);
+  const [showSoundDropdown, setShowSoundDropdown] = useState(false);
+  const soundMenuRef = useRef<HTMLDivElement>(null);
 
   // Visual & Stylistic Options
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('9:16');
@@ -81,8 +151,7 @@ export default function TextMatchCutStudioPage() {
   const [markerOpacity, setMarkerOpacity] = useState(0.85);
   // Where the highlighted phrase sits INSIDE the generated sentences.
   const [anchorPosition, setAnchorPosition] = useState<'auto' | 'start' | 'middle' | 'end'>('auto');
-  // Advanced layout toggles — which document sections are visible. Rarely
-  // used, so they live collapsed under Advanced Settings.
+  // Advanced layout toggles — which document sections are visible.
   const [showTopColumns, setShowTopColumns] = useState(true);
   const [showMasthead, setShowMasthead] = useState(true);
   const [showSubhead, setShowSubhead] = useState(true);
@@ -98,12 +167,65 @@ export default function TextMatchCutStudioPage() {
     '"Cinzel", "Times New Roman", serif',
     '"Inter", sans-serif',
   ]);
+  const [editingFontSlot, setEditingFontSlot] = useState<number | null>(null);
+  const [fontCategoryFilter, setFontCategoryFilter] = useState<'All' | 'Serif' | 'Typewriter' | 'Tabloid' | 'Sans' | 'Display'>('All');
   const [highlightSector, setHighlightSector] = useState<'top-masthead' | 'center-headline' | 'body-paragraph'>('center-headline');
   const [depthOfField, setDepthOfField] = useState(true);
   const [dofIntensity, setDofIntensity] = useState(0.75);
   const [filmGrain, setFilmGrain] = useState(true);
   const [cameraShake, setCameraShake] = useState(true);
   const [showCrosshairGuide, setShowCrosshairGuide] = useState(false);
+
+  // Close sound dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (soundMenuRef.current && !soundMenuRef.current.contains(e.target as Node)) {
+        setShowSoundDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Interactive Speed Track Drag Controller
+  const speedTrackRef = useRef<HTMLDivElement>(null);
+
+  const updateSpeedFromClientX = useCallback((clientX: number) => {
+    if (!speedTrackRef.current) return;
+    const rect = speedTrackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const newSpeed = Math.round(1 + ratio * 29); // 1 to 30
+    setCutsPerSecond(newSpeed);
+  }, []);
+
+  const handleSpeedTrackMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    updateSpeedFromClientX(e.clientX);
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      updateSpeedFromClientX(moveEvent.clientX);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleSpeedTrackTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 0) return;
+    updateSpeedFromClientX(e.touches[0].clientX);
+    const onTouchMove = (moveEvent: TouchEvent) => {
+      if (moveEvent.touches.length === 0) return;
+      updateSpeedFromClientX(moveEvent.touches[0].clientX);
+    };
+    const onTouchEnd = () => {
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd);
+  };
 
   // Studio Mode: Match Cut (Whip Cuts) vs Animated Highlighter (Slow Sweep)
   const [animationMode, setAnimationMode] = useState<'match-cut' | 'animated-highlight'>('match-cut');
@@ -368,42 +490,6 @@ export default function TextMatchCutStudioPage() {
     } catch (err) {
       console.error('ZIP Export failed:', err);
       setExportProgress('Export failed.');
-      setTimeout(() => setExportProgress(null), 3000);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Export Looping Animated GIF
-  const handleExportGif = async () => {
-    setIsExporting(true);
-    setExportProgress('Encoding Animated GIF...');
-    try {
-      const gifWidth = Math.min(selectedAspect.width, 600);
-      const gifHeight = Math.round(gifWidth * (selectedAspect.height / selectedAspect.width));
-      const frameDelayMs = Math.round(1000 / cutsPerSecond);
-
-      const gifEncoder = new SimpleGifEncoder(gifWidth, gifHeight, frameDelayMs);
-      const offscreen = document.createElement('canvas');
-      offscreen.width = gifWidth;
-      offscreen.height = gifHeight;
-      const ctx = offscreen.getContext('2d')!;
-
-      for (let i = 0; i < cuts.length; i++) {
-        setExportProgress(`Encoding GIF frame ${i + 1} of ${cuts.length}...`);
-        renderNewspaperMatchCut(ctx, gifWidth, gifHeight, cuts[i], renderOptions, i);
-        gifEncoder.addFrame(ctx);
-      }
-
-      const gifBlob = gifEncoder.finish();
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(gifBlob);
-      link.download = `match-cut-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.gif`;
-      link.click();
-      setExportProgress(null);
-    } catch (err) {
-      console.error('GIF Export failed:', err);
-      setExportProgress('GIF Export failed.');
       setTimeout(() => setExportProgress(null), 3000);
     } finally {
       setIsExporting(false);
@@ -761,36 +847,163 @@ export default function TextMatchCutStudioPage() {
                 </button>
               </div>
 
-              {/* Speed Controls: 1 to 30 cuts/second */}
-              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
-                  SPEED: <span style={{ color: '#d97706' }}>{cutsPerSecond} CUTS/SEC</span>
-                </span>
-                <input
-                  type="range"
-                  min="1"
-                  max="30"
-                  step="1"
-                  value={cutsPerSecond}
-                  onChange={(e) => setCutsPerSecond(parseFloat(e.target.value))}
-                  style={{ width: 90, accentColor: '#000', cursor: 'pointer' }}
-                  title="Adjust cut speed from 1 to 30 cuts per second"
-                />
-                <div className="tool-transport-speed-presets" style={{ display: 'flex', border: '2px solid #000', background: '#fff' }}>
-                  {[5, 10, 15, 20, 30].map((spd) => (
+              {/* Stout Tactile Speed Controller / Dragger */}
+              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {/* Interactive Scrubber Capsule */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    background: '#fff',
+                    padding: '3px 6px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCutsPerSecond((s) => Math.max(1, s - 1))}
+                    style={{
+                      width: 19,
+                      height: 19,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1.5px solid #000',
+                      background: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      borderRadius: 2,
+                      padding: 0,
+                    }}
+                    title="Decrease speed (-1 cut/s)"
+                  >
+                    -
+                  </button>
+
+                  {/* Tactile Fill Scrubber Track */}
+                  <div
+                    ref={speedTrackRef}
+                    onMouseDown={handleSpeedTrackMouseDown}
+                    onTouchStart={handleSpeedTrackTouchStart}
+                    style={{
+                      position: 'relative',
+                      width: 76,
+                      height: 15,
+                      background: '#e5e7eb',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      cursor: 'ew-resize',
+                      overflow: 'hidden',
+                      userSelect: 'none',
+                    }}
+                    title="Click or drag to scrub cuts/sec"
+                  >
+                    {/* Active Yellow Fill */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${((cutsPerSecond - 1) / 29) * 100}%`,
+                        background: '#FFE500',
+                        borderRight: '1.5px solid #000',
+                      }}
+                    />
+                    {/* Tactile Gauge Grip Grooves */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-evenly',
+                        pointerEvents: 'none',
+                        opacity: 0.3,
+                      }}
+                    >
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCutsPerSecond((s) => Math.min(30, s + 1))}
+                    style={{
+                      width: 19,
+                      height: 19,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1.5px solid #000',
+                      background: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      borderRadius: 2,
+                      padding: 0,
+                    }}
+                    title="Increase speed (+1 cut/s)"
+                  >
+                    +
+                  </button>
+
+                  {/* Live Value Indicator Badge */}
+                  <span
+                    style={{
+                      fontSize: '0.66rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      color: '#000',
+                      background: '#FFE500',
+                      padding: '1px 5px',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      minWidth: 40,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {cutsPerSecond}/s
+                  </span>
+                </div>
+
+                {/* Preset Chips */}
+                <div
+                  className="tool-transport-speed-presets"
+                  style={{
+                    display: 'flex',
+                    border: '2px solid #000',
+                    background: '#fff',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    boxShadow: '1.5px 1.5px 0 #000',
+                  }}
+                >
+                  {[5, 10, 15, 24, 30].map((spd, idx) => (
                     <button
                       key={spd}
+                      type="button"
                       onClick={() => setCutsPerSecond(spd)}
                       style={{
                         padding: '4px 6px',
                         border: 'none',
-                        borderRight: spd !== 30 ? '1px solid #000' : 'none',
+                        borderRight: idx !== 4 ? '1px solid #000' : 'none',
                         background: cutsPerSecond === spd ? '#000' : '#fff',
-                        color: cutsPerSecond === spd ? '#fff' : '#000',
+                        color: cutsPerSecond === spd ? '#FFE500' : '#000',
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        fontSize: '0.65rem',
+                        fontSize: '0.64rem',
                         cursor: 'pointer',
+                        transition: 'all 0.1s',
                       }}
                       title={`${spd} cuts per second`}
                     >
@@ -800,50 +1013,80 @@ export default function TextMatchCutStudioPage() {
                 </div>
               </div>
 
-              {/* Sound Effect Select */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Stout Neo-Brutalist Sound Selector */}
+              <div style={{ position: 'relative' }} ref={soundMenuRef}>
                 <button
-                  onClick={() => {
-                    const next = soundEffect === 'mute' ? 'shutter' : 'mute';
-                    setSoundEffect(next);
-                    if (next !== 'mute') playCutSound(next, soundVolume);
-                  }}
+                  type="button"
+                  onClick={() => setShowSoundDropdown((p) => !p)}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: soundEffect === 'mute' ? '#888' : '#000',
                     display: 'flex',
                     alignItems: 'center',
-                    padding: 2,
-                  }}
-                  title={soundEffect === 'mute' ? 'Unmute cut sound' : 'Mute cut sound'}
-                >
-                  {soundEffect === 'mute' ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                </button>
-                <select
-                  value={soundEffect}
-                  onChange={(e) => {
-                    const val = e.target.value as any;
-                    setSoundEffect(val);
-                    if (val !== 'mute') playCutSound(val, soundVolume);
-                  }}
-                  style={{
-                    padding: '4px 6px',
+                    gap: 6,
+                    padding: '5px 8px',
                     border: '2px solid #000',
-                    background: '#fff',
+                    background: soundEffect === 'mute' ? '#e5e7eb' : '#FFE500',
+                    color: '#000',
                     fontFamily: 'monospace',
                     fontSize: '0.68rem',
-                    fontWeight: 700,
+                    fontWeight: 900,
                     cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    textTransform: 'uppercase',
                   }}
+                  title="Select Cut Sound Effect"
                 >
-                  <option value="shutter">Shutter Snap</option>
-                  <option value="typewriter">Typewriter Clack</option>
-                  <option value="motor">Motor Drive</option>
-                  <option value="paper">Paper Rustle</option>
-                  <option value="mute">Muted</option>
-                </select>
+                  {soundEffect === 'mute' ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  <span>{SOUND_OPTIONS.find((s) => s.id === soundEffect)?.label || 'Sound'}</span>
+                  <ChevronDown size={12} style={{ transform: showSoundDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                </button>
+
+                {showSoundDropdown && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 4px)',
+                      right: 0,
+                      zIndex: 1000,
+                      background: '#fff',
+                      border: '2.5px solid #000',
+                      boxShadow: '4px 4px 0 #000',
+                      minWidth: 170,
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {SOUND_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSoundEffect(opt.id as any);
+                          if (opt.id !== 'mute') playCutSound(opt.id, soundVolume);
+                          setShowSoundDropdown(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '7px 10px',
+                          border: 'none',
+                          borderBottom: '1px solid #000',
+                          background: soundEffect === opt.id ? '#FFE500' : '#fff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 800,
+                          fontSize: '0.68rem',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        <span>{opt.label}</span>
+                        {soundEffect === opt.id && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -958,7 +1201,7 @@ export default function TextMatchCutStudioPage() {
             className="tool-export-grid"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
               gap: 12,
             }}
           >
@@ -979,26 +1222,6 @@ export default function TextMatchCutStudioPage() {
             >
               <Film size={17} />
               Export MP4 Video
-            </button>
-
-            <button
-              onClick={handleExportGif}
-              disabled={isExporting}
-              className="brutalist-button"
-              style={{
-                padding: '12px 18px',
-                fontSize: '0.82rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '4px 4px 0 #000',
-                background: '#ffffff',
-              }}
-            >
-              <ImageIcon size={17} />
-              Looping Animated GIF
             </button>
 
             <button
@@ -1153,8 +1376,8 @@ export default function TextMatchCutStudioPage() {
             </div>
           </div>
 
-          {/* Tab Navigation */}
-          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)' }}>
+          {/* Tab Navigation (All 3 tabs sit strictly on ONE single line) */}
+          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)', overflow: 'hidden' }}>
             {[
               { id: 'headlines' as const, label: `Cuts (${cuts.length})`, icon: Layers },
               { id: 'style' as const, label: 'Highlighter', icon: Type },
@@ -1170,22 +1393,23 @@ export default function TextMatchCutStudioPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: 6,
-                    padding: '10px 8px',
+                    gap: 4,
+                    padding: '10px 4px',
                     border: 'none',
                     background: activeTab === tab.id ? '#ffffff' : 'transparent',
                     color: activeTab === tab.id ? '#000000' : '#ffffff',
                     fontWeight: 900,
                     fontFamily: 'monospace',
-                    fontSize: '0.72rem',
+                    fontSize: '0.64rem',
                     textTransform: 'uppercase',
                     cursor: 'pointer',
-                    letterSpacing: '0.04em',
+                    letterSpacing: '0.01em',
+                    whiteSpace: 'nowrap',
                     transition: 'all 0.15s',
                   }}
                 >
-                  <Icon size={14} />
-                  {tab.label}
+                  <Icon size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ whiteSpace: 'nowrap' }}>{tab.label}</span>
                 </button>
               );
             })}
@@ -1388,65 +1612,224 @@ export default function TextMatchCutStudioPage() {
               </div>
 
               {/* Marker Opacity Slider */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
-                  <span>INK OPACITY:</span>
-                  <span>{Math.round(markerOpacity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.3"
-                  max="1.0"
-                  step="0.05"
-                  value={markerOpacity}
-                  onChange={(e) => setMarkerOpacity(parseFloat(e.target.value))}
-                  style={{ width: '100%', accentColor: '#000' }}
-                />
-              </div>
+              <TactileScrubber
+                label="Ink Opacity"
+                value={markerOpacity}
+                min={0.3}
+                max={1.0}
+                step={0.05}
+                stepDelta={0.05}
+                onChange={setMarkerOpacity}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                presets={[
+                  { label: '50%', value: 0.5 },
+                  { label: '70%', value: 0.7 },
+                  { label: '85% ★', value: 0.85 },
+                  { label: '100%', value: 1.0 },
+                ]}
+              />
 
               {/* 5-Font Rapid Cut Jitter Cycle Editor */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '2px solid #eee' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000' }}>
-                    5-Font Rapid Jitter Cycle (Google Fonts)
-                  </label>
-                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 800, color: '#d97706' }}>
-                    CYCLES EVERY CUT
-                  </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12, borderTop: '2px solid #000' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', color: '#000', display: 'block' }}>
+                      5-Font Rapid Jitter Cycle
+                    </label>
+                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666' }}>
+                      5 Google Fonts cycle consecutively with each cut
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const shuffled = [...GOOGLE_FONTS_LIST].sort(() => 0.5 - Math.random());
+                      setFontCycleList(shuffled.slice(0, 5).map((f) => f.fontFamily));
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 8px',
+                      background: '#FFE500',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      boxShadow: '2px 2px 0 #000',
+                      fontSize: '0.64rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }}
+                    title="Randomize 5 fonts"
+                  >
+                    <Shuffle size={11} />
+                    <span>Shuffle</span>
+                  </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {fontCycleList.map((f, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, width: 22, color: '#666' }}>
-                        #{idx + 1}
-                      </span>
-                      <select
-                        value={f}
-                        onChange={(e) => {
-                          const updated = [...fontCycleList];
-                          updated[idx] = e.target.value;
-                          setFontCycleList(updated);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 8px',
-                          border: '1.5px solid #000',
-                          borderRadius: 4,
-                          background: '#fff',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {GOOGLE_FONTS_LIST.map((gf) => (
-                          <option key={gf.id} value={gf.fontFamily}>
-                            {gf.name} ({gf.category})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                {/* Quick Vibe Combos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.60rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#888' }}>
+                    Quick Vibe Combos:
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {FONT_CYCLE_PRESETS.map((preset) => {
+                      const isSelected = JSON.stringify(fontCycleList) === JSON.stringify(preset.fonts);
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setFontCycleList(preset.fonts)}
+                          style={{
+                            padding: '4px 7px',
+                            border: '1.5px solid #000',
+                            borderRadius: 3,
+                            background: isSelected ? '#000' : '#fff',
+                            color: isSelected ? '#FFE500' : '#000',
+                            fontFamily: 'monospace',
+                            fontSize: '0.64rem',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            boxShadow: isSelected ? '1.5px 1.5px 0 #000' : 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 5-Slot Visual Font Strip */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {fontCycleList.map((f, idx) => {
+                    const matchedFont = GOOGLE_FONTS_LIST.find((gf) => gf.fontFamily === f);
+                    const displayName = matchedFont ? matchedFont.name : f.split(',')[0].replace(/"/g, '');
+                    const category = matchedFont?.category || 'Custom';
+                    const isEditing = editingFontSlot === idx;
+
+                    return (
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div
+                          onClick={() => setEditingFontSlot(isEditing ? null : idx)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 8px',
+                            border: '2px solid #000',
+                            background: isEditing ? '#FFE500' : '#fff',
+                            boxShadow: isEditing ? '2px 2px 0 #000' : '1px 1px 0 rgba(0,0,0,0.1)',
+                            cursor: 'pointer',
+                            borderRadius: 4,
+                            transition: 'all 0.12s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+                            <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, background: '#000', color: '#fff', padding: '1px 5px', borderRadius: 2 }}>
+                              #{idx + 1}
+                            </span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: f, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {displayName}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', background: '#eee', padding: '2px 5px', borderRadius: 2 }}>
+                              {category}
+                            </span>
+                            <ChevronDown size={13} style={{ transform: isEditing ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                          </div>
+                        </div>
+
+                        {/* Interactive Font Drawer when slot is open */}
+                        {isEditing && (
+                          <div
+                            style={{
+                              padding: 8,
+                              border: '2px solid #000',
+                              borderTop: 'none',
+                              background: '#fafafa',
+                              boxShadow: '2px 2px 0 #000',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 6,
+                              marginTop: -4,
+                              borderRadius: '0 0 4px 4px',
+                            }}
+                          >
+                            {/* Category Filter Tabs */}
+                            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                              {(['All', 'Serif', 'Typewriter', 'Tabloid', 'Sans', 'Display'] as const).map((cat) => (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFontCategoryFilter(cat);
+                                  }}
+                                  style={{
+                                    padding: '2px 6px',
+                                    border: '1px solid #000',
+                                    background: fontCategoryFilter === cat ? '#000' : '#fff',
+                                    color: fontCategoryFilter === cat ? '#fff' : '#000',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.58rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  {cat}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Font List Options with Typography Previews */}
+                            <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3, border: '1px solid #ddd', padding: 4, background: '#fff' }}>
+                              {GOOGLE_FONTS_LIST.filter(
+                                (gf) => fontCategoryFilter === 'All' || gf.category === fontCategoryFilter
+                              ).map((gf) => {
+                                const isCurrent = f === gf.fontFamily;
+                                return (
+                                  <button
+                                    key={gf.id}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const updated = [...fontCycleList];
+                                      updated[idx] = gf.fontFamily;
+                                      setFontCycleList(updated);
+                                      setEditingFontSlot(null);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '5px 8px',
+                                      border: isCurrent ? '1.5px solid #000' : '1px solid #eee',
+                                      background: isCurrent ? '#FFE500' : '#fff',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      borderRadius: 2,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: '0.80rem', fontFamily: gf.fontFamily, fontWeight: 700 }}>
+                                      {gf.name}
+                                    </span>
+                                    <span style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666' }}>
+                                      {gf.category}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1538,21 +1921,21 @@ export default function TextMatchCutStudioPage() {
                 </div>
 
                 {depthOfField && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
-                      <span>DEFOCUS INTENSITY:</span>
-                      <span style={{ color: '#000', fontWeight: 900 }}>{Math.round(dofIntensity * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1.0"
-                      step="0.05"
-                      value={dofIntensity}
-                      onChange={(e) => setDofIntensity(parseFloat(e.target.value))}
-                      style={{ width: '100%', accentColor: '#000' }}
-                    />
-                  </div>
+                  <TactileScrubber
+                    label="Defocus Intensity"
+                    value={dofIntensity}
+                    min={0.1}
+                    max={1.0}
+                    step={0.05}
+                    stepDelta={0.1}
+                    onChange={setDofIntensity}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    presets={[
+                      { label: 'Soft', value: 0.3 },
+                      { label: 'Med ★', value: 0.75 },
+                      { label: 'Heavy', value: 1.0 },
+                    ]}
+                  />
                 )}
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

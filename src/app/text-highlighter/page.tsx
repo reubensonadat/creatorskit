@@ -23,6 +23,7 @@ import {
   MoveVertical,
   Type,
   Disc,
+  ChevronDown,
 } from 'lucide-react';
 import {
   HighlighterRenderOptions,
@@ -38,11 +39,19 @@ import {
   renderOfflineAudio,
   downloadBlob,
 } from '@/lib/canvas-video-exporter';
-// Dedicated highlighter presets — intentionally separate from the match-cut
-// presets module (journal sweep vs. rapid whip-cut montage).
 import { PRESET_TOPICS, generateCutsForPhrase, BODY_CORPUS, MASTHEADS, SUBHEADS, LOCATIONS, BYLINES } from './highlighter-presets';
-import { SimpleGifEncoder } from '../match-cut/gif-encoder';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
+import { TactileScrubber } from '@/components/tactile-scrubber';
+
+const SOUND_OPTIONS = [
+  { id: 'highlighter-1' as const, label: 'Chisel Highlighter' },
+  { id: 'highlighter-2' as const, label: 'Fine Highlighter' },
+  { id: 'paper' as const, label: 'Paper Friction' },
+  { id: 'typewriter' as const, label: 'Typewriter Clack' },
+  { id: 'shutter' as const, label: 'Shutter Snap' },
+  { id: 'motor' as const, label: 'Motor Drive' },
+  { id: 'mute' as const, label: 'Muted' },
+];
 
 const ASPECT_RATIOS = [
   { id: '9:16' as const, label: '9:16 · Story / Reels / TikTok', width: 1080, height: 1920, aspect: '9/16' },
@@ -95,6 +104,59 @@ export default function TextHighlighterPage() {
   const [highlightProgress, setHighlightProgress] = useState(1.0); // 0 to 1
   const [soundEffect, setSoundEffect] = useState<'highlighter-1' | 'highlighter-2' | 'paper' | 'shutter' | 'typewriter' | 'motor' | 'mute'>('highlighter-1');
   const [soundVolume, setSoundVolume] = useState(0.5);
+  const [showSoundDropdown, setShowSoundDropdown] = useState(false);
+  const soundMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close sound dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (soundMenuRef.current && !soundMenuRef.current.contains(e.target as Node)) {
+        setShowSoundDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Interactive Duration Track Drag Controller (0.5s to 4.0s)
+  const durationTrackRef = useRef<HTMLDivElement>(null);
+
+  const updateDurationFromClientX = useCallback((clientX: number) => {
+    if (!durationTrackRef.current) return;
+    const rect = durationTrackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const newDur = Math.round((0.5 + ratio * 3.5) * 10) / 10; // 0.5s to 4.0s
+    setHighlightDuration(newDur);
+  }, []);
+
+  const handleDurationTrackMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    updateDurationFromClientX(e.clientX);
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      updateDurationFromClientX(moveEvent.clientX);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleDurationTrackTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 0) return;
+    updateDurationFromClientX(e.touches[0].clientX);
+    const onTouchMove = (moveEvent: TouchEvent) => {
+      if (moveEvent.touches.length === 0) return;
+      updateDurationFromClientX(moveEvent.touches[0].clientX);
+    };
+    const onTouchEnd = () => {
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd);
+  };
 
   // Visual & Style Options
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('16:9');
@@ -434,48 +496,6 @@ export default function TextHighlighterPage() {
     }
   };
 
-  // Export Animated GIF of the Highlighter
-  const handleExportGif = async () => {
-    setIsExporting(true);
-    setExportProgress('Encoding Animated GIF...');
-    try {
-      const gifWidth = Math.min(selectedAspect.width, 540);
-      const gifHeight = Math.round(gifWidth * (selectedAspect.height / selectedAspect.width));
-      const totalFrames = 24;
-      const frameDelayMs = Math.round((highlightDuration * 1000) / totalFrames);
-
-      const gifEncoder = new SimpleGifEncoder(gifWidth, gifHeight, frameDelayMs);
-      const offscreen = document.createElement('canvas');
-      offscreen.width = gifWidth;
-      offscreen.height = gifHeight;
-      const ctx = offscreen.getContext('2d')!;
-
-      for (let i = 0; i < totalFrames; i++) {
-        const p = i / (totalFrames - 1);
-        setExportProgress(`Encoding GIF frame ${i + 1} of ${totalFrames}...`);
-        const frameRenderOptions: HighlighterRenderOptions = {
-          ...renderOptions,
-          highlightProgress: p,
-        };
-        renderHighlighterStory(ctx, gifWidth, gifHeight, cuts[currentCutIndex] || cuts[0], frameRenderOptions, 0);
-        gifEncoder.addFrame(ctx);
-      }
-
-      const gifBlob = gifEncoder.finish();
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(gifBlob);
-      link.download = `highlighter-sweep-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.gif`;
-      link.click();
-      setExportProgress(null);
-    } catch (err) {
-      console.error('GIF Export failed:', err);
-      setExportProgress('GIF Export failed.');
-      setTimeout(() => setExportProgress(null), 3000);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   // Filter Google Fonts by category
   const filteredFonts =
     selectedFontCategory === 'All'
@@ -732,37 +752,165 @@ export default function TextHighlighterPage() {
                 </button>
               </div>
 
-              {/* Sweep Duration */}
-              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
-                  DURATION: <span style={{ color: '#d97706' }}>{highlightDuration}S</span>
-                </span>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="4.0"
-                  step="0.5"
-                  value={highlightDuration}
-                  onChange={(e) => setHighlightDuration(parseFloat(e.target.value))}
-                  style={{ width: 80, accentColor: '#000', cursor: 'pointer' }}
-                  title="Adjust sweep animation duration in seconds"
-                />
-                <div className="tool-transport-speed-presets" style={{ display: 'flex', border: '2px solid #000', background: '#fff' }}>
-                  {[1.0, 1.5, 2.0, 3.0].map((d) => (
+              {/* Tactile Duration Controller / Dragger */}
+              <div className="tool-transport-speed" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {/* Interactive Scrubber Capsule */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    background: '#fff',
+                    padding: '3px 6px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setHighlightDuration((d) => Math.max(0.5, Math.round((d - 0.25) * 10) / 10))}
+                    style={{
+                      width: 19,
+                      height: 19,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1.5px solid #000',
+                      background: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      borderRadius: 2,
+                      padding: 0,
+                    }}
+                    title="Decrease duration (-0.25s)"
+                  >
+                    -
+                  </button>
+
+                  {/* Tactile Fill Scrubber Track */}
+                  <div
+                    ref={durationTrackRef}
+                    onMouseDown={handleDurationTrackMouseDown}
+                    onTouchStart={handleDurationTrackTouchStart}
+                    style={{
+                      position: 'relative',
+                      width: 76,
+                      height: 15,
+                      background: '#e5e7eb',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      cursor: 'ew-resize',
+                      overflow: 'hidden',
+                      userSelect: 'none',
+                    }}
+                    title="Click or drag to scrub duration"
+                  >
+                    {/* Active Yellow Fill */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${Math.max(0, Math.min(100, ((highlightDuration - 0.5) / 3.5) * 100))}%`,
+                        background: '#FFE500',
+                        borderRight: '1.5px solid #000',
+                      }}
+                    />
+                    {/* Tactile Gauge Grip Grooves */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-evenly',
+                        pointerEvents: 'none',
+                        opacity: 0.3,
+                      }}
+                    >
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                      <div style={{ width: 1, height: 8, background: '#000' }} />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setHighlightDuration((d) => Math.min(4.0, Math.round((d + 0.25) * 10) / 10))}
+                    style={{
+                      width: 19,
+                      height: 19,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1.5px solid #000',
+                      background: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      borderRadius: 2,
+                      padding: 0,
+                    }}
+                    title="Increase duration (+0.25s)"
+                  >
+                    +
+                  </button>
+
+                  {/* Live Value Indicator Badge */}
+                  <span
+                    style={{
+                      fontSize: '0.66rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      color: '#000',
+                      background: '#FFE500',
+                      padding: '1px 5px',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      minWidth: 38,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {highlightDuration.toFixed(1)}s
+                  </span>
+                </div>
+
+                {/* Preset Chips */}
+                <div
+                  className="tool-transport-speed-presets"
+                  style={{
+                    display: 'flex',
+                    border: '2px solid #000',
+                    background: '#fff',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    boxShadow: '1.5px 1.5px 0 #000',
+                  }}
+                >
+                  {[1.0, 1.5, 2.0, 3.0, 4.0].map((d, idx) => (
                     <button
                       key={d}
+                      type="button"
                       onClick={() => setHighlightDuration(d)}
                       style={{
                         padding: '4px 6px',
                         border: 'none',
-                        borderRight: d !== 3.0 ? '1px solid #000' : 'none',
+                        borderRight: idx !== 4 ? '1px solid #000' : 'none',
                         background: highlightDuration === d ? '#000' : '#fff',
-                        color: highlightDuration === d ? '#fff' : '#000',
+                        color: highlightDuration === d ? '#FFE500' : '#000',
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        fontSize: '0.65rem',
+                        fontSize: '0.64rem',
                         cursor: 'pointer',
+                        transition: 'all 0.1s',
                       }}
+                      title={`${d}s sweep duration`}
                     >
                       {d}s{d === 2.0 ? '★' : ''}
                     </button>
@@ -773,60 +921,90 @@ export default function TextHighlighterPage() {
               {/* Direction Toggle */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
+                  type="button"
                   onClick={() => setHighlightDirection(highlightDirection === 'ltr' ? 'rtl' : 'ltr')}
                   className="brutalist-button"
-                  style={{ padding: '5px 8px', fontSize: '0.68rem' }}
+                  style={{ padding: '5px 8px', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase' }}
                   title="Toggle highlight sweep direction"
                 >
-                  {highlightDirection === 'ltr' ? '➡️ LTR' : '⬅️ RTL'}
+                  {highlightDirection === 'ltr' ? 'LTR ➔' : '⬅ RTL'}
                 </button>
               </div>
 
-              {/* Sound Effect Select */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Stout Upward-Opening Sound Selector */}
+              <div style={{ position: 'relative' }} ref={soundMenuRef}>
                 <button
-                  onClick={() => {
-                    const next = soundEffect === 'mute' ? 'paper' : 'mute';
-                    setSoundEffect(next);
-                    if (next !== 'mute') playCutSound(next, soundVolume);
-                  }}
+                  type="button"
+                  onClick={() => setShowSoundDropdown((p) => !p)}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: soundEffect === 'mute' ? '#888' : '#000',
                     display: 'flex',
                     alignItems: 'center',
-                    padding: 2,
-                  }}
-                  title={soundEffect === 'mute' ? 'Unmute drawing audio' : 'Mute drawing audio'}
-                >
-                  {soundEffect === 'mute' ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                </button>
-                <select
-                  value={soundEffect}
-                  onChange={(e) => {
-                    const val = e.target.value as any;
-                    setSoundEffect(val);
-                    if (val !== 'mute') playCutSound(val, soundVolume);
-                  }}
-                  style={{
-                    padding: '4px 6px',
+                    gap: 6,
+                    padding: '5px 8px',
                     border: '2px solid #000',
-                    background: '#fff',
+                    background: soundEffect === 'mute' ? '#e5e7eb' : '#FFE500',
+                    color: '#000',
                     fontFamily: 'monospace',
                     fontSize: '0.68rem',
-                    fontWeight: 700,
+                    fontWeight: 900,
                     cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    textTransform: 'uppercase',
                   }}
+                  title="Select Drawing Audio Sound Effect"
                 >
-                  <option value="highlighter-1">🖍️ Authentic Highlighter (Fast)</option>
-                  <option value="highlighter-2">🖍️ Authentic Highlighter (Slow)</option>
-                  <option value="paper">📄 Paper Friction</option>
-                  <option value="typewriter">⌨️ Typewriter Clack</option>
-                  <option value="shutter">📸 Shutter Snap</option>
-                  <option value="mute">🔇 Muted</option>
-                </select>
+                  {soundEffect === 'mute' ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  <span>{SOUND_OPTIONS.find((s) => s.id === soundEffect)?.label || 'Sound'}</span>
+                  <ChevronDown size={12} style={{ transform: showSoundDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                </button>
+
+                {showSoundDropdown && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 4px)',
+                      right: 0,
+                      zIndex: 1000,
+                      background: '#fff',
+                      border: '2.5px solid #000',
+                      boxShadow: '4px 4px 0 #000',
+                      minWidth: 175,
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {SOUND_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSoundEffect(opt.id as any);
+                          if (opt.id !== 'mute') playCutSound(opt.id, soundVolume);
+                          setShowSoundDropdown(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '7px 10px',
+                          border: 'none',
+                          borderBottom: '1px solid #000',
+                          background: soundEffect === opt.id ? '#FFE500' : '#fff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 800,
+                          fontSize: '0.68rem',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        <span>{opt.label}</span>
+                        {soundEffect === opt.id && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -937,51 +1115,28 @@ export default function TextHighlighterPage() {
           </div>
 
           {/* Quick Export Cards Row */}
-          <div
-            className="tool-export-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-              gap: 12,
-            }}
-          >
+          {/* Quick Export Button */}
+          <div style={{ width: '100%' }}>
             <button
               onClick={handleExportVideo}
               disabled={isExporting}
               className="brutalist-button brutalist-button-primary"
               style={{
-                padding: '12px 18px',
-                fontSize: '0.82rem',
+                width: '100%',
+                padding: '13px 18px',
+                fontSize: '0.86rem',
+                fontWeight: 900,
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
                 boxShadow: '4px 4px 0 #000',
+                textTransform: 'uppercase',
               }}
             >
-              <Film size={17} />
+              <Film size={18} />
               Export MP4 Video
-            </button>
-
-            <button
-              onClick={handleExportGif}
-              disabled={isExporting}
-              className="brutalist-button"
-              style={{
-                padding: '12px 18px',
-                fontSize: '0.82rem',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '4px 4px 0 #000',
-                background: '#ffffff',
-              }}
-            >
-              <ImageIcon size={17} />
-              Looping Animated GIF
             </button>
           </div>
         </div>
@@ -1117,8 +1272,8 @@ export default function TextHighlighterPage() {
             </div>
           </div>
 
-          {/* Tab Navigation Bar */}
-          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)' }}>
+          {/* Tab Navigation Bar (All 4 tabs sit strictly on ONE single line) */}
+          <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)', overflow: 'hidden' }}>
             {[
               { id: 'style' as const, label: 'Style & Ink', icon: Sliders },
               { id: 'typography' as const, label: 'Fonts (52)', icon: Type },
@@ -1136,23 +1291,23 @@ export default function TextHighlighterPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: 6,
-                    padding: '10px 6px',
+                    gap: 4,
+                    padding: '10px 3px',
                     border: 'none',
                     background: isActive ? '#ffffff' : 'transparent',
                     color: isActive ? '#000000' : '#ffffff',
                     fontWeight: 900,
                     fontFamily: 'monospace',
-                    fontSize: '0.68rem',
+                    fontSize: '0.62rem',
                     textTransform: 'uppercase',
                     cursor: 'pointer',
-                    letterSpacing: '0.03em',
+                    letterSpacing: '0.01em',
                     transition: 'all 0.15s',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <Icon size={13} />
-                  {tab.label}
+                  <Icon size={12} style={{ flexShrink: 0 }} />
+                  <span style={{ whiteSpace: 'nowrap' }}>{tab.label}</span>
                 </button>
               );
             })}
@@ -1272,21 +1427,22 @@ export default function TextHighlighterPage() {
               </div>
 
               {/* Marker Opacity Slider */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
-                  <span>INK OPACITY:</span>
-                  <span>{Math.round(markerOpacity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.3"
-                  max="1.0"
-                  step="0.05"
-                  value={markerOpacity}
-                  onChange={(e) => setMarkerOpacity(parseFloat(e.target.value))}
-                  style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
-                />
-              </div>
+              <TactileScrubber
+                label="Ink Opacity"
+                value={markerOpacity}
+                min={0.3}
+                max={1.0}
+                step={0.05}
+                stepDelta={0.05}
+                onChange={setMarkerOpacity}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+                presets={[
+                  { label: '50%', value: 0.5 },
+                  { label: '70%', value: 0.7 },
+                  { label: '85% ★', value: 0.85 },
+                  { label: '100%', value: 1.0 },
+                ]}
+              />
 
               {/* Sector Placement */}
               <div>
@@ -1465,24 +1621,23 @@ export default function TextHighlighterPage() {
               </div>
 
               {/* Headline Scale */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '2px solid #eee' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900 }}>
-                  <span>HEADLINE SCALE:</span>
-                  <span>{headlineScale.toFixed(1)}x</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>0.5x</span>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="2.0"
-                    step="0.05"
-                    value={headlineScale}
-                    onChange={(e) => setHeadlineScale(parseFloat(e.target.value))}
-                    style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>2.0x</span>
-                </div>
+              <div style={{ paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <TactileScrubber
+                  label="Headline Scale"
+                  value={headlineScale}
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  stepDelta={0.1}
+                  onChange={setHeadlineScale}
+                  formatValue={(v) => `${v.toFixed(1)}x`}
+                  presets={[
+                    { label: '0.8x', value: 0.8 },
+                    { label: '1.0x ★', value: 1.0 },
+                    { label: '1.3x', value: 1.3 },
+                    { label: '1.6x', value: 1.6 },
+                  ]}
+                />
               </div>
             </div>
           )}
@@ -1659,23 +1814,21 @@ export default function TextHighlighterPage() {
                 </div>
 
                 {depthOfField && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                      SOFT
-                    </span>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1.0"
-                      step="0.05"
-                      value={dofIntensity}
-                      onChange={(e) => setDofIntensity(parseFloat(e.target.value))}
-                      style={{ flex: 1, accentColor: '#000', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#444' }}>
-                      HEAVY
-                    </span>
-                  </div>
+                  <TactileScrubber
+                    label="Blur Intensity"
+                    value={dofIntensity}
+                    min={0.1}
+                    max={1.0}
+                    step={0.05}
+                    stepDelta={0.1}
+                    onChange={setDofIntensity}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    presets={[
+                      { label: 'Soft', value: 0.3 },
+                      { label: 'Med ★', value: 0.75 },
+                      { label: 'Heavy', value: 1.0 },
+                    ]}
+                  />
                 )}
               </div>
 
@@ -1721,14 +1874,15 @@ export default function TextHighlighterPage() {
                         </button>
                       ))}
                     </div>
-                    <input
-                      type="range"
-                      min="0.03"
-                      max="0.25"
-                      step="0.01"
+                    <TactileScrubber
+                      label="Zoom Intensity"
                       value={zoomIntensity}
-                      onChange={(e) => setZoomIntensity(parseFloat(e.target.value))}
-                      style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
+                      min={0.03}
+                      max={0.25}
+                      step={0.01}
+                      stepDelta={0.02}
+                      onChange={setZoomIntensity}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
                     />
                   </div>
                 )}

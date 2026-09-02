@@ -136,6 +136,29 @@ export function synthesizeCutSound(
             filter.connect(masterGain);
             noise.start(t);
             noise.stop(t + 0.035);
+        } else if (soundType === 'motor') {
+            // Camera motor drive: mechanical double-click + high-speed gear snap
+            const sr = ctx.sampleRate;
+            const motorDur = 0.055;
+            const bufferSize = Math.floor(sr * motorDur);
+            const buffer = ctx.createBuffer(1, bufferSize, sr);
+            const output = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                const t01 = i / bufferSize;
+                const pulse = (Math.sin(2 * Math.PI * 220 * (i / sr)) * 0.5) + (Math.random() * 2 - 1) * 0.5;
+                const env = Math.exp(-t01 * 5.0);
+                output[i] = pulse * env;
+            }
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1600, t);
+            filter.Q.setValueAtTime(1.0, t);
+            noise.connect(filter);
+            filter.connect(masterGain);
+            noise.start(t);
+            noise.stop(t + motorDur);
         } else if (soundType === 'typewriter') {
             const bufferSize = Math.floor(ctx.sampleRate * 0.025);
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
