@@ -173,6 +173,17 @@ function shuffleWithSeed<T>(arr: T[], seed: number): T[] {
   return a;
 }
 
+// Native YouTube 9:16 Shorts vertical cover resolver
+function getShortsCoverUrl(url: string, id: string): string {
+  if (!url) return `https://i.ytimg.com/vi/${id}/oar2.jpg`;
+  if (url.includes('maxresdefault.jpg') || url.includes('hqdefault.jpg')) {
+    const match = url.match(/\/vi\/([^\/]+)\//);
+    const videoId = match ? match[1] : id;
+    return `https://i.ytimg.com/vi/${videoId}/oar2.jpg`;
+  }
+  return url;
+}
+
 const YOUTUBE_FILTER_PILLS = PRESET_CATEGORIES;
 
 export default function ThumbnailLabPage() {
@@ -1866,6 +1877,81 @@ Tested on YouTube Simulator.`;
                             <MoreVertical size={18} color="#aaaaaa" style={{ flexShrink: 0, marginTop: 2 }} />
                           </div>
                         </div>
+
+                        {/* Native YouTube Shorts Shelf Embedded on Home Feed */}
+                        {idx === 0 && shortsFeed.length > 0 && (
+                          <div style={{ padding: '16px 12px 20px', borderTop: '6px solid #1c1c1c', borderBottom: '6px solid #1c1c1c', marginBottom: 20 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 22, height: 26, background: '#ff0000', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Zap size={15} color="#ffffff" />
+                                </div>
+                                <span style={{ fontWeight: 800, fontSize: '1.08rem', color: '#ffffff', letterSpacing: '-0.02em' }}>Shorts</span>
+                              </div>
+                              <MoreVertical size={18} color="#aaaaaa" style={{ cursor: 'pointer' }} />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                              {shortsFeed.slice(0, 4).map((short, sIdx) => (
+                                <div
+                                  key={short.id + sIdx}
+                                  style={{
+                                    position: 'relative',
+                                    borderRadius: 12,
+                                    overflow: 'hidden',
+                                    background: '#1c1c1c',
+                                    aspectRatio: '9/16',
+                                    border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none',
+                                    cursor: short.isCandidate ? 'pointer' : 'default',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                  }}
+                                  onClick={() => {
+                                    if (short.isCandidate) {
+                                      setActiveSidebarTab('candidates');
+                                      if (isMobileScreen) setMobileActiveView('variations');
+                                    }
+                                  }}
+                                >
+                                  <img
+                                    src={getShortsCoverUrl(short.imageUrl, short.id)}
+                                    alt={short.title}
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${short.id}/maxresdefault.jpg`; }}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                  <div style={{ position: 'absolute', top: 6, right: 6 }}>
+                                    <MoreVertical size={16} color="#ffffff" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.8))' }} />
+                                  </div>
+                                  {short.isCandidate && showCandidateBadge && (
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: 6,
+                                        left: 6,
+                                        background: '#FFE500',
+                                        color: '#000',
+                                        fontFamily: 'monospace',
+                                        fontWeight: 900,
+                                        fontSize: '0.55rem',
+                                        padding: '2px 5px',
+                                        borderRadius: 2,
+                                        border: '1px solid #000',
+                                      }}
+                                    >
+                                      YOUR SHORT
+                                    </div>
+                                  )}
+                                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '24px 8px 8px', background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)', color: '#fff' }}>
+                                    <div style={{ fontSize: '0.8rem', fontWeight: 700, lineHeight: 1.25, color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                      {short.title}
+                                    </div>
+                                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.8)', marginTop: 3, fontWeight: 500 }}>{short.views}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </React.Fragment>
                     );
                   })}
@@ -1919,11 +2005,11 @@ Tested on YouTube Simulator.`;
                             <div key={short.id + idx} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', background: '#1c1c1c', border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none' }}>
                               <div style={{ width: '100%', aspectRatio: '9/16', position: 'relative' }}>
                                 <img
-                                  src={short.imageUrl}
+                                  src={getShortsCoverUrl(short.imageUrl, short.id)}
                                   alt={short.title}
                                   referrerPolicy="no-referrer"
-                                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_9_16; }}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${short.id}/maxresdefault.jpg`; }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                                 />
                               </div>
                               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '18px 8px 8px', background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)', color: '#fff' }}>
@@ -2098,13 +2184,13 @@ Tested on YouTube Simulator.`;
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
                   {shortsFeed.map((short, idx) => (
                     <div key={short.id + idx} style={{ width: '100%', position: 'relative', border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none', borderRadius: 8, overflow: 'hidden' }}>
-                      <div style={{ width: '100%', height: 260, background: '#1c1c1c', position: 'relative' }}>
+                      <div style={{ width: '100%', aspectRatio: '9/16', background: '#1c1c1c', position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
                         <img
-                          src={short.imageUrl}
+                          src={getShortsCoverUrl(short.imageUrl, short.id)}
                           alt={short.title}
                           referrerPolicy="no-referrer"
-                          onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_9_16; }}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${short.id}/maxresdefault.jpg`; }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                         />
                         <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
                           <div style={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

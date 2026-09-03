@@ -134,8 +134,12 @@ export async function POST(req: NextRequest) {
       // Ignore page scraping error
     }
 
-    const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-    const hqThumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    const thumbnailUrl = detectedIsShort
+      ? `https://i.ytimg.com/vi/${videoId}/oar2.jpg`
+      : `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    const hqThumbnailUrl = detectedIsShort
+      ? `https://i.ytimg.com/vi/${videoId}/oar2.jpg`
+      : `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
     const inferredCategory = inferYouTubeCategory(title, authorName);
 
     return NextResponse.json({
