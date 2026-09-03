@@ -505,16 +505,6 @@ export const PRESET_TOPICS: PresetTopic[] = [
     ],
   },
   {
-    id: 'auto-captions',
-    name: 'Auto Captions AI',
-    anchor: 'Auto Captions AI',
-    category: 'Subtitles & Voice',
-    highlightColor: '#00FF66', // Neon Green
-    highlightStyle: 'marker',
-    paperTheme: 'salmon',
-    cuts: generateCutsForPhrase('Auto Captions AI', 8),
-  },
-  {
     id: 'text-behind',
     name: 'Text Behind Image',
     anchor: 'Text Behind Image',
@@ -533,16 +523,6 @@ export const PRESET_TOPICS: PresetTopic[] = [
     highlightStyle: 'marker',
     paperTheme: 'vintage',
     cuts: generateCutsForPhrase('Background Replace', 8),
-  },
-  {
-    id: 'silence-trimmer',
-    name: 'Silence Trimmer',
-    anchor: 'Silence Trimmer',
-    category: 'Podcast Audio',
-    highlightColor: '#FF7700', // Vivid Orange
-    highlightStyle: 'double-underline',
-    paperTheme: 'tabloid',
-    cuts: generateCutsForPhrase('Silence Trimmer', 8),
   },
   {
     id: 'optical-match-cut',

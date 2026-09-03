@@ -38,7 +38,18 @@ function dataUrlToBlob(dataUrl: string, fallbackType = 'image/png'): Blob | null
 }
 
 /**
+ * Breathing room (px) added around the document on every side of the saved
+ * image, so content never sits flush against the edges.
+ */
+const EXPORT_IMAGE_PADDING_PX = 24;
+
+/**
  * Rasterize a DOM node to a PNG Blob at 2x Retina resolution.
+ *
+ * The node is always staged off-screen at its true design width inside a
+ * white padded wrapper, so the saved PNG gets clean margins on all four
+ * sides (never squeezed to the edges) and is never baked at the squeezed
+ * on-screen preview width either.
  *
  * html-to-image renders the cloned node inside an SVG foreignObject using the
  * browser's own CSS engine, so modern color functions (oklch / color-mix /
@@ -54,43 +65,43 @@ async function captureNodeAsPngBlob(node: HTMLElement, designWidth?: number): Pr
     // document.fonts unavailable — proceed without waiting.
   }
 
-  // When the live node is squeezed below its design width (mobile screens,
-  // narrow split previews), capturing "as is" would bake the squeezed layout
-  // into the PNG. Stage an off-screen clone at the full design width so the
-  // browser re-lays the document out at its true proportions first.
-  let captureTarget = node;
-  let stage: HTMLDivElement | null = null;
-  const currentWidth = node.getBoundingClientRect().width;
-  if (designWidth && designWidth > 0 && Math.abs(currentWidth - designWidth) > 1) {
-    stage = document.createElement('div');
-    stage.setAttribute('aria-hidden', 'true');
-    stage.style.position = 'fixed';
-    stage.style.left = '-99999px';
-    stage.style.top = '0';
-    stage.style.width = `${designWidth}px`;
-    stage.style.background = '#ffffff';
+  const targetWidth = designWidth && designWidth > 0 ? designWidth : node.getBoundingClientRect().width;
 
-    const clone = node.cloneNode(true) as HTMLElement;
-    // Neutralize responsive shrink-wrap so the clone occupies the full design width.
-    clone.style.width = `${designWidth}px`;
-    clone.style.maxWidth = 'none';
-    clone.style.margin = '0';
+  // Off-screen stage: fixed + far off the left edge keeps it out of view
+  // without adding scrollbars or shifting the live document.
+  const stage = document.createElement('div');
+  stage.setAttribute('aria-hidden', 'true');
+  stage.style.position = 'fixed';
+  stage.style.left = '-99999px';
+  stage.style.top = '0';
+  stage.style.background = '#ffffff';
 
-    stage.appendChild(clone);
-    document.body.appendChild(stage);
+  // Padded wrapper: provides the white side / top / bottom margins in the
+  // final saved image. Inline-block shrink-wraps to the document width.
+  const pad = document.createElement('div');
+  pad.style.display = 'inline-block';
+  pad.style.padding = `${EXPORT_IMAGE_PADDING_PX}px`;
+  pad.style.background = '#ffffff';
 
-    // Two animation frames guarantee the clone has been laid out at the
-    // design width before html-to-image measures it.
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    );
-    try {
-      await document.fonts?.ready;
-    } catch {
-      // document.fonts unavailable — proceed without waiting.
-    }
+  const clone = node.cloneNode(true) as HTMLElement;
+  // Neutralize responsive shrink-wrap so the clone occupies the full design width.
+  clone.style.width = `${targetWidth}px`;
+  clone.style.maxWidth = 'none';
+  clone.style.margin = '0';
 
-    captureTarget = clone;
+  pad.appendChild(clone);
+  stage.appendChild(pad);
+  document.body.appendChild(stage);
+
+  // Two animation frames guarantee the clone has been laid out at the
+  // design width before html-to-image measures it.
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  try {
+    await document.fonts?.ready;
+  } catch {
+    // document.fonts unavailable — proceed without waiting.
   }
 
   const options = {
@@ -103,7 +114,7 @@ async function captureNodeAsPngBlob(node: HTMLElement, designWidth?: number): Pr
 
   try {
     try {
-      const blob = await toBlob(captureTarget, options);
+      const blob = await toBlob(pad, options);
       if (blob && blob.size > 0) return blob;
     } catch (err) {
       console.warn('Document image capture (toBlob) failed, retrying via toPng:', err);
@@ -111,7 +122,7 @@ async function captureNodeAsPngBlob(node: HTMLElement, designWidth?: number): Pr
 
     // Fallback: rasterize to a data URL, then decode it into a Blob.
     try {
-      const dataUrl = await toPng(captureTarget, options);
+      const dataUrl = await toPng(pad, options);
       const blob = dataUrl ? dataUrlToBlob(dataUrl) : null;
       if (blob && blob.size > 0) return blob;
     } catch (err) {

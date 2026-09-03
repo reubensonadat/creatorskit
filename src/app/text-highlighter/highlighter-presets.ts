@@ -5,7 +5,7 @@
 // anchors so the camera can lock tight onto the same phrase across papers.
 //
 // The TOPIC LINEUP mirrors the match-cut studio (Red Flags, AI-generated code,
-// Studio Space Planner, Auto Captions, etc.) but every cut is rewritten in
+// Studio Space Planner, etc.) but every cut is rewritten in
 // journal-abstract prose so the slow marker sweep has real text to travel
 // through — the same subjects, told in the highlighter's voice.
 //
@@ -392,16 +392,6 @@ export const PRESET_TOPICS: PresetTopic[] = [
         cuts: generateCutsForPhrase('Studio Space Planner', 8),
     },
     {
-        id: 'auto-captions',
-        name: 'Auto Captions AI',
-        anchor: 'Auto Captions AI',
-        category: 'Subtitles & Voice',
-        highlightColor: '#00FF66',
-        highlightStyle: 'marker',
-        paperTheme: 'salmon',
-        cuts: generateCutsForPhrase('Auto Captions AI', 8),
-    },
-    {
         id: 'text-behind',
         name: 'Text Behind Image',
         anchor: 'Text Behind Image',
@@ -420,16 +410,6 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightStyle: 'marker',
         paperTheme: 'vintage',
         cuts: generateCutsForPhrase('Background Replace', 8),
-    },
-    {
-        id: 'silence-trimmer',
-        name: 'Silence Trimmer',
-        anchor: 'Silence Trimmer',
-        category: 'Podcast Audio',
-        highlightColor: '#FF7700',
-        highlightStyle: 'double-underline',
-        paperTheme: 'tabloid',
-        cuts: generateCutsForPhrase('Silence Trimmer', 8),
     },
     {
         id: 'optical-match-cut',

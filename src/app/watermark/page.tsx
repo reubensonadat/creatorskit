@@ -4,12 +4,13 @@ import { useState, useRef } from "react";
 import JSZip from "jszip";
 import { Camera, Download, RefreshCw, ChevronLeft } from "lucide-react";
 import Link from "next/link";
-
-type WatermarkMode = "text" | "logo";
-type PositionKey =
-  | "top-left" | "top-center" | "top-right"
-  | "mid-left" | "center" | "mid-right"
-  | "bottom-left" | "bottom-center" | "bottom-right";
+import {
+  drawWatermark,
+  loadImageFromFile,
+  WATERMARK_POSITIONS,
+  type WatermarkMode,
+  type WatermarkPosition,
+} from "@/lib/watermark";
 
 interface Item {
   id: string;
@@ -17,31 +18,8 @@ interface Item {
   img: HTMLImageElement;
 }
 
-const POSITIONS: { key: PositionKey; label: string }[] = [
-  { key: "top-left", label: "TL" },
-  { key: "top-center", label: "TC" },
-  { key: "top-right", label: "TR" },
-  { key: "mid-left", label: "ML" },
-  { key: "center", label: "C" },
-  { key: "mid-right", label: "MR" },
-  { key: "bottom-left", label: "BL" },
-  { key: "bottom-center", label: "BC" },
-  { key: "bottom-right", label: "BR" },
-];
-
-function loadImageFromFile(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Could not load ${file.name}`));
-      img.src = String(reader.result);
-    };
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
-}
+// loadImageFromFile + watermark rendering now live in @/lib/watermark (shared
+// with the Social Platform Resizer so branding is identical across tools).
 
 export default function WatermarkPage() {
   const [items, setItems] = useState<Item[]>([]);
@@ -50,7 +28,7 @@ export default function WatermarkPage() {
   const [textColor, setTextColor] = useState("#ffffff");
   const [sizePct, setSizePct] = useState(5);
   const [opacity, setOpacity] = useState(0.8);
-  const [position, setPosition] = useState<PositionKey>("bottom-right");
+  const [position, setPosition] = useState<WatermarkPosition>("bottom-right");
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   const [logoName, setLogoName] = useState("");
   const [format, setFormat] = useState<"png" | "jpg">("png");
@@ -100,47 +78,8 @@ export default function WatermarkPage() {
       }
       ctx.drawImage(item.img, 0, 0);
 
-      // watermark box sizing
-      const padding = Math.max(18, Math.round(H * 0.03));
-      let wmW = 0;
-      let wmH = 0;
-      if (mode === "text") {
-        wmH = Math.round((H * sizePct) / 100);
-        ctx.font = `800 ${wmH}px Inter, sans-serif, system-ui`;
-        wmW = ctx.measureText(text).width;
-      } else if (logo) {
-        wmH = Math.round((H * sizePct) / 100);
-        const ratio = logo.naturalWidth / logo.naturalHeight;
-        wmW = wmH * ratio;
-      }
-
-      const posX =
-        position === "top-left" || position === "mid-left" || position === "bottom-left"
-          ? padding
-          : position === "top-center" || position === "center" || position === "bottom-center"
-          ? (W - wmW) / 2
-          : W - wmW - padding;
-      const posY =
-        position === "top-left" || position === "top-center" || position === "top-right"
-          ? padding
-          : position === "mid-left" || position === "center" || position === "mid-right"
-          ? (H - wmH) / 2
-          : H - wmH - padding;
-
-      ctx.globalAlpha = opacity;
-      if (mode === "text") {
-        ctx.fillStyle = textColor;
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.fillText(text, posX, posY, Math.max(1, W - posX - padding));
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillText(text, posX + 1, posY + 1, Math.max(1, W - posX - padding));
-        ctx.fillStyle = textColor;
-        ctx.fillText(text, posX, posY, Math.max(1, W - posX - padding));
-      } else if (logo) {
-        ctx.drawImage(logo, posX, posY, wmW, wmH);
-      }
-      ctx.globalAlpha = 1;
+      // Shared engine — identical output to the Social Platform Resizer
+      drawWatermark(ctx, W, H, { mode, text, textColor, logo, sizePct, opacity, position });
 
       canvas.toBlob(
         (blob) => resolve(blob ?? new Blob()),
@@ -395,7 +334,7 @@ export default function WatermarkPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label className="ctrl-label">Position</label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4, maxWidth: 220 }}>
-                  {POSITIONS.map((p) => (
+                  {WATERMARK_POSITIONS.map((p) => (
                     <button
                       key={p.key}
                       onClick={() => setPosition(p.key)}

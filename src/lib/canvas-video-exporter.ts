@@ -17,7 +17,13 @@ export interface CanvasVideoExportOptions {
     fps: number;
     totalFrames: number;
     /** Draws frame `frameIndex` onto the provided 2D context. Called exactly once per frame. */
-    renderFrame: (frameIndex: number, ctx: CanvasRenderingContext2D) => void;
+    renderFrame?: (frameIndex: number, ctx: CanvasRenderingContext2D) => void;
+    /**
+     * Async variant of renderFrame for frame sources that must be awaited —
+     * e.g. seeking an HTMLVideoElement to a timestamp before drawing. Takes
+     * precedence over renderFrame when both are provided.
+     */
+    renderFrameAsync?: (frameIndex: number, ctx: CanvasRenderingContext2D) => Promise<void>;
     /** Encode bitrate in bits/sec. Defaults to a quality factor tuned for dense text + grain. */
     bitrate?: number;
     /** Optional pre-rendered (e.g. OfflineAudioContext) audio track to mux in as AAC. */
@@ -178,6 +184,10 @@ export async function renderOfflineAudio(opts: {
 export async function exportCanvasVideoToMp4(
     options: CanvasVideoExportOptions
 ): Promise<CanvasVideoExportResult> {
+    if (!options.renderFrame && !options.renderFrameAsync) {
+        throw new Error('exportCanvasVideoToMp4 requires renderFrame or renderFrameAsync.');
+    }
+
     if (!webCodecsSupported()) {
         return exportViaMediaRecorderFallback(options);
     }
@@ -188,6 +198,7 @@ export async function exportCanvasVideoToMp4(
         fps,
         totalFrames,
         renderFrame,
+        renderFrameAsync,
         bitrate = defaultBitrate(width, height, fps),
         audioBuffer = null,
         keyframeIntervalSec = 2,
@@ -274,7 +285,11 @@ export async function exportCanvasVideoToMp4(
             throw new DOMException('Export aborted', 'AbortError');
         }
 
-        renderFrame(i, ctx);
+        if (renderFrameAsync) {
+            await renderFrameAsync(i, ctx);
+        } else {
+            renderFrame!(i, ctx);
+        }
 
         const frame = new VideoFrame(canvas, {
             timestamp: Math.round(i * microPerFrame),
@@ -330,6 +345,7 @@ async function exportViaMediaRecorderFallback(
         fps,
         totalFrames,
         renderFrame,
+        renderFrameAsync,
         bitrate = defaultBitrate(width, height, fps),
         onProgress,
         signal,
@@ -366,7 +382,8 @@ async function exportViaMediaRecorderFallback(
     canvas.height = height - (height % 2);
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Could not acquire 2D context for export canvas.');
-    renderFrame(0, ctx);
+    if (renderFrameAsync) await renderFrameAsync(0, ctx);
+    else renderFrame!(0, ctx);
 
     const stream = canvas.captureStream(0);
     const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
@@ -387,7 +404,8 @@ async function exportViaMediaRecorderFallback(
 
     for (let i = 0; i < totalFrames; i++) {
         if (signal?.aborted) break;
-        renderFrame(i, ctx);
+        if (renderFrameAsync) await renderFrameAsync(i, ctx);
+        else renderFrame!(i, ctx);
         videoTrack.requestFrame();
         progress.emit((i + 1) / totalFrames);
         await sleep(1000 / fps);

@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   Layers,
   Scissors,
-  Captions,
   MonitorPlay,
   Images,
   Quote,
@@ -35,18 +34,14 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: Re
   "/invoice": FileText,
   "/receipt": FileText,
   "/agreement": FileText,
-  "/auto-captions": Captions,
   "/background-replace": Eraser,
-  "/beat-sync": Zap,
   "/carousel-slicer": Images,
   "/color-gradient": Paintbrush,
   "/compressor": FileImage,
   "/exposure-monitor": Sun,
   "/match-cut": Scissors,
   "/palette-extractor": Palette,
-  "/quote-card": Quote,
   "/resizer": Maximize2,
-  "/silence-trimmer": AudioLines,
   "/space-planner": Ruler,
   "/sync-slate": Film,
   "/teleprompter": MonitorPlay,
@@ -61,7 +56,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
   const currentTool = ALL_TOOLS.find((t) => pathname === t.href);
   const [hovered, setHovered] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [sideAdOpen, setSideAdOpen] = useState(true);
+  const [sideAdOpen, setSideAdOpen] = useState(false);
 
   return (
     <div className="tool-layout-root" style={{ display: "grid", gridTemplateRows: "52px 1fr", background: "#f4f4f5", overflow: "hidden" }}>

@@ -113,12 +113,22 @@ export const PRESET_CATEGORIES = [
   'News & Documentaries',
 ] as const;
 
+// Neutral inline SVG placeholder thumbnails (no real/hardcoded videos anywhere)
+const makePlaceholderThumb = (w: number, h: number, label: string) =>
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#1c1c1e"/><rect x="10" y="10" width="${w - 20}" height="${h - 20}" fill="none" stroke="#3f3f46" stroke-width="3" stroke-dasharray="10 8"/><text x="50%" y="52%" fill="#8a8a8e" font-family="monospace" font-size="${Math.max(18, Math.round(w / 16))}" font-weight="700" text-anchor="middle">${label}</text></svg>`
+  );
+
+const PLACEHOLDER_THUMB_16_9 = makePlaceholderThumb(640, 360, '16:9 THUMBNAIL');
+const PLACEHOLDER_THUMB_9_16 = makePlaceholderThumb(360, 640, '9:16 COVER');
+
 // Default 16:9 Long-Form Thumbnail
 const DEFAULT_LONGFORM_THUMBNAIL: ThumbnailCandidate = {
   id: 'cand-long-1',
   name: 'My Video Thumbnail',
   label: '16:9 Long-Form',
-  imageUrl: 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+  imageUrl: PLACEHOLDER_THUMB_16_9,
   title: 'How I Built a $100K Studio in 24 Hours (Full Breakdown)',
   channelName: 'My Channel',
   channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyChannel',
@@ -133,7 +143,7 @@ const DEFAULT_SHORTS_COVER: ThumbnailCandidate = {
   id: 'cand-short-1',
   name: 'My Shorts Cover',
   label: '9:16 Vertical Short',
-  imageUrl: 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg',
+  imageUrl: PLACEHOLDER_THUMB_9_16,
   title: 'Stop Making This Huge Camera Mistake in 2026! 😱',
   channelName: 'My Channel',
   channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyShorts',
@@ -143,109 +153,23 @@ const DEFAULT_SHORTS_COVER: ThumbnailCandidate = {
   verified: true,
 };
 
-// Curated 16:9 Competitors (Real YouTube Thumbnails)
-const LONGFORM_COMPETITORS: YouTubeVideoItem[] = [
-  {
-    id: 'kX3nB4PpJko',
-    title: '$1 vs $1,000,000 Private Island Vacation!',
-    channelName: 'MrBeast',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MrBeast',
-    views: '64M views',
-    timeAgo: '3 days ago',
-    duration: '18:40',
-    imageUrl: 'https://img.youtube.com/vi/kX3nB4PpJko/hqdefault.jpg',
-    category: 'Entertainment & Comedy',
-    verified: true,
-  },
-  {
-    id: 'M7lc1UVf-VE',
-    title: 'Nigeria is Now So Much Worse Than You Think',
-    channelName: 'Places',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=PlacesChannel',
-    views: '242K views',
-    timeAgo: '22 hours ago',
-    duration: '59:38',
-    imageUrl: 'https://img.youtube.com/vi/M7lc1UVf-VE/hqdefault.jpg',
-    category: 'Africa & Diaspora',
-    verified: true,
-  },
-  {
-    id: 'fJ9rUzIMcZQ',
-    title: 'Inside America\'s Richest Black Suburbs',
-    channelName: 'RocaNews',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=RocaNews',
-    views: '1.1M views',
-    timeAgo: '2 days ago',
-    duration: '21:31',
-    imageUrl: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/hqdefault.jpg',
-    category: 'News & Documentaries',
-    verified: true,
-  },
-  {
-    id: '9bZkp7q19f0',
-    title: 'Testing Counterintuitive Physics Experiments!',
-    channelName: 'Veritasium',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=Veritasium',
-    views: '4.9M views',
-    timeAgo: '5 days ago',
-    duration: '17:09',
-    imageUrl: 'https://img.youtube.com/vi/9bZkp7q19f0/hqdefault.jpg',
-    category: 'Education & Science',
-    verified: true,
-  },
-  {
-    id: 'kJQP7kiw5Fk',
-    title: 'We\'re Dumb (Animation Collab)',
-    channelName: 'BrodyAnimates & Haminations',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=BrodyAnimates',
-    views: '1.3M views',
-    timeAgo: '3 days ago',
-    duration: '9:50',
-    imageUrl: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
-    category: 'Storytelling & Animation',
-    verified: true,
-  },
-];
+// No hardcoded competitor videos: the competitor feed loads dynamically from
+// the database (Supabase) and from URLs imported via "+ YOUTUBE URL".
 
-// Curated 9:16 Shorts Competitors (Real YouTube Shorts)
-const SHORTS_COMPETITORS: YouTubeShortItem[] = [
-  {
-    id: 'hT_nvWreIhg',
-    title: 'How The Flow State Works 🧠',
-    channelName: 'Zack D. Films',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=ZackDFilms',
-    views: '4.1M views',
-    likes: '480K',
-    comments: '3.4K',
-    soundTitle: 'Original Audio - Zack D. Films',
-    imageUrl: 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg',
-    category: 'Education & Science',
-  },
-  {
-    id: '60ItHLz5WEA',
-    title: 'Can You Hear This Silent Frequency? 🎧',
-    channelName: 'SoundLab',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=SoundLab',
-    views: '6.8M views',
-    likes: '890K',
-    comments: '5.2K',
-    soundTitle: 'Original Audio - SoundLab',
-    imageUrl: 'https://img.youtube.com/vi/60ItHLz5WEA/hqdefault.jpg',
-    category: 'Technology & AI',
-  },
-  {
-    id: 'jNQXAC9IVRw',
-    title: 'The First Video Ever Uploaded to YouTube 🐘',
-    channelName: 'jawed',
-    channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=Jawed',
-    views: '340M views',
-    likes: '16M',
-    comments: '11M',
-    soundTitle: 'Original Audio - jawed',
-    imageUrl: 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg',
-    category: 'Entertainment & Comedy',
-  },
-];
+// Deterministic seeded shuffle so every SHUFFLE click visibly reorders the feed
+function shuffleWithSeed<T>(arr: T[], seed: number): T[] {
+  const a = [...arr];
+  let s = seed || 1;
+  const nextRand = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 const YOUTUBE_FILTER_PILLS = PRESET_CATEGORIES;
 
@@ -270,6 +194,7 @@ export default function ThumbnailLabPage() {
   const [showToolsDropdown, setShowToolsDropdown] = useState<boolean>(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'audit' | 'candidates' | 'export'>('audit');
   const [mobileActiveView, setMobileActiveView] = useState<'feed' | 'grader' | 'variations'>('feed');
+  const [mobileFeedTab, setMobileFeedTab] = useState<'home' | 'shorts' | 'subscriptions' | 'you'>('home');
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
   const [toolsSidebarOpen, setToolsSidebarOpen] = useState<boolean>(false);
@@ -343,11 +268,16 @@ export default function ThumbnailLabPage() {
     else setActiveShortsId(currentCandidates[prevIdx].id);
   }, [currentCandidates, activeCandidateIndex, contentFormat]);
 
-  // Shuffle feed positions
-  const handleShuffleFeed = () => {
+  // Dynamic Competitors (loaded from database / URL imports — nothing hardcoded)
+  const [dbLongformCompetitors, setDbLongformCompetitors] = useState<YouTubeVideoItem[]>([]);
+  const [dbShortsCompetitors, setDbShortsCompetitors] = useState<YouTubeShortItem[]>([]);
+
+  // Shuffle feed: reorders competitor order AND re-slots the candidate thumbnail
+  const handleShuffleFeed = useCallback(() => {
     setRandomSeed(Date.now());
-    setSlotPosition(Math.floor(Math.random() * Math.min(4, LONGFORM_COMPETITORS.length)));
-  };
+    const pool = contentFormat === 'longform' ? dbLongformCompetitors : dbShortsCompetitors;
+    setSlotPosition(pool.length > 0 ? Math.floor(Math.random() * (pool.length + 1)) : 0);
+  }, [contentFormat, dbLongformCompetitors, dbShortsCompetitors]);
 
   // 3-Second Glance Test Trigger
   const startGlanceTest = useCallback(() => {
@@ -413,7 +343,7 @@ export default function ThumbnailLabPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextCandidate, goToPrevCandidate]);
+  }, [goToNextCandidate, goToPrevCandidate, handleShuffleFeed]);
 
   // Outside click listener for tools dropdown
   useEffect(() => {
@@ -426,9 +356,7 @@ export default function ThumbnailLabPage() {
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, []);
 
-  // Dynamic Competitors & YouTube Importer
-  const [dbLongformCompetitors, setDbLongformCompetitors] = useState<YouTubeVideoItem[]>(LONGFORM_COMPETITORS);
-  const [dbShortsCompetitors, setDbShortsCompetitors] = useState<YouTubeShortItem[]>(SHORTS_COMPETITORS);
+  // YouTube Importer UI state
   const [youtubeImportOpen, setYoutubeImportOpen] = useState<boolean>(false);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState<string>('');
   const [isImporting, setIsImporting] = useState<boolean>(false);
@@ -604,7 +532,7 @@ export default function ThumbnailLabPage() {
 
   // Long-form combined feed
   const longformFeed = useMemo(() => {
-    let base = [...dbLongformCompetitors];
+    let base = shuffleWithSeed(dbLongformCompetitors, randomSeed);
     if (selectedFilterPill !== 'All') {
       base = base.filter((v) => v.category === selectedFilterPill || !v.category);
     }
@@ -629,7 +557,7 @@ export default function ThumbnailLabPage() {
 
   // Shorts combined feed
   const shortsFeed = useMemo(() => {
-    let base = [...dbShortsCompetitors];
+    let base = shuffleWithSeed(dbShortsCompetitors, randomSeed);
     if (selectedFilterPill !== 'All') {
       base = base.filter((v) => v.category === selectedFilterPill || !v.category);
     }
@@ -805,6 +733,11 @@ Tested on YouTube Simulator.`;
     if (colorBlindMode === 'achromatopsia') filter += `grayscale(100%) contrast(120%) `;
     return filter.trim() || 'none';
   }, [blurAmount, isGrayscale, colorBlindMode]);
+
+  // YouTube phone frame sizing: fits snugly inside any screen (mobile-first, YouTube native)
+  const isPhoneFrameView = platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player';
+  const phoneFrameWidth = 'min(390px, calc(100vw - 16px))';
+  const phoneFrameHeight = 'min(780px, max(480px, calc(100dvh - 150px)))';
 
   if (!mounted) {
     return (
@@ -1273,7 +1206,7 @@ Tested on YouTube Simulator.`;
                 <img
                   src={cand.imageUrl}
                   alt=""
-                  onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_16_9; }}
                   style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'cover' }}
                 />
                 <span>Var {String.fromCharCode(65 + idx)} {isSelected ? '★' : ''}</span>
@@ -1481,7 +1414,7 @@ Tested on YouTube Simulator.`;
             display: !isMobileScreen || mobileActiveView === 'feed' ? 'flex' : 'none',
             justifyContent: 'center',
             alignItems: 'flex-start',
-            padding: (platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player') ? '16px 0 40px' : '0',
+            padding: isPhoneFrameView ? '10px 0 20px' : '0',
             position: 'relative',
           }}
           className="no-scrollbar"
@@ -1648,8 +1581,8 @@ Tested on YouTube Simulator.`;
 
           <div
             style={{
-              width: (platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player') ? '390px' : '100%',
-              maxWidth: (platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player') ? '390px' : '100%',
+              width: isPhoneFrameView ? phoneFrameWidth : '100%',
+              maxWidth: isPhoneFrameView ? '390px' : '100%',
               filter: colorFilterStyle,
               minHeight: '100%',
               display: 'flex',
@@ -1662,18 +1595,21 @@ Tested on YouTube Simulator.`;
             {contentFormat === 'longform' && platformView === 'yt-mobile' && (
               <div
                 style={{
-                  width: '390px',
+                  width: phoneFrameWidth,
+                  height: phoneFrameHeight,
                   background: '#0f0f0f',
                   color: '#ffffff',
                   border: '1px solid #27272a',
-                  borderRadius: 0,
+                  borderRadius: 12,
                   overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
                   fontFamily: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
                   boxShadow: '0 0 50px rgba(0,0,0,0.9)',
                 }}
               >
-                {/* Real YouTube Mobile Top Header (Sticky Top) */}
-                <div style={{ position: 'sticky', top: 0, zIndex: 20, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', background: '#0f0f0f', borderBottom: '1px solid #1f1f1f' }}>
+                {/* Real YouTube Mobile Top Header (fixed at top of frame) */}
+                <div style={{ flexShrink: 0, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', background: '#0f0f0f', borderBottom: '1px solid #1f1f1f' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Menu size={20} color="#ffffff" style={{ cursor: 'pointer' }} />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -1699,8 +1635,8 @@ Tested on YouTube Simulator.`;
                   </div>
                 </div>
 
-                {/* Filter Chips Bar (Sticky Top below header) */}
-                <div style={{ position: 'sticky', top: 48, zIndex: 19, background: '#0f0f0f', height: 42, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', overflowX: 'auto', borderBottom: '1px solid #1f1f1f' }} className="no-scrollbar">
+                {/* Filter Chips Bar (fixed below header) */}
+                <div style={{ flexShrink: 0, background: '#0f0f0f', height: 42, display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', overflowX: 'auto', borderBottom: '1px solid #1f1f1f' }} className="no-scrollbar">
                   {YOUTUBE_FILTER_PILLS.map((p) => (
                     <button
                       key={p}
@@ -1723,8 +1659,10 @@ Tested on YouTube Simulator.`;
                   <div style={{ color: '#aaa', padding: '0 4px', fontSize: '0.8rem' }}>›</div>
                 </div>
 
-                {/* Video Stream */}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {/* Scrollable feed area — only the feed scrolls; header & bottom nav stay pinned (YouTube native) */}
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }} className="no-scrollbar">
+                  {mobileFeedTab === 'home' && (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {longformFeed.map((video, idx) => {
                     const isCandidate = video.isCandidate;
                     return (
@@ -1734,7 +1672,7 @@ Tested on YouTube Simulator.`;
                             <img
                               src={video.imageUrl}
                               alt={video.title}
-                              onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                              onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_16_9; }}
                               style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }}
                             />
                             {showDurationBadge && (
@@ -1765,78 +1703,105 @@ Tested on YouTube Simulator.`;
                             <MoreVertical size={18} color="#aaaaaa" style={{ flexShrink: 0, marginTop: 2 }} />
                           </div>
                         </div>
-
-                        {idx === 1 && (
-                          <div style={{ borderTop: '1px solid #1f1f1f', borderBottom: '1px solid #1f1f1f', padding: '14px 12px 18px', marginBottom: 20 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.94rem' }}>
-                                <div style={{ width: 18, height: 22, background: '#ff0000', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Zap size={13} color="#ffffff" />
-                                </div>
-                                <span>Shorts</span>
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: 10, overflowX: 'auto' }} className="no-scrollbar">
-                              {SHORTS_COMPETITORS.slice(0, 3).map((short) => (
-                                <div key={short.id} style={{ width: 140, flexShrink: 0 }}>
-                                  <div style={{ width: '100%', height: 220, borderRadius: 8, overflow: 'hidden', background: '#272727', position: 'relative' }}>
-                                    <img
-                                      src={short.imageUrl}
-                                      alt={short.title}
-                                      onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
-                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    />
-                                    <div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: '0.66rem', fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-                                      {short.views}
-                                    </div>
-                                  </div>
-                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, marginTop: 6, color: '#fff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25 }}>
-                                    {short.title}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </React.Fragment>
                     );
                   })}
+                  </div>
+                  )}
+
+                  {/* Shorts tab: the Shorts shelf lives here, inside the Shorts section (native YouTube) */}
+                  {mobileFeedTab === 'shorts' && (
+                    <div style={{ padding: '12px 12px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontWeight: 800, fontSize: '0.94rem', color: '#fff' }}>
+                        <div style={{ width: 18, height: 22, background: '#ff0000', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Zap size={13} color="#ffffff" />
+                        </div>
+                        <span>Shorts</span>
+                      </div>
+                      {(selectedFilterPill === 'All' ? dbShortsCompetitors : dbShortsCompetitors.filter((s) => s.category === selectedFilterPill || !s.category)).length === 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '48px 24px', color: '#aaa', textAlign: 'center' }}>
+                          <Zap size={28} color="#777" />
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff' }}>No Shorts yet</div>
+                          <p style={{ fontSize: '0.74rem', margin: 0, lineHeight: 1.5 }}>Import Shorts links via &ldquo;+ YOUTUBE URL&rdquo; to fill this shelf.</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                          {(selectedFilterPill === 'All' ? dbShortsCompetitors : dbShortsCompetitors.filter((s) => s.category === selectedFilterPill || !s.category)).map((short, idx) => (
+                            <div key={short.id + idx} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', background: '#1c1c1c', border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none' }}>
+                              <div style={{ width: '100%', aspectRatio: '9/16', position: 'relative' }}>
+                                <img
+                                  src={short.imageUrl}
+                                  alt={short.title}
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_9_16; }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
+                              </div>
+                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '18px 8px 8px', background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)', color: '#fff' }}>
+                                <div style={{ fontSize: '0.76rem', fontWeight: 700, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                  {short.title}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', opacity: 0.85, marginTop: 3 }}>{short.views}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {mobileFeedTab === 'subscriptions' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '72px 24px', color: '#aaa', textAlign: 'center' }}>
+                      <Radio size={30} color="#777" />
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>Subscriptions</div>
+                      <p style={{ fontSize: '0.74rem', margin: 0, lineHeight: 1.5 }}>Latest videos from channels you subscribe to will appear here.</p>
+                    </div>
+                  )}
+
+                  {mobileFeedTab === 'you' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '72px 24px', color: '#aaa', textAlign: 'center' }}>
+                      <img
+                        src={activeCandidate.channelAvatar}
+                        alt="You"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(activeCandidate.channelName)}`; }}
+                        style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>You</div>
+                      <p style={{ fontSize: '0.74rem', margin: 0, lineHeight: 1.5 }}>Your channel, videos and analytics will appear here.</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Mobile Bottom Navigation Bar (Sticky to bottom) */}
+                {/* Mobile Bottom Navigation Bar (pinned to bottom of frame, YouTube native) */}
                 <div
                   style={{
-                    position: 'sticky',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
+                    flexShrink: 0,
                     height: 48,
                     background: '#0f0f0f',
                     borderTop: '1px solid #1f1f1f',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-around',
-                    zIndex: 30,
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-                    <HomeIcon size={18} color="#ffffff" />
-                    <span style={{ fontSize: '0.55rem' }}>Home</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-                    <Zap size={18} color="#aaaaaa" />
-                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>Shorts</span>
-                  </div>
+                  <button onClick={() => setMobileFeedTab('home')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                    <HomeIcon size={18} color={mobileFeedTab === 'home' ? '#ffffff' : '#aaaaaa'} />
+                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'home' ? '#ffffff' : '#aaaaaa' }}>Home</span>
+                  </button>
+                  <button onClick={() => setMobileFeedTab('shorts')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                    <Zap size={18} color={mobileFeedTab === 'shorts' ? '#ffffff' : '#aaaaaa'} />
+                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'shorts' ? '#ffffff' : '#aaaaaa' }}>Shorts</span>
+                  </button>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                     <Plus size={20} color="#ffffff" />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-                    <Radio size={18} color="#aaaaaa" />
-                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>Subscriptions</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ff0000', overflow: 'hidden' }}>
+                  <button onClick={() => setMobileFeedTab('subscriptions')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                    <Radio size={18} color={mobileFeedTab === 'subscriptions' ? '#ffffff' : '#aaaaaa'} />
+                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'subscriptions' ? '#ffffff' : '#aaaaaa' }}>Subscriptions</span>
+                  </button>
+                  <button onClick={() => setMobileFeedTab('you')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', overflow: 'hidden', border: mobileFeedTab === 'you' ? '1.5px solid #ffffff' : 'none', boxSizing: 'border-box' }}>
                       <img
                         src={activeCandidate.channelAvatar}
                         alt="User"
@@ -1845,8 +1810,8 @@ Tested on YouTube Simulator.`;
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     </div>
-                    <span style={{ fontSize: '0.55rem', color: '#aaa' }}>You</span>
-                  </div>
+                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'you' ? '#ffffff' : '#aaaaaa' }}>You</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -1866,7 +1831,7 @@ Tested on YouTube Simulator.`;
                             src={video.imageUrl}
                             alt={video.title}
                             referrerPolicy="no-referrer"
-                            onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'; }}
+                            onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_16_9; }}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                           {showDurationBadge && (
@@ -1903,7 +1868,7 @@ Tested on YouTube Simulator.`;
             {/* 3. SHORTS: DEDICATED VERTICAL SHELF VIEW (390px)               */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'shorts' && platformView === 'shorts-shelf' && (
-              <div style={{ width: '390px', background: '#0f0f0f', color: '#fff', border: '1px solid #27272a', padding: '16px 12px' }}>
+              <div style={{ width: phoneFrameWidth, height: phoneFrameHeight, background: '#0f0f0f', color: '#fff', border: '1px solid #27272a', borderRadius: 12, padding: '16px 12px', overflowY: 'auto' }} className="no-scrollbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <Zap size={20} color="#ff0000" />
                   <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>YouTube Shorts Shelf</span>
@@ -1916,7 +1881,7 @@ Tested on YouTube Simulator.`;
                           src={short.imageUrl}
                           alt={short.title}
                           referrerPolicy="no-referrer"
-                          onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
+                          onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_9_16; }}
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                         <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
@@ -1936,12 +1901,12 @@ Tested on YouTube Simulator.`;
             {/* 4. SHORTS: FULL IMMERSIVE SHORTS PLAYER (390px)                */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'shorts' && platformView === 'shorts-player' && (
-              <div style={{ width: '390px', height: '690px', background: '#000000', position: 'relative', overflow: 'hidden', border: '1px solid #27272a', boxShadow: '0 0 50px rgba(0,0,0,0.9)' }}>
+              <div style={{ width: phoneFrameWidth, height: phoneFrameHeight, maxHeight: 820, background: '#000000', position: 'relative', overflow: 'hidden', border: '1px solid #27272a', borderRadius: 12, boxShadow: '0 0 50px rgba(0,0,0,0.9)' }}>
                 <img
                   src={activeCandidate.imageUrl}
                   alt={activeCandidate.title}
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = 'https://img.youtube.com/vi/hT_nvWreIhg/hqdefault.jpg'; }}
+                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_9_16; }}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
 

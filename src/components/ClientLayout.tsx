@@ -13,18 +13,16 @@ const toolPaths = [
   "/text-highlighter",
   "/sync-slate",
   "/exposure-monitor",
-  "/auto-captions",
   "/carousel-slicer",
   "/quote-card",
   "/resizer",
   "/palette-extractor",
   "/compressor",
   "/watermark",
-  "/silence-trimmer",
   "/color-gradient",
 ];
 
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/beat-sync"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
