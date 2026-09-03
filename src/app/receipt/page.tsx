@@ -20,10 +20,10 @@ function ReceiptContent() {
   const data = useMemo(() => (encoded ? decodeReceipt(encoded) : null), [encoded]);
 
   useEffect(() => {
-    if (!encoded) {
-      router.replace('/business?tab=receipt');
+    if (!encoded && typeof window !== 'undefined') {
+      window.location.replace('/business?tab=receipt');
     }
-  }, [encoded, router]);
+  }, [encoded]);
 
   if (encoded && !data) {
     return (

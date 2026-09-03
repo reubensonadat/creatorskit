@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { inferYouTubeCategory } from '@/lib/youtube-categories';
 
 export const runtime = 'edge';
 
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     let viewsText = isShort ? '1.8M views' : '380K views';
     let durationText = isShort ? '0:54' : '15:20';
     let timeAgoText = '3 days ago';
+    let publishedAt = new Date().toISOString();
     let channelAvatar = `https://api.dicebear.com/7.x/identicon/svg?seed=Creator`;
 
     try {
@@ -111,6 +113,12 @@ export async function POST(req: NextRequest) {
           detectedIsShort = true;
         }
 
+        // Extract upload / publish date (ISO date)
+        const dateMatch = html.match(/"uploadDate":"([^"]+)"/) || html.match(/itemprop="uploadDate"\s+content="([^"]+)"/) || html.match(/"publishDate":"([^"]+)"/);
+        if (dateMatch && dateMatch[1]) {
+          publishedAt = dateMatch[1];
+        }
+
         // Extract real YouTube channel avatar from page HTML (yt3.ggpht.com)
         const avatarMatch = html.match(/"avatar":\s*\{\s*"thumbnails":\s*\[\s*\{\s*"url":\s*"([^"]+)"/i) 
           || html.match(/"thumbnail":\s*\{\s*"thumbnails":\s*\[\s*\{\s*"url":\s*"(https:\/\/(?:yt3\.ggpht\.com|yt3\.googleusercontent\.com)[^"]+)"/i)
@@ -128,6 +136,7 @@ export async function POST(req: NextRequest) {
 
     const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
     const hqThumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    const inferredCategory = inferYouTubeCategory(title, authorName);
 
     return NextResponse.json({
       success: true,
@@ -139,10 +148,12 @@ export async function POST(req: NextRequest) {
       authorUrl,
       views: viewsText,
       duration: durationText,
+      publishedAt: publishedAt || new Date().toISOString(),
       timeAgo: timeAgoText,
       thumbnailUrl,
       hqThumbnailUrl,
       channelAvatar,
+      category: inferredCategory,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Failed to fetch YouTube metadata' }, { status: 500 });

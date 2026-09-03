@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { ALL_TOOLS } from '@/data/tools';
 import { fetchCompetitorsFromDatabase, saveCompetitorToDatabase } from '@/lib/supabase';
+import { formatTimeAgo } from '@/lib/date-utils';
 
 export type ContentFormat = 'longform' | 'shorts';
 export type PlatformView = 'yt-mobile' | 'yt-desktop' | 'shorts-shelf' | 'shorts-player' | 'side-by-side';
@@ -61,6 +62,7 @@ export interface ThumbnailCandidate {
   channelAvatar: string;
   views: string;
   timeAgo: string;
+  publishedAt?: string;
   duration: string;
   verified: boolean;
 }
@@ -72,6 +74,7 @@ export interface YouTubeVideoItem {
   channelAvatar: string;
   views: string;
   timeAgo: string;
+  publishedAt?: string;
   duration: string;
   imageUrl: string;
   category?: string;
@@ -129,7 +132,7 @@ const DEFAULT_LONGFORM_THUMBNAIL: ThumbnailCandidate = {
   name: 'My Video Thumbnail',
   label: '16:9 Long-Form',
   imageUrl: PLACEHOLDER_THUMB_16_9,
-  title: 'How I Built a $100K Studio in 24 Hours (Full Breakdown)',
+  title: 'My Video Title',
   channelName: 'My Channel',
   channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyChannel',
   views: '1.2M views',
@@ -144,7 +147,7 @@ const DEFAULT_SHORTS_COVER: ThumbnailCandidate = {
   name: 'My Shorts Cover',
   label: '9:16 Vertical Short',
   imageUrl: PLACEHOLDER_THUMB_9_16,
-  title: 'Stop Making This Huge Camera Mistake in 2026! 😱',
+  title: 'My Shorts Title',
   channelName: 'My Channel',
   channelAvatar: 'https://api.dicebear.com/7.x/identicon/svg?seed=MyShorts',
   views: '3.4M views',
@@ -153,8 +156,7 @@ const DEFAULT_SHORTS_COVER: ThumbnailCandidate = {
   verified: true,
 };
 
-// No hardcoded competitor videos: the competitor feed loads dynamically from
-// the database (Supabase) and from URLs imported via "+ YOUTUBE URL".
+// Dynamic Competitors: Only real videos loaded dynamically from Supabase database or imported via "+ YOUTUBE URL"
 
 // Deterministic seeded shuffle so every SHUFFLE click visibly reorders the feed
 function shuffleWithSeed<T>(arr: T[], seed: number): T[] {
@@ -191,6 +193,7 @@ export default function ThumbnailLabPage() {
   const [slotPosition, setSlotPosition] = useState<number>(1);
   const [randomSeed, setRandomSeed] = useState<number>(42);
   const [revealHighlight, setRevealHighlight] = useState<boolean>(false);
+  const [showCandidateBadge, setShowCandidateBadge] = useState<boolean>(true);
   const [showToolsDropdown, setShowToolsDropdown] = useState<boolean>(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'audit' | 'candidates' | 'export'>('audit');
   const [mobileActiveView, setMobileActiveView] = useState<'feed' | 'grader' | 'variations'>('feed');
@@ -268,7 +271,7 @@ export default function ThumbnailLabPage() {
     else setActiveShortsId(currentCandidates[prevIdx].id);
   }, [currentCandidates, activeCandidateIndex, contentFormat]);
 
-  // Dynamic Competitors (loaded from database / URL imports — nothing hardcoded)
+  // Dynamic Competitors (loaded purely from Supabase database / user URL imports)
   const [dbLongformCompetitors, setDbLongformCompetitors] = useState<YouTubeVideoItem[]>([]);
   const [dbShortsCompetitors, setDbShortsCompetitors] = useState<YouTubeShortItem[]>([]);
 
@@ -363,13 +366,13 @@ export default function ThumbnailLabPage() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const CACHE_KEY = 'creatorskit_competitors_feed_v1';
-  const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour cache
+  const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 Days local cache
 
-  // Fetch initial ~20 competitors with localStorage cache
+  // Fetch initial competitors with 3-day localStorage cache
   useEffect(() => {
     async function loadSupabaseCompetitors() {
       try {
-        // 1. Try reading from client cache first (0 network/database calls!)
+        // 1. Try reading from 3-day client cache first (0 network/database calls on remount!)
         if (typeof window !== 'undefined') {
           const cachedStr = localStorage.getItem(CACHE_KEY);
           if (cachedStr) {
@@ -382,8 +385,8 @@ export default function ThumbnailLabPage() {
           }
         }
 
-        // 2. Otherwise fetch ~20 randomized thumbnails from Supabase
-        const stored = await fetchCompetitorsFromDatabase(undefined, 20);
+        // 2. Otherwise fetch fresh ~30 thumbnails from Supabase
+        const stored = await fetchCompetitorsFromDatabase(undefined, 30);
         if (stored && stored.length > 0) {
           const lf = stored
             .filter((c) => c.format === 'longform')
@@ -394,6 +397,7 @@ export default function ThumbnailLabPage() {
               channelAvatar: (c.channel_avatar || '').replace('yt3.ggpht.com', 'yt3.googleusercontent.com') || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
               views: c.views || '1.2M views',
               timeAgo: c.time_ago || '2 days ago',
+              publishedAt: c.published_at || c.created_at,
               duration: c.duration || '14:20',
               imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
               category: c.category || 'Technology & AI',
@@ -431,6 +435,72 @@ export default function ThumbnailLabPage() {
     loadSupabaseCompetitors();
   }, []);
 
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  const handleLoadMoreCompetitors = async () => {
+    setIsLoadingMore(true);
+    try {
+      const currentCount = contentFormat === 'longform' ? dbLongformCompetitors.length : dbShortsCompetitors.length;
+      const more = await fetchCompetitorsFromDatabase(contentFormat, 20, currentCount);
+      if (more && more.length > 0) {
+        if (contentFormat === 'longform') {
+          const lf = more.map((c) => ({
+            id: c.id || c.youtube_video_id,
+            title: c.title,
+            channelName: c.channel_name,
+            channelAvatar: (c.channel_avatar || '').replace('yt3.ggpht.com', 'yt3.googleusercontent.com') || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+            views: c.views || '1.2M views',
+            timeAgo: c.time_ago || '2 days ago',
+            publishedAt: (c as any).published_at || c.time_ago || c.created_at,
+            duration: c.duration || '14:20',
+            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+            category: c.category || 'Technology & AI',
+            verified: c.verified ?? true,
+          }));
+          setDbLongformCompetitors((prev) => {
+            const next = [...prev, ...lf.filter((n) => !prev.some((p) => p.id === n.id))];
+            if (typeof window !== 'undefined') {
+              try {
+                const cachedStr = localStorage.getItem(CACHE_KEY);
+                const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, longform: next }));
+              } catch {}
+            }
+            return next;
+          });
+        } else {
+          const sh = more.map((c) => ({
+            id: c.id || c.youtube_video_id,
+            title: c.title,
+            channelName: c.channel_name,
+            channelAvatar: (c.channel_avatar || '').replace('yt3.ggpht.com', 'yt3.googleusercontent.com') || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.channel_name)}`,
+            views: c.views || '2.4M views',
+            likes: '140K',
+            comments: '1.2K',
+            soundTitle: 'Original Audio',
+            imageUrl: c.thumbnail_url || `https://img.youtube.com/vi/${c.youtube_video_id}/maxresdefault.jpg`,
+            category: c.category || 'Technology & AI',
+          }));
+          setDbShortsCompetitors((prev) => {
+            const next = [...prev, ...sh.filter((n) => !prev.some((p) => p.id === n.id))];
+            if (typeof window !== 'undefined') {
+              try {
+                const cachedStr = localStorage.getItem(CACHE_KEY);
+                const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, shorts: next }));
+              } catch {}
+            }
+            return next;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Load more competitors error:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   const handleImportYouTubeUrl = async () => {
     if (!youtubeUrlInput.trim()) return;
     setIsImporting(true);
@@ -449,6 +519,7 @@ export default function ThumbnailLabPage() {
       }
 
       const isShortVideo = data.isShort;
+      const targetCategory = data.category || importCategory || 'Technology & AI';
 
       if (isShortVideo) {
         const newShort: YouTubeShortItem = {
@@ -461,20 +532,34 @@ export default function ThumbnailLabPage() {
           comments: '940',
           soundTitle: `Original sound - ${data.authorName}`,
           imageUrl: data.thumbnailUrl,
-          category: importCategory,
+          category: targetCategory,
         };
         setDbShortsCompetitors((prev) => [newShort, ...prev.filter((item) => item.id !== data.videoId)]);
         setContentFormat('shorts');
         setSelectedFilterPill('All');
         setPlatformView((prev) => (isMobileScreen ? 'shorts-shelf' : prev === 'yt-desktop' ? 'shorts-shelf' : prev));
 
+        // Update local cache immediately
+        if (typeof window !== 'undefined') {
+          try {
+            const cachedStr = localStorage.getItem(CACHE_KEY);
+            const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              longform: cached.longform || [],
+              shorts: [newShort, ...(cached.shorts || []).filter((i: any) => i.id !== newShort.id)],
+            }));
+          } catch {}
+        }
+
         const saveRes = await saveCompetitorToDatabase({
           youtube_video_id: data.videoId,
           title: data.title,
           channel_name: data.authorName,
+          channel_avatar: data.channelAvatar,
           views: data.views,
           duration: data.duration,
-          category: importCategory,
+          category: targetCategory,
           format: 'shorts',
           thumbnail_url: data.thumbnailUrl,
         });
@@ -491,9 +576,10 @@ export default function ThumbnailLabPage() {
           channelAvatar: data.channelAvatar,
           views: data.views || '840K views',
           timeAgo: data.timeAgo || '1 day ago',
+          publishedAt: data.publishedAt || new Date().toISOString(),
           duration: data.duration || '14:20',
           imageUrl: data.thumbnailUrl,
-          category: importCategory,
+          category: targetCategory,
           verified: true,
         };
         setDbLongformCompetitors((prev) => [newLong, ...prev.filter((item) => item.id !== data.videoId)]);
@@ -501,13 +587,28 @@ export default function ThumbnailLabPage() {
         setSelectedFilterPill('All');
         setPlatformView((prev) => (isMobileScreen ? 'yt-mobile' : prev));
 
+        // Update local cache immediately
+        if (typeof window !== 'undefined') {
+          try {
+            const cachedStr = localStorage.getItem(CACHE_KEY);
+            const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              longform: [newLong, ...(cached.longform || []).filter((i: any) => i.id !== newLong.id)],
+              shorts: cached.shorts || [],
+            }));
+          } catch {}
+        }
+
         const saveRes = await saveCompetitorToDatabase({
           youtube_video_id: data.videoId,
           title: data.title,
           channel_name: data.authorName,
+          channel_avatar: data.channelAvatar,
           views: data.views,
           duration: data.duration,
-          category: importCategory,
+          published_at: data.publishedAt,
+          category: targetCategory,
           format: 'longform',
           thumbnail_url: data.thumbnailUrl,
         });
@@ -534,7 +635,7 @@ export default function ThumbnailLabPage() {
   const longformFeed = useMemo(() => {
     let base = shuffleWithSeed(dbLongformCompetitors, randomSeed);
     if (selectedFilterPill !== 'All') {
-      base = base.filter((v) => v.category === selectedFilterPill || !v.category);
+      base = base.filter((v) => v.category === selectedFilterPill || v.category === 'All' || !v.category);
     }
     const candidateVideo: YouTubeVideoItem = {
       id: activeCandidate.id,
@@ -734,10 +835,10 @@ Tested on YouTube Simulator.`;
     return filter.trim() || 'none';
   }, [blurAmount, isGrayscale, colorBlindMode]);
 
-  // YouTube phone frame sizing: fits snugly inside any screen (mobile-first, YouTube native)
+  // YouTube phone frame sizing: flush on mobile, full width on desktop
   const isPhoneFrameView = platformView === 'yt-mobile' || platformView === 'shorts-shelf' || platformView === 'shorts-player';
-  const phoneFrameWidth = 'min(390px, calc(100vw - 16px))';
-  const phoneFrameHeight = 'min(780px, max(480px, calc(100dvh - 150px)))';
+  const phoneFrameWidth = isMobileScreen ? '100%' : 'min(440px, 100%)';
+  const phoneFrameHeight = '100%';
 
   if (!mounted) {
     return (
@@ -1090,6 +1191,29 @@ Tested on YouTube Simulator.`;
             <span>SHUFFLE</span>
           </button>
 
+          <button
+            onClick={() => setShowCandidateBadge((v) => !v)}
+            style={{
+              padding: '3px 7px',
+              fontSize: '0.62rem',
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: showCandidateBadge ? '#FFE500' : '#27272a',
+              color: showCandidateBadge ? '#000' : '#fff',
+              border: '1px solid #3f3f46',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+            title="Toggle 'YOUR VIDEO' edit tag on and off"
+          >
+            <Edit3 size={11} />
+            <span>TAG: {showCandidateBadge ? 'ON' : 'OFF'}</span>
+          </button>
+
           <div
             style={{
               fontSize: '0.64rem',
@@ -1414,7 +1538,7 @@ Tested on YouTube Simulator.`;
             display: !isMobileScreen || mobileActiveView === 'feed' ? 'flex' : 'none',
             justifyContent: 'center',
             alignItems: 'flex-start',
-            padding: isPhoneFrameView ? '10px 0 20px' : '0',
+            padding: 0,
             position: 'relative',
           }}
           className="no-scrollbar"
@@ -1581,31 +1705,32 @@ Tested on YouTube Simulator.`;
 
           <div
             style={{
-              width: isPhoneFrameView ? phoneFrameWidth : '100%',
-              maxWidth: isPhoneFrameView ? '390px' : '100%',
+              width: isPhoneFrameView ? (isMobileScreen ? '100%' : 'min(440px, 100%)') : '100%',
+              maxWidth: isPhoneFrameView ? (isMobileScreen ? '100%' : '440px') : '100%',
               filter: colorFilterStyle,
+              height: '100%',
               minHeight: '100%',
               display: 'flex',
               flexDirection: 'column',
+              margin: '0 auto',
             }}
           >
             {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* 1. LONG-FORM: YOUTUBE MOBILE FEED (390px IPHONE)               */}
+            {/* 1. LONG-FORM: YOUTUBE MOBILE FEED (EDGE-TO-EDGE)               */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'longform' && platformView === 'yt-mobile' && (
               <div
                 style={{
-                  width: phoneFrameWidth,
-                  height: phoneFrameHeight,
+                  width: '100%',
+                  height: '100%',
+                  flex: 1,
                   background: '#0f0f0f',
                   color: '#ffffff',
-                  border: '1px solid #27272a',
-                  borderRadius: 12,
-                  overflow: 'hidden',
+                  border: 'none',
+                  borderRadius: 0,
                   display: 'flex',
                   flexDirection: 'column',
                   fontFamily: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                  boxShadow: '0 0 50px rgba(0,0,0,0.9)',
                 }}
               >
                 {/* Real YouTube Mobile Top Header (fixed at top of frame) */}
@@ -1649,14 +1774,13 @@ Tested on YouTube Simulator.`;
                         color: p === selectedFilterPill ? '#000000' : '#ffffff',
                         fontSize: '0.76rem',
                         fontWeight: 600,
-                        whiteSpace: 'nowrap',
                         cursor: 'pointer',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {p}
                     </button>
                   ))}
-                  <div style={{ color: '#aaa', padding: '0 4px', fontSize: '0.8rem' }}>›</div>
                 </div>
 
                 {/* Scrollable feed area — only the feed scrolls; header & bottom nav stay pinned (YouTube native) */}
@@ -1667,7 +1791,22 @@ Tested on YouTube Simulator.`;
                     const isCandidate = video.isCandidate;
                     return (
                       <React.Fragment key={video.id + idx}>
-                        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 20, position: 'relative', border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            marginBottom: 20,
+                            position: 'relative',
+                            border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none',
+                            cursor: isCandidate ? 'pointer' : 'default',
+                          }}
+                          onClick={() => {
+                            if (isCandidate) {
+                              setActiveSidebarTab('candidates');
+                              if (isMobileScreen) setMobileActiveView('variations');
+                            }
+                          }}
+                        >
                           <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', background: '#1c1c1c', overflow: 'hidden' }}>
                             <img
                               src={video.imageUrl}
@@ -1681,12 +1820,36 @@ Tested on YouTube Simulator.`;
                                 {video.duration}
                               </div>
                             )}
+                            {isCandidate && showCandidateBadge && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 6,
+                                  left: 6,
+                                  background: '#FFE500',
+                                  color: '#000',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 900,
+                                  fontSize: '0.6rem',
+                                  padding: '2px 6px',
+                                  borderRadius: 2,
+                                  border: '1px solid #000',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  boxShadow: '1.5px 1.5px 0 #000',
+                                }}
+                              >
+                                <Edit3 size={10} /> YOUR VIDEO (CLICK TO EDIT)
+                              </div>
+                            )}
                           </div>
 
                           <div style={{ display: 'flex', padding: '10px 12px 0', gap: 12 }}>
                             <img
                               src={video.channelAvatar}
                               alt={video.channelName}
+                              referrerPolicy="no-referrer"
                               onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(video.channelName)}`; }}
                               style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
                             />
@@ -1698,7 +1861,7 @@ Tested on YouTube Simulator.`;
                                 <span>{video.channelName}</span>
                                 {video.verified && <span style={{ fontSize: '0.6rem' }}>✓</span>}
                               </div>
-                              <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 1 }}>{video.views} • {video.timeAgo}</div>
+                              <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 1 }}>{video.views} • {formatTimeAgo(video.publishedAt || video.timeAgo)}</div>
                             </div>
                             <MoreVertical size={18} color="#aaaaaa" style={{ flexShrink: 0, marginTop: 2 }} />
                           </div>
@@ -1706,6 +1869,32 @@ Tested on YouTube Simulator.`;
                       </React.Fragment>
                     );
                   })}
+
+                  {/* Load More Button in Mobile Home Feed */}
+                  <div style={{ padding: '20px 12px 32px', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      onClick={handleLoadMoreCompetitors}
+                      disabled={isLoadingMore}
+                      style={{
+                        padding: '10px 20px',
+                        background: '#18181b',
+                        color: '#FFE500',
+                        border: '1.5px solid #FFE500',
+                        borderRadius: 4,
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.76rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        boxShadow: '2.5px 2.5px 0 #000',
+                      }}
+                    >
+                      {isLoadingMore ? <Activity size={14} className="animate-spin" /> : <Plus size={14} />}
+                      {isLoadingMore ? 'FETCHING FROM DATABASE...' : 'LOAD MORE COMPETITORS'}
+                    </button>
+                  </div>
                   </div>
                   )}
 
@@ -1773,35 +1962,42 @@ Tested on YouTube Simulator.`;
                   )}
                 </div>
 
-                {/* Mobile Bottom Navigation Bar (pinned to bottom of frame, YouTube native) */}
+                {/* Mobile Bottom Navigation Bar (sticky to bottom of screen, YouTube native) */}
                 <div
                   style={{
+                    position: 'sticky',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    width: '100%',
                     flexShrink: 0,
-                    height: 48,
+                    height: 52,
                     background: '#0f0f0f',
                     borderTop: '1px solid #1f1f1f',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-around',
+                    padding: '0 4px',
+                    zIndex: 50,
                   }}
                 >
-                  <button onClick={() => setMobileFeedTab('home')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                  <button onClick={() => setMobileFeedTab('home')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 8px', minWidth: 48 }}>
                     <HomeIcon size={18} color={mobileFeedTab === 'home' ? '#ffffff' : '#aaaaaa'} />
-                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'home' ? '#ffffff' : '#aaaaaa' }}>Home</span>
+                    <span style={{ fontSize: '0.6rem', fontWeight: mobileFeedTab === 'home' ? 700 : 400, color: mobileFeedTab === 'home' ? '#ffffff' : '#aaaaaa' }}>Home</span>
                   </button>
-                  <button onClick={() => setMobileFeedTab('shorts')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                  <button onClick={() => setMobileFeedTab('shorts')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 8px', minWidth: 48 }}>
                     <Zap size={18} color={mobileFeedTab === 'shorts' ? '#ffffff' : '#aaaaaa'} />
-                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'shorts' ? '#ffffff' : '#aaaaaa' }}>Shorts</span>
+                    <span style={{ fontSize: '0.6rem', fontWeight: mobileFeedTab === 'shorts' ? 700 : 400, color: mobileFeedTab === 'shorts' ? '#ffffff' : '#aaaaaa' }}>Shorts</span>
                   </button>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '0 2px' }}>
                     <Plus size={20} color="#ffffff" />
                   </div>
-                  <button onClick={() => setMobileFeedTab('subscriptions')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                  <button onClick={() => setMobileFeedTab('subscriptions')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 8px', minWidth: 48 }}>
                     <Radio size={18} color={mobileFeedTab === 'subscriptions' ? '#ffffff' : '#aaaaaa'} />
-                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'subscriptions' ? '#ffffff' : '#aaaaaa' }}>Subscriptions</span>
+                    <span style={{ fontSize: '0.6rem', fontWeight: mobileFeedTab === 'subscriptions' ? 700 : 400, color: mobileFeedTab === 'subscriptions' ? '#ffffff' : '#aaaaaa' }}>Subscriptions</span>
                   </button>
-                  <button onClick={() => setMobileFeedTab('you')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
-                    <div style={{ width: 20, height: 20, borderRadius: '50%', overflow: 'hidden', border: mobileFeedTab === 'you' ? '1.5px solid #ffffff' : 'none', boxSizing: 'border-box' }}>
+                  <button onClick={() => setMobileFeedTab('you')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 8px', minWidth: 48 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', border: mobileFeedTab === 'you' ? '1.5px solid #ffffff' : 'none', boxSizing: 'border-box' }}>
                       <img
                         src={activeCandidate.channelAvatar}
                         alt="User"
@@ -1810,7 +2006,7 @@ Tested on YouTube Simulator.`;
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     </div>
-                    <span style={{ fontSize: '0.55rem', color: mobileFeedTab === 'you' ? '#ffffff' : '#aaaaaa' }}>You</span>
+                    <span style={{ fontSize: '0.6rem', fontWeight: mobileFeedTab === 'you' ? 700 : 400, color: mobileFeedTab === 'you' ? '#ffffff' : '#aaaaaa' }}>You</span>
                   </button>
                 </div>
               </div>
@@ -1820,7 +2016,7 @@ Tested on YouTube Simulator.`;
             {/* 2. LONG-FORM: YOUTUBE DESKTOP FEED (3-GRID BROWSE)             */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {contentFormat === 'longform' && platformView === 'yt-desktop' && (
-              <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '20px 24px', background: '#0f0f0f', minHeight: '100vh', fontFamily: '"Roboto", sans-serif' }}>
+              <div style={{ width: '100%', maxWidth: '100%', margin: 0, padding: '24px 32px', background: '#0f0f0f', minHeight: '100%', fontFamily: '"Roboto", sans-serif', boxSizing: 'border-box' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px 16px' }}>
                   {longformFeed.map((video, idx) => {
                     const isCandidate = video.isCandidate;
@@ -1854,12 +2050,38 @@ Tested on YouTube Simulator.`;
                               {video.title}
                             </div>
                             <div style={{ fontSize: '0.8rem', color: '#aaa', marginTop: 4 }}>{video.channelName} {video.verified && '✓'}</div>
-                            <div style={{ fontSize: '0.8rem', color: '#aaa' }}>{video.views} • {video.timeAgo}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#aaa' }}>{video.views} • {formatTimeAgo(video.publishedAt || video.timeAgo)}</div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Load More Button in Desktop Feed */}
+                <div style={{ padding: '28px 0 36px', display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    onClick={handleLoadMoreCompetitors}
+                    disabled={isLoadingMore}
+                    style={{
+                      padding: '11px 24px',
+                      background: '#18181b',
+                      color: '#FFE500',
+                      border: '1.5px solid #FFE500',
+                      borderRadius: 4,
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: '3px 3px 0 #000',
+                    }}
+                  >
+                    {isLoadingMore ? <Activity size={15} className="animate-spin" /> : <Plus size={15} />}
+                    {isLoadingMore ? 'FETCHING FROM DATABASE...' : 'LOAD MORE COMPETITORS'}
+                  </button>
                 </div>
               </div>
             )}
@@ -2261,6 +2483,68 @@ Tested on YouTube Simulator.`;
                         }
                       }}
                       style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', background: '#141416', color: '#fff' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                        Video Duration
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="14:20"
+                        value={activeCandidate.duration}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (contentFormat === 'longform') {
+                            setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, duration: val } : c)));
+                          } else {
+                            setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, duration: val } : c)));
+                          }
+                        }}
+                        style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', background: '#141416', color: '#fff', fontFamily: 'monospace' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                        Upload Time
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="4 hours ago"
+                        value={activeCandidate.timeAgo}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (contentFormat === 'longform') {
+                            setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, timeAgo: val } : c)));
+                          } else {
+                            setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, timeAgo: val } : c)));
+                          }
+                        }}
+                        style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', background: '#141416', color: '#fff', fontFamily: 'monospace' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                      Views Count
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="1.2M views"
+                      value={activeCandidate.views}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (contentFormat === 'longform') {
+                          setLongformCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, views: val } : c)));
+                        } else {
+                          setShortsCandidates((prev) => prev.map((c) => (c.id === activeCandidate.id ? { ...c, views: val } : c)));
+                        }
+                      }}
+                      style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', borderRadius: 3, fontSize: '0.72rem', background: '#141416', color: '#fff', fontFamily: 'monospace' }}
                     />
                   </div>
                 </div>
