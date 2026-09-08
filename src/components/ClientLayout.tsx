@@ -24,7 +24,7 @@ const toolPaths = [
   "/auto-captions",
 ];
 
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/tree-qr"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
