@@ -40,6 +40,11 @@ export interface OverlayTypographyOptions {
     pillBackground?: CaptionPillBackground; // 'clear' | 'dark' | 'light' | 'custom'
     pillCustomColor?: string;  // user defined background color
     emojiMode?: boolean;       // Append relevant emojis
+    springPhysics?: boolean;   // Physics-based elastic overshoot bounce
+    bounceIntensity?: number;  // 0.5 to 2.0 (default 1.1)
+    wordRotation?: boolean;    // Subtle dynamic tilt for punchy energetic pop
+    textShadow?: boolean;      // Drop shadow for high-contrast legibility
+    uppercase?: boolean;       // Force ALL CAPS (Hormozi style)
 }
 
 export interface OverlayRenderOptions {
@@ -96,6 +101,26 @@ function applyEmoji(word: string): string {
         return word + ' ' + EMOJI_DICTIONARY[cleanWord];
     }
     return word;
+}
+
+/**
+ * Damped harmonic spring physics calculation for word kinetic entrance.
+ * Provides snappy overshoot and elastic settling (the signature creator pop).
+ *
+ * @param progress 0.0 (word start) to 1.0 (word end)
+ * @param intensity Spring bounce factor (default 1.1)
+ */
+export function calculateSpringScale(progress: number, intensity: number = 1.1): number {
+    if (progress <= 0) return 0.92;
+    if (progress >= 1.0) return 1.0;
+    // Harmonic oscillation with exponential decay:
+    // Snappy entrance peaking at ~1.28 within first 18% of word duration, then smooth elastic settle
+    const t = progress;
+    const frequency = 9.5;
+    const decay = 5.0;
+    const amplitude = 0.32 * intensity;
+    const springOffset = amplitude * Math.exp(-decay * t) * Math.sin(frequency * t * Math.PI);
+    return Math.max(0.9, 1.0 + springOffset);
 }
 
 /**
@@ -464,9 +489,10 @@ export function drawCaptionFrame(
         const startX = (width - totalWidth) / 2;
         let currentX = startX;
 
-        visibleWords.forEach((word, relativeIdx) => {
+        visibleWords.forEach((rawWord, relativeIdx) => {
             const absoluteIdx = startIdx + relativeIdx;
             const isCurrent = absoluteIdx === activeWordIndex;
+            const word = typography.uppercase ? rawWord.toUpperCase() : rawWord;
             const wordWidth = ctx.measureText(word + ' ').width;
             const wordCenterX = currentX + wordWidth / 2;
 
@@ -474,8 +500,25 @@ export function drawCaptionFrame(
             ctx.translate(wordCenterX, centerY);
 
             if (isCurrent) {
-                // Kinetic Scale Pop
-                ctx.scale(1.15, 1.15);
+                // Kinetic Scale Pop with Damped Spring Physics Engine
+                let scaleVal = 1.15;
+                if (typography.springPhysics !== false) {
+                    scaleVal = calculateSpringScale(wordProgress, typography.bounceIntensity ?? 1.15);
+                }
+                ctx.scale(scaleVal, scaleVal);
+
+                // Optional subtle tilt rotation (-2.2deg to +2.2deg)
+                if (typography.wordRotation) {
+                    const tiltDeg = (absoluteIdx % 2 === 0 ? -2.2 : 2.2) * (1 - wordProgress * 0.75);
+                    ctx.rotate((tiltDeg * Math.PI) / 180);
+                }
+
+                // Optional Drop Shadow for high readability against bright scenes
+                if (typography.textShadow) {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowOffsetY = 4;
+                }
 
                 // Heavy Black Stroke Outline
                 ctx.lineWidth = Math.max(6, popFontSize * 0.18);
@@ -483,15 +526,25 @@ export function drawCaptionFrame(
                 ctx.lineJoin = 'round';
                 ctx.strokeText(word, 0, 0);
 
+                ctx.shadowColor = 'transparent';
+
                 // Highlight Color Fill
                 ctx.fillStyle = highlighterColor;
                 ctx.fillText(word, 0, 0);
             } else {
+                if (typography.textShadow) {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowOffsetY = 3;
+                }
+
                 // Outer Black Stroke
                 ctx.lineWidth = Math.max(5, popFontSize * 0.14);
                 ctx.strokeStyle = '#000000';
                 ctx.lineJoin = 'round';
                 ctx.strokeText(word, 0, 0);
+
+                ctx.shadowColor = 'transparent';
 
                 // Crisp White Fill
                 ctx.fillStyle = pillBg === 'light' ? '#FFE500' : '#FFFFFF';

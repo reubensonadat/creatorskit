@@ -32,9 +32,16 @@ import {
   Layout,
   ChevronDown,
   Pipette,
+  Sparkles,
+  Wand2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import StudioToolsDropdown from '@/components/StudioToolsDropdown';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
+import {
+  embedMetadataIntoMediaBlob,
+  saveHandoffSession,
+} from '@/lib/captions/project-metadata';
 import {
   cleanWordForMatch,
   createVoiceMatchEngine,
@@ -296,6 +303,8 @@ function RecordedAudioPlayer({ url }: { url: string }) {
 }
 
 export default function TeleprompterPage() {
+  const router = useRouter();
+
   // Core Prompter State
   const [script, setScript] = useState(
     `[HOOK - LOOK DIRECTLY AT THE LENS]
@@ -1409,9 +1418,29 @@ Control your speed, adjust your font size, and download your voice recording in 
   };
 
   // ─────────────────────────────────────────────────────────────
-  // VOICE AUDIO RECORDER (Pure Crystal-Clear Microphone Audio)
+  // VOICE AUDIO RECORDER (Pure Crystal-Clear Microphone Audio + Metadata Embedding)
   // ─────────────────────────────────────────────────────────────
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [handoffSuccessNotice, setHandoffSuccessNotice] = useState<boolean>(false);
+
+  const handleOneClickCaptions = async () => {
+    if (!recordedBlob) return;
+    try {
+      await saveHandoffSession({
+        script: script,
+        mediaBlob: recordedBlob,
+        fileName: `teleprompter_take_${Date.now()}.webm`,
+        title: 'Teleprompter Studio Take',
+        wpm: Math.round(speed * 125),
+      });
+      router.push('/auto-captions?from=teleprompter&auto=true');
+    } catch (err) {
+      console.warn('1-Click handoff fallback:', err);
+      localStorage.setItem('creatorkit_teleprompter_script', script);
+      router.push('/auto-captions?from=teleprompter&auto=true');
+    }
+  };
 
   const startVoiceRecording = () => {
     if (!micStreamRef.current) {
@@ -1430,12 +1459,40 @@ Control your speed, adjust your font size, and download your voice recording in 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mime });
-        const url = URL.createObjectURL(blob);
+      recorder.onstop = async () => {
+        const rawBlob = new Blob(audioChunksRef.current, { type: mime });
+        
+        // ✨ THE MAGIC TRICK: Embed script and metadata directly into media blob
+        let finalBlob: Blob = rawBlob;
+        try {
+          finalBlob = await embedMetadataIntoMediaBlob(rawBlob, {
+            version: '1.0',
+            generator: 'creatorkit-teleprompter',
+            script: script,
+            createdAt: Date.now(),
+            title: 'Teleprompter Take',
+            wpm: Math.round(speed * 125),
+          });
+        } catch (embErr) {
+          console.warn('Embedding metadata fallback:', embErr);
+        }
+
+        setRecordedBlob(finalBlob);
+        const url = URL.createObjectURL(finalBlob);
         setRecordedAudioUrl(url);
         setIsRecording(false);
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+        // Pre-cache handoff session into IndexedDB for instantaneous 1-Click transfer
+        saveHandoffSession({
+          script: script,
+          mediaBlob: finalBlob,
+          fileName: `teleprompter_take_${Date.now()}.${mime.includes('mp4') ? 'mp4' : 'webm'}`,
+          title: 'Teleprompter Studio Take',
+          wpm: Math.round(speed * 125),
+        }).catch((e) => console.warn('Pre-save handoff error:', e));
+
+        setHandoffSuccessNotice(true);
       };
       recorder.start(250);
       mediaRecorderRef.current = recorder;
@@ -2243,6 +2300,75 @@ Control your speed, adjust your font size, and download your voice recording in 
 
 
 
+          {/* ── 1-CLICK CAPTIONS FLOATING NOTIFICATION BANNER ── */}
+          {handoffSuccessNotice && recordedBlob && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 100,
+                background: '#FFE500',
+                color: '#000',
+                border: '2px solid #000',
+                borderRadius: 8,
+                boxShadow: '4px 4px 0 #000',
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                maxWidth: '92vw',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={16} strokeWidth={2.5} />
+                <span style={{ fontFamily: 'monospace', fontSize: '0.74rem', fontWeight: 900 }}>
+                  TAKE SAVED · SCRIPT EMBEDDED
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={handleOneClickCaptions}
+                  style={{
+                    background: '#000',
+                    color: '#FFE500',
+                    border: '1.5px solid #000',
+                    borderRadius: 4,
+                    padding: '6px 12px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    boxShadow: '1px 1px 0 #000',
+                  }}
+                >
+                  <Wand2 size={13} />
+                  <span>1-CLICK AUTO-CAPTIONS →</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHandoffSuccessNotice(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Dismiss notification"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Transport Controls: Mobile Floating Pill + Bottom Sheet + Desktop Studio Dock ── */}
           <>
             {/* ── MOBILE: Bottom Floating Control Pill ── */}
@@ -2432,26 +2558,53 @@ Control your speed, adjust your font size, and download your voice recording in 
 
                   {/* Recorded Audio Download / Preview Player (If available) */}
                   {recordedAudioUrl && (
-                    <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <RecordedAudioPlayer url={recordedAudioUrl} />
-                      <a
-                        href={recordedAudioUrl}
-                        download={`creatorkit-voice-${Date.now()}.webm`}
+                    <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <RecordedAudioPlayer url={recordedAudioUrl} />
+                        <a
+                          href={recordedAudioUrl}
+                          download={`creatorkit-take-${Date.now()}.webm`}
+                          style={{
+                            padding: '6px 10px',
+                            background: '#000',
+                            color: '#FFE500',
+                            border: '1.5px solid #000',
+                            borderRadius: 6,
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.65rem',
+                            textDecoration: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title="Download Take with Embedded Script Metadata"
+                        >
+                          DOWNLOAD
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOneClickCaptions}
                         style={{
-                          padding: '6px 10px',
-                          background: '#000',
-                          color: '#FFE500',
-                          border: '1.5px solid #000',
+                          width: '100%',
+                          padding: '8px 10px',
+                          background: '#FFE500',
+                          color: '#000',
+                          border: '2px solid #000',
                           borderRadius: 6,
                           fontFamily: 'monospace',
                           fontWeight: 900,
-                          fontSize: '0.65rem',
-                          textDecoration: 'none',
-                          whiteSpace: 'nowrap',
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          boxShadow: '2px 2px 0 #000',
                         }}
                       >
-                        DOWNLOAD
-                      </a>
+                        <Wand2 size={13} strokeWidth={2.5} />
+                        <span>✨ 1-CLICK: GENERATE STUDIO CAPTIONS</span>
+                      </button>
                     </div>
                   )}
 
@@ -2637,29 +2790,54 @@ Control your speed, adjust your font size, and download your voice recording in 
               <span>{isRecording ? `REC (${formatTime(recordingSeconds)})` : 'REC'}</span>
             </button>
 
-            {/* Recorded Audio Download (If Available) */}
+            {/* Recorded Audio Download & 1-Click Captions (If Available) */}
             {recordedAudioUrl && (
-              <a
-                href={recordedAudioUrl}
-                download={`creatorkit-voice-${Date.now()}.webm`}
-                style={{
-                  padding: '5px 10px',
-                  background: '#FFE500',
-                  color: '#000',
-                  border: '1.5px solid #000',
-                  borderRadius: 20,
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  fontSize: '0.68rem',
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-                title="Download Recorded Voice Audio"
-              >
-                <Download size={13} /> AUDIO
-              </a>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <button
+                  type="button"
+                  onClick={handleOneClickCaptions}
+                  style={{
+                    padding: '5px 10px',
+                    background: '#FFE500',
+                    color: '#000',
+                    border: '1.5px solid #000',
+                    borderRadius: 20,
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.68rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    boxShadow: '1px 1px 0 #000',
+                  }}
+                  title="1-Click: Generate Studio Captions from this Take"
+                >
+                  <Wand2 size={13} strokeWidth={2.5} />
+                  <span>1-CLICK CAPTIONS</span>
+                </button>
+                <a
+                  href={recordedAudioUrl}
+                  download={`creatorkit-take-${Date.now()}.webm`}
+                  style={{
+                    padding: '5px 10px',
+                    background: '#fff',
+                    color: '#000',
+                    border: '1.5px solid #000',
+                    borderRadius: 20,
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.68rem',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title="Download Take with Embedded Script Metadata"
+                >
+                  <Download size={13} /> TAKE
+                </a>
+              </div>
             )}
 
             <div style={{ width: 1, height: 20, background: '#d4d4d8', margin: '0 2px' }} />

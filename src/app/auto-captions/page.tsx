@@ -37,7 +37,33 @@ import {
     Disc,
     Sliders,
     Type,
+    Key,
+    Settings,
+    Plus,
+    Trash2,
+    Scissors,
+    GitMerge,
+    Search,
+    Wand2,
+    ExternalLink,
+    ShieldCheck,
+    X,
+    ChevronUp,
+    ChevronDown,
 } from 'lucide-react';
+import {
+    extractMetadataFromMediaBlob,
+    embedMetadataIntoMediaBlob,
+    getHandoffSession,
+    clearHandoffSession,
+    type CreatorKitProjectMetadata,
+} from '@/lib/captions/project-metadata';
+import {
+    transcribeWithCloudProvider,
+    getStoredApiKey,
+    setStoredApiKey,
+    type CloudTranscriptionProvider,
+} from '@/lib/captions/whisper-cloud';
 import {
     type CaptionVideoMode,
     type CaptionPillBackground,
@@ -242,6 +268,38 @@ export default function CaptionsPage() {
     const [isRenderingVideo, setIsRenderingVideo] = useState(false);
     const [videoRenderProgress, setVideoRenderProgress] = useState(0);
 
+    // ✨ Visual Kinetic Typography & Physics Controls
+    const [springPhysics, setSpringPhysics] = useState<boolean>(true);
+    const [bounceIntensity, setBounceIntensity] = useState<number>(1.15);
+    const [wordRotation, setWordRotation] = useState<boolean>(true);
+    const [textShadow, setTextShadow] = useState<boolean>(true);
+    const [uppercase, setUppercase] = useState<boolean>(false);
+
+    // 🚀 BYOK (Bring Your Own Key) Engine Settings
+    const [transcriptionEngine, setTranscriptionEngine] = useState<CloudTranscriptionProvider | 'local'>('local');
+    const [groqKey, setGroqKey] = useState<string>('');
+    const [openaiKey, setOpenaiKey] = useState<string>('');
+    const [byokModalOpen, setByokModalOpen] = useState<boolean>(false);
+    const [byokModalProvider, setByokModalProvider] = useState<CloudTranscriptionProvider>('groq');
+    const [tempKeyInput, setTempKeyInput] = useState<string>('');
+    const [byokSavedToast, setByokSavedToast] = useState<string | null>(null);
+
+    // ✨ Embedded Metadata & Handoff State
+    const [magicMetadata, setMagicMetadata] = useState<CreatorKitProjectMetadata | null>(null);
+    const [magicBannerDismissed, setMagicBannerDismissed] = useState<boolean>(false);
+    const [pendingHandoff, setPendingHandoff] = useState<{
+        script: string;
+        mediaBlob: Blob;
+        fileName?: string;
+        title?: string;
+        wpm?: number;
+    } | null>(null);
+
+    // ✍️ Manual Subtitle Cue Editing & Search
+    const [showFindReplace, setShowFindReplace] = useState<boolean>(false);
+    const [findQuery, setFindQuery] = useState<string>('');
+    const [replaceQuery, setReplaceQuery] = useState<string>('');
+
     // Teleprompter Script Sync State
     const [teleprompterScript, setTeleprompterScript] = useState<string | null>(null);
     const [scriptAligned, setScriptAligned] = useState(false);
@@ -290,6 +348,30 @@ export default function CaptionsPage() {
         async function restoreSession() {
             try {
                 if (typeof window === 'undefined') return;
+
+                // Load stored BYOK keys
+                const storedGroq = getStoredApiKey('groq');
+                if (storedGroq) setGroqKey(storedGroq);
+                const storedOpenai = getStoredApiKey('openai');
+                if (storedOpenai) setOpenaiKey(storedOpenai);
+
+                // Check for 1-Click Handoff from Teleprompter
+                const handoff = await getHandoffSession();
+                if (handoff && isMounted) {
+                    setPendingHandoff(handoff);
+                    if (handoff.script) {
+                        setTeleprompterScript(handoff.script);
+                    }
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob) {
+                        const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
+                            type: handoff.mediaBlob.type || 'audio/webm',
+                        });
+                        await clearHandoffSession();
+                        handleFile(transferredFile);
+                        return;
+                    }
+                }
 
                 const savedFileName = localStorage.getItem(STORAGE_KEYS.FILE_NAME);
                 const savedCues = localStorage.getItem(STORAGE_KEYS.CUES);
@@ -376,7 +458,9 @@ export default function CaptionsPage() {
         };
     }, []);
 
-    const handleFile = async (selectedFile: File) => {
+    const handleFile = async (selectedFile: File, engineOverride?: CloudTranscriptionProvider | 'local') => {
+        const activeEngine = engineOverride || transcriptionEngine;
+
         // Clean up previous blob URLs if replacing file
         if (audioUrlRef.current && audioUrlRef.current.startsWith('blob:')) {
             URL.revokeObjectURL(audioUrlRef.current);
@@ -397,63 +481,118 @@ export default function CaptionsPage() {
             console.warn('Immediate audio cache warning:', err);
         });
 
+        // ✨ THE MAGIC TRICK: Inspect file for embedded script metadata
+        let extractedScript: string | null = null;
+        try {
+            const extracted = await extractMetadataFromMediaBlob(selectedFile);
+            if (extracted && extracted.script) {
+                setMagicMetadata(extracted);
+                setMagicBannerDismissed(false);
+                setTeleprompterScript(extracted.script);
+                extractedScript = extracted.script;
+                localStorage.setItem('creatorkit_teleprompter_script', extracted.script);
+            }
+        } catch (metaErr) {
+            console.warn('Metadata inspection fallback:', metaErr);
+        }
+
         setIsProcessing(true);
         try {
-            // Step 1: Decode audio
-            setProgress({
-                stage: 'decoding',
-                message: 'Analyzing audio...',
-                percent: 5,
-            });
+            let result: TranscriptionResult;
+            const effectiveScript = extractedScript || teleprompterScript || undefined;
 
-            const { audioData, duration: decodedDuration } = await processAudioForWhisper(selectedFile, () => {
+            if (activeEngine === 'groq' || activeEngine === 'openai') {
+                const userKey = activeEngine === 'groq' ? groqKey : openaiKey;
+                if (!userKey) {
+                    // Prompt user for key
+                    setByokModalProvider(activeEngine);
+                    setTempKeyInput('');
+                    setByokModalOpen(true);
+                    setIsProcessing(false);
+                    return;
+                }
+
+                setProgress({
+                    stage: 'loading_model',
+                    message: `Connecting to ${activeEngine === 'groq' ? 'Groq Cloud' : 'OpenAI'} Whisper...`,
+                    percent: 20,
+                });
+
+                result = await transcribeWithCloudProvider(
+                    selectedFile,
+                    activeEngine,
+                    userKey,
+                    effectiveScript,
+                    (prog) => setProgress(prog)
+                );
+            } else {
+                // Step 1: Decode audio locally
                 setProgress({
                     stage: 'decoding',
                     message: 'Analyzing audio...',
-                    percent: 15,
+                    percent: 5,
                 });
-            });
-            setAudioDuration(decodedDuration);
 
-            // Step 2: Transcribe audio
-            setProgress({
-                stage: 'loading_model',
-                message: 'Generating captions...',
-                percent: 20,
-            });
+                const { audioData, duration: decodedDuration } = await processAudioForWhisper(selectedFile, () => {
+                    setProgress({
+                        stage: 'decoding',
+                        message: 'Analyzing audio...',
+                        percent: 15,
+                    });
+                });
+                setAudioDuration(decodedDuration);
 
-            if (!whisperClientRef.current) {
-                whisperClientRef.current = new WhisperClient();
+                // Step 2: Transcribe audio with in-browser Web Worker Whisper
+                setProgress({
+                    stage: 'loading_model',
+                    message: 'Generating captions...',
+                    percent: 20,
+                });
+
+                if (!whisperClientRef.current) {
+                    whisperClientRef.current = new WhisperClient();
+                }
+
+                result = await whisperClientRef.current.transcribe(
+                    audioData,
+                    (prog) => {
+                        setProgress(prog);
+                    }
+                );
             }
 
-            const result: TranscriptionResult = await whisperClientRef.current.transcribe(
-                audioData,
-                (prog) => {
-                    setProgress(prog);
+            // If we have an aligned teleprompter script, align the generated cues for crystal-clear spelling and punctuation
+            let finalCues = result.cues;
+            if (effectiveScript && finalCues.length > 0) {
+                try {
+                    finalCues = alignScriptWithAudioCues(finalCues, effectiveScript);
+                    setScriptAligned(true);
+                } catch (alignErr) {
+                    console.warn('Auto script alignment fallback:', alignErr);
                 }
-            );
+            }
 
             // Step 3: Format subtitle output
-            setCues(result.cues);
+            setCues(finalCues);
             setFullText(result.fullText);
             setElapsed(result.elapsedSeconds);
 
             // Generate .vtt blob for the CassettePlayer caption track
-            const vttContent = generateVtt(result.cues);
+            const vttContent = generateVtt(finalCues);
             const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
             const vttBlobUrl = URL.createObjectURL(vttBlob);
             setVttUrl(vttBlobUrl);
 
             // Step 4: Persist in browser (localStorage + IndexedDB)
             try {
-                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(result.cues));
+                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(finalCues));
                 localStorage.setItem(STORAGE_KEYS.FULL_TEXT, result.fullText);
                 localStorage.setItem(STORAGE_KEYS.FILE_NAME, selectedFile.name);
                 localStorage.setItem(STORAGE_KEYS.ELAPSED, result.elapsedSeconds);
-                if (decodedDuration > 0) {
-                    localStorage.setItem(STORAGE_KEYS.DURATION, decodedDuration.toString());
-                } else if (result.cues.length > 0) {
-                    localStorage.setItem(STORAGE_KEYS.DURATION, result.cues[result.cues.length - 1].end.toString());
+                if (finalCues.length > 0) {
+                    const dur = finalCues[finalCues.length - 1].end;
+                    setAudioDuration(dur);
+                    localStorage.setItem(STORAGE_KEYS.DURATION, dur.toString());
                 }
                 await saveAudioBlobToCache(STORAGE_KEYS.AUDIO_KEY, selectedFile);
             } catch (cacheErr) {
@@ -474,6 +613,196 @@ export default function CaptionsPage() {
             });
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // INTERACTIVE SUBTITLE CUE EDITING ENGINE
+    // ─────────────────────────────────────────────────────────────
+    const handleUpdateCueText = (index: number, newText: string) => {
+        setCues((prev) => {
+            const next = [...prev];
+            next[index] = { ...next[index], text: newText };
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try {
+                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
+            } catch {}
+            return next;
+        });
+    };
+
+    const handleNudgeCue = (index: number, field: 'start' | 'end', delta: number) => {
+        setCues((prev) => {
+            const next = [...prev];
+            const cue = { ...next[index] };
+            if (field === 'start') {
+                cue.start = Math.max(0, parseFloat((cue.start + delta).toFixed(2)));
+                if (cue.start >= cue.end) cue.start = Math.max(0, cue.end - 0.05);
+            } else {
+                cue.end = parseFloat((cue.end + delta).toFixed(2));
+                if (cue.end <= cue.start) cue.end = cue.start + 0.05;
+            }
+            next[index] = cue;
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try {
+                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
+            } catch {}
+            return next;
+        });
+    };
+
+    const handleSplitCue = (index: number) => {
+        setCues((prev) => {
+            const cue = prev[index];
+            if (!cue) return prev;
+            const words = cue.text.trim().split(/\s+/);
+            const midTime = parseFloat(((cue.start + cue.end) / 2).toFixed(2));
+            if (words.length <= 1) {
+                const c1 = { start: cue.start, end: midTime, text: words[0] || '' };
+                const c2 = { start: midTime, end: cue.end, text: '' };
+                const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
+                const vtt = generateVtt(next);
+                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+                return next;
+            }
+            const midWordIdx = Math.ceil(words.length / 2);
+            const firstHalf = words.slice(0, midWordIdx).join(' ');
+            const secondHalf = words.slice(midWordIdx).join(' ');
+            const c1: SubtitleCue = { start: cue.start, end: midTime, text: firstHalf };
+            const c2: SubtitleCue = { start: midTime, end: cue.end, text: secondHalf };
+            const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleMergeWithNextCue = (index: number) => {
+        setCues((prev) => {
+            if (index >= prev.length - 1) return prev;
+            const c1 = prev[index];
+            const c2 = prev[index + 1];
+            const merged: SubtitleCue = {
+                start: c1.start,
+                end: c2.end,
+                text: `${c1.text} ${c2.text}`.trim(),
+            };
+            const next = [...prev.slice(0, index), merged, ...prev.slice(index + 2)];
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleDeleteCue = (index: number) => {
+        setCues((prev) => {
+            const next = prev.filter((_, i) => i !== index);
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleAddCue = () => {
+        setCues((prev) => {
+            const lastEnd = prev.length > 0 ? prev[prev.length - 1].end : 0;
+            const newCue: SubtitleCue = {
+                start: parseFloat(lastEnd.toFixed(2)),
+                end: parseFloat((lastEnd + 2.0).toFixed(2)),
+                text: 'New subtitle cue',
+            };
+            const next = [...prev, newCue];
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleBulkShift = (deltaSeconds: number) => {
+        setCues((prev) => {
+            const next = prev.map((c) => ({
+                ...c,
+                start: Math.max(0, parseFloat((c.start + deltaSeconds).toFixed(2))),
+                end: Math.max(0.1, parseFloat((c.end + deltaSeconds).toFixed(2))),
+            }));
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleExecuteFindReplace = () => {
+        if (!findQuery.trim()) return;
+        setCues((prev) => {
+            const regex = new RegExp(findQuery, 'gi');
+            const next = prev.map((c) => ({
+                ...c,
+                text: c.text.replace(regex, replaceQuery),
+            }));
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            return next;
+        });
+        setFullText((prev) => {
+            const regex = new RegExp(findQuery, 'gi');
+            const next = prev.replace(regex, replaceQuery);
+            try { localStorage.setItem(STORAGE_KEYS.FULL_TEXT, next); } catch {}
+            return next;
+        });
+        setShowFindReplace(false);
+    };
+
+    const handleSeekToTime = (time: number) => {
+        setOverlayCurrentTime(time);
+        if (overlayAudioRef.current) {
+            overlayAudioRef.current.currentTime = time;
+        }
+    };
+
+    const handleSaveApiKey = (provider: CloudTranscriptionProvider, key: string) => {
+        setStoredApiKey(provider, key);
+        if (provider === 'groq') setGroqKey(key);
+        if (provider === 'openai') setOpenaiKey(key);
+        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API Key Saved!`);
+        setTimeout(() => setByokSavedToast(null), 3000);
+        setByokModalOpen(false);
+    };
+
+    const handleClearApiKey = (provider: CloudTranscriptionProvider) => {
+        setStoredApiKey(provider, '');
+        if (provider === 'groq') setGroqKey('');
+        if (provider === 'openai') setOpenaiKey('');
+        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API Key Cleared`);
+        setTimeout(() => setByokSavedToast(null), 3000);
+    };
+
+    const handleDownloadWithEmbeddedMetadata = async () => {
+        if (!file || cues.length === 0) return;
+        try {
+            const blobWithMeta = await embedMetadataIntoMediaBlob(file, {
+                version: '1.0',
+                generator: 'creatorkit-auto-captions',
+                script: fullText || teleprompterScript || '',
+                cues: cues,
+                createdAt: Date.now(),
+                title: file.name,
+            });
+            const url = URL.createObjectURL(blobWithMeta);
+            const nameParts = file.name.split('.');
+            const ext = nameParts.pop() || 'webm';
+            const base = nameParts.join('.');
+            downloadFile(url, `${base}_with_metadata.${ext}`, blobWithMeta.type);
+        } catch (err) {
+            console.error('Failed to embed metadata on download:', err);
         }
     };
 
@@ -591,6 +920,11 @@ export default function CaptionsPage() {
                 pillBackground: captionPillBg,
                 pillCustomColor: captionPillCustomColor,
                 emojiMode: emojiMode,
+                springPhysics: springPhysics,
+                bounceIntensity: bounceIntensity,
+                wordRotation: wordRotation,
+                textShadow: textShadow,
+                uppercase: uppercase,
             }
         );
     }, [
@@ -606,6 +940,11 @@ export default function CaptionsPage() {
         overlayBackground,
         overlayAspectRatio,
         emojiMode,
+        springPhysics,
+        bounceIntensity,
+        wordRotation,
+        textShadow,
+        uppercase,
     ]);
 
     // Redraw preview whenever settings change or when scrubbed while paused
@@ -689,6 +1028,11 @@ export default function CaptionsPage() {
                     pillBackground: captionPillBg,
                     pillCustomColor: captionPillCustomColor,
                     emojiMode: emojiMode,
+                    springPhysics: springPhysics,
+                    bounceIntensity: bounceIntensity,
+                    wordRotation: wordRotation,
+                    textShadow: textShadow,
+                    uppercase: uppercase,
                 },
                 onProgress: (percent) => setVideoRenderProgress(percent),
             });
@@ -721,7 +1065,7 @@ export default function CaptionsPage() {
             <div
                 className="tool-page-header"
                 style={{
-                    marginBottom: 20,
+                    marginBottom: 16,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 4,
@@ -788,10 +1132,542 @@ export default function CaptionsPage() {
                             margin: 0,
                         }}
                     >
-                        Generate subtitles for free.
+                        100% Free speech-to-text subtitles. Use offline browser Whisper or bring your own free Groq/OpenAI key.
                     </p>
                 </div>
             </div>
+
+            {/* Toast Notification */}
+            {byokSavedToast && (
+                <div
+                    style={{
+                        marginBottom: 12,
+                        padding: '8px 14px',
+                        background: '#22c55e',
+                        color: '#000',
+                        border: '2px solid #000',
+                        boxShadow: '2px 2px 0 #000',
+                        borderRadius: 4,
+                        fontFamily: 'monospace',
+                        fontSize: '0.76rem',
+                        fontWeight: 900,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                    }}
+                >
+                    <Check size={16} strokeWidth={3} />
+                    <span>{byokSavedToast}</span>
+                </div>
+            )}
+
+            {/* Transcription Engine Selector Bar */}
+            <div
+                style={{
+                    background: '#fff',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    boxShadow: '3px 3px 0 #000',
+                    padding: '10px 14px',
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span
+                        style={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.68rem',
+                            fontWeight: 900,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                        }}
+                    >
+                        TRANSCRIPTION ENGINE:
+                    </span>
+
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                            type="button"
+                            onClick={() => setTranscriptionEngine('local')}
+                            style={{
+                                padding: '5px 10px',
+                                fontFamily: 'monospace',
+                                fontSize: '0.7rem',
+                                fontWeight: 900,
+                                background: transcriptionEngine === 'local' ? '#FFE500' : '#f4f4f5',
+                                color: '#000',
+                                border: '1.5px solid #000',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                                boxShadow: transcriptionEngine === 'local' ? '1.5px 1.5px 0 #000' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                            }}
+                        >
+                            <Cpu size={12} strokeWidth={2.5} />
+                            <span>LOCAL WHISPER (OFFLINE)</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTranscriptionEngine('groq');
+                                if (!groqKey) {
+                                    setByokModalProvider('groq');
+                                    setTempKeyInput('');
+                                    setByokModalOpen(true);
+                                }
+                            }}
+                            style={{
+                                padding: '5px 10px',
+                                fontFamily: 'monospace',
+                                fontSize: '0.7rem',
+                                fontWeight: 900,
+                                background: transcriptionEngine === 'groq' ? '#FFE500' : '#f4f4f5',
+                                color: '#000',
+                                border: '1.5px solid #000',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                                boxShadow: transcriptionEngine === 'groq' ? '1.5px 1.5px 0 #000' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                            }}
+                        >
+                            <Zap size={12} strokeWidth={2.5} />
+                            <span>GROQ CLOUD (10x FAST · BYOK)</span>
+                            {groqKey && (
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} title="Key active" />
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTranscriptionEngine('openai');
+                                if (!openaiKey) {
+                                    setByokModalProvider('openai');
+                                    setTempKeyInput('');
+                                    setByokModalOpen(true);
+                                }
+                            }}
+                            style={{
+                                padding: '5px 10px',
+                                fontFamily: 'monospace',
+                                fontSize: '0.7rem',
+                                fontWeight: 900,
+                                background: transcriptionEngine === 'openai' ? '#FFE500' : '#f4f4f5',
+                                color: '#000',
+                                border: '1.5px solid #000',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                                boxShadow: transcriptionEngine === 'openai' ? '1.5px 1.5px 0 #000' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                            }}
+                        >
+                            <Globe size={12} strokeWidth={2.5} />
+                            <span>OPENAI WHISPER (BYOK)</span>
+                            {openaiKey && (
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} title="Key active" />
+                            )}
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                        setByokModalProvider(transcriptionEngine === 'openai' ? 'openai' : 'groq');
+                        setTempKeyInput(transcriptionEngine === 'openai' ? openaiKey : groqKey);
+                        setByokModalOpen(true);
+                    }}
+                    style={{
+                        padding: '5px 10px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        background: '#fff',
+                        color: '#000',
+                        border: '1.5px solid #000',
+                        borderRadius: 3,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                    }}
+                >
+                    <Key size={12} strokeWidth={2.5} />
+                    <span>MANAGE API KEYS</span>
+                </button>
+            </div>
+
+            {/* 1-Click Teleprompter Handoff Banner */}
+            {pendingHandoff && !file && !isProcessing && (
+                <div
+                    style={{
+                        marginBottom: 16,
+                        background: '#FFE500',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        boxShadow: '3px 3px 0 #000',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 12,
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                            style={{
+                                width: 36,
+                                height: 36,
+                                background: '#000',
+                                color: '#FFE500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: 3,
+                                flexShrink: 0,
+                            }}
+                        >
+                            <Sparkles size={18} strokeWidth={2.5} />
+                        </div>
+                        <div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 900, color: '#000' }}>
+                                TELEPROMPTER TAKE READY TO TRANSCRIBE!
+                            </div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 700, color: '#333' }}>
+                                File: {pendingHandoff.fileName} ({(pendingHandoff.mediaBlob.size / (1024 * 1024)).toFixed(1)} MB) · Script automatically embedded
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const transferredFile = new File([pendingHandoff.mediaBlob], pendingHandoff.fileName, {
+                                    type: pendingHandoff.mediaBlob.type || 'audio/webm',
+                                });
+                                await clearHandoffSession();
+                                setPendingHandoff(null);
+                                handleFile(transferredFile);
+                            }}
+                            style={{
+                                padding: '8px 14px',
+                                background: '#000',
+                                color: '#FFE500',
+                                border: '2px solid #000',
+                                borderRadius: 3,
+                                fontFamily: 'monospace',
+                                fontSize: '0.76rem',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                boxShadow: '2px 2px 0 rgba(0,0,0,0.3)',
+                            }}
+                        >
+                            <Sparkles size={14} strokeWidth={2.5} />
+                            <span>1-CLICK: TRANSCRIBE TAKE</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                await clearHandoffSession();
+                                setPendingHandoff(null);
+                            }}
+                            style={{
+                                padding: '8px 10px',
+                                background: '#fff',
+                                color: '#000',
+                                border: '1.5px solid #000',
+                                borderRadius: 3,
+                                fontFamily: 'monospace',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            DISMISS
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Magic Metadata Detected Banner */}
+            {magicMetadata && !magicBannerDismissed && (
+                <div
+                    style={{
+                        marginBottom: 16,
+                        background: '#dcfce7',
+                        border: '2px solid #16a34a',
+                        borderRadius: 4,
+                        boxShadow: '3px 3px 0 #16a34a',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Sparkles size={18} color="#16a34a" strokeWidth={2.5} />
+                        <div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 900, color: '#166534' }}>
+                                ✨ MAGIC METADATA DETECTED: TELEPROMPTER SCRIPT ALIGNED!
+                            </div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 700, color: '#15803d' }}>
+                                Auto Captions extracted the exact reading script directly from your media file. Timings and spelling match 100%.
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setMagicBannerDismissed(true)}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#166534',
+                            cursor: 'pointer',
+                            padding: 4,
+                        }}
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
+            {/* BYOK Settings Modal */}
+            {byokModalOpen && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#fff',
+                            border: '3px solid #000',
+                            boxShadow: '6px 6px 0 #000',
+                            borderRadius: 4,
+                            maxWidth: 520,
+                            width: '100%',
+                            padding: 24,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 16,
+                        }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                    <Key size={18} strokeWidth={2.5} />
+                                    <h3 style={{ margin: 0, fontFamily: 'monospace', fontSize: '1.05rem', fontWeight: 900, textTransform: 'uppercase' }}>
+                                        Bring Your Own Key (BYOK)
+                                    </h3>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#555', fontFamily: 'monospace' }}>
+                                    Keep your transcription 100% free and lightning fast with your personal API key.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setByokModalOpen(false)}
+                                style={{
+                                    background: '#f4f4f5',
+                                    border: '1.5px solid #000',
+                                    borderRadius: 3,
+                                    cursor: 'pointer',
+                                    padding: '4px 6px',
+                                }}
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+
+                        {/* Provider Tabs in Modal */}
+                        <div style={{ display: 'flex', borderBottom: '2px solid #000', gap: 6 }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setByokModalProvider('groq');
+                                    setTempKeyInput(groqKey);
+                                }}
+                                style={{
+                                    padding: '6px 12px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 900,
+                                    background: byokModalProvider === 'groq' ? '#FFE500' : '#f4f4f5',
+                                    borderTop: '2px solid #000',
+                                    borderLeft: '2px solid #000',
+                                    borderRight: '2px solid #000',
+                                    borderBottom: byokModalProvider === 'groq' ? '2px solid #FFE500' : 'none',
+                                    marginBottom: byokModalProvider === 'groq' ? -2 : 0,
+                                    borderRadius: '3px 3px 0 0',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                GROQ (RECOMMENDED · FREE)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setByokModalProvider('openai');
+                                    setTempKeyInput(openaiKey);
+                                }}
+                                style={{
+                                    padding: '6px 12px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 900,
+                                    background: byokModalProvider === 'openai' ? '#FFE500' : '#f4f4f5',
+                                    borderTop: '2px solid #000',
+                                    borderLeft: '2px solid #000',
+                                    borderRight: '2px solid #000',
+                                    borderBottom: byokModalProvider === 'openai' ? '2px solid #FFE500' : 'none',
+                                    marginBottom: byokModalProvider === 'openai' ? -2 : 0,
+                                    borderRadius: '3px 3px 0 0',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                OPENAI
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, textTransform: 'uppercase' }}>
+                                {byokModalProvider === 'groq' ? 'Groq API Key (Starts with gsk_)' : 'OpenAI API Key (Starts with sk-)'}
+                            </label>
+
+                            <input
+                                type="password"
+                                value={tempKeyInput}
+                                onChange={(e) => setTempKeyInput(e.target.value)}
+                                placeholder={byokModalProvider === 'groq' ? 'gsk_xxxxxxxxxxxxxxxxxxxx' : 'sk-xxxxxxxxxxxxxxxxxxxx'}
+                                style={{
+                                    padding: '10px 12px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.8rem',
+                                    border: '2px solid #000',
+                                    borderRadius: 3,
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                }}
+                            />
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
+                                <span>🔒 Keys are stored strictly in your browser&apos;s localStorage</span>
+                                {byokModalProvider === 'groq' ? (
+                                    <a
+                                        href="https://console.groq.com/keys"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: '#000', textDecoration: 'underline', fontWeight: 800 }}
+                                    >
+                                        Get Free Groq Key →
+                                    </a>
+                                ) : (
+                                    <a
+                                        href="https://platform.openai.com/api-keys"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: '#000', textDecoration: 'underline', fontWeight: 800 }}
+                                    >
+                                        Get OpenAI Key →
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                            {(byokModalProvider === 'groq' ? groqKey : openaiKey) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleClearApiKey(byokModalProvider);
+                                        setTempKeyInput('');
+                                    }}
+                                    style={{
+                                        padding: '8px 12px',
+                                        background: '#fee2e2',
+                                        color: '#b91c1c',
+                                        border: '1.5px solid #b91c1c',
+                                        borderRadius: 3,
+                                        fontFamily: 'monospace',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    CLEAR KEY
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => setByokModalOpen(false)}
+                                style={{
+                                    padding: '8px 14px',
+                                    background: '#f4f4f5',
+                                    color: '#000',
+                                    border: '1.5px solid #000',
+                                    borderRadius: 3,
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                CANCEL
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handleSaveApiKey(byokModalProvider, tempKeyInput.trim())}
+                                style={{
+                                    padding: '8px 18px',
+                                    background: '#FFE500',
+                                    color: '#000',
+                                    border: '2px solid #000',
+                                    borderRadius: 3,
+                                    boxShadow: '2px 2px 0 #000',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                SAVE KEY
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* File Upload Zone (When idle and no file active) */}
             {!file && !isProcessing && (
@@ -1483,6 +2359,129 @@ export default function CaptionsPage() {
                                                 onChange={setCaptionYPosition}
                                             />
                                         </div>
+
+                                        {/* Dynamic Animation & Physics Engine Controls */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#fff', padding: '8px 10px', border: '1.5px solid #000', borderRadius: 4 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, textTransform: 'uppercase' }}>
+                                                    Animation & Dynamic Physics
+                                                </span>
+                                            </div>
+
+                                            {/* Spring Physics Switch */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900 }}>
+                                                        Spring Physics Bounce
+                                                    </span>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.56rem', color: '#666' }}>
+                                                        Dynamic overshoot & settle curves on active words
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSpringPhysics(!springPhysics)}
+                                                    style={{
+                                                        width: 36,
+                                                        height: 20,
+                                                        background: springPhysics ? '#22c55e' : '#e5e7eb',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 10,
+                                                        position: 'relative',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.2s',
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            width: 12,
+                                                            height: 12,
+                                                            background: '#fff',
+                                                            border: '1px solid #000',
+                                                            borderRadius: '50%',
+                                                            position: 'absolute',
+                                                            top: 2,
+                                                            left: springPhysics ? 18 : 2,
+                                                            transition: 'left 0.2s',
+                                                        }}
+                                                    />
+                                                </button>
+                                            </div>
+
+                                            {/* Bounce Intensity Scrubber */}
+                                            {springPhysics && (
+                                                <TactileScrubber
+                                                    label="Bounce Power"
+                                                    value={bounceIntensity}
+                                                    min={0.5}
+                                                    max={2.5}
+                                                    step={0.1}
+                                                    stepDelta={0.1}
+                                                    height={12}
+                                                    fillColor="#FFE500"
+                                                    showSteppers={false}
+                                                    formatValue={(v) => `${v.toFixed(1)}x`}
+                                                    onChange={setBounceIntensity}
+                                                />
+                                            )}
+
+                                            {/* Word Rotation Tilt & Text Shadow & Uppercase Row */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, paddingTop: 4, borderTop: '1px solid #e5e7eb' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setWordRotation(!wordRotation)}
+                                                    style={{
+                                                        padding: '5px 4px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 900,
+                                                        background: wordRotation ? '#FFE500' : '#f4f4f5',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 3,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'center',
+                                                    }}
+                                                >
+                                                    ROTATION TILT
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTextShadow(!textShadow)}
+                                                    style={{
+                                                        padding: '5px 4px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 900,
+                                                        background: textShadow ? '#FFE500' : '#f4f4f5',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 3,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'center',
+                                                    }}
+                                                >
+                                                    DROP SHADOW
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setUppercase(!uppercase)}
+                                                    style={{
+                                                        padding: '5px 4px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 900,
+                                                        background: uppercase ? '#FFE500' : '#f4f4f5',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 3,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'center',
+                                                    }}
+                                                >
+                                                    ALL CAPS
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Highlighter Color & Aspect Ratio Grid */}
@@ -1742,7 +2741,7 @@ export default function CaptionsPage() {
                                     display: 'grid',
                                     gridTemplateColumns: 'repeat(4, 1fr)',
                                     gap: 6,
-                                    marginBottom: 16,
+                                    marginBottom: 10,
                                 }}
                             >
                                 <button
@@ -1843,12 +2842,39 @@ export default function CaptionsPage() {
                                 </button>
                             </div>
 
+                            {/* Embed Metadata & Audio Bundle Export */}
+                            <button
+                                type="button"
+                                onClick={handleDownloadWithEmbeddedMetadata}
+                                style={{
+                                    width: '100%',
+                                    marginBottom: 14,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                    background: '#f4f4f5',
+                                    color: '#000',
+                                    border: '1.5px solid #000',
+                                    borderRadius: 3,
+                                    padding: '7px 10px',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 900,
+                                    fontSize: '0.7rem',
+                                    cursor: 'pointer',
+                                }}
+                                title="Download media with script metadata embedded inside for other CreatorKit tools"
+                            >
+                                <Sparkles size={13} strokeWidth={2.5} />
+                                <span>EXPORT MEDIA WITH EMBEDDED METADATA</span>
+                            </button>
+
                             {/* View Switcher Tabs */}
                             <div
                                 style={{
                                     display: 'flex',
                                     borderBottom: '1.5px solid #000',
-                                    marginBottom: 12,
+                                    marginBottom: 10,
                                     gap: 6,
                                 }}
                             >
@@ -1896,99 +2922,412 @@ export default function CaptionsPage() {
 
                             {/* Content Body */}
                             {activeTab === 'cues' ? (
-                                <div
-                                    style={{
-                                        maxHeight: 380,
-                                        overflowY: 'auto',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: 8,
-                                        paddingRight: 4,
-                                    }}
-                                >
-                                    {cues.length > 0 ? (
-                                        cues.map((cue, idx) => (
-                                            <div
-                                                key={idx}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {/* Cues Editing Toolbar */}
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            flexWrap: 'wrap',
+                                            gap: 6,
+                                            padding: '6px 8px',
+                                            background: '#f4f4f5',
+                                            border: '1.5px solid #000',
+                                            borderRadius: 3,
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleAddCue}
                                                 style={{
-                                                    background: '#fafafa',
+                                                    padding: '3px 7px',
+                                                    background: '#FFE500',
                                                     border: '1.5px solid #000',
-                                                    borderRadius: 3,
-                                                    padding: '8px 10px',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    gap: 4,
+                                                    borderRadius: 2,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.64rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer',
                                                 }}
                                             >
-                                                <div
-                                                    style={{
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 800,
-                                                    }}
-                                                >
-                                                    <span style={{ color: '#000' }}>#{String(idx + 1).padStart(2, '0')}</span>
-                                                    <span
-                                                        style={{
-                                                            background: '#FFE500',
-                                                            padding: '1px 5px',
-                                                            border: '1px solid #000',
-                                                            borderRadius: 2,
-                                                        }}
-                                                    >
-                                                        {formatVttTimestamp(cue.start)} → {formatVttTimestamp(cue.end)}
-                                                    </span>
-                                                </div>
-                                                <p
-                                                    style={{
-                                                        fontSize: '0.82rem',
-                                                        margin: 0,
-                                                        color: '#111',
-                                                        lineHeight: 1.4,
-                                                        fontWeight: 600,
-                                                    }}
-                                                >
-                                                    {cue.text}
-                                                </p>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p
+                                                + ADD CUE
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowFindReplace(!showFindReplace)}
+                                                style={{
+                                                    padding: '3px 7px',
+                                                    background: showFindReplace ? '#000' : '#fff',
+                                                    color: showFindReplace ? '#FFE500' : '#000',
+                                                    border: '1.5px solid #000',
+                                                    borderRadius: 2,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.64rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                FIND & REPLACE
+                                            </button>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.58rem', fontWeight: 800, color: '#666' }}>
+                                                NUDGE ALL:
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleBulkShift(-0.2)}
+                                                style={{
+                                                    padding: '2px 5px',
+                                                    background: '#fff',
+                                                    border: '1px solid #000',
+                                                    borderRadius: 2,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.6rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer',
+                                                }}
+                                                title="Shift all cues -0.2s earlier"
+                                            >
+                                                -0.2s
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleBulkShift(0.2)}
+                                                style={{
+                                                    padding: '2px 5px',
+                                                    background: '#fff',
+                                                    border: '1px solid #000',
+                                                    borderRadius: 2,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.6rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer',
+                                                }}
+                                                title="Shift all cues +0.2s later"
+                                            >
+                                                +0.2s
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Find & Replace Strip */}
+                                    {showFindReplace && (
+                                        <div
                                             style={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.75rem',
-                                                color: '#777',
-                                                textAlign: 'center',
-                                                padding: '24px 0',
+                                                padding: '8px 10px',
+                                                background: '#fef3c7',
+                                                border: '1.5px solid #d97706',
+                                                borderRadius: 3,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 6,
                                             }}
                                         >
-                                            No cues transcribed yet.
-                                        </p>
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <input
+                                                    type="text"
+                                                    value={findQuery}
+                                                    onChange={(e) => setFindQuery(e.target.value)}
+                                                    placeholder="Find text..."
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '4px 6px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.72rem',
+                                                        border: '1px solid #000',
+                                                        borderRadius: 2,
+                                                    }}
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={replaceQuery}
+                                                    onChange={(e) => setReplaceQuery(e.target.value)}
+                                                    placeholder="Replace with..."
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '4px 6px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.72rem',
+                                                        border: '1px solid #000',
+                                                        borderRadius: 2,
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleExecuteFindReplace}
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        background: '#000',
+                                                        color: '#FFE500',
+                                                        border: '1px solid #000',
+                                                        borderRadius: 2,
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 900,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    REPLACE ALL
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
+
+                                    {/* Cues Scrollable List */}
+                                    <div
+                                        style={{
+                                            maxHeight: 460,
+                                            overflowY: 'auto',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 8,
+                                            paddingRight: 4,
+                                        }}
+                                    >
+                                        {cues.length > 0 ? (
+                                            cues.map((cue, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    style={{
+                                                        background: '#fafafa',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 3,
+                                                        padding: '8px 10px',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: 6,
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 800,
+                                                            flexWrap: 'wrap',
+                                                            gap: 6,
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <span style={{ color: '#000', fontWeight: 900 }}>
+                                                                #{String(idx + 1).padStart(2, '0')}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSeekToTime(cue.start)}
+                                                                style={{
+                                                                    background: '#FFE500',
+                                                                    padding: '2px 6px',
+                                                                    border: '1px solid #000',
+                                                                    borderRadius: 2,
+                                                                    fontFamily: 'monospace',
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 900,
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                                title="Click to jump audio to this cue"
+                                                            >
+                                                                ▶ {formatVttTimestamp(cue.start)} → {formatVttTimestamp(cue.end)}
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Micro-nudging Steppers for Start & End */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                            <span style={{ fontSize: '0.58rem', color: '#666' }}>START:</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleNudgeCue(idx, 'start', -0.1)}
+                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
+                                                            >
+                                                                -0.1
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleNudgeCue(idx, 'start', 0.1)}
+                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
+                                                            >
+                                                                +0.1
+                                                            </button>
+
+                                                            <span style={{ fontSize: '0.58rem', color: '#666', marginLeft: 4 }}>END:</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleNudgeCue(idx, 'end', -0.1)}
+                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
+                                                            >
+                                                                -0.1
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleNudgeCue(idx, 'end', 0.1)}
+                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
+                                                            >
+                                                                +0.1
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Editable Text Area for each Cue */}
+                                                    <textarea
+                                                        value={cue.text}
+                                                        onChange={(e) => handleUpdateCueText(idx, e.target.value)}
+                                                        rows={2}
+                                                        style={{
+                                                            width: '100%',
+                                                            fontFamily: 'inherit',
+                                                            fontSize: '0.82rem',
+                                                            fontWeight: 600,
+                                                            lineHeight: 1.4,
+                                                            padding: '6px 8px',
+                                                            border: '1px solid #000',
+                                                            borderRadius: 2,
+                                                            background: '#fff',
+                                                            color: '#000',
+                                                            resize: 'vertical',
+                                                            boxSizing: 'border-box',
+                                                        }}
+                                                    />
+
+                                                    {/* Cue Actions: Split, Merge, Delete */}
+                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSplitCue(idx)}
+                                                            style={{
+                                                                padding: '2px 6px',
+                                                                background: '#fff',
+                                                                border: '1px solid #000',
+                                                                borderRadius: 2,
+                                                                fontFamily: 'monospace',
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            title="Split into two cues"
+                                                        >
+                                                            ✂ SPLIT
+                                                        </button>
+
+                                                        {idx < cues.length - 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleMergeWithNextCue(idx)}
+                                                                style={{
+                                                                    padding: '2px 6px',
+                                                                    background: '#fff',
+                                                                    border: '1px solid #000',
+                                                                    borderRadius: 2,
+                                                                    fontFamily: 'monospace',
+                                                                    fontSize: '0.6rem',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                                title="Merge with next cue"
+                                                            >
+                                                                🔗 MERGE NEXT
+                                                            </button>
+                                                        )}
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteCue(idx)}
+                                                            style={{
+                                                                padding: '2px 6px',
+                                                                background: '#fee2e2',
+                                                                color: '#b91c1c',
+                                                                border: '1px solid #b91c1c',
+                                                                borderRadius: 2,
+                                                                fontFamily: 'monospace',
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            title="Delete this cue"
+                                                        >
+                                                            🗑 DELETE
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p
+                                                style={{
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.75rem',
+                                                    color: '#777',
+                                                    textAlign: 'center',
+                                                    padding: '24px 0',
+                                                }}
+                                            >
+                                                No cues transcribed yet.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
-                                <textarea
-                                    readOnly
-                                    value={fullText}
-                                    style={{
-                                        width: '100%',
-                                        height: 360,
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.8rem',
-                                        lineHeight: 1.5,
-                                        padding: 10,
-                                        border: '1.5px solid #000',
-                                        borderRadius: 3,
-                                        background: '#fafafa',
-                                        color: '#000',
-                                        resize: 'none',
-                                        boxSizing: 'border-box',
-                                    }}
-                                    placeholder="Full transcript will display here..."
-                                />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <textarea
+                                        value={fullText}
+                                        onChange={(e) => {
+                                            setFullText(e.target.value);
+                                            try { localStorage.setItem(STORAGE_KEYS.FULL_TEXT, e.target.value); } catch {}
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            height: 380,
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.8rem',
+                                            lineHeight: 1.5,
+                                            padding: 10,
+                                            border: '1.5px solid #000',
+                                            borderRadius: 3,
+                                            background: '#fafafa',
+                                            color: '#000',
+                                            resize: 'none',
+                                            boxSizing: 'border-box',
+                                        }}
+                                        placeholder="Full transcript will display here... You can edit this text directly."
+                                    />
+                                    {cues.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (!fullText.trim()) return;
+                                                const aligned = alignScriptWithAudioCues(cues, fullText.trim());
+                                                setCues(aligned);
+                                                const vtt = generateVtt(aligned);
+                                                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+                                                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(aligned)); } catch {}
+                                                setActiveTab('cues');
+                                            }}
+                                            style={{
+                                                padding: '8px 12px',
+                                                background: '#FFE500',
+                                                border: '2px solid #000',
+                                                borderRadius: 3,
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 900,
+                                                cursor: 'pointer',
+                                                boxShadow: '2px 2px 0 #000',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 6,
+                                            }}
+                                        >
+                                            <Sparkles size={14} strokeWidth={2.5} />
+                                            <span>ALIGN EDITED TRANSCRIPT TO AUDIO TIMESTAMPS</span>
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
