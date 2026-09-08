@@ -57,6 +57,15 @@ export const NATIVE_TOOLS: ToolItem[] = [
     category: 'motion',
     badge: 'POPULAR',
   },
+  {
+    label: 'Auto Captions',
+    href: '/auto-captions',
+    hint: 'STUDIO SUBTITLES',
+    desc: 'Generate subtitles for free. Fast, accurate, timestamped captions & subtitle export.',
+    isFlagship: true,
+    category: 'studio',
+    badge: 'NEW',
+  },
 
   {
     label: 'Image & Video Compressor',

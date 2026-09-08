@@ -3600,26 +3600,55 @@ Control your speed, adjust your font size, and download your voice recording in 
               </button>
             </div>
 
-            <button
-              onClick={() => {
-                handleResetScroll();
-                setShowScriptModal(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: '#FFE500',
-                color: '#000',
-                border: '2px solid #000',
-                fontWeight: 900,
-                fontSize: '0.95rem',
-                fontFamily: 'monospace',
-                cursor: 'pointer',
-                boxShadow: '2px 2px 0 #000',
-              }}
-            >
-              DONE / START READING
-            </button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                onClick={() => {
+                  try {
+                    localStorage.setItem('creatorkit_teleprompter_script', script);
+                  } catch (e) {
+                    console.warn(e);
+                  }
+                  window.location.href = '/auto-captions';
+                }}
+                style={{
+                  padding: '12px',
+                  background: '#000000',
+                  color: '#ffffff',
+                  border: '2px solid #000',
+                  fontWeight: 900,
+                  fontSize: '0.78rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  boxShadow: '2px 2px 0 #000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+                title="Transfer this script to Auto Captions for 100% accurate video overlay generation"
+              >
+                🎙️ SEND TO AUTO CAPTIONS
+              </button>
+              <button
+                onClick={() => {
+                  handleResetScroll();
+                  setShowScriptModal(false);
+                }}
+                style={{
+                  padding: '12px',
+                  background: '#FFE500',
+                  color: '#000',
+                  border: '2px solid #000',
+                  fontWeight: 900,
+                  fontSize: '0.85rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  boxShadow: '2px 2px 0 #000',
+                }}
+              >
+                DONE / START READING
+              </button>
+            </div>
           </div>
         </div>
       )}

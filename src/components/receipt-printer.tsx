@@ -368,15 +368,15 @@ function ReceiptPrinterOutput({
     return (
         <div
             className={cn(
-                'relative z-50 -mt-4 w-full overflow-hidden',
-                className || 'h-[32rem] px-6',
+                'relative z-50 -mt-4 w-full overflow-hidden px-6',
+                className,
             )}
             {...props}
         >
             {isReceiptVisible ? (
                 <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 -top-1 z-20 h-2 bg-zinc-950/75 blur-[6px] dark:bg-zinc-50/75"
+                    className="pointer-events-none absolute inset-x-6 -top-1 z-20 h-2 bg-zinc-950/75 blur-[6px] dark:bg-zinc-50/75"
                 />
             ) : null}
 
@@ -393,12 +393,12 @@ function ReceiptPrinterOutput({
                                 : 'translateY(calc(-100% + 2px))',
                 }}
                 aria-hidden={stage !== 'complete'}
-                className="relative isolate"
+                className="relative isolate before:pointer-events-none before:absolute before:inset-x-3 before:top-3 before:bottom-4 before:z-0 before:rounded-sm before:shadow-[0_8px_24px_rgba(0,0,0,0.24)] before:content-[''] after:pointer-events-none after:absolute after:right-[8%] after:bottom-0 after:left-[8%] after:z-0 after:h-3 after:translate-y-1.5 after:rounded-full after:bg-black/10 after:blur-lg after:content-['']"
                 initial={false}
                 transition={{
                     opacity: { duration: animate ? 0.16 : 0, ease: easeOut },
                     transform: {
-                        duration: shouldMove ? 1.85 : 0,
+                        duration: shouldMove ? 1.75 : 0,
                         ease: shouldUseSteppedFeed ? 'linear' : easeInOut,
                         times: shouldUseSteppedFeed ? printingKeyframeTimes : undefined,
                     },

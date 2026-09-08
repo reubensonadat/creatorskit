@@ -20,6 +20,8 @@ const toolPaths = [
   "/compressor",
   "/watermark",
   "/color-gradient",
+  "/captions",
+  "/auto-captions",
 ];
 
 const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab"];

@@ -153,7 +153,6 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                     {/* Expandable tray — grows with the feed, ends at the exact
                         measured document height. Never a fixed height. */}
                     <ReceiptPrinter.Output
-                        className="px-0"
                         style={{
                             height: stage === 'processing'
                                 ? TRAY_COMPACT

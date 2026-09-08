@@ -45,6 +45,8 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: Re
   "/space-planner": Ruler,
   "/sync-slate": Film,
   "/teleprompter": MonitorPlay,
+  "/captions": AudioLines,
+  "/auto-captions": AudioLines,
   "/text-behind": Layers,
   "/text-highlighter": Highlighter,
   "/thumbnail-lab": Images,
