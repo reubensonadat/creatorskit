@@ -272,7 +272,9 @@ export class WhisperClient {
             };
 
             worker.addEventListener('message', handleMessage);
-            worker.postMessage({ type: 'transcribe', audioData });
+            // Transfer (not copy) the PCM buffer to the worker — avoids
+            // duplicating multi-megabyte Float32Arrays across threads.
+            worker.postMessage({ type: 'transcribe', audioData }, [audioData.buffer]);
         });
     }
 

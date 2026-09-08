@@ -344,125 +344,18 @@ export default function CaptionsPage() {
         };
     }, []);
 
-    // Session Persistence: restore from localStorage and IndexedDB on mount
-    useEffect(() => {
-        let isMounted = true;
-
-        async function restoreSession() {
-            try {
-                if (typeof window === 'undefined') return;
-
-                // Load stored BYOK keys
-                const storedGroq = getStoredApiKey('groq');
-                if (storedGroq) setGroqKey(storedGroq);
-                const storedOpenai = getStoredApiKey('openai');
-                if (storedOpenai) setOpenaiKey(storedOpenai);
-
-                // Check for 1-Click Handoff from Teleprompter
-                const handoff = await getHandoffSession();
-                if (handoff && isMounted) {
-                    setPendingHandoff(handoff);
-                    if (handoff.script) {
-                        setTeleprompterScript(handoff.script);
-                    }
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob) {
-                        const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
-                            type: handoff.mediaBlob.type || 'audio/webm',
-                        });
-                        await clearHandoffSession();
-                        handleFile(transferredFile);
-                        return;
-                    }
-                }
-
-                const savedFileName = localStorage.getItem(STORAGE_KEYS.FILE_NAME);
-                const savedCues = localStorage.getItem(STORAGE_KEYS.CUES);
-                const savedFullText = localStorage.getItem(STORAGE_KEYS.FULL_TEXT);
-                const savedElapsed = localStorage.getItem(STORAGE_KEYS.ELAPSED);
-
-                if (savedFileName) {
-                    const cachedBlob = await getAudioBlobFromCache(STORAGE_KEYS.AUDIO_KEY);
-                    if (cachedBlob && isMounted) {
-                        const audioBlobUrl = URL.createObjectURL(cachedBlob);
-                        const syntheticFile = new File([cachedBlob], savedFileName, {
-                            type: cachedBlob.type || 'audio/mp3',
-                        });
-
-                        let parsedCues: SubtitleCue[] = [];
-                        if (savedCues) {
-                            try {
-                                parsedCues = ensureSingleLineCues(JSON.parse(savedCues));
-                            } catch {
-                                parsedCues = [];
-                            }
-                        }
-
-                        const savedDuration = localStorage.getItem(STORAGE_KEYS.DURATION);
-                        if (savedDuration) {
-                            setAudioDuration(parseFloat(savedDuration));
-                        } else if (parsedCues.length > 0) {
-                            setAudioDuration(parsedCues[parsedCues.length - 1].end);
-                        }
-
-                        setFile(syntheticFile);
-                        setAudioUrl(audioBlobUrl);
-                        setCues(parsedCues);
-                        setFullText(savedFullText || '');
-                        setElapsed(savedElapsed || '');
-
-                        // Check if a script was transferred from teleprompter
-                        const pendingScript = localStorage.getItem('creatorkit_teleprompter_script');
-                        if (pendingScript && isMounted) {
-                            setTeleprompterScript(pendingScript);
-                        }
-
-                        if (parsedCues.length > 0) {
-                            const vttContent = generateVtt(parsedCues);
-                            const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
-                            const vttBlobUrl = URL.createObjectURL(vttBlob);
-                            setVttUrl(vttBlobUrl);
-                        }
-
-                        setProgress({
-                            stage: 'complete',
-                            message: 'Session restored from local cache',
-                            percent: 100,
-                        });
-                    } else if (savedCues && isMounted) {
-                        // In case audio was not cached (e.g. older session), restore text and cues
-                        let parsedCues: SubtitleCue[] = [];
-                        try {
-                            parsedCues = ensureSingleLineCues(JSON.parse(savedCues));
-                        } catch {
-                            parsedCues = [];
-                        }
-                        const syntheticFile = new File([], savedFileName, { type: 'audio/mp3' });
-                        setFile(syntheticFile);
-                        setCues(parsedCues);
-                        setFullText(savedFullText || '');
-                        setElapsed(savedElapsed || '');
-                        if (parsedCues.length > 0) {
-                            const vttContent = generateVtt(parsedCues);
-                            const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
-                            setVttUrl(URL.createObjectURL(vttBlob));
-                        }
-                    }
-                }
-            } catch (err) {
-                console.warn('Could not restore local captions session:', err);
-            }
-        }
-
-        restoreSession();
-
-        return () => {
-            isMounted = false;
-        };
-    }, []);
-
     const handleFile = async (selectedFile: File, engineOverride?: CloudTranscriptionProvider | 'local') => {
         const activeEngine = engineOverride || transcriptionEngine;
+
+        // Reject empty/unreadable files up front with a clear message
+        if (!selectedFile || selectedFile.size === 0) {
+            setProgress({
+                stage: 'error',
+                message: 'The selected file is empty or unreadable. Please re-select the original media file.',
+                percent: 0,
+            });
+            return;
+        }
 
         // Clean up previous blob URLs if replacing file
         if (audioUrlRef.current && audioUrlRef.current.startsWith('blob:')) {
@@ -618,6 +511,123 @@ export default function CaptionsPage() {
             setIsProcessing(false);
         }
     };
+
+    // Session Persistence: restore from localStorage and IndexedDB on mount
+    useEffect(() => {
+        let isMounted = true;
+
+        async function restoreSession() {
+            try {
+                if (typeof window === 'undefined') return;
+
+                // Load stored BYOK keys
+                const storedGroq = getStoredApiKey('groq');
+                if (storedGroq) setGroqKey(storedGroq);
+                const storedOpenai = getStoredApiKey('openai');
+                if (storedOpenai) setOpenaiKey(storedOpenai);
+
+                // Check for 1-Click Handoff from Teleprompter
+                const handoff = await getHandoffSession();
+                if (handoff && isMounted) {
+                    setPendingHandoff(handoff);
+                    if (handoff.script) {
+                        setTeleprompterScript(handoff.script);
+                    }
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob) {
+                        const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
+                            type: handoff.mediaBlob.type || 'audio/webm',
+                        });
+                        await clearHandoffSession();
+                        handleFile(transferredFile);
+                        return;
+                    }
+                }
+
+                const savedFileName = localStorage.getItem(STORAGE_KEYS.FILE_NAME);
+                const savedCues = localStorage.getItem(STORAGE_KEYS.CUES);
+                const savedFullText = localStorage.getItem(STORAGE_KEYS.FULL_TEXT);
+                const savedElapsed = localStorage.getItem(STORAGE_KEYS.ELAPSED);
+
+                if (savedFileName) {
+                    const cachedBlob = await getAudioBlobFromCache(STORAGE_KEYS.AUDIO_KEY);
+                    if (cachedBlob && isMounted) {
+                        const audioBlobUrl = URL.createObjectURL(cachedBlob);
+                        const syntheticFile = new File([cachedBlob], savedFileName, {
+                            type: cachedBlob.type || 'audio/mp3',
+                        });
+
+                        let parsedCues: SubtitleCue[] = [];
+                        if (savedCues) {
+                            try {
+                                parsedCues = ensureSingleLineCues(JSON.parse(savedCues));
+                            } catch {
+                                parsedCues = [];
+                            }
+                        }
+
+                        const savedDuration = localStorage.getItem(STORAGE_KEYS.DURATION);
+                        if (savedDuration) {
+                            setAudioDuration(parseFloat(savedDuration));
+                        } else if (parsedCues.length > 0) {
+                            setAudioDuration(parsedCues[parsedCues.length - 1].end);
+                        }
+
+                        setFile(syntheticFile);
+                        setAudioUrl(audioBlobUrl);
+                        setCues(parsedCues);
+                        setFullText(savedFullText || '');
+                        setElapsed(savedElapsed || '');
+
+                        // Check if a script was transferred from teleprompter
+                        const pendingScript = localStorage.getItem('creatorkit_teleprompter_script');
+                        if (pendingScript && isMounted) {
+                            setTeleprompterScript(pendingScript);
+                        }
+
+                        if (parsedCues.length > 0) {
+                            const vttContent = generateVtt(parsedCues);
+                            const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
+                            const vttBlobUrl = URL.createObjectURL(vttBlob);
+                            setVttUrl(vttBlobUrl);
+                        }
+
+                        setProgress({
+                            stage: 'complete',
+                            message: 'Session restored from local cache',
+                            percent: 100,
+                        });
+                    } else if (savedCues && isMounted) {
+                        // In case audio was not cached (e.g. older session), restore text and cues
+                        let parsedCues: SubtitleCue[] = [];
+                        try {
+                            parsedCues = ensureSingleLineCues(JSON.parse(savedCues));
+                        } catch {
+                            parsedCues = [];
+                        }
+                        const syntheticFile = new File([], savedFileName, { type: 'audio/mp3' });
+                        setFile(syntheticFile);
+                        setCues(parsedCues);
+                        setFullText(savedFullText || '');
+                        setElapsed(savedElapsed || '');
+                        if (parsedCues.length > 0) {
+                            const vttContent = generateVtt(parsedCues);
+                            const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
+                            setVttUrl(URL.createObjectURL(vttBlob));
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not restore local captions session:', err);
+            }
+        }
+
+        restoreSession();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     // ─────────────────────────────────────────────────────────────
     // INTERACTIVE SUBTITLE CUE EDITING ENGINE
@@ -793,7 +803,7 @@ export default function CaptionsPage() {
         try {
             const blobWithMeta = await embedMetadataIntoMediaBlob(file, {
                 version: '1.0',
-                generator: 'creatorkit-auto-captions',
+                generator: 'creatorkit-studio',
                 script: fullText || teleprompterScript || '',
                 cues: cues,
                 createdAt: Date.now(),
@@ -1359,9 +1369,13 @@ export default function CaptionsPage() {
                         <button
                             type="button"
                             onClick={async () => {
-                                const transferredFile = new File([pendingHandoff.mediaBlob], pendingHandoff.fileName, {
-                                    type: pendingHandoff.mediaBlob.type || 'audio/webm',
-                                });
+                                const transferredFile = new File(
+                                    [pendingHandoff.mediaBlob],
+                                    pendingHandoff.fileName || 'teleprompter_take.webm',
+                                    {
+                                        type: pendingHandoff.mediaBlob.type || 'audio/webm',
+                                    }
+                                );
                                 await clearHandoffSession();
                                 setPendingHandoff(null);
                                 handleFile(transferredFile);
@@ -1669,6 +1683,125 @@ export default function CaptionsPage() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Decode / Transcription Error Banner with Cloud Fallback */}
+            {!isProcessing && progress.stage === 'error' && (
+                <div
+                    style={{
+                        marginBottom: 16,
+                        background: '#fee2e2',
+                        border: '2px solid #b91c1c',
+                        borderRadius: 4,
+                        boxShadow: '3px 3px 0 #b91c1c',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                    }}
+                    role="alert"
+                >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <span
+                            style={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.72rem',
+                                fontWeight: 900,
+                                textTransform: 'uppercase',
+                                color: '#fff',
+                                background: '#b91c1c',
+                                padding: '3px 8px',
+                                borderRadius: 3,
+                                flexShrink: 0,
+                            }}
+                        >
+                            ⚠ FAILED
+                        </span>
+                        <p
+                            style={{
+                                margin: 0,
+                                fontFamily: 'monospace',
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                color: '#7f1d1d',
+                                lineHeight: 1.5,
+                            }}
+                        >
+                            {progress.message}
+                        </p>
+                    </div>
+
+                    {file && file.size > 0 && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleFile(file, 'local')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '7px 12px',
+                                    background: '#fff',
+                                    color: '#000',
+                                    border: '2px solid #000',
+                                    borderRadius: 3,
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                    boxShadow: '2px 2px 0 #000',
+                                }}
+                            >
+                                <RotateCcw size={13} strokeWidth={2.5} />
+                                <span>RETRY LOCAL WHISPER</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleFile(file, 'groq')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '7px 12px',
+                                    background: '#FFE500',
+                                    color: '#000',
+                                    border: '2px solid #000',
+                                    borderRadius: 3,
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                    boxShadow: '2px 2px 0 #000',
+                                }}
+                            >
+                                <Zap size={13} strokeWidth={2.5} />
+                                <span>RETRY WITH GROQ CLOUD</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleFile(file, 'openai')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '7px 12px',
+                                    background: '#fff',
+                                    color: '#000',
+                                    border: '2px solid #000',
+                                    borderRadius: 3,
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                    boxShadow: '2px 2px 0 #000',
+                                }}
+                            >
+                                <Globe size={13} strokeWidth={2.5} />
+                                <span>RETRY WITH OPENAI</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
