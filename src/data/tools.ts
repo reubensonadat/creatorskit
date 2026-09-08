@@ -66,6 +66,15 @@ export const NATIVE_TOOLS: ToolItem[] = [
     category: 'studio',
     badge: 'NEW',
   },
+  {
+    label: '3D Tree QR Diorama',
+    href: '/tree-qr',
+    hint: 'SCANNABLE 3D ART',
+    desc: 'Transform any URL or text into a scannable 3D voxel tree diorama with seasonal particles',
+    isFlagship: true,
+    category: 'studio',
+    badge: '3D ART',
+  },
 
   {
     label: 'Image & Video Compressor',
