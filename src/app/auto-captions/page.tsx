@@ -50,6 +50,9 @@ import {
     X,
     ChevronUp,
     ChevronDown,
+    Cpu,
+    Zap,
+    Globe,
 } from 'lucide-react';
 import {
     extractMetadataFromMediaBlob,

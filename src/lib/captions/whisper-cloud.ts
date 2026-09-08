@@ -13,6 +13,7 @@
 import { SubtitleCue, SubtitleWord } from './vtt-formatter';
 
 export type CloudWhisperProvider = 'local' | 'groq' | 'openai' | 'gemini';
+export type CloudTranscriptionProvider = 'groq' | 'openai' | 'gemini';
 
 export interface CloudKeyConfig {
     provider: CloudWhisperProvider;
@@ -25,6 +26,25 @@ const STORAGE_KEYS = {
     GROQ_KEY: 'creatorkit_byok_groq_key',
     OPENAI_KEY: 'creatorkit_byok_openai_key',
 };
+
+export function getStoredApiKey(provider: CloudTranscriptionProvider): string {
+    if (typeof window === 'undefined') return '';
+    if (provider === 'groq') return localStorage.getItem(STORAGE_KEYS.GROQ_KEY) || '';
+    if (provider === 'openai') return localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || '';
+    return '';
+}
+
+export function setStoredApiKey(provider: CloudTranscriptionProvider, key: string): void {
+    if (typeof window === 'undefined') return;
+    if (provider === 'groq') {
+        if (key) localStorage.setItem(STORAGE_KEYS.GROQ_KEY, key.trim());
+        else localStorage.removeItem(STORAGE_KEYS.GROQ_KEY);
+    }
+    if (provider === 'openai') {
+        if (key) localStorage.setItem(STORAGE_KEYS.OPENAI_KEY, key.trim());
+        else localStorage.removeItem(STORAGE_KEYS.OPENAI_KEY);
+    }
+}
 
 export function getSavedCloudConfig(): CloudKeyConfig {
     if (typeof window === 'undefined') {
@@ -118,8 +138,16 @@ export async function transcribeWithCloudProvider(
     file: File | Blob,
     provider: 'groq' | 'openai' | 'gemini',
     apiKey?: string,
-    prompt?: string
-): Promise<{ text: string; cues: SubtitleCue[]; rawWords: SubtitleWord[] }> {
+    prompt?: string,
+    onProgress?: (progress: { stage: 'idle' | 'decoding' | 'loading_model' | 'transcribing' | 'complete' | 'error'; message: string; percent?: number }) => void
+): Promise<{ text: string; fullText: string; cues: SubtitleCue[]; rawWords: SubtitleWord[]; elapsedSeconds: string }> {
+    const startTime = performance.now();
+    onProgress?.({
+        stage: 'transcribing',
+        message: `Transcribing via ${provider.toUpperCase()} Whisper...`,
+        percent: 40,
+    });
+
     const formData = new FormData();
     formData.append('file', file, (file as File).name || 'recording.webm');
     formData.append('provider', provider);
@@ -135,6 +163,12 @@ export async function transcribeWithCloudProvider(
         const errJson = await res.json().catch(() => ({ error: `Server HTTP ${res.status}` }));
         throw new Error(errJson.error || `Cloud transcription failed (${res.status})`);
     }
+
+    onProgress?.({
+        stage: 'transcribing',
+        message: 'Formatting subtitle cues...',
+        percent: 85,
+    });
 
     const data = await res.json();
     const rawWords: SubtitleWord[] = (data.words || []).map((w: any) => ({
@@ -169,9 +203,20 @@ export async function transcribeWithCloudProvider(
         });
     }
 
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+    const fullText = data.text || cues.map(c => c.text).join(' ') || '';
+
+    onProgress?.({
+        stage: 'complete',
+        message: 'Transcription complete!',
+        percent: 100,
+    });
+
     return {
-        text: data.text || '',
+        text: fullText,
+        fullText,
         cues,
         rawWords,
+        elapsedSeconds: elapsed,
     };
 }
