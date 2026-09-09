@@ -43,6 +43,7 @@ export interface OverlayTypographyOptions {
     springPhysics?: boolean;   // Physics-based elastic overshoot bounce
     bounceIntensity?: number;  // 0.5 to 2.0 (default 1.1)
     wordRotation?: boolean;    // Subtle dynamic tilt for punchy energetic pop
+    wordPop?: boolean;         // Karaoke spring-pop on the active spoken word (teleprompter mode)
     textShadow?: boolean;      // Drop shadow for high-contrast legibility
     uppercase?: boolean;       // Force ALL CAPS (Hormozi style)
 }
@@ -70,6 +71,123 @@ export const POPULAR_OVERLAY_FONTS = [
     { id: 'outfit', name: 'Outfit', family: '"Outfit", sans-serif' },
     { id: 'roboto-black', name: 'Roboto Black', family: '"Roboto", sans-serif' },
     { id: 'nunito-sans', name: 'Nunito Sans', family: '"Nunito Sans", sans-serif' },
+];
+
+/**
+ * One-tap caption style presets. Each maps directly onto the existing
+ * overlay studio controls (video mode, font, pill, motion flags) so the
+ * studio's full power is reachable without touching 15 sliders.
+ */
+export interface CaptionStylePresetConfig {
+    id: string;
+    name: string;
+    videoMode: CaptionVideoMode;
+    fontFamily: string;              // font id, e.g. 'montserrat'
+    fontSize: number;                // px value matching the studio slider (default 48)
+    letterSpacing: number;
+    yPositionPercent: number;
+    pillBackground: CaptionPillBackground;
+    highlighterColor: string;
+    springPhysics: boolean;
+    bounceIntensity: number;
+    wordRotation: boolean;
+    wordPop: boolean;
+    textShadow: boolean;
+    uppercase: boolean;
+    emojiMode: boolean;
+}
+
+export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
+    {
+        id: 'tiktok-pop',
+        name: 'TikTok Pop',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'montserrat',
+        fontSize: 60,
+        letterSpacing: 0,
+        yPositionPercent: 76,
+        pillBackground: 'dark',
+        highlighterColor: '#FFE500',
+        springPhysics: true,
+        bounceIntensity: 1.2,
+        wordRotation: true,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        id: 'hormozi-bold',
+        name: 'Hormozi Bold',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'archivo-black',
+        fontSize: 68,
+        letterSpacing: -1,
+        yPositionPercent: 72,
+        pillBackground: 'dark',
+        highlighterColor: '#22C55E',
+        springPhysics: true,
+        bounceIntensity: 1.45,
+        wordRotation: true,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        id: 'karaoke-stream',
+        name: 'Karaoke Stream',
+        videoMode: 'teleprompter',
+        fontFamily: 'poppins',
+        fontSize: 50,
+        letterSpacing: 0,
+        yPositionPercent: 78,
+        pillBackground: 'dark',
+        highlighterColor: '#06B6D4',
+        springPhysics: true,
+        bounceIntensity: 1.15,
+        wordRotation: false,
+        wordPop: true,
+        textShadow: true,
+        uppercase: false,
+        emojiMode: false,
+    },
+    {
+        id: 'clean-vlog',
+        name: 'Clean Vlog',
+        videoMode: 'teleprompter',
+        fontFamily: 'inter',
+        fontSize: 42,
+        letterSpacing: 0,
+        yPositionPercent: 80,
+        pillBackground: 'dark',
+        highlighterColor: '#FFFFFF',
+        springPhysics: true,
+        bounceIntensity: 1,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: false,
+        uppercase: false,
+        emojiMode: false,
+    },
+    {
+        id: 'cinema-min',
+        name: 'Cinema Min',
+        videoMode: 'minimal',
+        fontFamily: 'space-mono',
+        fontSize: 36,
+        letterSpacing: 0,
+        yPositionPercent: 84,
+        pillBackground: 'light',
+        highlighterColor: '#FFE500',
+        springPhysics: false,
+        bounceIntensity: 1,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: false,
+        uppercase: false,
+        emojiMode: false,
+    },
 ];
 
 const EMOJI_DICTIONARY: Record<string, string> = {
@@ -439,6 +557,18 @@ export function drawCaptionFrame(
             ctx.translate(wordCenterX, centerY);
 
             if (isCurrent) {
+                // Word Pop: spring-scaled karaoke bounce on the spoken word.
+                // Scaling happens around the word center (translated above), so the
+                // word pops in place while the gliding highlighter pill stays smooth.
+                if (typography.wordPop) {
+                    const scaleVal = calculateSpringScale(wordProgress, typography.bounceIntensity ?? 1.15);
+                    ctx.scale(scaleVal, scaleVal);
+                    if (typography.textShadow) {
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+                        ctx.shadowBlur = 8;
+                        ctx.shadowOffsetY = 3;
+                    }
+                }
                 // High contrast dark text on active highlighter pill
                 ctx.fillStyle = '#000000';
                 ctx.fillText(w, 0, 0);

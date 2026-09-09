@@ -52,6 +52,8 @@ import {
     type CaptionPillBackground,
     type VideoAspectRatio,
     type VideoBackgroundMode,
+    type CaptionStylePresetConfig,
+    CAPTION_STYLE_PRESETS,
     drawCaptionFrame,
     renderCaptionsToVideo,
     POPULAR_OVERLAY_FONTS,
@@ -66,6 +68,37 @@ const DEFAULT_OVERLAY_FONTS = [
     { id: 'archivo-black', name: 'Archivo Black', family: '"Archivo Black", sans-serif' },
     { id: 'space-mono', name: 'Space Mono', family: '"Space Mono", monospace' },
 ];
+
+function cuePaceBadges(cue: SubtitleCue): { label: string; title: string; bg: string }[] {
+    const duration = cue.end - cue.start;
+    const wordCount = cue.text.trim().split(/\s+/).filter(Boolean).length;
+    const badges: { label: string; title: string; bg: string }[] = [];
+    if (wordCount > 0 && duration < 0.8) {
+        badges.push({
+            label: 'FAST',
+            title: 'Under 0.8s on screen — viewers may not finish reading',
+            bg: '#fde68a',
+        });
+    }
+    if (duration > 5 || wordCount > 7) {
+        badges.push({
+            label: 'LONG',
+            title: 'Over 5s or 7+ words — consider splitting this cue',
+            bg: '#e9d5ff',
+        });
+    }
+    return badges;
+}
+
+function paceSummarySuffix(cues: SubtitleCue[]): string {
+    if (cues.length === 0) return '';
+    const fast = cues.filter((c) => c.end - c.start < 0.8).length;
+    const long = cues.filter(
+        (c) => c.end - c.start > 5 || c.text.trim().split(/\s+/).filter(Boolean).length > 7
+    ).length;
+    if (fast === 0 && long === 0) return '';
+    return ` · ⚡${fast} · 🐢${long}`;
+}
 
 const STORAGE_KEYS = {
     CUES: 'creatorkit_autoCaptions_cues',
@@ -202,6 +235,8 @@ export default function CaptionsPage() {
     const [wordRotation, setWordRotation] = useState<boolean>(true);
     const [textShadow, setTextShadow] = useState<boolean>(true);
     const [uppercase, setUppercase] = useState<boolean>(false);
+    const [wordPop, setWordPop] = useState<boolean>(false);
+    const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
     // 🚀 BYOK (Bring Your Own Key) Engine Settings
     const [transcriptionEngine, setTranscriptionEngine] = useState<CloudTranscriptionProvider | 'local'>('local');
@@ -826,6 +861,24 @@ export default function CaptionsPage() {
     const lastScrubberUpdateRef = useRef<number>(0);
 
     // Live Render Preview Canvas for Video Overlay Studio
+    const applyStylePreset = (preset: CaptionStylePresetConfig) => {
+        setActivePresetId(preset.id);
+        setVideoMode(preset.videoMode);
+        setCaptionFont(preset.fontFamily);
+        setCaptionFontSize(preset.fontSize);
+        setCaptionLetterSpacing(preset.letterSpacing);
+        setCaptionYPosition(preset.yPositionPercent);
+        setCaptionPillBg(preset.pillBackground);
+        setOverlayColor(preset.highlighterColor);
+        setSpringPhysics(preset.springPhysics);
+        setBounceIntensity(preset.bounceIntensity);
+        setWordRotation(preset.wordRotation);
+        setWordPop(preset.wordPop);
+        setTextShadow(preset.textShadow);
+        setUppercase(preset.uppercase);
+        setEmojiMode(preset.emojiMode);
+    };
+
     const renderPreviewCanvas = useCallback((time: number) => {
         const canvas = overlayCanvasRef.current;
         if (!canvas) return;
@@ -861,6 +914,7 @@ export default function CaptionsPage() {
                 springPhysics: springPhysics,
                 bounceIntensity: bounceIntensity,
                 wordRotation: wordRotation,
+                wordPop: wordPop,
                 textShadow: textShadow,
                 uppercase: uppercase,
             }
@@ -881,6 +935,7 @@ export default function CaptionsPage() {
         springPhysics,
         bounceIntensity,
         wordRotation,
+        wordPop,
         textShadow,
         uppercase,
     ]);
@@ -969,6 +1024,7 @@ export default function CaptionsPage() {
                     springPhysics: springPhysics,
                     bounceIntensity: bounceIntensity,
                     wordRotation: wordRotation,
+                    wordPop: wordPop,
                     textShadow: textShadow,
                     uppercase: uppercase,
                 },
@@ -1689,6 +1745,19 @@ export default function CaptionsPage() {
                                         }}
                                     >
                                         <span style={BRUT_LABEL}>Caption style</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {CAPTION_STYLE_PRESETS.map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => applyStylePreset(p)}
+                                                    style={brutChip(activePresetId === p.id)}
+                                                    title={`One-tap style: ${p.name}`}
+                                                >
+                                                    {p.name}
+                                                </button>
+                                            ))}
+                                        </div>
                                         <div
                                             style={{
                                                 display: 'grid',
@@ -1704,7 +1773,10 @@ export default function CaptionsPage() {
                                                 <button
                                                     key={m.id}
                                                     type="button"
-                                                    onClick={() => setVideoMode(m.id as CaptionVideoMode)}
+                                                    onClick={() => {
+                                                        setVideoMode(m.id as CaptionVideoMode);
+                                                        setActivePresetId(null);
+                                                    }}
                                                     style={{
                                                         padding: '8px 4px',
                                                         border: '2px solid #000',
@@ -1892,6 +1964,7 @@ export default function CaptionsPage() {
                                             {(
                                                 [
                                                     ['Spring bounce', springPhysics, setSpringPhysics],
+                                                    ['Karaoke word pop', wordPop, setWordPop],
                                                     ['Rotation tilt', wordRotation, setWordRotation],
                                                     ['Drop shadow', textShadow, setTextShadow],
                                                     ['All caps', uppercase, setUppercase],
@@ -2163,7 +2236,7 @@ export default function CaptionsPage() {
                             style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)', overflow: 'hidden', borderRadius: 4 }}
                         >
                             {[
-                                { id: 'cues' as const, label: `Cues (${cues.length})` },
+                                { id: 'cues' as const, label: `Cues (${cues.length})${paceSummarySuffix(cues)}` },
                                 { id: 'text' as const, label: 'Transcript' },
                             ].map((tab) => (
                                 <button
@@ -2330,6 +2403,27 @@ export default function CaptionsPage() {
                                                     >
                                                         ▶ {formatVttTimestamp(cue.start)} → {formatVttTimestamp(cue.end)}
                                                     </button>
+                                                    {cuePaceBadges(cue).map((badge) => (
+                                                        <span
+                                                            key={badge.label}
+                                                            title={badge.title}
+                                                            style={{
+                                                                fontSize: '0.58rem',
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 900,
+                                                                letterSpacing: '0.04em',
+                                                                background: badge.bg,
+                                                                border: '1.5px solid #000',
+                                                                borderRadius: 3,
+                                                                padding: '2px 6px',
+                                                                color: '#000',
+                                                                flexShrink: 0,
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                        >
+                                                            {badge.label}
+                                                        </span>
+                                                    ))}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                                                     {(
