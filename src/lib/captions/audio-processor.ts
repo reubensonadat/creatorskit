@@ -189,7 +189,6 @@ function captureOnce(
         let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
         let startedAt = performance.now();
 
-        // eslint-disable-next-line @typescript-eslint/no-deprecated
         const processor = ctx.createScriptProcessor(4096, 2, 2);
         const mute = ctx.createGain();
         mute.gain.value = 0; // keep the graph pulling, but stay silent
@@ -292,9 +291,7 @@ function captureOnce(
 
         el.playbackRate = playbackRate;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (el as any).preservesPitch = false;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (el as any).webkitPreservesPitch = false;
         } catch { /* non-fatal */ }
 
@@ -334,7 +331,6 @@ async function decodeViaMediaElementCapture(
     const el = document.createElement('audio');
     el.src = objectUrl;
     el.preload = 'auto';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (el as any).playsInline = true;
 
     let ctx: AudioContext | null = null;

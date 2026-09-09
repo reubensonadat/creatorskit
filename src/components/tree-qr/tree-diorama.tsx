@@ -8,6 +8,7 @@ import {
     updateDioramaSimulation,
     DioramaSceneObjects,
     SeasonType,
+    SceneType,
     FoliagePalette,
 } from '@/lib/tree-qr/tree-generator';
 
@@ -21,13 +22,14 @@ export interface TreeDioramaRef {
 interface TreeDioramaProps {
     urlText: string;
     season: SeasonType;
+    sceneType?: SceneType;
     palette?: FoliagePalette;
     onViewModeChange?: (mode: '2d' | '3d') => void;
     className?: string;
 }
 
 export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function TreeDiorama(
-    { urlText, season, palette, onViewModeChange, className },
+    { urlText, season, sceneType = 'tree', palette, onViewModeChange, className },
     ref
 ) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -49,11 +51,14 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         targetLookAt: THREE.Vector3;
         targetUp: THREE.Vector3;
         targetZoom: number;
+        targetTreeScale: number;
+        currentTreeScale: number;
         currentLookAt: THREE.Vector3;
         currentUp: THREE.Vector3;
         isDragging: boolean;
         prevPointer: { x: number; y: number };
         orbitAngles: { theta: number; phi: number; radius: number };
+        frustumSize: number;
     }>({
         scene: null as any,
         camera: null as any,
@@ -62,15 +67,18 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         qrResult: null,
         animId: null,
         clock: new THREE.Clock(),
+        targetTreeScale: 1.0,
+        currentTreeScale: 1.0,
         targetPos: new THREE.Vector3(),
-        targetLookAt: new THREE.Vector3(0, 2.5, 0),
+        targetLookAt: new THREE.Vector3(0, 4.2, 0),
         targetUp: new THREE.Vector3(0, 1, 0),
-        targetZoom: 16,
-        currentLookAt: new THREE.Vector3(0, 2.5, 0),
+        targetZoom: 0.95,
+        currentLookAt: new THREE.Vector3(0, 4.2, 0),
         currentUp: new THREE.Vector3(0, 1, 0),
         isDragging: false,
         prevPointer: { x: 0, y: 0 },
-        orbitAngles: { theta: Math.PI / 4, phi: Math.PI / 5, radius: 48 },
+        orbitAngles: { theta: Math.PI / 4, phi: Math.PI / 5, radius: 52 },
+        frustumSize: 48,
     });
 
     // ─── CAMERA POSITION CALCULATIONS ──────────────────────────────────────
@@ -79,22 +87,22 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         if (!t.camera) return;
 
         if (mode === '2d') {
-            // Top-down orthographic view
-            t.targetPos.set(0, 55, 0);
+            t.targetPos.set(0, 56, 0);
             t.targetLookAt.set(0, 0, 0);
-            t.targetUp.set(0, 0, -1); // QR reads with top oriented north
-            t.targetZoom = 18.5;
+            t.targetUp.set(0, 0, -1);
+            t.targetZoom = 1.15;
+            t.targetTreeScale = 0.0;
         } else {
-            // 3D Isometric diorama view
             const rad = t.orbitAngles.radius;
             const x = rad * Math.sin(t.orbitAngles.phi) * Math.sin(t.orbitAngles.theta);
             const y = rad * Math.cos(t.orbitAngles.phi);
             const z = rad * Math.sin(t.orbitAngles.phi) * Math.cos(t.orbitAngles.theta);
 
             t.targetPos.set(x, y, z);
-            t.targetLookAt.set(0, 3.2, 0);
+            t.targetLookAt.set(0, 4.2, 0);
             t.targetUp.set(0, 1, 0);
-            t.targetZoom = 17;
+            t.targetZoom = 0.95;
+            t.targetTreeScale = 1.0;
         }
 
         if (!animate) {
@@ -132,7 +140,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             getViewMode: () => viewMode,
             resetCamera: () => {
                 const t = threeRef.current;
-                t.orbitAngles = { theta: Math.PI / 4, phi: Math.PI / 5, radius: 48 };
+                t.orbitAngles = { theta: Math.PI / 4, phi: Math.PI / 5, radius: 52 };
                 applyViewTargets(viewMode, true);
             },
             captureSnapshot: async (pureQR = false): Promise<string> => {
@@ -145,18 +153,26 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
                 const prevZoom = t.camera.zoom;
 
                 if (pureQR) {
-                    // Force clean 2D top-down render
-                    t.camera.position.set(0, 55, 0);
+                    if (t.diorama?.treeGroup) {
+                        t.diorama.treeGroup.scale.set(0.0001, 0.0001, 0.0001);
+                        t.diorama.treeGroup.visible = false;
+                    }
+                    t.camera.position.set(0, 56, 0);
                     t.camera.up.set(0, 0, -1);
                     t.camera.lookAt(0, 0, 0);
-                    t.camera.zoom = 18.5;
+                    t.camera.zoom = 1.15;
                     t.camera.updateProjectionMatrix();
                 }
 
                 t.renderer.render(t.scene, t.camera);
                 const dataUrl = t.renderer.domElement.toDataURL('image/png');
 
-                // Restore camera
+                if (pureQR && t.diorama?.treeGroup) {
+                    const s = Math.max(0.0001, t.currentTreeScale);
+                    t.diorama.treeGroup.scale.set(s, s, s);
+                    t.diorama.treeGroup.visible = t.currentTreeScale > 0.01;
+                }
+
                 t.camera.position.copy(prevPos);
                 t.camera.up.copy(prevUp);
                 t.camera.lookAt(prevLookAt);
@@ -175,61 +191,84 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         const canvas = canvasRef.current;
         if (!container || !canvas) return;
 
-        const width = container.clientWidth || 800;
-        const height = container.clientHeight || 600;
-        const aspect = width / height;
+        // ── HIGH-RES: Get actual CSS layout dimensions ──
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const cssWidth = container.clientWidth || 800;
+        const cssHeight = container.clientHeight || 600;
+        const aspect = cssWidth / cssHeight;
+        const frustumSize = 46;
+        threeRef.current.frustumSize = frustumSize;
 
-        // 1. Scene setup with warm aesthetic background
+        // 1. Scene — atmospheric background with depth fog
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf6f5f0);
+        scene.background = new THREE.Color(0xf8f5ee);
+        scene.fog = new THREE.FogExp2(0xf8f5ee, 0.007);
 
-        // 2. Orthographic Camera
-        const frustumSize = 34;
+        // 2. Orthographic Camera with extended far plane
         const camera = new THREE.OrthographicCamera(
             (-frustumSize * aspect) / 2,
             (frustumSize * aspect) / 2,
             frustumSize / 2,
             -frustumSize / 2,
             0.1,
-            200
+            250
         );
 
-        // 3. WebGL Renderer
+        // 3. WebGL Renderer — MAXIMUM QUALITY
         const renderer = new THREE.WebGLRenderer({
             canvas,
             antialias: true,
             preserveDrawingBuffer: true,
-            alpha: true,
+            alpha: false,
+            powerPreference: 'high-performance',
         });
-        renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // CRITICAL: Set pixel ratio FIRST, then size — this is what gives us sharp rendering
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(cssWidth, cssHeight);
+
+        // CINEMATIC rendering pipeline
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-        // 4. Studio Lighting
-        const ambientLight = new THREE.AmbientLight(0xfff7ed, 1.4);
-        scene.add(ambientLight);
-
-        const sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
-        sunLight.position.set(24, 40, 20);
+        // 4. CINEMATIC 5-POINT STUDIO LIGHTING
+        // Key light: warm directional sun with ultra-high-res shadows
+        const sunLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
+        sunLight.position.set(24, 42, 20);
         sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 2048;
-        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.mapSize.width = 4096;
+        sunLight.shadow.mapSize.height = 4096;
         sunLight.shadow.camera.near = 0.5;
-        sunLight.shadow.camera.far = 120;
-        const d = 26;
+        sunLight.shadow.camera.far = 140;
+        sunLight.shadow.radius = 2.5;
+        const d = 30;
         sunLight.shadow.camera.left = -d;
         sunLight.shadow.camera.right = d;
         sunLight.shadow.camera.top = d;
         sunLight.shadow.camera.bottom = -d;
-        sunLight.shadow.bias = -0.0003;
+        sunLight.shadow.bias = -0.0002;
+        sunLight.shadow.normalBias = 0.02;
         scene.add(sunLight);
 
-        const fillLight = new THREE.DirectionalLight(0xdbeafe, 0.6);
-        fillLight.position.set(-20, 25, -20);
+        // Fill light: cool blue sky bounce
+        const fillLight = new THREE.DirectionalLight(0xc8ddf5, 0.8);
+        fillLight.position.set(-22, 28, -22);
         scene.add(fillLight);
 
-        const groundBounce = new THREE.HemisphereLight(0xffedd5, 0x5a4131, 0.5);
+        // Rim/back light: warm edge definition
+        const rimLight = new THREE.DirectionalLight(0xffe8c4, 0.5);
+        rimLight.position.set(-10, 15, 30);
+        scene.add(rimLight);
+
+        // Ambient: rich warm fill (lower than before — tone mapping compensates)
+        const ambientLight = new THREE.AmbientLight(0xfff7ed, 1.0);
+        scene.add(ambientLight);
+
+        // Hemisphere: natural ground bounce
+        const groundBounce = new THREE.HemisphereLight(0xfef3c7, 0x5a4131, 0.65);
         scene.add(groundBounce);
 
         // Store instances
@@ -241,7 +280,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         applyViewTargets(viewMode, false);
 
         // 5. Animation Loop
-        let animFrameId: number;
+        let animFrameId = 0;
         const clock = new THREE.Clock();
 
         const animate = () => {
@@ -252,7 +291,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             const t = threeRef.current;
             if (!t.camera || !t.renderer || !t.scene) return;
 
-            // Camera smooth interpolation
+            // Smooth camera interpolation
             const lerpSpeed = 0.08;
             t.camera.position.lerp(t.targetPos, lerpSpeed);
             t.currentLookAt.lerp(t.targetLookAt, lerpSpeed);
@@ -261,9 +300,19 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             t.camera.up.copy(t.currentUp);
             t.camera.lookAt(t.currentLookAt);
 
-            if (Math.abs(t.camera.zoom - t.targetZoom) > 0.01) {
+            if (Math.abs(t.camera.zoom - t.targetZoom) > 0.001) {
                 t.camera.zoom += (t.targetZoom - t.camera.zoom) * lerpSpeed;
                 t.camera.updateProjectionMatrix();
+            }
+
+            // Smooth centerpiece scaling (shrinks in 2D mode, blooms in 3D mode)
+            if (t.diorama && t.diorama.treeGroup) {
+                if (Math.abs(t.currentTreeScale - t.targetTreeScale) > 0.001) {
+                    t.currentTreeScale += (t.targetTreeScale - t.currentTreeScale) * 0.1;
+                    const s = Math.max(0.0001, t.currentTreeScale);
+                    t.diorama.treeGroup.scale.set(s, s, s);
+                    t.diorama.treeGroup.visible = t.currentTreeScale > 0.01;
+                }
             }
 
             // Update particle physics and tree canopy wind simulation
@@ -277,7 +326,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         animate();
         threeRef.current.animId = animFrameId;
 
-        // 6. Resize Observer
+        // 6. HIGH-RES Resize Observer — reapplies DPR on every resize
         const handleResize = () => {
             if (!container || !camera || !renderer) return;
             const newW = container.clientWidth;
@@ -285,12 +334,14 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             if (newW === 0 || newH === 0) return;
 
             const newAspect = newW / newH;
-            camera.left = (-frustumSize * newAspect) / 2;
-            camera.right = (frustumSize * newAspect) / 2;
-            camera.top = frustumSize / 2;
-            camera.bottom = -frustumSize / 2;
+            const fs = threeRef.current.frustumSize;
+            camera.left = (-fs * newAspect) / 2;
+            camera.right = (fs * newAspect) / 2;
+            camera.top = fs / 2;
+            camera.bottom = -fs / 2;
             camera.updateProjectionMatrix();
 
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
             renderer.setSize(newW, newH);
         };
 
@@ -316,7 +367,6 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         // Clean up previous diorama
         if (t.diorama) {
             t.scene.remove(t.diorama.rootGroup);
-            // Dispose geometries & materials
             t.diorama.rootGroup.traverse((obj) => {
                 if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
                     obj.geometry.dispose();
@@ -331,15 +381,19 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         }
 
         // Build new procedural diorama
-        const newDiorama = buildDiorama(qrResult, season, palette);
+        const newDiorama = buildDiorama(qrResult, season, palette, sceneType);
         t.diorama = newDiorama;
+        if (newDiorama.treeGroup) {
+            const s = Math.max(0.0001, t.currentTreeScale);
+            newDiorama.treeGroup.scale.set(s, s, s);
+            newDiorama.treeGroup.visible = t.currentTreeScale > 0.01;
+        }
         t.scene.add(newDiorama.rootGroup);
-    }, [urlText, season, palette]);
+    }, [urlText, season, palette, sceneType]);
 
     // ─── POINTER & ORBIT DRAG CONTROLS ─────────────────────────────────────
     const handlePointerDown = (e: React.PointerEvent) => {
         if (viewMode === '2d') {
-            // Tap to expand into 3D view
             setMode('3d');
             return;
         }
@@ -357,11 +411,9 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         const dy = e.clientY - t.prevPointer.y;
         t.prevPointer = { x: e.clientX, y: e.clientY };
 
-        // Rotate isometric orbit angles
         t.orbitAngles.theta -= dx * 0.008;
         t.orbitAngles.phi = Math.max(0.2, Math.min(Math.PI / 2.2, t.orbitAngles.phi - dy * 0.008));
 
-        // Update target camera position
         const rad = t.orbitAngles.radius;
         const x = rad * Math.sin(t.orbitAngles.phi) * Math.sin(t.orbitAngles.theta);
         const y = rad * Math.cos(t.orbitAngles.phi);
@@ -376,8 +428,8 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
     const handleWheel = (e: React.WheelEvent) => {
         if (viewMode === '2d') return;
         const t = threeRef.current;
-        const zoomDelta = e.deltaY * -0.01;
-        t.targetZoom = Math.max(8, Math.min(32, t.targetZoom + zoomDelta));
+        const zoomDelta = e.deltaY * -0.001;
+        t.targetZoom = Math.max(0.4, Math.min(2.5, t.targetZoom + zoomDelta));
     };
 
     return (
@@ -393,30 +445,20 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             onWheel={handleWheel}
             style={{ touchAction: 'none' }}
         >
-            <canvas ref={canvasRef} className="w-full h-full block" />
+            {/* Canvas — use inline styles to prevent Tailwind CSS from fighting with Three.js sizing */}
+            <canvas
+                ref={canvasRef}
+                style={{ display: 'block', width: '100%', height: '100%' }}
+            />
 
             {/* Click to Toggle Overlay Hint */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
                 <div
-                    style={{
-                        background: '#000',
-                        color: '#FFE500',
-                        border: '1.5px solid #000',
-                        borderRadius: 24,
-                        padding: '6px 16px',
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.72rem',
-                        letterSpacing: '0.04em',
-                        boxShadow: '2px 2px 0 rgba(0,0,0,0.25)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                    }}
+                    className="px-4 py-1.5 rounded-full text-xs font-medium text-neutral-600 bg-[#ede8dc]/85 backdrop-blur-sm border border-[#ded8cb] shadow-sm flex items-center gap-2 transition-transform duration-200"
                 >
-                    <span className="inline-block w-2 h-2 rounded-full bg-[#FFE500] animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
                     <span>
-                        {viewMode === '2d' ? 'TAP TO SEE 3D TREE' : 'TAP THE TREE TO SEE QR CODE'}
+                        {viewMode === '2d' ? 'Tap to see the tree' : 'Tap the tree to see QR code'}
                     </span>
                 </div>
             </div>

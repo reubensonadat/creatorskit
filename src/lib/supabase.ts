@@ -100,6 +100,104 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 🌸 DIGITAL BOUQUET: 3D QR GIFT DATABASE
+// ═══════════════════════════════════════════════════════════════
+
+export type BouquetSceneType = 'tree' | 'house' | 'avatar';
+
+export interface StoredBouquet {
+  id: string;                    // short code e.g. "bq_k8w2x3"
+  scene_type: BouquetSceneType;  // 'tree' | 'house' | 'avatar'
+  season: string;                // 'spring' | 'summer' | 'autumn' | 'winter'
+  palette_id: string;            // 'sakura' | 'wisteria' | etc.
+  target_url: string;            // the URL the QR encodes
+  sender_name?: string;          // "From: ..."
+  recipient_name?: string;       // "To: ..."
+  message?: string;              // personal gift message
+  audio_enabled: boolean;        // ambient soundscape preference
+  custom_colors?: any;           // future: custom palette overrides
+  metadata?: any;                // extensibility
+  view_count?: number;           // track views
+  created_at?: string;
+}
+
+/**
+ * Save a Digital Bouquet to Supabase and return the short code.
+ */
+export async function saveBouquetToDatabase(data: {
+  sceneType: BouquetSceneType;
+  season: string;
+  paletteId: string;
+  targetUrl: string;
+  senderName?: string;
+  recipientName?: string;
+  message?: string;
+  audioEnabled?: boolean;
+  customColors?: any;
+  metadata?: any;
+}): Promise<string> {
+  const shortId = 'bq_' + Math.random().toString(36).substring(2, 8);
+
+  try {
+    const { error } = await supabase.from('digital_bouquets').insert([
+      {
+        id: shortId,
+        scene_type: data.sceneType,
+        season: data.season,
+        palette_id: data.paletteId,
+        target_url: data.targetUrl,
+        sender_name: data.senderName || null,
+        recipient_name: data.recipientName || null,
+        message: data.message || null,
+        audio_enabled: data.audioEnabled ?? false,
+        custom_colors: data.customColors || null,
+        metadata: data.metadata || null,
+        view_count: 0,
+      },
+    ]);
+
+    if (error) {
+      console.warn('Supabase bouquet insert error:', error.message);
+      return '';
+    }
+
+    return shortId;
+  } catch (err) {
+    console.warn('Failed to save bouquet to Supabase:', err);
+    return '';
+  }
+}
+
+/**
+ * Fetch a Digital Bouquet by its short code.
+ */
+export async function getBouquetByShortId(id: string): Promise<StoredBouquet | null> {
+  try {
+    const { data, error } = await supabase
+      .from('digital_bouquets')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    // Increment view count (fire-and-forget)
+    supabase
+      .from('digital_bouquets')
+      .update({ view_count: (data.view_count || 0) + 1 })
+      .eq('id', id)
+      .then(() => {});
+
+    return data as StoredBouquet;
+  } catch (err) {
+    console.error('Error fetching bouquet from Supabase:', err);
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 📰 BLOG & MASTERCLASS DATABASE OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────

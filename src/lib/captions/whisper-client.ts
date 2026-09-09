@@ -251,7 +251,6 @@ export class WhisperClient {
                     });
 
                     // Parse output chunks into exact word timings and strictly one-line SubtitleCues
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const rawChunks: any[] = output?.chunks || [];
                     const wordTimings = extractWordTimings(rawChunks);
                     const cues: SubtitleCue[] = groupWordsIntoSingleLineCues(wordTimings);

@@ -24,35 +24,15 @@ import {
 import {
     Upload,
     Download,
-    FileText,
     Copy,
     Check,
-    RotateCcw,
-    Film,
-    Sparkles,
-    Palette,
+    X,
+    Key,
+    Plus,
     Play,
     Pause,
-    Layers,
-    Disc,
-    Sliders,
-    Type,
-    Key,
-    Settings,
-    Plus,
     Trash2,
     Scissors,
-    GitMerge,
-    Search,
-    Wand2,
-    ExternalLink,
-    ShieldCheck,
-    X,
-    ChevronUp,
-    ChevronDown,
-    Cpu,
-    Zap,
-    Globe,
 } from 'lucide-react';
 import {
     extractMetadataFromMediaBlob,
@@ -96,139 +76,84 @@ const STORAGE_KEYS = {
     AUDIO_KEY: 'current_caption_audio',
 };
 
+/* ── Brutalist UI kit (matches app design system: brutalist-card / brutalist-button) ── */
+const BRUT_LABEL: React.CSSProperties = {
+    fontSize: '0.72rem',
+    fontWeight: 900,
+    fontFamily: 'monospace, system-ui, sans-serif',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: '#000',
+};
+
+const BRUT_INPUT: React.CSSProperties = {
+    padding: '8px 12px',
+    border: '2px solid #000',
+    borderRadius: 4,
+    background: '#fff',
+    fontSize: '0.84rem',
+    fontWeight: 600,
+    color: '#000',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+};
+
+/** Chunky chip toggle for option groups (active = yellow with hard shadow). */
+function brutChip(active: boolean): React.CSSProperties {
+    return {
+        padding: '6px 12px',
+        border: '2px solid #000',
+        borderRadius: 4,
+        background: active ? '#FFE500' : '#ffffff',
+        color: '#000',
+        fontFamily: 'monospace, system-ui, sans-serif',
+        fontWeight: 900,
+        fontSize: '0.7rem',
+        textTransform: 'uppercase',
+        cursor: 'pointer',
+        boxShadow: active ? '2px 2px 0 #000' : 'none',
+        whiteSpace: 'nowrap',
+        transition: 'all 0.12s',
+    };
+}
+
 /**
- * Tactile Segmented Loading Bar matching the transport scrubber from Text Match CUT
+ * Brutalist progress bar: monospace label + hard-bordered track with yellow fill.
  */
-function TactileProgressBar({
-    percent,
-    label,
-    statusText,
-}: {
-    percent: number;
-    label?: string;
-    statusText?: string;
-}) {
+function BrutProgress({ percent, label, statusText }: { percent: number; label?: string; statusText?: string }) {
     const clamped = Math.min(100, Math.max(0, percent));
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                }}
-            >
-                <span
-                    style={{
-                        fontFamily: 'monospace',
-                        fontSize: '0.72rem',
-                        fontWeight: 900,
-                        textTransform: 'uppercase',
-                        color: '#000',
-                        letterSpacing: '0.08em',
-                    }}
-                >
-                    {label || 'Processing...'}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={BRUT_LABEL}>{label || 'PROCESSING...'}</span>
+                <span style={{ ...BRUT_LABEL, color: '#666', fontSize: '0.68rem', letterSpacing: 0 }}>
+                    {statusText || `${Math.round(clamped)}%`}
                 </span>
-                {statusText && (
-                    <span
-                        style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            color: '#555',
-                        }}
-                    >
-                        {statusText}
-                    </span>
-                )}
             </div>
-
-            {/* Scrubber Capsule (no + / - buttons, matching Text Match CUT) */}
             <div
                 style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    background: '#fff',
-                    padding: '4px 8px',
+                    height: 14,
+                    background: '#ffffff',
                     border: '2px solid #000',
-                    borderRadius: 4,
-                    boxShadow: '2px 2px 0 #000',
-                    width: '100%',
-                    boxSizing: 'border-box',
+                    borderRadius: 3,
+                    overflow: 'hidden',
                 }}
+                role="progressbar"
+                aria-valuenow={Math.round(clamped)}
+                aria-valuemin={0}
+                aria-valuemax={100}
             >
-                {/* Tactile Fill Track */}
                 <div
                     style={{
-                        position: 'relative',
-                        flex: 1,
-                        height: 18,
-                        background: '#e5e7eb',
-                        border: '1.5px solid #000',
-                        borderRadius: 3,
-                        overflow: 'hidden',
-                        userSelect: 'none',
-                    }}
-                >
-                    {/* Active Yellow Fill */}
-                    <div
-                        style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: `${clamped}%`,
-                            background: '#FFE500',
-                            borderRight: clamped > 0 && clamped < 100 ? '1.5px solid #000' : 'none',
-                            transition: 'width 0.25s ease-out',
-                        }}
-                    />
-
-                    {/* Tactile Gauge Grip Grooves */}
-                    <div
-                        style={{
-                            position: 'absolute',
-                            inset: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-evenly',
-                            pointerEvents: 'none',
-                            opacity: 0.35,
-                        }}
-                    >
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                        <div style={{ width: 1.5, height: 10, background: '#000' }} />
-                    </div>
-                </div>
-
-                {/* Monospace percentage readout badge */}
-                <div
-                    style={{
-                        padding: '2px 8px',
+                        width: `${clamped}%`,
+                        height: '100%',
                         background: '#FFE500',
-                        border: '1.5px solid #000',
-                        borderRadius: 3,
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.78rem',
-                        minWidth: 48,
-                        textAlign: 'center',
-                        color: '#000',
-                        boxShadow: '1px 1px 0 #000',
+                        borderRight: clamped >= 100 ? 'none' : '2px solid #000',
+                        transition: 'width 0.25s ease-out',
                     }}
-                >
-                    {Math.round(clamped)}%
-                </div>
+                />
             </div>
         </div>
     );
@@ -640,7 +565,7 @@ export default function CaptionsPage() {
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
             try {
                 localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
-            } catch {}
+            } catch { }
             return next;
         });
     };
@@ -661,7 +586,7 @@ export default function CaptionsPage() {
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
             try {
                 localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
-            } catch {}
+            } catch { }
             return next;
         });
     };
@@ -678,7 +603,7 @@ export default function CaptionsPage() {
                 const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
                 const vtt = generateVtt(next);
                 setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
                 return next;
             }
             const midWordIdx = Math.ceil(words.length / 2);
@@ -689,7 +614,7 @@ export default function CaptionsPage() {
             const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -707,7 +632,7 @@ export default function CaptionsPage() {
             const next = [...prev.slice(0, index), merged, ...prev.slice(index + 2)];
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -717,7 +642,7 @@ export default function CaptionsPage() {
             const next = prev.filter((_, i) => i !== index);
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -733,7 +658,7 @@ export default function CaptionsPage() {
             const next = [...prev, newCue];
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -747,7 +672,7 @@ export default function CaptionsPage() {
             }));
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -762,13 +687,13 @@ export default function CaptionsPage() {
             }));
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
         setFullText((prev) => {
             const regex = new RegExp(findQuery, 'gi');
             const next = prev.replace(regex, replaceQuery);
-            try { localStorage.setItem(STORAGE_KEYS.FULL_TEXT, next); } catch {}
+            try { localStorage.setItem(STORAGE_KEYS.FULL_TEXT, next); } catch { }
             return next;
         });
         setShowFindReplace(false);
@@ -785,7 +710,7 @@ export default function CaptionsPage() {
         setStoredApiKey(provider, key);
         if (provider === 'groq') setGroqKey(key);
         if (provider === 'openai') setOpenaiKey(key);
-        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API Key Saved!`);
+        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API key saved`);
         setTimeout(() => setByokSavedToast(null), 3000);
         setByokModalOpen(false);
     };
@@ -794,7 +719,7 @@ export default function CaptionsPage() {
         setStoredApiKey(provider, '');
         if (provider === 'groq') setGroqKey('');
         if (provider === 'openai') setOpenaiKey('');
-        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API Key Cleared`);
+        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API key cleared`);
         setTimeout(() => setByokSavedToast(null), 3000);
     };
 
@@ -1074,16 +999,8 @@ export default function CaptionsPage() {
                 width: '100%',
             }}
         >
-            {/* Top Studio Title Section matching Text Match CUT / Text Highlighter */}
-            <div
-                className="tool-page-header"
-                style={{
-                    marginBottom: 16,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                }}
-            >
+            {/* Header */}
+            <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span
                         style={{
@@ -1099,30 +1016,14 @@ export default function CaptionsPage() {
                             boxShadow: '2px 2px 0 #000',
                         }}
                     >
-                        CREATORKIT STUDIO
+                        Whisper Auto Captions
                     </span>
-                    <span
-                        style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            color: '#666',
-                            fontFamily: 'monospace',
-                        }}
-                    >
-                        STUDIO SUBTITLES
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#666', fontFamily: 'monospace' }}>
+                        OFFLINE BROWSER AI · SRT/VTT EXPORT · 1080P OVERLAY RENDER
                     </span>
                 </div>
 
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 12,
-                        marginTop: 4,
-                    }}
-                >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
                     <h1
                         style={{
                             fontSize: '1.85rem',
@@ -1135,52 +1036,39 @@ export default function CaptionsPage() {
                     >
                         Auto Captions
                     </h1>
-                    <p
-                        style={{
-                            fontSize: '0.85rem',
-                            color: '#555',
-                            maxWidth: 720,
-                            lineHeight: 1.5,
-                            fontWeight: 500,
-                            margin: 0,
-                        }}
-                    >
-                        100% Free speech-to-text subtitles. Use offline browser Whisper or bring your own free Groq/OpenAI key.
+                    <p style={{ fontSize: '0.85rem', color: '#555', maxWidth: 720, lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
+                        Free speech-to-text — offline Whisper in your browser, or your own Groq / OpenAI key.
                     </p>
                 </div>
             </div>
 
-            {/* Toast Notification */}
+            {/* Toast */}
             {byokSavedToast && (
                 <div
                     style={{
-                        marginBottom: 12,
-                        padding: '8px 14px',
-                        background: '#22c55e',
-                        color: '#000',
+                        marginBottom: 14,
+                        padding: '10px 14px',
+                        background: '#fef08a',
                         border: '2px solid #000',
-                        boxShadow: '2px 2px 0 #000',
                         borderRadius: 4,
+                        color: '#000',
                         fontFamily: 'monospace',
-                        fontSize: '0.76rem',
                         fontWeight: 900,
+                        fontSize: '0.75rem',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 8,
                     }}
                 >
-                    <Check size={16} strokeWidth={3} />
+                    <Check size={14} strokeWidth={3} />
                     <span>{byokSavedToast}</span>
                 </div>
             )}
 
-            {/* Transcription Engine Selector Bar */}
-            <div
+            {/* Transcription engine */}
+            <section
+                className="brutalist-card"
                 style={{
-                    background: '#fff',
-                    border: '2px solid #000',
-                    borderRadius: 4,
-                    boxShadow: '3px 3px 0 #000',
                     padding: '10px 14px',
                     marginBottom: 16,
                     display: 'flex',
@@ -1190,148 +1078,67 @@ export default function CaptionsPage() {
                     gap: 10,
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span
-                        style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.68rem',
-                            fontWeight: 900,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={BRUT_LABEL}>Engine</span>
+                    <button
+                        type="button"
+                        style={brutChip(transcriptionEngine === 'local')}
+                        onClick={() => setTranscriptionEngine('local')}
+                    >
+                        Local · Offline
+                    </button>
+                    <button
+                        type="button"
+                        style={brutChip(transcriptionEngine === 'groq')}
+                        onClick={() => {
+                            setTranscriptionEngine('groq');
+                            if (!groqKey) {
+                                setByokModalProvider('groq');
+                                setTempKeyInput('');
+                                setByokModalOpen(true);
+                            }
                         }}
                     >
-                        TRANSCRIPTION ENGINE:
-                    </span>
-
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button
-                            type="button"
-                            onClick={() => setTranscriptionEngine('local')}
-                            style={{
-                                padding: '5px 10px',
-                                fontFamily: 'monospace',
-                                fontSize: '0.7rem',
-                                fontWeight: 900,
-                                background: transcriptionEngine === 'local' ? '#FFE500' : '#f4f4f5',
-                                color: '#000',
-                                border: '1.5px solid #000',
-                                borderRadius: 3,
-                                cursor: 'pointer',
-                                boxShadow: transcriptionEngine === 'local' ? '1.5px 1.5px 0 #000' : 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 5,
-                            }}
-                        >
-                            <Cpu size={12} strokeWidth={2.5} />
-                            <span>LOCAL WHISPER (OFFLINE)</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setTranscriptionEngine('groq');
-                                if (!groqKey) {
-                                    setByokModalProvider('groq');
-                                    setTempKeyInput('');
-                                    setByokModalOpen(true);
-                                }
-                            }}
-                            style={{
-                                padding: '5px 10px',
-                                fontFamily: 'monospace',
-                                fontSize: '0.7rem',
-                                fontWeight: 900,
-                                background: transcriptionEngine === 'groq' ? '#FFE500' : '#f4f4f5',
-                                color: '#000',
-                                border: '1.5px solid #000',
-                                borderRadius: 3,
-                                cursor: 'pointer',
-                                boxShadow: transcriptionEngine === 'groq' ? '1.5px 1.5px 0 #000' : 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 5,
-                            }}
-                        >
-                            <Zap size={12} strokeWidth={2.5} />
-                            <span>GROQ CLOUD (10x FAST · BYOK)</span>
-                            {groqKey && (
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} title="Key active" />
-                            )}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setTranscriptionEngine('openai');
-                                if (!openaiKey) {
-                                    setByokModalProvider('openai');
-                                    setTempKeyInput('');
-                                    setByokModalOpen(true);
-                                }
-                            }}
-                            style={{
-                                padding: '5px 10px',
-                                fontFamily: 'monospace',
-                                fontSize: '0.7rem',
-                                fontWeight: 900,
-                                background: transcriptionEngine === 'openai' ? '#FFE500' : '#f4f4f5',
-                                color: '#000',
-                                border: '1.5px solid #000',
-                                borderRadius: 3,
-                                cursor: 'pointer',
-                                boxShadow: transcriptionEngine === 'openai' ? '1.5px 1.5px 0 #000' : 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 5,
-                            }}
-                        >
-                            <Globe size={12} strokeWidth={2.5} />
-                            <span>OPENAI WHISPER (BYOK)</span>
-                            {openaiKey && (
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} title="Key active" />
-                            )}
-                        </button>
-                    </div>
+                        Groq · Fast{groqKey ? ' ✓' : ''}
+                    </button>
+                    <button
+                        type="button"
+                        style={brutChip(transcriptionEngine === 'openai')}
+                        onClick={() => {
+                            setTranscriptionEngine('openai');
+                            if (!openaiKey) {
+                                setByokModalProvider('openai');
+                                setTempKeyInput('');
+                                setByokModalOpen(true);
+                            }
+                        }}
+                    >
+                        OpenAI{openaiKey ? ' ✓' : ''}
+                    </button>
                 </div>
 
                 <button
                     type="button"
+                    className="brutalist-button"
+                    style={{ fontSize: '0.68rem', padding: '5px 10px' }}
                     onClick={() => {
                         setByokModalProvider(transcriptionEngine === 'openai' ? 'openai' : 'groq');
                         setTempKeyInput(transcriptionEngine === 'openai' ? openaiKey : groqKey);
                         setByokModalOpen(true);
                     }}
-                    style={{
-                        padding: '5px 10px',
-                        fontFamily: 'monospace',
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        background: '#fff',
-                        color: '#000',
-                        border: '1.5px solid #000',
-                        borderRadius: 3,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                    }}
                 >
-                    <Key size={12} strokeWidth={2.5} />
-                    <span>MANAGE API KEYS</span>
+                    <Key size={13} />
+                    API Keys
                 </button>
-            </div>
+            </section>
 
-            {/* 1-Click Teleprompter Handoff Banner */}
+            {/* Teleprompter handoff */}
             {pendingHandoff && !file && !isProcessing && (
                 <div
+                    className="brutalist-card"
                     style={{
                         marginBottom: 16,
-                        background: '#FFE500',
-                        border: '2px solid #000',
-                        borderRadius: 4,
-                        boxShadow: '3px 3px 0 #000',
-                        padding: '14px 16px',
+                        padding: '12px 16px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
@@ -1339,101 +1146,56 @@ export default function CaptionsPage() {
                         gap: 12,
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div
-                            style={{
-                                width: 36,
-                                height: 36,
-                                background: '#000',
-                                color: '#FFE500',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: 3,
-                                flexShrink: 0,
-                            }}
-                        >
-                            <Sparkles size={18} strokeWidth={2.5} />
-                        </div>
-                        <div>
-                            <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 900, color: '#000' }}>
-                                TELEPROMPTER TAKE READY TO TRANSCRIBE!
-                            </div>
-                            <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 700, color: '#333' }}>
-                                File: {pendingHandoff.fileName} ({(pendingHandoff.mediaBlob.size / (1024 * 1024)).toFixed(1)} MB) · Script automatically embedded
-                            </div>
-                        </div>
+                    <div style={{ minWidth: 0 }}>
+                        <span style={{ ...BRUT_LABEL, display: 'block', marginBottom: 2 }}>Teleprompter take ready</span>
+                        <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#666' }}>
+                            {pendingHandoff.fileName} · {(pendingHandoff.mediaBlob.size / (1024 * 1024)).toFixed(1)} MB · script attached
+                        </span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
                             type="button"
+                            className="brutalist-button brutalist-button-primary"
+                            style={{ fontSize: '0.74rem', padding: '7px 14px' }}
                             onClick={async () => {
                                 const transferredFile = new File(
                                     [pendingHandoff.mediaBlob],
                                     pendingHandoff.fileName || 'teleprompter_take.webm',
-                                    {
-                                        type: pendingHandoff.mediaBlob.type || 'audio/webm',
-                                    }
+                                    { type: pendingHandoff.mediaBlob.type || 'audio/webm' }
                                 );
                                 await clearHandoffSession();
                                 setPendingHandoff(null);
                                 handleFile(transferredFile);
                             }}
-                            style={{
-                                padding: '8px 14px',
-                                background: '#000',
-                                color: '#FFE500',
-                                border: '2px solid #000',
-                                borderRadius: 3,
-                                fontFamily: 'monospace',
-                                fontSize: '0.76rem',
-                                fontWeight: 900,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                boxShadow: '2px 2px 0 rgba(0,0,0,0.3)',
-                            }}
                         >
-                            <Sparkles size={14} strokeWidth={2.5} />
-                            <span>1-CLICK: TRANSCRIBE TAKE</span>
+                            Transcribe
                         </button>
-
                         <button
                             type="button"
+                            className="brutalist-button"
+                            style={{ fontSize: '0.74rem', padding: '7px 14px' }}
                             onClick={async () => {
                                 await clearHandoffSession();
                                 setPendingHandoff(null);
                             }}
-                            style={{
-                                padding: '8px 10px',
-                                background: '#fff',
-                                color: '#000',
-                                border: '1.5px solid #000',
-                                borderRadius: 3,
-                                fontFamily: 'monospace',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                            }}
                         >
-                            DISMISS
+                            Dismiss
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* Magic Metadata Detected Banner */}
+            {/* Magic metadata detected */}
             {magicMetadata && !magicBannerDismissed && (
                 <div
                     style={{
                         marginBottom: 16,
+                        padding: '10px 14px',
                         background: '#dcfce7',
-                        border: '2px solid #16a34a',
+                        border: '2px solid #000',
                         borderRadius: 4,
-                        boxShadow: '3px 3px 0 #16a34a',
-                        padding: '12px 16px',
+                        boxShadow: '3px 3px 0 #000',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
@@ -1441,373 +1203,182 @@ export default function CaptionsPage() {
                         gap: 10,
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Sparkles size={18} color="#16a34a" strokeWidth={2.5} />
-                        <div>
-                            <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 900, color: '#166534' }}>
-                                ✨ MAGIC METADATA DETECTED: TELEPROMPTER SCRIPT ALIGNED!
-                            </div>
-                            <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 700, color: '#15803d' }}>
-                                Auto Captions extracted the exact reading script directly from your media file. Timings and spelling match 100%.
-                            </div>
-                        </div>
-                    </div>
+                    <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 800, color: '#000' }}>
+                        TELEPROMPTER SCRIPT DETECTED — TIMINGS & SPELLING MATCH 100%
+                    </span>
                     <button
                         type="button"
                         onClick={() => setMagicBannerDismissed(true)}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#166534',
-                            cursor: 'pointer',
-                            padding: 4,
-                        }}
+                        style={{ background: '#000', border: 'none', color: '#fff', cursor: 'pointer', padding: '3px 6px', borderRadius: 3 }}
+                        aria-label="Dismiss"
                     >
-                        <X size={14} />
+                        <X size={13} />
                     </button>
                 </div>
             )}
 
-            {/* BYOK Settings Modal */}
+            {/* BYOK modal */}
             {byokModalOpen && (
                 <div
                     style={{
                         position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        background: 'rgba(0, 0, 0, 0.7)',
+                        inset: 0,
+                        background: 'rgba(0, 0, 0, 0.55)',
                         zIndex: 9999,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         padding: 16,
                     }}
+                    onClick={() => setByokModalOpen(false)}
                 >
                     <div
+                        className="brutalist-card"
                         style={{
-                            background: '#fff',
-                            border: '3px solid #000',
-                            boxShadow: '6px 6px 0 #000',
-                            borderRadius: 4,
-                            maxWidth: 520,
+                            maxWidth: 440,
                             width: '100%',
                             padding: 24,
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 16,
                         }}
+                        onClick={(e) => e.stopPropagation()}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                    <Key size={18} strokeWidth={2.5} />
-                                    <h3 style={{ margin: 0, fontFamily: 'monospace', fontSize: '1.05rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                        Bring Your Own Key (BYOK)
-                                    </h3>
-                                </div>
-                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#555', fontFamily: 'monospace' }}>
-                                    Keep your transcription 100% free and lightning fast with your personal API key.
+                                <h3 style={{ ...BRUT_LABEL, margin: '0 0 4px', fontSize: '0.95rem' }}>API Key</h3>
+                                <p style={{ margin: 0, fontSize: '0.72rem', fontFamily: 'monospace', color: '#666' }}>
+                                    Stored only in this browser — keeps transcription free and fast.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setByokModalOpen(false)}
-                                style={{
-                                    background: '#f4f4f5',
-                                    border: '1.5px solid #000',
-                                    borderRadius: 3,
-                                    cursor: 'pointer',
-                                    padding: '4px 6px',
-                                }}
+                                style={{ background: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', padding: '4px 7px', color: '#fff' }}
+                                aria-label="Close"
                             >
-                                <X size={14} />
+                                <X size={13} />
                             </button>
                         </div>
 
-                        {/* Provider Tabs in Modal */}
-                        <div style={{ display: 'flex', borderBottom: '2px solid #000', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
                             <button
                                 type="button"
+                                style={brutChip(byokModalProvider === 'groq')}
                                 onClick={() => {
                                     setByokModalProvider('groq');
                                     setTempKeyInput(groqKey);
                                 }}
-                                style={{
-                                    padding: '6px 12px',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 900,
-                                    background: byokModalProvider === 'groq' ? '#FFE500' : '#f4f4f5',
-                                    borderTop: '2px solid #000',
-                                    borderLeft: '2px solid #000',
-                                    borderRight: '2px solid #000',
-                                    borderBottom: byokModalProvider === 'groq' ? '2px solid #FFE500' : 'none',
-                                    marginBottom: byokModalProvider === 'groq' ? -2 : 0,
-                                    borderRadius: '3px 3px 0 0',
-                                    cursor: 'pointer',
-                                }}
                             >
-                                GROQ (RECOMMENDED · FREE)
+                                Groq (free)
                             </button>
                             <button
                                 type="button"
+                                style={brutChip(byokModalProvider === 'openai')}
                                 onClick={() => {
                                     setByokModalProvider('openai');
                                     setTempKeyInput(openaiKey);
                                 }}
-                                style={{
-                                    padding: '6px 12px',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 900,
-                                    background: byokModalProvider === 'openai' ? '#FFE500' : '#f4f4f5',
-                                    borderTop: '2px solid #000',
-                                    borderLeft: '2px solid #000',
-                                    borderRight: '2px solid #000',
-                                    borderBottom: byokModalProvider === 'openai' ? '2px solid #FFE500' : 'none',
-                                    marginBottom: byokModalProvider === 'openai' ? -2 : 0,
-                                    borderRadius: '3px 3px 0 0',
-                                    cursor: 'pointer',
-                                }}
                             >
-                                OPENAI
+                                OpenAI
                             </button>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                {byokModalProvider === 'groq' ? 'Groq API Key (Starts with gsk_)' : 'OpenAI API Key (Starts with sk-)'}
-                            </label>
-
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <input
                                 type="password"
                                 value={tempKeyInput}
                                 onChange={(e) => setTempKeyInput(e.target.value)}
-                                placeholder={byokModalProvider === 'groq' ? 'gsk_xxxxxxxxxxxxxxxxxxxx' : 'sk-xxxxxxxxxxxxxxxxxxxx'}
-                                style={{
-                                    padding: '10px 12px',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.8rem',
-                                    border: '2px solid #000',
-                                    borderRadius: 3,
-                                    width: '100%',
-                                    boxSizing: 'border-box',
-                                }}
+                                placeholder={byokModalProvider === 'groq' ? 'gsk_…' : 'sk-…'}
+                                style={{ ...BRUT_INPUT, fontFamily: 'monospace' }}
                             />
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', color: '#666', fontFamily: 'monospace' }}>
-                                <span>🔒 Keys are stored strictly in your browser&apos;s localStorage</span>
-                                {byokModalProvider === 'groq' ? (
-                                    <a
-                                        href="https://console.groq.com/keys"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        style={{ color: '#000', textDecoration: 'underline', fontWeight: 800 }}
-                                    >
-                                        Get Free Groq Key →
-                                    </a>
-                                ) : (
-                                    <a
-                                        href="https://platform.openai.com/api-keys"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        style={{ color: '#000', textDecoration: 'underline', fontWeight: 800 }}
-                                    >
-                                        Get OpenAI Key →
-                                    </a>
-                                )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.66rem', fontFamily: 'monospace', color: '#888' }}>
+                                <span>NEVER LEAVES YOUR DEVICE</span>
+                                <a
+                                    href={byokModalProvider === 'groq' ? 'https://console.groq.com/keys' : 'https://platform.openai.com/api-keys'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: '#000', fontWeight: 900, textDecoration: 'underline' }}
+                                >
+                                    GET A KEY →
+                                </a>
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                             {(byokModalProvider === 'groq' ? groqKey : openaiKey) && (
                                 <button
                                     type="button"
+                                    className="brutalist-button"
+                                    style={{ fontSize: '0.7rem', padding: '6px 12px' }}
                                     onClick={() => {
                                         handleClearApiKey(byokModalProvider);
                                         setTempKeyInput('');
                                     }}
-                                    style={{
-                                        padding: '8px 12px',
-                                        background: '#fee2e2',
-                                        color: '#b91c1c',
-                                        border: '1.5px solid #b91c1c',
-                                        borderRadius: 3,
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                    }}
                                 >
-                                    CLEAR KEY
+                                    Clear key
                                 </button>
                             )}
-
                             <button
                                 type="button"
+                                className="brutalist-button"
+                                style={{ fontSize: '0.7rem', padding: '6px 12px' }}
                                 onClick={() => setByokModalOpen(false)}
-                                style={{
-                                    padding: '8px 14px',
-                                    background: '#f4f4f5',
-                                    color: '#000',
-                                    border: '1.5px solid #000',
-                                    borderRadius: 3,
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                }}
                             >
-                                CANCEL
+                                Cancel
                             </button>
-
                             <button
                                 type="button"
+                                className="brutalist-button brutalist-button-primary"
+                                style={{ fontSize: '0.7rem', padding: '6px 14px' }}
                                 onClick={() => handleSaveApiKey(byokModalProvider, tempKeyInput.trim())}
-                                style={{
-                                    padding: '8px 18px',
-                                    background: '#FFE500',
-                                    color: '#000',
-                                    border: '2px solid #000',
-                                    borderRadius: 3,
-                                    boxShadow: '2px 2px 0 #000',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 900,
-                                    cursor: 'pointer',
-                                }}
                             >
-                                SAVE KEY
+                                Save key
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Decode / Transcription Error Banner with Cloud Fallback */}
+            {/* Error banner with recovery */}
             {!isProcessing && progress.stage === 'error' && (
                 <div
                     style={{
                         marginBottom: 16,
+                        padding: '12px 16px',
                         background: '#fee2e2',
-                        border: '2px solid #b91c1c',
+                        border: '2px solid #000',
                         borderRadius: 4,
-                        boxShadow: '3px 3px 0 #b91c1c',
-                        padding: '14px 16px',
+                        boxShadow: '3px 3px 0 #000',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 10,
                     }}
                     role="alert"
                 >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                        <span
-                            style={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.72rem',
-                                fontWeight: 900,
-                                textTransform: 'uppercase',
-                                color: '#fff',
-                                background: '#b91c1c',
-                                padding: '3px 8px',
-                                borderRadius: 3,
-                                flexShrink: 0,
-                            }}
-                        >
-                            ⚠ FAILED
-                        </span>
-                        <p
-                            style={{
-                                margin: 0,
-                                fontFamily: 'monospace',
-                                fontSize: '0.74rem',
-                                fontWeight: 700,
-                                color: '#7f1d1d',
-                                lineHeight: 1.5,
-                            }}
-                        >
-                            {progress.message}
-                        </p>
-                    </div>
-
+                    <p style={{ margin: 0, fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', lineHeight: 1.5 }}>
+                        ⚠ {progress.message}
+                    </p>
                     {file && file.size > 0 && (
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button
-                                type="button"
-                                onClick={() => handleFile(file, 'local')}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '7px 12px',
-                                    background: '#fff',
-                                    color: '#000',
-                                    border: '2px solid #000',
-                                    borderRadius: 3,
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 900,
-                                    cursor: 'pointer',
-                                    boxShadow: '2px 2px 0 #000',
-                                }}
-                            >
-                                <RotateCcw size={13} strokeWidth={2.5} />
-                                <span>RETRY LOCAL WHISPER</span>
+                            <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'local')}>
+                                Retry locally
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => handleFile(file, 'groq')}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '7px 12px',
-                                    background: '#FFE500',
-                                    color: '#000',
-                                    border: '2px solid #000',
-                                    borderRadius: 3,
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 900,
-                                    cursor: 'pointer',
-                                    boxShadow: '2px 2px 0 #000',
-                                }}
-                            >
-                                <Zap size={13} strokeWidth={2.5} />
-                                <span>RETRY WITH GROQ CLOUD</span>
+                            <button type="button" className="brutalist-button brutalist-button-primary" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'groq')}>
+                                Retry with Groq
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => handleFile(file, 'openai')}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '7px 12px',
-                                    background: '#fff',
-                                    color: '#000',
-                                    border: '2px solid #000',
-                                    borderRadius: 3,
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 900,
-                                    cursor: 'pointer',
-                                    boxShadow: '2px 2px 0 #000',
-                                }}
-                            >
-                                <Globe size={13} strokeWidth={2.5} />
-                                <span>RETRY WITH OPENAI</span>
+                            <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'openai')}>
+                                Retry with OpenAI
                             </button>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* File Upload Zone (When idle and no file active) */}
+            {/* Upload zone */}
             {!file && !isProcessing && (
                 <div
+                    className="brutalist-card"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
@@ -1816,15 +1387,11 @@ export default function CaptionsPage() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: '#fff',
-                        border: '2px dashed #000',
-                        borderRadius: 4,
-                        boxShadow: '4px 4px 0 #000',
-                        padding: '60px 24px',
+                        border: '3px dashed #000',
+                        padding: '48px 24px',
                         cursor: 'pointer',
                         textAlign: 'center',
                         minHeight: 280,
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                     }}
                 >
                     <input
@@ -1837,304 +1404,145 @@ export default function CaptionsPage() {
 
                     <div
                         style={{
-                            width: 56,
-                            height: 56,
+                            width: 52,
+                            height: 52,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             background: '#FFE500',
                             border: '2px solid #000',
-                            borderRadius: 4,
-                            boxShadow: '2px 2px 0 #000',
+                            borderRadius: 8,
+                            boxShadow: '3px 3px 0 #000',
                             marginBottom: 16,
                         }}
                     >
-                        <Upload size={26} color="#000" strokeWidth={2.5} />
+                        <Upload size={24} color="#000" strokeWidth={2.4} />
                     </div>
 
                     <h3
                         style={{
-                            fontSize: '1.2rem',
+                            margin: '0 0 6px',
+                            fontSize: '1.05rem',
                             fontWeight: 900,
+                            fontFamily: 'monospace, system-ui, sans-serif',
                             textTransform: 'uppercase',
+                            letterSpacing: '-0.01em',
                             color: '#000',
-                            letterSpacing: '-0.02em',
-                            margin: '0 0 6px 0',
                         }}
                     >
-                        Drop Audio or Video File Here
+                        Drop an audio or video file
                     </h3>
-                    <p
-                        style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            color: '#666',
-                            margin: '0 0 20px 0',
-                        }}
-                    >
-                        MP3 · WAV · M4A · AAC · MP4 · MOV · WEBM
+                    <p style={{ margin: '0 0 18px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, color: '#666' }}>
+                        MP3 · WAV · M4A · MP4 · MOV · WEBM
                     </p>
-
-                    <button
-                        type="button"
-                        style={{
-                            background: '#000',
-                            color: '#fff',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            fontSize: '0.78rem',
-                            textTransform: 'uppercase',
-                            padding: '8px 18px',
-                            border: '2px solid #000',
-                            borderRadius: 3,
-                            boxShadow: '2px 2px 0 #000',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        Select Media File
-                    </button>
+                    <span className="brutalist-button brutalist-button-primary" style={{ padding: '10px 22px', fontSize: '0.82rem' }}>
+                        <Upload size={15} />
+                        Choose file
+                    </span>
                 </div>
             )}
 
-            {/* Processing State with Tactile Segmented Loading Bar */}
+            {/* Processing */}
             {isProcessing && (
                 <div
+                    className="brutalist-card"
                     style={{
-                        background: '#fff',
-                        border: '2px solid #000',
-                        borderRadius: 4,
-                        boxShadow: '4px 4px 0 #000',
-                        padding: '32px 24px',
+                        padding: '28px 24px',
+                        maxWidth: 560,
+                        margin: '40px auto',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 16,
-                        maxWidth: 720,
-                        margin: '40px auto',
+                        gap: 12,
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span
-                            style={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.72rem',
-                                fontWeight: 900,
-                                textTransform: 'uppercase',
-                                background: '#FFE500',
-                                padding: '2px 6px',
-                                border: '1.5px solid #000',
-                                boxShadow: '1px 1px 0 #000',
-                            }}
-                        >
-                            PROCESSING
-                        </span>
-                        <span
-                            style={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                                color: '#666',
-                            }}
-                        >
-                            GENERATING SUBTITLES
-                        </span>
-                    </div>
-
-                    {/* Tactile Progress Capsule */}
-                    <TactileProgressBar
-                        percent={progress.percent ?? (progress.stage === 'complete' ? 100 : 50)}
-                        label="Generating captions..."
+                    <BrutProgress
+                        percent={progress.percent ?? (progress.stage === 'complete' ? 100 : 15)}
+                        label={progress.message || 'GENERATING CAPTIONS...'}
                     />
-
-                    <p
-                        style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.72rem',
-                            color: '#666',
-                            margin: 0,
-                            lineHeight: 1.4,
-                        }}
-                    >
-                        Transcribing speech and aligning word timestamps. This will only take a moment.
+                    <p style={{ margin: 0, fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 600, color: '#666' }}>
+                        Transcribing speech and aligning word timestamps — this only takes a moment.
                     </p>
                 </div>
             )}
 
-            {/* Active Results: 2-Column Brutalist Studio Grid */}
+            {/* Workspace */}
             {file && !isProcessing && (
-                <div
-                    className="captions-workspace-grid"
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'minmax(0, 1.22fr) minmax(360px, 460px)',
-                        gap: 20,
-                        alignItems: 'start',
-                    }}
-                >
-                    {/* Left Column: Cassette Player & Live Subtitle Visualizer */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="matchcut-workspace-grid">
+                    {/* ── Left column: player & overlay studio ── */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
                         <div
-                            style={{
-                                background: '#fff',
-                                border: '2px solid #000',
-                                borderRadius: 4,
-                                boxShadow: '3px 3px 0 #000',
-                                padding: '16px 18px',
-                            }}
+                            className="brutalist-card tool-canvas-frame"
+                            style={{ padding: 14, display: 'flex', flexDirection: 'column' }}
                         >
-                            {/* Deck Mode Toggle Header: Cassette Player vs Video Overlay Studio */}
+                            {/* Viewport meta bar */}
                             <div
+                                className="tool-viewport-meta"
                                 style={{
+                                    width: '100%',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    marginBottom: 16,
-                                    borderBottom: '2px solid #000',
-                                    paddingBottom: 10,
-                                    flexWrap: 'wrap',
-                                    gap: 8,
+                                    marginBottom: 10,
+                                    fontSize: '0.7rem',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 700,
+                                    color: '#666',
                                 }}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveStudioDeck('cassette')}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                    <span
                                         style={{
-                                            padding: '4px 10px',
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 900,
-                                            background: activeStudioDeck === 'cassette' ? '#FFE500' : '#f4f4f5',
-                                            color: '#000',
+                                            display: 'inline-block',
+                                            width: 9,
+                                            height: 9,
+                                            background: cues.length > 0 ? '#22c55e' : '#eab308',
                                             border: '1.5px solid #000',
-                                            borderRadius: 3,
-                                            cursor: 'pointer',
-                                            boxShadow: activeStudioDeck === 'cassette' ? '2px 2px 0 #000' : 'none',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 5,
+                                            borderRadius: '50%',
+                                            flexShrink: 0,
+                                        }}
+                                    />
+                                    <span
+                                        style={{
+                                            color: '#000',
+                                            fontWeight: 900,
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            maxWidth: 240,
                                         }}
                                     >
-                                        <Disc size={13} strokeWidth={2.5} />
-                                        <span>CASSETTE MONITOR</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveStudioDeck('overlay')}
-                                        style={{
-                                            padding: '4px 10px',
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 900,
-                                            background: activeStudioDeck === 'overlay' ? '#FFE500' : '#f4f4f5',
-                                            color: '#000',
-                                            border: '1.5px solid #000',
-                                            borderRadius: 3,
-                                            cursor: 'pointer',
-                                            boxShadow: activeStudioDeck === 'overlay' ? '2px 2px 0 #000' : 'none',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 5,
-                                        }}
-                                    >
-                                        <Film size={13} strokeWidth={2.5} />
-                                        <span>VIDEO OVERLAY STUDIO</span>
-                                    </button>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={resetSession}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        background: '#fff',
-                                        border: '1.5px solid #000',
-                                        borderRadius: 3,
-                                        padding: '3px 8px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.7rem',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                        boxShadow: '1px 1px 0 #000',
-                                    }}
-                                    title="Choose a new file to transcribe"
-                                >
-                                    <RotateCcw size={12} />
-                                    <span>RESET / NEW FILE</span>
-                                </button>
-                            </div>
-
-                            {/* Teleprompter Script Sync Box */}
-                            <div
-                                style={{
-                                    marginBottom: 14,
-                                    padding: '8px 12px',
-                                    background: '#f9fafb',
-                                    border: '2px solid #000',
-                                    borderRadius: 4,
-                                    boxShadow: '2px 2px 0 #000',
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, color: '#000', textTransform: 'uppercase' }}>
-                                        Teleprompter Script Anchor (Optional)
+                                        {file.name.replace(/\.[^/.]+$/, '').toUpperCase()}
                                     </span>
-                                    {teleprompterScript && teleprompterScript.trim().length > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={handleAlignWithTeleprompter}
-                                            disabled={scriptAligned}
-                                            style={{
-                                                background: scriptAligned ? '#22c55e' : '#FFE500',
-                                                color: '#000',
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.62rem',
-                                                fontWeight: 900,
-                                                padding: '3px 8px',
-                                                border: '1.5px solid #000',
-                                                borderRadius: 3,
-                                                cursor: scriptAligned ? 'default' : 'pointer',
-                                                boxShadow: '1px 1px 0 #000',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 4,
-                                            }}
-                                        >
-                                            {scriptAligned ? '✓ ALIGNED' : 'ALIGN AUDIO TIMESTAMPS'}
-                                        </button>
+                                    <span style={{ color: '#aaa' }}>|</span>
+                                    <span style={{ textTransform: 'uppercase', color: '#333', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                        {cues.length} CUES{elapsed ? ` · ${elapsed}` : ''}
+                                    </span>
+                                    {!audioUrl && (
+                                        <span style={{ color: '#dc2626', fontWeight: 900, whiteSpace: 'nowrap' }}>| NO CACHED AUDIO</span>
                                     )}
                                 </div>
-                                <textarea
-                                    value={teleprompterScript || ''}
-                                    onChange={(e) => {
-                                        setTeleprompterScript(e.target.value);
-                                        localStorage.setItem('creatorkit_teleprompter_script', e.target.value);
-                                    }}
-                                    placeholder="Paste your Teleprompter script here to instantly fix all AI caption mistakes..."
-                                    style={{
-                                        width: '100%',
-                                        minHeight: 50,
-                                        padding: 8,
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.75rem',
-                                        border: '1.5px solid #000',
-                                        borderRadius: 3,
-                                        resize: 'vertical',
-                                        background: teleprompterScript ? '#FEF08A' : '#fff',
-                                        color: '#000',
-                                    }}
-                                />
-                                {teleprompterScript && teleprompterScript.trim().length > 0 && (
-                                    <p style={{ margin: '4px 0 0 0', fontSize: '0.6rem', color: '#b45309', fontFamily: 'monospace', fontWeight: 700 }}>
-                                        {teleprompterScript.trim().split(/\s+/).length} words detected. Click "ALIGN AUDIO TIMESTAMPS" to override the AI!
-                                    </p>
-                                )}
+                                <span
+                                    className="tool-viewport-meta-right"
+                                    style={{ display: 'flex', alignItems: 'center', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.64rem', color: '#000' }}
+                                >
+                                    {activeStudioDeck === 'cassette' ? 'CASSETTE PLAYER' : 'OVERLAY RENDER'}
+                                </span>
                             </div>
 
-                            {/* DECK 1: Cassette Player View */}
+                            {/* Deck: cassette player */}
                             {activeStudioDeck === 'cassette' && (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        background: '#f4f4f5',
+                                        border: '2px solid #000',
+                                        borderRadius: 4,
+                                        padding: '14px 8px',
+                                        minHeight: 260,
+                                    }}
+                                >
                                     <CassettePlayer
                                         audioSrc={audioUrl || undefined}
                                         duration={audioDuration || (cues.length > 0 ? cues[cues.length - 1].end : undefined)}
@@ -2155,10 +1563,9 @@ export default function CaptionsPage() {
                                 </div>
                             )}
 
-                            {/* DECK 2: Video Overlay Studio View */}
+                            {/* Deck: overlay studio */}
                             {activeStudioDeck === 'overlay' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                    {/* Audio element for overlay sync */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     {audioUrl && (
                                         <audio
                                             ref={overlayAudioRef}
@@ -2170,116 +1577,129 @@ export default function CaptionsPage() {
                                         />
                                     )}
 
-                                    {/* Canvas Live Preview Stage with Checkerboard Transparency */}
+                                    {/* Stage viewport */}
                                     <div
+                                        className="tool-canvas-viewport"
                                         style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            background: overlayBackground === 'green-screen'
-                                                ? '#00FF00'
-                                                : overlayBackground === 'magenta-screen'
-                                                    ? '#FF00FF'
-                                                    : 'repeating-conic-gradient(#f4f4f5 0% 25%, #ffffff 0% 50%) 50% / 20px 20px',
-                                            border: '2px solid #000',
-                                            borderRadius: 4,
-                                            boxShadow: 'inset 0 0 10px rgba(0,0,0,0.1)',
-                                            padding: 16,
                                             position: 'relative',
+                                            width: '100%',
+                                            minHeight: 300,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            background:
+                                                overlayBackground === 'green-screen'
+                                                    ? '#00FF00'
+                                                    : overlayBackground === 'magenta-screen'
+                                                        ? '#FF00FF'
+                                                        : 'repeating-conic-gradient(#f4f4f5 0% 25%, #ffffff 0% 50%) 50% / 20px 20px',
+                                            border: '3px solid #000',
+                                            boxShadow: '4px 4px 0 rgba(0,0,0,0.18)',
+                                            borderRadius: 4,
                                             overflow: 'hidden',
+                                            padding: 12,
+                                            boxSizing: 'border-box',
                                         }}
                                     >
                                         <canvas
                                             ref={overlayCanvasRef}
                                             style={{
                                                 maxWidth: '100%',
-                                                height: overlayAspectRatio === '9:16' ? 360 : 200,
+                                                height: overlayAspectRatio === '9:16' ? 340 : 200,
                                                 borderRadius: 4,
-                                                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                                                border: '1.5px solid #000',
                                                 background: 'transparent',
                                                 display: 'block',
                                             }}
                                         />
-
-                                        {/* Overlay Transport Control Bar */}
-                                        <div
-                                            style={{
-                                                marginTop: 12,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 8,
-                                                background: '#fff',
-                                                padding: '4px 10px',
-                                                border: '1.5px solid #000',
-                                                borderRadius: 4,
-                                                boxShadow: '2px 2px 0 #000',
-                                                width: '100%',
-                                                maxWidth: 420,
-                                                boxSizing: 'border-box',
-                                            }}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={toggleOverlayPlayback}
-                                                style={{
-                                                    background: overlayPlaying ? '#FFE500' : '#000',
-                                                    color: overlayPlaying ? '#000' : '#fff',
-                                                    border: '1.5px solid #000',
-                                                    borderRadius: '50%',
-                                                    width: 28,
-                                                    height: 28,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    cursor: 'pointer',
-                                                    flexShrink: 0,
-                                                }}
-                                            >
-                                                {overlayPlaying ? <Pause size={13} /> : <Play size={13} className="ml-0.5" />}
-                                            </button>
-
-                                            {/* Tactile Transport Scrubber */}
-                                            <div style={{ flex: 1 }}>
-                                                <TactileScrubber
-                                                    value={overlayCurrentTime}
-                                                    min={0}
-                                                    max={audioDuration || (cues.length > 0 ? cues[cues.length - 1].end : 10)}
-                                                    step={0.05}
-                                                    stepDelta={0.5}
-                                                    height={12}
-                                                    fillColor={overlayColor}
-                                                    showSteppers={false}
-                                                    onChange={(t) => {
-                                                        setOverlayCurrentTime(t);
-                                                        if (overlayAudioRef.current) {
-                                                            overlayAudioRef.current.currentTime = t;
-                                                        }
-                                                    }}
-                                                />
-                                            </div>
-
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900, minWidth: 42, textAlign: 'right' }}>
-                                                {overlayCurrentTime.toFixed(1)}s
-                                            </span>
-                                        </div>
                                     </div>
 
-                                    {/* 3 Video Caption Modes Selector */}
-                                    <div style={{ background: '#f4f4f5', padding: '10px 12px', border: '1.5px solid #000', borderRadius: 4 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                            <label style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                Caption Style Mode
-                                            </label>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 700, color: '#666' }}>
-                                                {videoMode === 'teleprompter' ? 'Word-by-word active tracking' : videoMode === 'kinetic-pop' ? 'Kinetic scale bounce with outline' : 'Clean lower-third, silent during pauses'}
-                                            </span>
+                                    {/* Transport & scrubber bar */}
+                                    <div
+                                        className="tool-transport-bar"
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px 12px',
+                                            border: '2px solid #000',
+                                            background: '#f4f4f5',
+                                            borderRadius: 4,
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: 10,
+                                        }}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={toggleOverlayPlayback}
+                                            className="brutalist-button"
+                                            style={{ padding: '6px 10px' }}
+                                            aria-label={overlayPlaying ? 'Pause' : 'Play'}
+                                        >
+                                            {overlayPlaying ? <Pause size={14} /> : <Play size={14} />}
+                                        </button>
+
+                                        <div style={{ flex: 1, minWidth: 120 }}>
+                                            <TactileScrubber
+                                                value={overlayCurrentTime}
+                                                min={0}
+                                                max={audioDuration || (cues.length > 0 ? cues[cues.length - 1].end : 10)}
+                                                step={0.05}
+                                                stepDelta={0.5}
+                                                height={14}
+                                                showSteppers={false}
+                                                onChange={(t) => {
+                                                    setOverlayCurrentTime(t);
+                                                    if (overlayAudioRef.current) {
+                                                        overlayAudioRef.current.currentTime = t;
+                                                    }
+                                                }}
+                                            />
                                         </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+
+                                        <span
+                                            style={{
+                                                fontSize: '0.66rem',
+                                                fontFamily: 'monospace',
+                                                fontWeight: 900,
+                                                color: '#000',
+                                                background: '#FFE500',
+                                                padding: '1px 5px',
+                                                border: '1.5px solid #000',
+                                                borderRadius: 3,
+                                                minWidth: 52,
+                                                textAlign: 'center',
+                                                fontVariantNumeric: 'tabular-nums',
+                                            }}
+                                        >
+                                            {overlayCurrentTime.toFixed(1)}s
+                                        </span>
+                                    </div>
+
+                                    {/* Caption style & font */}
+                                    <div
+                                        style={{
+                                            border: '2px solid #000',
+                                            borderRadius: 4,
+                                            background: '#f4f4f5',
+                                            padding: '12px 14px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 10,
+                                        }}
+                                    >
+                                        <span style={BRUT_LABEL}>Caption style</span>
+                                        <div
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                                                gap: 6,
+                                            }}
+                                        >
                                             {[
-                                                { id: 'teleprompter', label: 'WORD HIGHLIGHT', desc: 'Teleprompter' },
-                                                { id: 'kinetic-pop', label: 'KINETIC POP', desc: 'Creator Shorts' },
-                                                { id: 'minimal', label: 'MINIMAL SUBTITLES', desc: 'TV & Film' },
+                                                { id: 'teleprompter', label: 'Highlight', desc: 'Teleprompter' },
+                                                { id: 'kinetic-pop', label: 'Kinetic pop', desc: 'Shorts' },
+                                                { id: 'minimal', label: 'Minimal', desc: 'TV & film' },
                                             ].map((m) => (
                                                 <button
                                                     key={m.id}
@@ -2287,15 +1707,15 @@ export default function CaptionsPage() {
                                                     onClick={() => setVideoMode(m.id as CaptionVideoMode)}
                                                     style={{
                                                         padding: '8px 4px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.68rem',
+                                                        border: '2px solid #000',
+                                                        background: videoMode === m.id ? '#000' : '#fff',
+                                                        color: videoMode === m.id ? '#FFE500' : '#000',
+                                                        fontFamily: 'monospace, system-ui, sans-serif',
                                                         fontWeight: 900,
-                                                        background: videoMode === m.id ? '#FFE500' : '#fff',
-                                                        color: '#000',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 3,
+                                                        fontSize: '0.66rem',
                                                         cursor: 'pointer',
-                                                        boxShadow: videoMode === m.id ? '2px 2px 0 #000' : 'none',
+                                                        textTransform: 'uppercase',
+                                                        textAlign: 'center',
                                                         display: 'flex',
                                                         flexDirection: 'column',
                                                         alignItems: 'center',
@@ -2303,1172 +1723,759 @@ export default function CaptionsPage() {
                                                     }}
                                                 >
                                                     <span>{m.label}</span>
-                                                    <span style={{ fontSize: '0.58rem', fontWeight: 600, color: '#555' }}>{m.desc}</span>
+                                                    <span style={{ fontSize: '0.58rem', fontWeight: 700, opacity: 0.65 }}>{m.desc}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {(POPULAR_OVERLAY_FONTS || DEFAULT_OVERLAY_FONTS).map((f) => (
+                                                <button
+                                                    key={f.id}
+                                                    type="button"
+                                                    onClick={() => setCaptionFont(f.id)}
+                                                    style={{
+                                                        ...brutChip(captionFont === f.id),
+                                                        fontFamily: f.family,
+                                                        textTransform: 'none',
+                                                    }}
+                                                >
+                                                    {f.name}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
 
-                                    {/* Typography & Position Controls Suite */}
-                                    <div style={{ background: '#f4f4f5', padding: '10px 12px', border: '1.5px solid #000', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                Typography & Positioning
-                                            </span>
-                                        </div>
-
-                                        {/* Font Family Selector */}
-                                        <div>
-                                            <label style={{ fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                                                Font Family
-                                            </label>
-                                            <div style={{ display: 'flex', overflowX: 'auto', gap: 6, paddingBottom: 6 }}>
-                                                {(POPULAR_OVERLAY_FONTS || DEFAULT_OVERLAY_FONTS).map((f) => (
-                                                    <button
-                                                        key={f.id}
-                                                        type="button"
-                                                        onClick={() => setCaptionFont(f.id)}
-                                                        style={{
-                                                            padding: '5px 8px',
-                                                            fontFamily: f.family,
-                                                            fontSize: '0.68rem',
-                                                            fontWeight: 900,
-                                                            background: captionFont === f.id ? '#FFE500' : '#fff',
-                                                            color: '#000',
-                                                            border: '1.5px solid #000',
-                                                            borderRadius: 3,
-                                                            cursor: 'pointer',
-                                                            whiteSpace: 'nowrap',
-                                                            flexShrink: 0,
-                                                        }}
-                                                        title={f.name}
-                                                    >
-                                                        {f.name}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* Emoji Mode Toggle */}
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '6px 10px', border: '1.5px solid #000', borderRadius: 4 }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                    Emoji Mode
-                                                </span>
-                                                <span style={{ fontFamily: 'monospace', fontSize: '0.58rem', fontWeight: 700, color: '#666' }}>
-                                                    Auto-inject emojis for common words
-                                                </span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setEmojiMode(!emojiMode)}
-                                                style={{
-                                                    width: 40,
-                                                    height: 22,
-                                                    background: emojiMode ? '#22c55e' : '#e5e7eb',
-                                                    border: '1.5px solid #000',
-                                                    borderRadius: 12,
-                                                    position: 'relative',
-                                                    cursor: 'pointer',
-                                                    transition: 'background 0.2s',
-                                                }}
-                                            >
-                                                <div
+                                    {/* Pill, colors & layout */}
+                                    <div
+                                        style={{
+                                            border: '2px solid #000',
+                                            borderRadius: 4,
+                                            background: '#f4f4f5',
+                                            padding: '12px 14px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 10,
+                                        }}
+                                    >
+                                        <span style={BRUT_LABEL}>Pill background</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                                            {(
+                                                [
+                                                    { id: 'clear', label: 'Clear' },
+                                                    { id: 'dark', label: 'Dark' },
+                                                    { id: 'light', label: 'Light' },
+                                                    { id: 'custom', label: 'Custom' },
+                                                ] as { id: CaptionPillBackground; label: string }[]
+                                            ).map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => setCaptionPillBg(p.id)}
+                                                    style={brutChip(captionPillBg === p.id)}
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                            {captionPillBg === 'custom' && (
+                                                <input
+                                                    type="color"
+                                                    value={captionPillCustomColor}
+                                                    onChange={(e) => setCaptionPillCustomColor(e.target.value)}
+                                                    aria-label="Custom pill color"
                                                     style={{
-                                                        width: 14,
-                                                        height: 14,
+                                                        width: 32,
+                                                        height: 32,
+                                                        padding: 1,
+                                                        border: '2px solid #000',
+                                                        borderRadius: 4,
                                                         background: '#fff',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: '50%',
-                                                        position: 'absolute',
-                                                        top: 2,
-                                                        left: emojiMode ? 20 : 2,
-                                                        transition: 'left 0.2s',
+                                                        cursor: 'pointer',
                                                     }}
                                                 />
-                                            </button>
-                                        </div>
-
-                                        {/* Caption Pill Background Selector */}
-                                        <div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                                <label style={{ fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                    Caption Pill Background
-                                                </label>
-                                                <span style={{ fontFamily: 'monospace', fontSize: '0.60rem', fontWeight: 700, color: '#666' }}>
-                                                    {captionPillBg === 'clear' ? 'Transparent (Floating text)' : captionPillBg === 'dark' ? 'Onyx Dark Pill' : captionPillBg === 'light' ? 'Snow White Pill' : 'Custom'}
-                                                </span>
-                                            </div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                                                {[
-                                                    { id: 'clear', label: 'CLEAR', desc: 'No Pill' },
-                                                    { id: 'dark', label: 'DARK', desc: 'Onyx' },
-                                                    { id: 'light', label: 'LIGHT', desc: 'Snow' },
-                                                    { id: 'custom', label: 'CUSTOM', desc: 'Hex' },
-                                                ].map((p) => (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => setCaptionPillBg(p.id as CaptionPillBackground)}
-                                                        style={{
-                                                            padding: '5px 2px',
-                                                            fontFamily: 'monospace',
-                                                            fontSize: '0.66rem',
-                                                            fontWeight: 900,
-                                                            background: captionPillBg === p.id ? '#FFE500' : '#fff',
-                                                            color: '#000',
-                                                            border: '1.5px solid #000',
-                                                            borderRadius: 3,
-                                                            cursor: 'pointer',
-                                                            boxShadow: captionPillBg === p.id ? '2px 2px 0 #000' : 'none',
-                                                            display: 'flex',
-                                                            flexDirection: 'column',
-                                                            alignItems: 'center',
-                                                            gap: 1,
-                                                        }}
-                                                    >
-                                                        <span>{p.label}</span>
-                                                        <span style={{ fontSize: '0.54rem', fontWeight: 600, color: '#555' }}>{p.desc}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {captionPillBg === 'custom' && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, background: '#fff', padding: '4px 6px', border: '1.5px solid #000', borderRadius: 3 }}>
-                                                    <input
-                                                        type="color"
-                                                        value={captionPillCustomColor}
-                                                        onChange={(e) => setCaptionPillCustomColor(e.target.value)}
-                                                        style={{ width: 24, height: 24, border: '1.5px solid #000', borderRadius: 3, cursor: 'pointer', padding: 0 }}
-                                                        title="Pick custom pill color"
-                                                    />
-                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 800 }}>
-                                                        Pill Fill: {captionPillCustomColor}
-                                                    </span>
-                                                </div>
                                             )}
                                         </div>
 
-                                        {/* Tactile Sliders Grid: Font Size, Letter Spacing, Vertical Position */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-                                            {/* Font Size */}
+                                        <span style={BRUT_LABEL}>Highlight color</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                                            {['#FFE500', '#22C55E', '#06B6D4', '#EC4899', '#F97316', '#FFFFFF'].map((c) => (
+                                                <button
+                                                    key={c}
+                                                    type="button"
+                                                    onClick={() => setOverlayColor(c)}
+                                                    aria-label={`Highlight ${c}`}
+                                                    style={{
+                                                        width: 30,
+                                                        height: 30,
+                                                        padding: 0,
+                                                        backgroundColor: c,
+                                                        border: overlayColor === c ? '3px solid #000' : '2px solid #ccc',
+                                                        boxShadow: overlayColor === c ? '2px 2px 0 #000' : 'none',
+                                                        cursor: 'pointer',
+                                                        transform: overlayColor === c ? 'scale(1.1)' : 'none',
+                                                        borderRadius: 0,
+                                                    }}
+                                                />
+                                            ))}
+                                            <input
+                                                type="color"
+                                                value={overlayColor}
+                                                onChange={(e) => setOverlayColor(e.target.value)}
+                                                aria-label="Custom highlight color"
+                                                style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    padding: 1,
+                                                    border: '2px solid #000',
+                                                    borderRadius: 4,
+                                                    background: '#fff',
+                                                    cursor: 'pointer',
+                                                }}
+                                            />
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                                                gap: '10px 14px',
+                                                paddingTop: 4,
+                                            }}
+                                        >
                                             <TactileScrubber
                                                 label="Size"
                                                 value={captionFontSize}
                                                 min={24}
                                                 max={84}
                                                 step={2}
-                                                stepDelta={2}
-                                                height={12}
-                                                fillColor="#FFE500"
-                                                showSteppers={false}
-                                                formatValue={(v) => `${v}px`}
                                                 onChange={setCaptionFontSize}
+                                                presets={[
+                                                    { label: 'S', value: 24 },
+                                                    { label: 'M ★', value: 48 },
+                                                    { label: 'L', value: 84 },
+                                                ]}
                                             />
-
-                                            {/* Letter Spacing */}
                                             <TactileScrubber
                                                 label="Spacing"
                                                 value={captionLetterSpacing}
                                                 min={-2}
                                                 max={8}
                                                 step={1}
-                                                stepDelta={1}
-                                                height={12}
-                                                fillColor="#FFE500"
-                                                showSteppers={false}
-                                                formatValue={(v) => `${v}px`}
                                                 onChange={setCaptionLetterSpacing}
                                             />
-
-                                            {/* Vertical Position */}
                                             <TactileScrubber
-                                                label="Vertical Y"
+                                                label="Vertical"
                                                 value={captionYPosition}
                                                 min={15}
                                                 max={88}
                                                 step={1}
-                                                stepDelta={2}
-                                                height={12}
-                                                fillColor="#FFE500"
-                                                showSteppers={false}
                                                 formatValue={(v) => `${v}%`}
                                                 onChange={setCaptionYPosition}
                                             />
                                         </div>
-
-                                        {/* Dynamic Animation & Physics Engine Controls */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#fff', padding: '8px 10px', border: '1.5px solid #000', borderRadius: 4 }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                    Animation & Dynamic Physics
-                                                </span>
-                                            </div>
-
-                                            {/* Spring Physics Switch */}
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900 }}>
-                                                        Spring Physics Bounce
-                                                    </span>
-                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.56rem', color: '#666' }}>
-                                                        Dynamic overshoot & settle curves on active words
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSpringPhysics(!springPhysics)}
-                                                    style={{
-                                                        width: 36,
-                                                        height: 20,
-                                                        background: springPhysics ? '#22c55e' : '#e5e7eb',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 10,
-                                                        position: 'relative',
-                                                        cursor: 'pointer',
-                                                        transition: 'background 0.2s',
-                                                    }}
-                                                >
-                                                    <div
-                                                        style={{
-                                                            width: 12,
-                                                            height: 12,
-                                                            background: '#fff',
-                                                            border: '1px solid #000',
-                                                            borderRadius: '50%',
-                                                            position: 'absolute',
-                                                            top: 2,
-                                                            left: springPhysics ? 18 : 2,
-                                                            transition: 'left 0.2s',
-                                                        }}
-                                                    />
-                                                </button>
-                                            </div>
-
-                                            {/* Bounce Intensity Scrubber */}
-                                            {springPhysics && (
-                                                <TactileScrubber
-                                                    label="Bounce Power"
-                                                    value={bounceIntensity}
-                                                    min={0.5}
-                                                    max={2.5}
-                                                    step={0.1}
-                                                    stepDelta={0.1}
-                                                    height={12}
-                                                    fillColor="#FFE500"
-                                                    showSteppers={false}
-                                                    formatValue={(v) => `${v.toFixed(1)}x`}
-                                                    onChange={setBounceIntensity}
-                                                />
-                                            )}
-
-                                            {/* Word Rotation Tilt & Text Shadow & Uppercase Row */}
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, paddingTop: 4, borderTop: '1px solid #e5e7eb' }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setWordRotation(!wordRotation)}
-                                                    style={{
-                                                        padding: '5px 4px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.62rem',
-                                                        fontWeight: 900,
-                                                        background: wordRotation ? '#FFE500' : '#f4f4f5',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 3,
-                                                        cursor: 'pointer',
-                                                        textAlign: 'center',
-                                                    }}
-                                                >
-                                                    ROTATION TILT
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTextShadow(!textShadow)}
-                                                    style={{
-                                                        padding: '5px 4px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.62rem',
-                                                        fontWeight: 900,
-                                                        background: textShadow ? '#FFE500' : '#f4f4f5',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 3,
-                                                        cursor: 'pointer',
-                                                        textAlign: 'center',
-                                                    }}
-                                                >
-                                                    DROP SHADOW
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setUppercase(!uppercase)}
-                                                    style={{
-                                                        padding: '5px 4px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.62rem',
-                                                        fontWeight: 900,
-                                                        background: uppercase ? '#FFE500' : '#f4f4f5',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 3,
-                                                        cursor: 'pointer',
-                                                        textAlign: 'center',
-                                                    }}
-                                                >
-                                                    ALL CAPS
-                                                </button>
-                                            </div>
-                                        </div>
                                     </div>
 
-                                    {/* Highlighter Color & Aspect Ratio Grid */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-                                        {/* Highlight Color Picker */}
-                                        <div style={{ background: '#f4f4f5', padding: '8px 10px', border: '1.5px solid #000', borderRadius: 4 }}>
-                                            <label style={{ fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                                                Highlighter Color
-                                            </label>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                                {[
-                                                    { color: '#FFE500', name: 'Yellow' },
-                                                    { color: '#22C55E', name: 'Neon Green' },
-                                                    { color: '#06B6D4', name: 'Cyan' },
-                                                    { color: '#EC4899', name: 'Pink' },
-                                                    { color: '#F97316', name: 'Orange' },
-                                                    { color: '#FFFFFF', name: 'White' },
-                                                ].map((swatch) => (
-                                                    <button
-                                                        key={swatch.color}
-                                                        type="button"
-                                                        title={swatch.name}
-                                                        onClick={() => setOverlayColor(swatch.color)}
-                                                        style={{
-                                                            width: 22,
-                                                            height: 22,
-                                                            borderRadius: '50%',
-                                                            background: swatch.color,
-                                                            border: overlayColor === swatch.color ? '2.5px solid #000' : '1.5px solid #888',
-                                                            cursor: 'pointer',
-                                                            boxShadow: overlayColor === swatch.color ? '0 0 0 1.5px #FFE500' : 'none',
-                                                        }}
-                                                    />
-                                                ))}
-                                                <input
-                                                    type="color"
-                                                    value={overlayColor}
-                                                    onChange={(e) => setOverlayColor(e.target.value)}
-                                                    style={{ width: 26, height: 26, border: '1.5px solid #000', borderRadius: 3, cursor: 'pointer', padding: 0 }}
-                                                    title="Custom color"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Aspect Ratio */}
-                                        <div style={{ background: '#f4f4f5', padding: '8px 10px', border: '1.5px solid #000', borderRadius: 4 }}>
-                                            <label style={{ fontFamily: 'monospace', fontSize: '0.65rem', fontWeight: 900, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                                                Aspect Ratio
-                                            </label>
-                                            <div style={{ display: 'flex', gap: 4 }}>
-                                                {[
-                                                    { id: '9:16', label: '9:16 Shorts' },
-                                                    { id: '16:9', label: '16:9 Landscape' },
-                                                ].map((ar) => (
-                                                    <button
-                                                        key={ar.id}
-                                                        type="button"
-                                                        onClick={() => setOverlayAspectRatio(ar.id as VideoAspectRatio)}
-                                                        style={{
-                                                            flex: 1,
-                                                            padding: '5px 2px',
-                                                            fontFamily: 'monospace',
-                                                            fontSize: '0.66rem',
-                                                            fontWeight: 900,
-                                                            background: overlayAspectRatio === ar.id ? '#FFE500' : '#fff',
-                                                            border: '1.5px solid #000',
-                                                            borderRadius: 3,
-                                                            cursor: 'pointer',
-                                                        }}
-                                                    >
-                                                        {ar.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Video Overlay Export Section */}
+                                    {/* Motion & effects */}
                                     <div
                                         style={{
-                                            padding: '12px',
-                                            background: '#fff',
                                             border: '2px solid #000',
                                             borderRadius: 4,
-                                            boxShadow: '2px 2px 0 #000',
+                                            background: '#f4f4f5',
+                                            padding: '12px 14px',
                                             display: 'flex',
                                             flexDirection: 'column',
+                                            gap: 10,
+                                        }}
+                                    >
+                                        <span style={BRUT_LABEL}>Motion & effects</span>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px 14px' }}>
+                                            {(
+                                                [
+                                                    ['Spring bounce', springPhysics, setSpringPhysics],
+                                                    ['Rotation tilt', wordRotation, setWordRotation],
+                                                    ['Drop shadow', textShadow, setTextShadow],
+                                                    ['All caps', uppercase, setUppercase],
+                                                    ['Emoji mode', emojiMode, setEmojiMode],
+                                                ] as [string, boolean, (v: boolean) => void][]
+                                            ).map(([label, value, setter]) => (
+                                                <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                                    <label style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', cursor: 'pointer' }}>
+                                                        {label}
+                                                    </label>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={value}
+                                                        onChange={(e) => setter(e.target.checked)}
+                                                        style={{ width: 16, height: 16, accentColor: '#000', cursor: 'pointer', flexShrink: 0 }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {springPhysics && (
+                                            <TactileScrubber
+                                                label="Bounce power"
+                                                value={bounceIntensity}
+                                                min={0.5}
+                                                max={2.5}
+                                                step={0.1}
+                                                onChange={setBounceIntensity}
+                                                presets={[
+                                                    { label: 'Soft', value: 0.8 },
+                                                    { label: 'Punch ★', value: 1.15 },
+                                                    { label: 'Wild', value: 2.0 },
+                                                ]}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* Export */}
+                                    <div
+                                        className="tool-aspect-bar"
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            flexWrap: 'wrap',
                                             gap: 8,
                                         }}
                                     >
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, textTransform: 'uppercase' }}>
-                                                EXPORT VIDEO OVERLAY (DROP ON TRACK V2)
-                                            </span>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 700, color: '#666' }}>
-                                                {overlayAspectRatio} · 1080p · Client-side
-                                            </span>
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                            {(['9:16', '16:9'] as VideoAspectRatio[]).map((ar) => (
+                                                <button
+                                                    key={ar}
+                                                    type="button"
+                                                    onClick={() => setOverlayAspectRatio(ar)}
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        border: '2px solid #000',
+                                                        borderRadius: 4,
+                                                        background: overlayAspectRatio === ar ? '#000' : '#ffffff',
+                                                        color: overlayAspectRatio === ar ? '#ffffff' : '#000000',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.68rem',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                    }}
+                                                >
+                                                    {ar}
+                                                </button>
+                                            ))}
+                                            {(
+                                                [
+                                                    { id: 'transparent' as VideoBackgroundMode, label: 'Transparent' },
+                                                    { id: 'green-screen' as VideoBackgroundMode, label: 'Green' },
+                                                ]
+                                            ).map((bg) => (
+                                                <button
+                                                    key={bg.id}
+                                                    type="button"
+                                                    onClick={() => setOverlayBackground(bg.id)}
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        border: '2px solid #000',
+                                                        borderRadius: 4,
+                                                        background: overlayBackground === bg.id ? '#000' : '#ffffff',
+                                                        color: overlayBackground === bg.id ? '#FFE500' : '#000000',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.68rem',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                    }}
+                                                >
+                                                    {bg.label}
+                                                </button>
+                                            ))}
                                         </div>
-
-                                        {isRenderingVideo ? (
-                                            <TactileProgressBar
-                                                percent={videoRenderProgress}
-                                                label="Rendering video overlay..."
-                                            />
-                                        ) : (
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleExportOverlayVideo('transparent')}
-                                                    style={{
-                                                        background: '#FFE500',
-                                                        color: '#000',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.74rem',
-                                                        fontWeight: 900,
-                                                        padding: '10px 8px',
-                                                        border: '2px solid #000',
-                                                        borderRadius: 4,
-                                                        boxShadow: '2px 2px 0 #000',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: 6,
-                                                    }}
-                                                >
-                                                    <Download size={14} strokeWidth={2.5} />
-                                                    <span>TRANSPARENT VIDEO (.WEBM)</span>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleExportOverlayVideo('green-screen')}
-                                                    style={{
-                                                        background: '#fff',
-                                                        color: '#000',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.74rem',
-                                                        fontWeight: 900,
-                                                        padding: '10px 8px',
-                                                        border: '2px solid #000',
-                                                        borderRadius: 4,
-                                                        boxShadow: '2px 2px 0 #000',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: 6,
-                                                    }}
-                                                >
-                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', border: '1px solid #000' }} />
-                                                    <span>GREEN SCREEN (.MP4)</span>
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
+
+                                    {isRenderingVideo ? (
+                                        <BrutProgress percent={videoRenderProgress} label="RENDERING VIDEO" />
+                                    ) : (
+                                        <div
+                                            className="tool-export-grid"
+                                            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}
+                                        >
+                                            <button
+                                                type="button"
+                                                className="brutalist-button brutalist-button-primary"
+                                                onClick={() => handleExportOverlayVideo('transparent')}
+                                                disabled={cues.length === 0}
+                                                style={{ padding: '12px 18px', fontSize: '0.82rem', boxShadow: '4px 4px 0 #000' }}
+                                            >
+                                                <Download size={16} /> Export .webm
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                onClick={() => handleExportOverlayVideo('green-screen')}
+                                                disabled={cues.length === 0}
+                                                style={{ padding: '12px 18px', fontSize: '0.82rem', boxShadow: '4px 4px 0 #000' }}
+                                            >
+                                                Green screen .webm
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-                            {/* Bottom Metadata Strip */}
+                            {/* Deck switch */}
                             <div
+                                className="tool-aspect-bar"
                                 style={{
-                                    marginTop: 16,
+                                    width: '100%',
+                                    marginTop: 12,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
                                     flexWrap: 'wrap',
                                     gap: 8,
-                                    borderTop: '1.5px solid #e5e7eb',
-                                    paddingTop: 12,
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.72rem',
                                 }}
                             >
-                                <span style={{ color: '#000', fontWeight: 800 }}>
-                                    FILE: {file.name}
-                                </span>
-                                {!audioUrl && (
-                                    <span style={{ color: '#b45309', fontWeight: 800, background: '#fef3c7', padding: '1px 6px', border: '1px solid #d97706', borderRadius: 2 }}>
-                                        AUDIO NOT CACHED · RE-SELECT FILE TO PLAY
-                                    </span>
-                                )}
-                                <span
-                                    style={{
-                                        background: '#FFE500',
-                                        border: '1px solid #000',
-                                        padding: '1px 6px',
-                                        fontWeight: 800,
-                                        borderRadius: 2,
-                                    }}
-                                >
-                                    {cues.length} CUES
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right Column: Subtitle Export Suite & Cues List */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <div
-                            style={{
-                                background: '#fff',
-                                border: '2px solid #000',
-                                borderRadius: 4,
-                                boxShadow: '3px 3px 0 #000',
-                                padding: '16px 18px',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    marginBottom: 14,
-                                    borderBottom: '2px solid #000',
-                                    paddingBottom: 10,
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 900,
-                                        fontFamily: 'monospace',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.06em',
-                                    }}
-                                >
-                                    SUBTITLE EXPORT SUITE
-                                </span>
-
-                                <button
-                                    type="button"
-                                    onClick={handleCopy}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        background: copied ? '#FFE500' : '#fff',
-                                        border: '1.5px solid #000',
-                                        borderRadius: 3,
-                                        padding: '3px 8px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.7rem',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                        boxShadow: '1px 1px 0 #000',
-                                    }}
-                                >
-                                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                                    <span>{copied ? 'COPIED' : 'COPY TEXT'}</span>
-                                </button>
-                            </div>
-
-                            {/* Export Action Buttons */}
-                            <div
-                                style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(4, 1fr)',
-                                    gap: 6,
-                                    marginBottom: 10,
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadVtt}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 5,
-                                        background: '#FFE500',
-                                        color: '#000',
-                                        border: '2px solid #000',
-                                        borderRadius: 4,
-                                        padding: '8px 2px',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 900,
-                                        fontSize: '0.72rem',
-                                        cursor: 'pointer',
-                                        boxShadow: '2px 2px 0 #000',
-                                    }}
-                                >
-                                    <Download size={12} strokeWidth={2.5} />
-                                    <span>.VTT</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadSrt}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 5,
-                                        background: '#fff',
-                                        color: '#000',
-                                        border: '2px solid #000',
-                                        borderRadius: 4,
-                                        padding: '8px 2px',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 900,
-                                        fontSize: '0.72rem',
-                                        cursor: 'pointer',
-                                        boxShadow: '2px 2px 0 #000',
-                                    }}
-                                >
-                                    <Download size={12} strokeWidth={2.5} />
-                                    <span>.SRT</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadTxt}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 5,
-                                        background: '#fff',
-                                        color: '#000',
-                                        border: '2px solid #000',
-                                        borderRadius: 4,
-                                        padding: '8px 2px',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 900,
-                                        fontSize: '0.72rem',
-                                        cursor: 'pointer',
-                                        boxShadow: '2px 2px 0 #000',
-                                    }}
-                                >
-                                    <FileText size={12} strokeWidth={2.5} />
-                                    <span>.TXT</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadJsonProject}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 5,
-                                        background: '#fff',
-                                        color: '#000',
-                                        border: '2px solid #000',
-                                        borderRadius: 4,
-                                        padding: '8px 2px',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 900,
-                                        fontSize: '0.72rem',
-                                        cursor: 'pointer',
-                                        boxShadow: '2px 2px 0 #000',
-                                    }}
-                                    title="Export complete caption & style project data"
-                                >
-                                    <Sliders size={12} strokeWidth={2.5} />
-                                    <span>.JSON</span>
-                                </button>
-                            </div>
-
-                            {/* Embed Metadata & Audio Bundle Export */}
-                            <button
-                                type="button"
-                                onClick={handleDownloadWithEmbeddedMetadata}
-                                style={{
-                                    width: '100%',
-                                    marginBottom: 14,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 6,
-                                    background: '#f4f4f5',
-                                    color: '#000',
-                                    border: '1.5px solid #000',
-                                    borderRadius: 3,
-                                    padding: '7px 10px',
-                                    fontFamily: 'monospace',
-                                    fontWeight: 900,
-                                    fontSize: '0.7rem',
-                                    cursor: 'pointer',
-                                }}
-                                title="Download media with script metadata embedded inside for other CreatorKit tools"
-                            >
-                                <Sparkles size={13} strokeWidth={2.5} />
-                                <span>EXPORT MEDIA WITH EMBEDDED METADATA</span>
-                            </button>
-
-                            {/* View Switcher Tabs */}
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    borderBottom: '1.5px solid #000',
-                                    marginBottom: 10,
-                                    gap: 6,
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('cues')}
-                                    style={{
-                                        padding: '4px 10px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 900,
-                                        borderTop: '2px solid #000',
-                                        borderLeft: '2px solid #000',
-                                        borderRight: '2px solid #000',
-                                        borderBottom: activeTab === 'cues' ? '2px solid #fff' : 'none',
-                                        marginBottom: activeTab === 'cues' ? -2 : 0,
-                                        background: activeTab === 'cues' ? '#fff' : '#e5e7eb',
-                                        cursor: 'pointer',
-                                        borderRadius: '3px 3px 0 0',
-                                    }}
-                                >
-                                    CUES ({cues.length})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('text')}
-                                    style={{
-                                        padding: '4px 10px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 900,
-                                        borderTop: '2px solid #000',
-                                        borderLeft: '2px solid #000',
-                                        borderRight: '2px solid #000',
-                                        borderBottom: activeTab === 'text' ? '2px solid #fff' : 'none',
-                                        marginBottom: activeTab === 'text' ? -2 : 0,
-                                        background: activeTab === 'text' ? '#fff' : '#e5e7eb',
-                                        cursor: 'pointer',
-                                        borderRadius: '3px 3px 0 0',
-                                    }}
-                                >
-                                    PLAIN TRANSCRIPT
-                                </button>
-                            </div>
-
-                            {/* Content Body */}
-                            {activeTab === 'cues' ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {/* Cues Editing Toolbar */}
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            flexWrap: 'wrap',
-                                            gap: 6,
-                                            padding: '6px 8px',
-                                            background: '#f4f4f5',
-                                            border: '1.5px solid #000',
-                                            borderRadius: 3,
-                                        }}
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <button
+                                        type="button"
+                                        style={brutChip(activeStudioDeck === 'cassette')}
+                                        onClick={() => setActiveStudioDeck('cassette')}
                                     >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <button
-                                                type="button"
-                                                onClick={handleAddCue}
-                                                style={{
-                                                    padding: '3px 7px',
-                                                    background: '#FFE500',
-                                                    border: '1.5px solid #000',
-                                                    borderRadius: 2,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.64rem',
-                                                    fontWeight: 900,
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                + ADD CUE
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowFindReplace(!showFindReplace)}
-                                                style={{
-                                                    padding: '3px 7px',
-                                                    background: showFindReplace ? '#000' : '#fff',
-                                                    color: showFindReplace ? '#FFE500' : '#000',
-                                                    border: '1.5px solid #000',
-                                                    borderRadius: 2,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.64rem',
-                                                    fontWeight: 900,
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                FIND & REPLACE
-                                            </button>
-                                        </div>
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.58rem', fontWeight: 800, color: '#666' }}>
-                                                NUDGE ALL:
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleBulkShift(-0.2)}
-                                                style={{
-                                                    padding: '2px 5px',
-                                                    background: '#fff',
-                                                    border: '1px solid #000',
-                                                    borderRadius: 2,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.6rem',
-                                                    fontWeight: 900,
-                                                    cursor: 'pointer',
-                                                }}
-                                                title="Shift all cues -0.2s earlier"
-                                            >
-                                                -0.2s
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleBulkShift(0.2)}
-                                                style={{
-                                                    padding: '2px 5px',
-                                                    background: '#fff',
-                                                    border: '1px solid #000',
-                                                    borderRadius: 2,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.6rem',
-                                                    fontWeight: 900,
-                                                    cursor: 'pointer',
-                                                }}
-                                                title="Shift all cues +0.2s later"
-                                            >
-                                                +0.2s
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Find & Replace Strip */}
-                                    {showFindReplace && (
-                                        <div
-                                            style={{
-                                                padding: '8px 10px',
-                                                background: '#fef3c7',
-                                                border: '1.5px solid #d97706',
-                                                borderRadius: 3,
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: 6,
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', gap: 6 }}>
-                                                <input
-                                                    type="text"
-                                                    value={findQuery}
-                                                    onChange={(e) => setFindQuery(e.target.value)}
-                                                    placeholder="Find text..."
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '4px 6px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.72rem',
-                                                        border: '1px solid #000',
-                                                        borderRadius: 2,
-                                                    }}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={replaceQuery}
-                                                    onChange={(e) => setReplaceQuery(e.target.value)}
-                                                    placeholder="Replace with..."
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '4px 6px',
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.72rem',
-                                                        border: '1px solid #000',
-                                                        borderRadius: 2,
-                                                    }}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleExecuteFindReplace}
-                                                    style={{
-                                                        padding: '4px 8px',
-                                                        background: '#000',
-                                                        color: '#FFE500',
-                                                        border: '1px solid #000',
-                                                        borderRadius: 2,
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 900,
-                                                        cursor: 'pointer',
-                                                    }}
-                                                >
-                                                    REPLACE ALL
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Cues Scrollable List */}
-                                    <div
-                                        style={{
-                                            maxHeight: 460,
-                                            overflowY: 'auto',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: 8,
-                                            paddingRight: 4,
-                                        }}
+                                        Player
+                                    </button>
+                                    <button
+                                        type="button"
+                                        style={brutChip(activeStudioDeck === 'overlay')}
+                                        onClick={() => setActiveStudioDeck('overlay')}
                                     >
-                                        {cues.length > 0 ? (
-                                            cues.map((cue, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    style={{
-                                                        background: '#fafafa',
-                                                        border: '1.5px solid #000',
-                                                        borderRadius: 3,
-                                                        padding: '8px 10px',
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        gap: 6,
-                                                    }}
-                                                >
-                                                    <div
-                                                        style={{
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'center',
-                                                            fontFamily: 'monospace',
-                                                            fontSize: '0.68rem',
-                                                            fontWeight: 800,
-                                                            flexWrap: 'wrap',
-                                                            gap: 6,
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                            <span style={{ color: '#000', fontWeight: 900 }}>
-                                                                #{String(idx + 1).padStart(2, '0')}
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleSeekToTime(cue.start)}
-                                                                style={{
-                                                                    background: '#FFE500',
-                                                                    padding: '2px 6px',
-                                                                    border: '1px solid #000',
-                                                                    borderRadius: 2,
-                                                                    fontFamily: 'monospace',
-                                                                    fontSize: '0.68rem',
-                                                                    fontWeight: 900,
-                                                                    cursor: 'pointer',
-                                                                }}
-                                                                title="Click to jump audio to this cue"
-                                                            >
-                                                                ▶ {formatVttTimestamp(cue.start)} → {formatVttTimestamp(cue.end)}
-                                                            </button>
-                                                        </div>
-
-                                                        {/* Micro-nudging Steppers for Start & End */}
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                            <span style={{ fontSize: '0.58rem', color: '#666' }}>START:</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNudgeCue(idx, 'start', -0.1)}
-                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
-                                                            >
-                                                                -0.1
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNudgeCue(idx, 'start', 0.1)}
-                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
-                                                            >
-                                                                +0.1
-                                                            </button>
-
-                                                            <span style={{ fontSize: '0.58rem', color: '#666', marginLeft: 4 }}>END:</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNudgeCue(idx, 'end', -0.1)}
-                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
-                                                            >
-                                                                -0.1
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleNudgeCue(idx, 'end', 0.1)}
-                                                                style={{ padding: '1px 4px', background: '#fff', border: '1px solid #000', borderRadius: 2, cursor: 'pointer', fontSize: '0.58rem', fontWeight: 900 }}
-                                                            >
-                                                                +0.1
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Editable Text Area for each Cue */}
-                                                    <textarea
-                                                        value={cue.text}
-                                                        onChange={(e) => handleUpdateCueText(idx, e.target.value)}
-                                                        rows={2}
-                                                        style={{
-                                                            width: '100%',
-                                                            fontFamily: 'inherit',
-                                                            fontSize: '0.82rem',
-                                                            fontWeight: 600,
-                                                            lineHeight: 1.4,
-                                                            padding: '6px 8px',
-                                                            border: '1px solid #000',
-                                                            borderRadius: 2,
-                                                            background: '#fff',
-                                                            color: '#000',
-                                                            resize: 'vertical',
-                                                            boxSizing: 'border-box',
-                                                        }}
-                                                    />
-
-                                                    {/* Cue Actions: Split, Merge, Delete */}
-                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleSplitCue(idx)}
-                                                            style={{
-                                                                padding: '2px 6px',
-                                                                background: '#fff',
-                                                                border: '1px solid #000',
-                                                                borderRadius: 2,
-                                                                fontFamily: 'monospace',
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 800,
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            title="Split into two cues"
-                                                        >
-                                                            ✂ SPLIT
-                                                        </button>
-
-                                                        {idx < cues.length - 1 && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleMergeWithNextCue(idx)}
-                                                                style={{
-                                                                    padding: '2px 6px',
-                                                                    background: '#fff',
-                                                                    border: '1px solid #000',
-                                                                    borderRadius: 2,
-                                                                    fontFamily: 'monospace',
-                                                                    fontSize: '0.6rem',
-                                                                    fontWeight: 800,
-                                                                    cursor: 'pointer',
-                                                                }}
-                                                                title="Merge with next cue"
-                                                            >
-                                                                🔗 MERGE NEXT
-                                                            </button>
-                                                        )}
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteCue(idx)}
-                                                            style={{
-                                                                padding: '2px 6px',
-                                                                background: '#fee2e2',
-                                                                color: '#b91c1c',
-                                                                border: '1px solid #b91c1c',
-                                                                borderRadius: 2,
-                                                                fontFamily: 'monospace',
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 800,
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            title="Delete this cue"
-                                                        >
-                                                            🗑 DELETE
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <p
-                                                style={{
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.75rem',
-                                                    color: '#777',
-                                                    textAlign: 'center',
-                                                    padding: '24px 0',
-                                                }}
-                                            >
-                                                No cues transcribed yet.
-                                            </p>
-                                        )}
-                                    </div>
+                                        Overlay studio
+                                    </button>
                                 </div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    <textarea
-                                        value={fullText}
-                                        onChange={(e) => {
-                                            setFullText(e.target.value);
-                                            try { localStorage.setItem(STORAGE_KEYS.FULL_TEXT, e.target.value); } catch {}
-                                        }}
-                                        style={{
-                                            width: '100%',
-                                            height: 380,
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.8rem',
-                                            lineHeight: 1.5,
-                                            padding: 10,
-                                            border: '1.5px solid #000',
-                                            borderRadius: 3,
-                                            background: '#fafafa',
-                                            color: '#000',
-                                            resize: 'none',
-                                            boxSizing: 'border-box',
-                                        }}
-                                        placeholder="Full transcript will display here... You can edit this text directly."
-                                    />
-                                    {cues.length > 0 && (
+                                <button
+                                    type="button"
+                                    className="brutalist-button"
+                                    style={{ fontSize: '0.68rem', padding: '5px 10px' }}
+                                    onClick={resetSession}
+                                >
+                                    New file
+                                </button>
+                            </div>
+
+                            {/* Script anchor */}
+                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                    <span style={BRUT_LABEL}>Script anchor (optional)</span>
+                                    {teleprompterScript && teleprompterScript.trim().length > 0 && (
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                if (!fullText.trim()) return;
-                                                const aligned = alignScriptWithAudioCues(cues, fullText.trim());
-                                                setCues(aligned);
-                                                const vtt = generateVtt(aligned);
-                                                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-                                                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(aligned)); } catch {}
-                                                setActiveTab('cues');
-                                            }}
-                                            style={{
-                                                padding: '8px 12px',
-                                                background: '#FFE500',
-                                                border: '2px solid #000',
-                                                borderRadius: 3,
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.74rem',
-                                                fontWeight: 900,
-                                                cursor: 'pointer',
-                                                boxShadow: '2px 2px 0 #000',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: 6,
-                                            }}
+                                            style={{ ...brutChip(!scriptAligned), fontSize: '0.62rem', padding: '4px 8px' }}
+                                            onClick={handleAlignWithTeleprompter}
+                                            disabled={scriptAligned}
                                         >
-                                            <Sparkles size={14} strokeWidth={2.5} />
-                                            <span>ALIGN EDITED TRANSCRIPT TO AUDIO TIMESTAMPS</span>
+                                            {scriptAligned ? '✓ Aligned' : 'Align timings'}
                                         </button>
                                     )}
                                 </div>
-                            )}
+                                <textarea
+                                    value={teleprompterScript || ''}
+                                    onChange={(e) => {
+                                        setTeleprompterScript(e.target.value);
+                                        localStorage.setItem('creatorkit_teleprompter_script', e.target.value);
+                                    }}
+                                    placeholder="Paste your script to instantly fix AI caption mistakes…"
+                                    style={{
+                                        ...BRUT_INPUT,
+                                        minHeight: 56,
+                                        resize: 'vertical',
+                                        fontFamily: 'inherit',
+                                    }}
+                                />
+                                {teleprompterScript && teleprompterScript.trim().length > 0 && (
+                                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#666' }}>
+                                        {teleprompterScript.trim().split(/\s+/).length} WORDS DETECTED
+                                    </span>
+                                )}
+                            </div>
                         </div>
+                    </div>
+
+                    {/* ── Right column: subtitle editor ── */}
+                    <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                        {/* Exports card */}
+                        <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <span style={BRUT_LABEL}>Subtitles</span>
+                                <button
+                                    type="button"
+                                    className="brutalist-button"
+                                    style={{ fontSize: '0.68rem', padding: '5px 10px' }}
+                                    onClick={handleCopy}
+                                >
+                                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                                    {copied ? 'Copied' : 'Copy'}
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                                {(
+                                    [
+                                        ['VTT', handleDownloadVtt],
+                                        ['SRT', handleDownloadSrt],
+                                        ['TXT', handleDownloadTxt],
+                                        ['JSON', handleDownloadJsonProject],
+                                    ] as [string, () => void][]
+                                ).map(([label, handler]) => (
+                                    <button
+                                        key={label}
+                                        type="button"
+                                        onClick={handler}
+                                        style={{
+                                            padding: '8px 4px',
+                                            border: '2px solid #000',
+                                            borderRadius: 4,
+                                            background: '#ffffff',
+                                            color: '#000',
+                                            fontFamily: 'monospace',
+                                            fontWeight: 900,
+                                            fontSize: '0.7rem',
+                                            cursor: 'pointer',
+                                            textTransform: 'uppercase',
+                                            boxShadow: '2px 2px 0 #000',
+                                        }}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                type="button"
+                                className="brutalist-button"
+                                style={{ fontSize: '0.7rem', padding: '8px 10px' }}
+                                onClick={handleDownloadWithEmbeddedMetadata}
+                            >
+                                <Download size={13} /> Embed metadata & download
+                            </button>
+                        </div>
+
+                        {/* Tab bar */}
+                        <div
+                            className="tool-tab-bar"
+                            style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)', overflow: 'hidden', borderRadius: 4 }}
+                        >
+                            {[
+                                { id: 'cues' as const, label: `Cues (${cues.length})` },
+                                { id: 'text' as const, label: 'Transcript' },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    style={{
+                                        flex: 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '10px 4px',
+                                        border: 'none',
+                                        background: activeTab === tab.id ? '#ffffff' : 'transparent',
+                                        color: activeTab === tab.id ? '#000000' : '#ffffff',
+                                        fontWeight: 900,
+                                        fontFamily: 'monospace',
+                                        fontSize: '0.68rem',
+                                        textTransform: 'uppercase',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* TAB 1: Cue editor */}
+                        {activeTab === 'cues' && (
+                            <div
+                                className="brutalist-card"
+                                style={{
+                                    padding: 16,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 12,
+                                    maxHeight: 'calc(100vh - 380px)',
+                                    overflowY: 'auto',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                                    <button
+                                        type="button"
+                                        className="brutalist-button"
+                                        style={{ fontSize: '0.68rem', padding: '5px 10px' }}
+                                        onClick={handleAddCue}
+                                    >
+                                        <Plus size={12} /> Add Cue
+                                    </button>
+                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        <button
+                                            type="button"
+                                            style={{ ...brutChip(false), fontSize: '0.62rem', padding: '4px 8px' }}
+                                            onClick={() => handleBulkShift(-0.2)}
+                                        >
+                                            −0.2s
+                                        </button>
+                                        <button
+                                            type="button"
+                                            style={{ ...brutChip(false), fontSize: '0.62rem', padding: '4px 8px' }}
+                                            onClick={() => handleBulkShift(0.2)}
+                                        >
+                                            +0.2s
+                                        </button>
+                                        <button
+                                            type="button"
+                                            style={{ ...brutChip(showFindReplace), fontSize: '0.62rem', padding: '4px 8px' }}
+                                            onClick={() => setShowFindReplace(!showFindReplace)}
+                                        >
+                                            Find & Replace
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {showFindReplace && (
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 6,
+                                            background: '#f4f4f5',
+                                            border: '2px solid #000',
+                                            borderRadius: 4,
+                                            padding: 10,
+                                        }}
+                                    >
+                                        <input
+                                            style={{ ...BRUT_INPUT, fontFamily: 'monospace', fontSize: '0.78rem' }}
+                                            placeholder="Find…"
+                                            value={findQuery}
+                                            onChange={(e) => setFindQuery(e.target.value)}
+                                        />
+                                        <input
+                                            style={{ ...BRUT_INPUT, fontFamily: 'monospace', fontSize: '0.78rem' }}
+                                            placeholder="Replace with…"
+                                            value={replaceQuery}
+                                            onChange={(e) => setReplaceQuery(e.target.value)}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="brutalist-button brutalist-button-primary"
+                                            style={{ fontSize: '0.68rem', padding: '6px 10px' }}
+                                            onClick={handleExecuteFindReplace}
+                                        >
+                                            Replace All
+                                        </button>
+                                    </div>
+                                )}
+
+                                {cues.length === 0 ? (
+                                    <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 700, color: '#888' }}>
+                                        NO CUES YET — ADD ONE MANUALLY OR RE-TRANSCRIBE.
+                                    </span>
+                                ) : (
+                                    cues.map((cue, index) => (
+                                        <div
+                                            key={`${cue.start}-${index}`}
+                                            style={{
+                                                padding: 12,
+                                                border: '1.5px solid #ccc',
+                                                background: '#ffffff',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 8,
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                                    <span
+                                                        style={{
+                                                            fontSize: '0.65rem',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            background: '#000',
+                                                            color: '#fff',
+                                                            padding: '2px 6px',
+                                                            flexShrink: 0,
+                                                        }}
+                                                    >
+                                                        #{index + 1}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSeekToTime(cue.start)}
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: 4,
+                                                            background: '#FFE500',
+                                                            border: '1.5px solid #000',
+                                                            borderRadius: 3,
+                                                            padding: '2px 6px',
+                                                            fontSize: '0.6rem',
+                                                            fontWeight: 900,
+                                                            fontFamily: 'monospace',
+                                                            color: '#000',
+                                                            cursor: 'pointer',
+                                                            fontVariantNumeric: 'tabular-nums',
+                                                            whiteSpace: 'nowrap',
+                                                        }}
+                                                        title="Jump to this cue"
+                                                    >
+                                                        ▶ {formatVttTimestamp(cue.start)} → {formatVttTimestamp(cue.end)}
+                                                    </button>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                                    {(
+                                                        [
+                                                            ['S−', () => handleNudgeCue(index, 'start', -0.1)],
+                                                            ['S+', () => handleNudgeCue(index, 'start', 0.1)],
+                                                            ['E−', () => handleNudgeCue(index, 'end', -0.1)],
+                                                            ['E+', () => handleNudgeCue(index, 'end', 0.1)],
+                                                        ] as [string, () => void][]
+                                                    ).map(([nudgeLabel, nudgeHandler]) => (
+                                                        <button
+                                                            key={nudgeLabel}
+                                                            type="button"
+                                                            onClick={nudgeHandler}
+                                                            style={{
+                                                                padding: '2px 6px',
+                                                                border: '1.5px solid #000',
+                                                                borderRadius: 3,
+                                                                background: '#fff',
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 900,
+                                                                fontSize: '0.6rem',
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            title="Nudge timing by 0.1s"
+                                                        >
+                                                            {nudgeLabel}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <textarea
+                                                value={cue.text}
+                                                onChange={(e) => handleUpdateCueText(index, e.target.value)}
+                                                style={{
+                                                    ...BRUT_INPUT,
+                                                    minHeight: 44,
+                                                    resize: 'vertical',
+                                                    fontFamily: 'inherit',
+                                                    fontSize: '0.82rem',
+                                                }}
+                                            />
+
+                                            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSplitCue(index)}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        padding: '3px 8px',
+                                                        border: '1.5px solid #000',
+                                                        borderRadius: 3,
+                                                        background: '#fff',
+                                                        color: '#000',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.6rem',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                    }}
+                                                >
+                                                    <Scissors size={11} /> Split
+                                                </button>
+                                                {index < cues.length - 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleMergeWithNextCue(index)}
+                                                        style={{
+                                                            padding: '3px 8px',
+                                                            border: '1.5px solid #000',
+                                                            borderRadius: 3,
+                                                            background: '#fff',
+                                                            color: '#000',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            fontSize: '0.6rem',
+                                                            cursor: 'pointer',
+                                                            textTransform: 'uppercase',
+                                                        }}
+                                                    >
+                                                        Merge Next
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteCue(index)}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        padding: '3px 8px',
+                                                        border: '1.5px solid #dc2626',
+                                                        borderRadius: 3,
+                                                        background: '#fff',
+                                                        color: '#dc2626',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.6rem',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                        marginLeft: 'auto',
+                                                    }}
+                                                >
+                                                    <Trash2 size={11} /> Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 2: Transcript */}
+                        {activeTab === 'text' && (
+                            <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <textarea
+                                    value={fullText}
+                                    onChange={(e) => setFullText(e.target.value)}
+                                    placeholder="Full transcript…"
+                                    style={{
+                                        ...BRUT_INPUT,
+                                        minHeight: 220,
+                                        resize: 'vertical',
+                                        fontFamily: 'inherit',
+                                        lineHeight: 1.55,
+                                        fontSize: '0.84rem',
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    className="brutalist-button"
+                                    style={{ fontSize: '0.72rem', padding: '9px 14px' }}
+                                    onClick={() => setCues(alignScriptWithAudioCues(cues, fullText))}
+                                    disabled={cues.length === 0 || fullText.trim().length === 0}
+                                >
+                                    Align edited transcript
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
+
         </div>
     );
 }

@@ -22,9 +22,10 @@ const toolPaths = [
   "/color-gradient",
   "/captions",
   "/auto-captions",
+  "/tree-qr",
 ];
 
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/tree-qr"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
