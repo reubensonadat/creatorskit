@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { QRMatrixResult } from './qr-matrix';
 
 export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
-export type SceneType = 'tree' | 'house' | 'avatar';
+export type SceneType = 'tree' | 'bonsai' | 'wisteria' | 'maple' | 'pine' | 'house' | 'avatar';
 
 export interface FoliagePalette {
     id: string;
@@ -510,11 +510,17 @@ export function buildDiorama(
             metalness: 0.01,
         });
 
-        // 1. Stately vertical trunk with horizontal bark ring segments (matching Image 1!)
-        const trunkHeight = 10.2;
-        const trunkRadiusBottom = 1.25;
-        const trunkRadiusTop = 0.58;
+        // 1. Species-aware trunk posture & height
+        const isBonsai = sceneType === 'bonsai';
+        const isWisteria = sceneType === 'wisteria';
+        const isPine = sceneType === 'pine';
+        const isMaple = sceneType === 'maple';
+
+        const trunkHeight = isBonsai ? 8.2 : isPine ? 11.2 : isWisteria ? 9.5 : 10.2;
+        const trunkRadiusBottom = isBonsai ? 1.55 : 1.25;
+        const trunkRadiusTop = isBonsai ? 0.45 : 0.58;
         const trunkSegments = 10;
+        const wobbleIntensity = isBonsai ? 0.42 : 0.16;
 
         let prevPoint = new THREE.Vector3(0, 0.14, 0);
         const trunkKnots: THREE.Vector3[] = [prevPoint.clone()];
@@ -525,9 +531,9 @@ export function buildDiorama(
             const rBottom = trunkRadiusBottom - (trunkRadiusBottom - trunkRadiusTop) * (s / trunkSegments);
             const rTop = trunkRadiusBottom - (trunkRadiusBottom - trunkRadiusTop) * progress;
 
-            // Subtle Japanese cedar posture
-            const wobbleX = Math.sin(s * 0.4 + qrResult.seed) * 0.15;
-            const wobbleZ = Math.cos(s * 0.35 + qrResult.seed) * 0.15;
+            // Japanese artistic cedar/bonsai posture with graceful organic sway
+            const wobbleX = Math.sin(s * 0.45 + qrResult.seed) * wobbleIntensity * (s + 1);
+            const wobbleZ = Math.cos(s * 0.4 + qrResult.seed) * wobbleIntensity * (s + 1);
             const nextPoint = new THREE.Vector3(wobbleX, 0.14 + (s + 1) * segHeight, wobbleZ);
             trunkKnots.push(nextPoint.clone());
 
@@ -550,15 +556,15 @@ export function buildDiorama(
         }
 
         // 2. Thick root buttresses anchoring into stone pavers
-        const numRoots = 6;
+        const numRoots = isBonsai ? 8 : 6;
         for (let r = 0; r < numRoots; r++) {
-            const rootAngle = (r / numRoots) * Math.PI * 2 + prng.range(-0.1, 0.1);
-            const rootLength = prng.range(1.6, 2.3);
-            const rootGeo = new THREE.ConeGeometry(0.42, rootLength, 6);
+            const rootAngle = (r / numRoots) * Math.PI * 2 + prng.range(-0.15, 0.15);
+            const rootLength = isBonsai ? prng.range(2.2, 3.4) : prng.range(1.6, 2.4);
+            const rootGeo = new THREE.ConeGeometry(isBonsai ? 0.52 : 0.42, rootLength, 6);
             const rootMesh = new THREE.Mesh(rootGeo, woodMat);
 
-            const rx = Math.cos(rootAngle) * 0.72;
-            const rz = Math.sin(rootAngle) * 0.72;
+            const rx = Math.cos(rootAngle) * (isBonsai ? 0.95 : 0.72);
+            const rz = Math.sin(rootAngle) * (isBonsai ? 0.95 : 0.72);
             rootMesh.position.set(rx, 0.18, rz);
             rootMesh.rotation.set(
                 Math.sin(rootAngle) * 0.78,
@@ -567,6 +573,25 @@ export function buildDiorama(
             );
             rootMesh.castShadow = true;
             trunkGroup.add(rootMesh);
+        }
+
+        // Japanese stone lantern accent for Zen Bonsai
+        if (isBonsai) {
+            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 });
+            const lanternBase = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.35, 6), stoneMat);
+            lanternBase.position.set(2.4, 0.18, 1.8);
+            lanternBase.castShadow = true;
+            trunkGroup.add(lanternBase);
+
+            const lanternPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 6), stoneMat);
+            lanternPillar.position.set(2.4, 0.65, 1.8);
+            lanternPillar.castShadow = true;
+            trunkGroup.add(lanternPillar);
+
+            const lanternRoof = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.35, 6), stoneMat);
+            lanternRoof.position.set(2.4, 1.1, 1.8);
+            lanternRoof.castShadow = true;
+            trunkGroup.add(lanternRoof);
         }
 
         // 3. Grand spreading branches supporting the expansive pagoda umbrella canopy
@@ -910,25 +935,32 @@ export function applyDioramaMorph(
         diorama.earthSlabGroup.visible = p > 0.02;
     }
 
-    // 2. Corner finder grass & wildflowers retract into ground or bloom upwards
+    // 2. Corner finder gardens smoothly transition between lush 3D grass/flowers and flat zen garden moss frames
     if (diorama.finderGardensGroup) {
-        diorama.finderGardensGroup.scale.set(p, Math.max(0.0001, p), p);
-        diorama.finderGardensGroup.position.y = (p - 1.0) * 1.5;
-        diorama.finderGardensGroup.visible = p > 0.03;
+        const fScaleY = THREE.MathUtils.lerp(0.06, 1.0, p);
+        const fScaleXZ = THREE.MathUtils.lerp(0.72, 1.0, p);
+        diorama.finderGardensGroup.scale.set(fScaleXZ, fScaleY, fScaleXZ);
+        diorama.finderGardensGroup.position.y = (p - 1.0) * 0.15;
+        diorama.finderGardensGroup.visible = true;
     }
 
-    // 3. Centerpiece blooms/folds with organic rotation and spring physics
+    // 3. Centerpiece seamlessly transitions between 2D Top-Down Artistic Tree & 3D Volumetric Tree
     if (diorama.treeGroup) {
-        const s = Math.max(0.0001, p);
-        diorama.treeGroup.scale.set(s, s, s);
-        diorama.treeGroup.position.y = (p - 1.0) * 0.5;
-        diorama.treeGroup.rotation.y = (1.0 - p) * 0.45;
-        diorama.treeGroup.visible = p > 0.01;
+        // In 2D (p=0), tree stays visible! Its X and Z span gracefully frames the QR center,
+        // while its vertical height (Y) flattens towards the surface so top-down projection is clean.
+        // In 3D (p=1), it blooms up to full vertical height.
+        const scaleY = THREE.MathUtils.lerp(0.06, 1.0, p);
+        const scaleXZ = THREE.MathUtils.lerp(0.92, 1.0, p);
+        diorama.treeGroup.scale.set(scaleXZ, scaleY, scaleXZ);
+        diorama.treeGroup.position.y = (p - 1.0) * 0.12;
+        diorama.treeGroup.rotation.y = (1.0 - p) * 0.25;
+        diorama.treeGroup.visible = true;
     }
 
-    // 4. Fallen petals visibility
+    // 4. Fallen petals remain subtly visible as ground scatter
     if (diorama.fallenMesh) {
-        diorama.fallenMesh.visible = p > 0.08;
+        diorama.fallenMesh.visible = true;
+        diorama.fallenMesh.position.y = THREE.MathUtils.lerp(0.005, 0.0, p);
     }
 
     // 5. Morph Dark Tiles between 3D Cobblestones and 2D High-Contrast QR modules

@@ -48,7 +48,7 @@ export function generateQRMatrix(text: string): QRMatrixResult {
     // that even with procedural tree canopy / trunk voxels in the center,
     // any smartphone camera or QR scanner decodes the payload instantly!
     const qr = QRCode.create(validText, {
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'H',
     });
 
     const size = qr.modules.size;

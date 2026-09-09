@@ -104,11 +104,37 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
 // 🌸 DIGITAL BOUQUET: 3D QR GIFT DATABASE
 // ═══════════════════════════════════════════════════════════════
 
-export type BouquetSceneType = 'tree' | 'house' | 'avatar';
+export type BouquetSceneType = 'tree' | 'bonsai' | 'wisteria' | 'maple' | 'pine' | 'house' | 'avatar' | string;
+
+export interface CreatorCustomLink {
+  id: string;
+  title: string;
+  url: string;
+  emoji?: string;
+}
+
+export interface CreatorProfileData {
+  creatorName: string;
+  creatorTitle?: string;
+  creatorBio?: string;
+  avatarUrl?: string;
+  socials: {
+    youtube?: string;
+    instagram?: string;
+    tiktok?: string;
+    twitter?: string;
+    twitch?: string;
+    discord?: string;
+    spotify?: string;
+    github?: string;
+    website?: string;
+  };
+  customLinks: CreatorCustomLink[];
+}
 
 export interface StoredBouquet {
   id: string;                    // short code e.g. "bq_k8w2x3"
-  scene_type: BouquetSceneType;  // 'tree' | 'house' | 'avatar'
+  scene_type: BouquetSceneType;  // tree species or scene
   season: string;                // 'spring' | 'summer' | 'autumn' | 'winter'
   palette_id: string;            // 'sakura' | 'wisteria' | etc.
   target_url: string;            // the URL the QR encodes
@@ -116,8 +142,11 @@ export interface StoredBouquet {
   recipient_name?: string;       // "To: ..."
   message?: string;              // personal gift message
   audio_enabled: boolean;        // ambient soundscape preference
-  custom_colors?: any;           // future: custom palette overrides
-  metadata?: any;                // extensibility
+  custom_colors?: any;           // custom palette overrides
+  metadata?: {
+    creatorProfile?: CreatorProfileData;
+    [key: string]: any;
+  } | null;
   view_count?: number;           // track views
   created_at?: string;
 }
