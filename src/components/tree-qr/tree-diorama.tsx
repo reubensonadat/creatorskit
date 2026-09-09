@@ -6,6 +6,7 @@ import { generateQRMatrix, QRMatrixResult } from '@/lib/tree-qr/qr-matrix';
 import {
     buildDiorama,
     updateDioramaSimulation,
+    applyDioramaMorph,
     DioramaSceneObjects,
     SeasonType,
     SceneType,
@@ -153,9 +154,8 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
                 const prevZoom = t.camera.zoom;
 
                 if (pureQR) {
-                    if (t.diorama?.treeGroup) {
-                        t.diorama.treeGroup.scale.set(0.0001, 0.0001, 0.0001);
-                        t.diorama.treeGroup.visible = false;
+                    if (t.diorama) {
+                        applyDioramaMorph(t.diorama, 0.0);
                     }
                     t.camera.position.set(0, 56, 0);
                     t.camera.up.set(0, 0, -1);
@@ -167,10 +167,8 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
                 t.renderer.render(t.scene, t.camera);
                 const dataUrl = t.renderer.domElement.toDataURL('image/png');
 
-                if (pureQR && t.diorama?.treeGroup) {
-                    const s = Math.max(0.0001, t.currentTreeScale);
-                    t.diorama.treeGroup.scale.set(s, s, s);
-                    t.diorama.treeGroup.visible = t.currentTreeScale > 0.01;
+                if (pureQR && t.diorama) {
+                    applyDioramaMorph(t.diorama, t.currentTreeScale);
                 }
 
                 t.camera.position.copy(prevPos);
@@ -305,13 +303,11 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
                 t.camera.updateProjectionMatrix();
             }
 
-            // Smooth centerpiece scaling (shrinks in 2D mode, blooms in 3D mode)
-            if (t.diorama && t.diorama.treeGroup) {
-                if (Math.abs(t.currentTreeScale - t.targetTreeScale) > 0.001) {
-                    t.currentTreeScale += (t.targetTreeScale - t.currentTreeScale) * 0.1;
-                    const s = Math.max(0.0001, t.currentTreeScale);
-                    t.diorama.treeGroup.scale.set(s, s, s);
-                    t.diorama.treeGroup.visible = t.currentTreeScale > 0.01;
+            // Seamless 2D ⇄ 3D diorama morphing
+            if (t.diorama) {
+                if (Math.abs(t.currentTreeScale - t.targetTreeScale) > 0.0005) {
+                    t.currentTreeScale += (t.targetTreeScale - t.currentTreeScale) * 0.09;
+                    applyDioramaMorph(t.diorama, t.currentTreeScale);
                 }
             }
 
@@ -383,11 +379,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         // Build new procedural diorama
         const newDiorama = buildDiorama(qrResult, season, palette, sceneType);
         t.diorama = newDiorama;
-        if (newDiorama.treeGroup) {
-            const s = Math.max(0.0001, t.currentTreeScale);
-            newDiorama.treeGroup.scale.set(s, s, s);
-            newDiorama.treeGroup.visible = t.currentTreeScale > 0.01;
-        }
+        applyDioramaMorph(newDiorama, t.currentTreeScale);
         t.scene.add(newDiorama.rootGroup);
     }, [urlText, season, palette, sceneType]);
 
@@ -450,18 +442,6 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
                 ref={canvasRef}
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />
-
-            {/* Click to Toggle Overlay Hint */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-                <div
-                    className="px-4 py-1.5 rounded-full text-xs font-medium text-neutral-600 bg-[#ede8dc]/85 backdrop-blur-sm border border-[#ded8cb] shadow-sm flex items-center gap-2 transition-transform duration-200"
-                >
-                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
-                    <span>
-                        {viewMode === '2d' ? 'Tap to see the tree' : 'Tap the tree to see QR code'}
-                    </span>
-                </div>
-            </div>
         </div>
     );
 });
