@@ -21,6 +21,8 @@ export interface VoxelDioramaRef {
     getViewMode: () => ViewMode;
     captureSnapshot: (pureQR?: boolean) => Promise<string>;
     resetCamera: () => void;
+    /** Quarter-turn view rotation (direction: 1 = right, -1 = left). */
+    rotateView90: (direction: 1 | -1) => void;
 }
 
 interface VoxelDioramaProps {
@@ -29,12 +31,14 @@ interface VoxelDioramaProps {
     palette: FoliagePalette;
     /** Accepted for API parity with TreeDiorama — palettes drive the world. */
     season?: SeasonType;
+    /** Pixels of docked UI covering the canvas's right edge — the diorama recenters. */
+    sidebarInset?: number;
     onViewModeChange?: (mode: ViewMode) => void;
     className?: string;
 }
 
 const VoxelDiorama = forwardRef<VoxelDioramaRef, VoxelDioramaProps>(function VoxelDiorama(
-    { urlText, sceneType, palette, onViewModeChange, className },
+    { urlText, sceneType, palette, sidebarInset = 0, onViewModeChange, className },
     ref
 ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -143,6 +147,11 @@ const VoxelDiorama = forwardRef<VoxelDioramaRef, VoxelDioramaProps>(function Vox
         if (scene) scene.opts.onModeChange = onViewModeChange;
     }, [onViewModeChange]);
 
+    // Recentre the world inside the visible viewport as the dock opens/closes.
+    useEffect(() => {
+        sceneRef.current?.setSidebarInset(sidebarInset);
+    }, [sidebarInset]);
+
     // ─── Rebuild choreography: url ripple / preset regrow / palette recolor ─
     useEffect(() => {
         const scene = sceneRef.current;
@@ -170,6 +179,7 @@ const VoxelDiorama = forwardRef<VoxelDioramaRef, VoxelDioramaProps>(function Vox
                 return scene.capture(pureQR);
             },
             resetCamera: () => sceneRef.current?.resetCamera(),
+            rotateView90: (direction: 1 | -1) => sceneRef.current?.rotateView90(direction),
         }),
         []
     );

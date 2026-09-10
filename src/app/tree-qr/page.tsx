@@ -13,6 +13,8 @@ import { encodeReceipt, ReceiptPayload } from '@/lib/receipt/receipt-link';
 import { saveBouquetToDatabase } from '@/lib/supabase';
 import {
     RotateCcw,
+    RotateCw,
+    Crosshair,
     Download,
     Share2,
     Check,
@@ -20,7 +22,14 @@ import {
     VolumeX,
     Copy,
     X,
+    SlidersHorizontal,
+    ChevronRight,
+    ArrowLeft,
+    QrCode,
+    TreePine,
 } from 'lucide-react';
+
+// ─── Brutalist vocabulary ─────────────────────────────────────────────────────
 
 const BRUT_LABEL: React.CSSProperties = {
     fontSize: '0.72rem',
@@ -62,28 +71,55 @@ function brutChip(active: boolean): React.CSSProperties {
     };
 }
 
-function brutModeButton(active: boolean): React.CSSProperties {
-    return {
-        padding: '10px 8px',
-        border: '2px solid #000',
-        borderRadius: 4,
-        background: active ? '#000' : '#fff',
-        color: active ? '#FFE500' : '#000',
-        fontFamily: 'monospace, system-ui, sans-serif',
-        fontWeight: 900,
-        fontSize: '0.7rem',
-        textTransform: 'uppercase',
-        letterSpacing: '0.04em',
-        cursor: 'pointer',
-        boxShadow: active ? '2px 2px 0 #000' : 'none',
-        transition: 'all 0.12s',
-    };
-}
-
 const PRESET_SCENE_IDS = [
     'sakura', 'tree', 'maple', 'ginkgo', 'magnolia', 'hydrangea',
     'frost', 'oak', 'rose', 'wisteria', 'bonsai', 'pine', 'house',
 ] as const;
+
+// Centerpiece catalog — emoji glyph + display name + growth-rule blurb.
+const SCENE_CATALOG: Array<{ id: SceneType; glyph: string; label: string; hint: string }> = [
+    { id: 'sakura', glyph: '🌸', label: 'Sakura', hint: 'Wide round blossom cloud' },
+    { id: 'maple', glyph: '🍁', label: 'Crimson Maple', hint: 'Dense spreading dome' },
+    { id: 'ginkgo', glyph: '🍂', label: 'Ginkgo', hint: 'Boxy architectural canopy' },
+    { id: 'magnolia', glyph: '🌺', label: 'Magnolia', hint: 'Loose puffy clumps' },
+    { id: 'hydrangea', glyph: '💠', label: 'Hydrangea', hint: 'Rolled bloom clusters' },
+    { id: 'frost', glyph: '❄️', label: 'Winter Frost', hint: 'Sparse icy gaps' },
+    { id: 'oak', glyph: '🌳', label: 'Summer Oak', hint: 'Broad heavy crown' },
+    { id: 'rose', glyph: '🌹', label: 'Rose Bouquet', hint: 'Compact tight puffs' },
+    { id: 'wisteria', glyph: '💜', label: 'Wisteria', hint: 'Weeping hanging trails' },
+    { id: 'bonsai', glyph: '🪴', label: 'Zen Bonsai', hint: 'Tiered cloud pads' },
+    { id: 'pine', glyph: '🌲', label: 'Pagoda Pine', hint: 'Tall tapered spire' },
+    { id: 'house', glyph: '🏡', label: 'Cottage House', hint: 'Cozy home centerpiece' },
+];
+
+// Ready-made dedication notes — the kinds of messages a living QR can carry.
+const MESSAGE_PRESETS: Array<{ label: string; glyph: string; text: string }> = [
+    {
+        label: 'Birthday',
+        glyph: '🎂',
+        text: 'Happy birthday! I grew this little world for you — tap the tree and scan the code when you\'re ready to celebrate.',
+    },
+    {
+        label: 'Love Note',
+        glyph: '❤️',
+        text: 'Every leaf in this garden hides a piece of my heart. Scan the tree to find what I left underneath it for you.',
+    },
+    {
+        label: 'Thank You',
+        glyph: '🙌',
+        text: 'Thank you for everything you do. There\'s a small surprise waiting under this tree — scan it to open it.',
+    },
+    {
+        label: 'Invitation',
+        glyph: '✉️',
+        text: 'You\'re invited! Scan the tree to unwrap your personal invitation and all the details.',
+    },
+    {
+        label: 'Just Because',
+        glyph: '🌱',
+        text: 'No occasion — I just felt like sending you a living garden. Tap it, explore it, enjoy it.',
+    },
+];
 
 export default function TreeQRPage() {
     const dioramaRef = useRef<VoxelDioramaRef>(null);
@@ -92,14 +128,14 @@ export default function TreeQRPage() {
     const [urlInput, setUrlInput] = useState('https://creatorkit.app/');
     const [activeUrl, setActiveUrl] = useState('https://creatorkit.app/');
     const [sceneType, setSceneType] = useState<SceneType>('sakura');
-    // Seasons retired — the botanical palette alone drives the whole world:
-    // tree, courtyard cobbles, wildflowers, drifting petals and the QR colors.
+    // Seasons retired — the botanical palette alone drives the whole world.
     const season: SeasonType = 'spring';
     const [paletteId, setPaletteId] = useState<string>('sakura');
     const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
     const [isAudioActive, setIsAudioActive] = useState(false);
     const [copied, setCopied] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [controlsOpen, setControlsOpen] = useState(true);
 
     // Digital Bouquet / Gift fields
     const [senderName, setSenderName] = useState('');
@@ -203,9 +239,8 @@ export default function TreeQRPage() {
             });
 
             const finalId = shortId || 'bq_' + Math.random().toString(36).substring(2, 8);
-            
+
             // Build self-contained query parameters so the gift card renders with 100% fidelity
-            // across any device, iMessage, WhatsApp, or offline browser session
             const qp = new URLSearchParams();
             if (senderName.trim()) qp.set('from', senderName.trim());
             if (recipientName.trim()) qp.set('to', recipientName.trim());
@@ -290,234 +325,267 @@ export default function TreeQRPage() {
         return () => cancelAnimationFrame(raf);
     }, []);
 
+    // Start with the studio panel closed on narrow screens; ESC toggles it.
+    useEffect(() => {
+        if (window.innerWidth < 760) setControlsOpen(false);
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setControlsOpen((o) => !o);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const currentPalette: FoliagePalette = PRESET_PALETTES[paletteId] || PRESET_PALETTES.sakura;
 
     return (
         <div
-            className="tool-page-padding"
             style={{
-                position: 'relative',
-                minHeight: '100%',
-                padding: '20px 16px 80px',
-                maxWidth: 1380,
-                margin: '0 auto',
-                boxSizing: 'border-box',
-                width: '100%',
+                position: 'fixed',
+                inset: 0,
+                overflow: 'hidden',
+                background: '#f6f3ec',
+                fontFamily: 'monospace, system-ui, sans-serif',
             }}
         >
-            {/* ─── HEADER ─────────────────────────────────────────────── */}
-            <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* ─── FULL-PAGE LIVING CANVAS ─────────────────────────────── */}
+            <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+                <VoxelDiorama
+                    ref={dioramaRef}
+                    urlText={activeUrl}
+                    season={season}
+                    sceneType={sceneType}
+                    palette={currentPalette}
+                    sidebarInset={controlsOpen ? 416 : 0}
+                    onViewModeChange={(mode) => setViewMode(mode)}
+                />
+            </div>
+
+            {/* Soft scrim so the top overlay chips stay legible over the diorama */}
+            <div
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 110,
+                    zIndex: 5,
+                    pointerEvents: 'none',
+                    background: 'linear-gradient(to bottom, rgba(246,243,236,0.92), rgba(246,243,236,0))',
+                }}
+            />
+
+            {/* ─── TOP-LEFT: identity + live status ─────────────────────── */}
+            <div
+                style={{
+                    position: 'absolute',
+                    top: 14,
+                    left: 14,
+                    zIndex: 10,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    pointerEvents: 'none',
+                    maxWidth: 'calc(100vw - 160px)',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', pointerEvents: 'auto' }}>
+                    <a
+                        href="/"
+                        className="brutalist-button"
+                        style={{ padding: '6px 10px', fontSize: '0.66rem', gap: 6, textDecoration: 'none' }}
+                        title="Back to CreatorKit"
+                    >
+                        <ArrowLeft size={13} />
+                        CK
+                    </a>
                     <span
                         style={{
                             fontSize: '0.68rem',
                             fontWeight: 900,
                             color: '#000',
                             letterSpacing: '0.14em',
-                            fontFamily: 'monospace',
                             textTransform: 'uppercase',
                             background: '#FFE500',
-                            padding: '3px 8px',
+                            padding: '5px 10px',
                             border: '2px solid #000',
                             boxShadow: '2px 2px 0 #000',
                         }}
                     >
-                        3D LIVING GIFT & KEEPSAKE STUDIO
-                    </span>
-                    <span
-                        style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            color: '#666',
-                            fontFamily: 'monospace',
-                        }}
-                    >
-                        SCANNABLE 3D DIORAMA · DIGITAL BOUQUET · SECRET QR KEEPSAKE
+                        Living 3D QR Studio
                     </span>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
-                    <h1
-                        style={{
-                            fontSize: '1.85rem',
-                            fontWeight: 900,
-                            letterSpacing: '-0.03em',
-                            color: '#000',
-                            textTransform: 'uppercase',
-                            margin: 0,
-                        }}
-                    >
-                        Living 3D Gift & Keepsake
-                    </h1>
-                    <p
-                        style={{
-                            fontSize: '0.85rem',
-                            color: '#555',
-                            maxWidth: 720,
-                            lineHeight: 1.5,
-                            fontWeight: 500,
-                            margin: 0,
-                        }}
-                    >
-                        Sculpt a scannable QR code into a living 3D diorama. Pick a centerpiece (botanical bouquets, zen trees, or cozy cottage), personalize a gift note, and share a living 3D keepsake link anyone can unfold and scan.
-                    </p>
+                <div
+                    style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        color: '#555',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <span style={{ color: '#000' }}>{viewMode === '3d' ? `${sceneType.toUpperCase()} · 3D` : '2D · QR'}</span>
+                    <span style={{ color: '#bbb' }}>·</span>
+                    <span>{currentPalette.name}</span>
+                    <span style={{ color: '#bbb' }}>·</span>
+                    <span>QR-Synced</span>
+                </div>
+                <div style={{ fontSize: '0.58rem', fontWeight: 700, color: '#8a8a8a', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    Drag orbits · Scroll zooms · Tap the tree to morph
                 </div>
             </div>
 
-            {/* ─── MAIN 2-COLUMN WORKSPACE ────────────────────────────── */}
+            {/* ─── BOTTOM-CENTER: floating transport ────────────────────── */}
             <div
-                className="matchcut-workspace-grid"
                 style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1.28fr) minmax(360px, 440px)',
-                    gap: 20,
-                    alignItems: 'start',
+                    position: 'absolute',
+                    bottom: 20,
+                    left: controlsOpen ? 'calc(50% - 208px)' : '50%',
+                    transform: 'translateX(-50%)',
+                    transition: 'left 340ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    zIndex: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    maxWidth: 'calc(100vw - 24px)',
+                    padding: 8,
+                    background: '#ffffff',
+                    border: '3px solid #000',
+                    boxShadow: '4px 4px 0 #000',
                 }}
             >
-                {/* LEFT: Diorama Viewport & Transport */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div
-                        className="brutalist-card tool-canvas-frame"
-                        style={{
-                            padding: 14,
-                            background: '#ffffff',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            position: 'relative',
-                            overflow: 'hidden',
-                            boxSizing: 'border-box',
-                            width: '100%',
-                        }}
-                    >
-                        {/* Viewport Meta Bar */}
-                        <div
-                            className="tool-viewport-meta"
-                            style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                marginBottom: 10,
-                                fontSize: '0.7rem',
-                                fontFamily: 'monospace',
-                                fontWeight: 700,
-                                color: '#666',
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                <span style={{ color: '#000', fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                                    {viewMode === '3d' ? `${sceneType.toUpperCase()} 3D` : '2D QR'}
-                                </span>
-                                <span style={{ color: '#aaa' }}>·</span>
-                                <span
-                                    style={{
-                                        textTransform: 'uppercase',
-                                        color: '#555',
-                                        fontWeight: 800,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    {currentPalette.name} · QR-SYNCED
-                                </span>
-                            </div>
-                        </div>
+                <button
+                    onClick={() => dioramaRef.current?.rotateView90(-1)}
+                    className="brutalist-button"
+                    style={{ padding: '9px 10px' }}
+                    title="Rotate view 90° left"
+                >
+                    <RotateCcw size={15} />
+                </button>
+                <button
+                    onClick={() => dioramaRef.current?.toggleViewMode()}
+                    className="brutalist-button brutalist-button-primary"
+                    style={{ padding: '9px 16px', fontSize: '0.74rem', fontWeight: 900, gap: 8, display: 'flex', alignItems: 'center' }}
+                >
+                    {viewMode === '3d' ? <QrCode size={15} /> : <TreePine size={15} />}
+                    {viewMode === '3d' ? 'Tap to see QR code' : 'Tap to see 3D'}
+                </button>
+                <button
+                    onClick={() => dioramaRef.current?.rotateView90(1)}
+                    className="brutalist-button"
+                    style={{ padding: '9px 10px' }}
+                    title="Rotate view 90° right"
+                >
+                    <RotateCw size={15} />
+                </button>
+                <span style={{ width: 2, alignSelf: 'stretch', background: '#000', opacity: 0.15, margin: '0 2px' }} />
+                <button
+                    onClick={toggleAudio}
+                    className={`brutalist-button${isAudioActive ? ' brutalist-button-primary' : ''}`}
+                    style={{ padding: '9px 10px' }}
+                    title={isAudioActive ? 'Sound On — click to mute' : 'Sound Off — click for ambient breeze'}
+                >
+                    {isAudioActive ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                </button>
+                <button
+                    onClick={() => dioramaRef.current?.resetCamera()}
+                    className="brutalist-button"
+                    style={{ padding: '9px 10px' }}
+                    title="Reset Camera"
+                >
+                    <Crosshair size={15} />
+                </button>
+                <button
+                    onClick={handleCopyShareLink}
+                    className="brutalist-button"
+                    style={{ padding: '9px 10px' }}
+                    title="Copy Shareable Link"
+                >
+                    {copied ? <Check size={15} /> : <Share2 size={15} />}
+                </button>
+            </div>
 
-                        {/* Diorama Stage */}
-                        <div
-                            style={{
-                                position: 'relative',
-                                width: '100%',
-                                height: 'clamp(380px, calc(100vh - 380px), 560px)',
-                                background: '#f8f5ee',
-                                border: '3px solid #000',
-                                overflow: 'hidden',
-                            }}
-                        >
-                            <VoxelDiorama
-                                ref={dioramaRef}
-                                urlText={activeUrl}
-                                season={season}
-                                sceneType={sceneType}
-                                palette={currentPalette}
-                                onViewModeChange={(mode) => setViewMode(mode)}
-                            />
-                        </div>
+            {/* ─── CONTROLS TOGGLE (always reachable, floats over the dock) ── */}
+            <button
+                onClick={() => setControlsOpen((o) => !o)}
+                className="brutalist-button"
+                style={{
+                    position: 'absolute',
+                    top: 14,
+                    right: 14,
+                    zIndex: 40,
+                    padding: '8px 12px',
+                    fontSize: '0.7rem',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                }}
+                title="Toggle studio controls (Esc)"
+            >
+                {controlsOpen ? <ChevronRight size={14} /> : <SlidersHorizontal size={14} />}
+                {controlsOpen ? 'Hide Studio' : 'Studio'}
+            </button>
 
-                        {/* Transport Bar */}
-                        <div
-                            className="tool-transport-bar"
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                flexWrap: 'wrap',
-                                width: '100%',
-                                marginTop: 12,
-                            }}
-                        >
-                            <button
-                                onClick={() => dioramaRef.current?.toggleViewMode()}
-                                className="brutalist-button brutalist-button-primary"
-                                style={{ padding: '8px 16px', fontSize: '0.75rem', fontWeight: 900 }}
-                            >
-                                {viewMode === '2d' ? 'Tap to see the tree' : 'Tap the tree to see QR code'}
-                            </button>
-                            <button
-                                onClick={toggleAudio}
-                                className={`brutalist-button${isAudioActive ? ' brutalist-button-primary' : ''}`}
-                                style={{ padding: '8px 12px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 6 }}
-                                title={isAudioActive ? 'Mute Atmosphere' : 'Play Gentle Ambient Breeze'}
-                            >
-                                {isAudioActive ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                                {isAudioActive ? 'Sound On' : 'Sound Off'}
-                            </button>
-                            <button
-                                onClick={handleCopyShareLink}
-                                className="brutalist-button"
-                                style={{ padding: '8px 12px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 6 }}
-                                title="Copy Shareable Link"
-                            >
-                                {copied ? <Check size={14} /> : <Share2 size={14} />}
-                                {copied ? 'Copied' : 'Share Config'}
-                            </button>
-                            <button
-                                onClick={() => dioramaRef.current?.resetCamera()}
-                                className="brutalist-button"
-                                style={{ padding: '8px 12px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 6 }}
-                                title="Reset Camera"
-                            >
-                                <RotateCcw size={14} />
-                                Reset Cam
-                            </button>
-                            <span
-                                style={{
-                                    marginLeft: 'auto',
-                                    fontSize: '0.64rem',
-                                    fontFamily: 'monospace',
-                                    fontWeight: 700,
-                                    color: '#999',
-                                    textTransform: 'uppercase',
-                                }}
-                            >
-                                Drag · Scroll · 30% Resilience
-                            </span>
-                        </div>
+            {/* ─── RIGHT DOCK: toggleable studio controls ───────────────── */}
+            <aside
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: 'min(416px, 100vw)',
+                    zIndex: 30,
+                    background: '#ffffff',
+                    borderLeft: '3px solid #000',
+                    boxShadow: '-8px 0 0 rgba(0,0,0,0.06)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transform: controlsOpen ? 'translateX(0)' : 'translateX(101%)',
+                    transition: 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+            >
+                {/* Dock header */}
+                <div
+                    style={{
+                        padding: '14px 64px 12px 16px',
+                        borderBottom: '3px solid #000',
+                        background: '#FFE500',
+                        flexShrink: 0,
+                    }}
+                >
+                    <div style={{ ...BRUT_LABEL, fontSize: '0.8rem' }}>Studio Controls</div>
+                    <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#333', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 2 }}>
+                        Presets · Message · Palette · Export
                     </div>
                 </div>
 
-                {/* RIGHT: Studio Controls */}
-                <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-                    {/* Centerpiece Model */}
-                    <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Scrollable control deck */}
+                <div
+                    style={{
+                        overflowY: 'auto',
+                        padding: 14,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 14,
+                        flex: 1,
+                        minHeight: 0,
+                    }}
+                >
+                    {/* Centerpiece Model — growth-rule presets */}
+                    <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={BRUT_LABEL}>Centerpiece Model</span>
+                            <span style={BRUT_LABEL}>Centerpiece</span>
                             <span
                                 style={{
                                     padding: '2px 8px',
-                                    background: '#FFE500',
-                                    border: '2px solid #000',
+                                    background: '#000',
+                                    color: '#FFE500',
                                     fontFamily: 'monospace',
                                     fontSize: '0.62rem',
                                     fontWeight: 900,
@@ -528,42 +596,60 @@ export default function TreeQRPage() {
                             </span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8 }}>
-                            {(
-                                [
-                                    ['sakura', 'Sakura'],
-                                    ['maple', 'Crimson Maple'],
-                                    ['ginkgo', 'Ginkgo'],
-                                    ['magnolia', 'Magnolia'],
-                                    ['hydrangea', 'Hydrangea'],
-                                    ['frost', 'Winter Frost'],
-                                    ['oak', 'Summer Oak'],
-                                    ['rose', 'Rose Bouquet'],
-                                    ['wisteria', 'Wisteria'],
-                                    ['bonsai', 'Zen Bonsai'],
-                                    ['pine', 'Pagoda Pine'],
-                                    ['house', 'Cottage House'],
-                                ] as [SceneType, string][]
-                            ).map(([id, label]) => (
-                                <button
-                                    key={id}
-                                    onClick={() => {
-                                        setSceneType(id);
-                                        const native = SCENE_PALETTE[id];
-                                        if (native) setPaletteId(native);
-                                    }}
-                                    style={brutModeButton(sceneType === id || (id === 'sakura' && sceneType === 'tree'))}
-                                >
-                                    {label}
-                                </button>
-                            ))}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                            {SCENE_CATALOG.map(({ id, glyph, label, hint }) => {
+                                const active = sceneType === id || (id === 'sakura' && sceneType === 'tree');
+                                return (
+                                    <button
+                                        key={id}
+                                        onClick={() => {
+                                            setSceneType(id);
+                                            const native = SCENE_PALETTE[id];
+                                            if (native) setPaletteId(native);
+                                        }}
+                                        title={hint}
+                                        style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                            padding: '10px 4px 8px',
+                                            border: '2px solid #000',
+                                            borderRadius: 4,
+                                            background: active ? '#FFE500' : '#fff',
+                                            cursor: 'pointer',
+                                            boxShadow: active ? '2px 2px 0 #000' : 'none',
+                                            transition: 'all 0.12s',
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{glyph}</span>
+                                        <span
+                                            style={{
+                                                fontSize: '0.56rem',
+                                                fontWeight: 900,
+                                                color: '#000',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em',
+                                                textAlign: 'center',
+                                                lineHeight: 1.25,
+                                            }}
+                                        >
+                                            {label}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#999', textTransform: 'uppercase' }}>
+                            Each preset regrows the tree — grouping, spread & density change, not just colors.
+                        </span>
                     </div>
 
                     {/* QR Target URL */}
-                    <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={BRUT_LABEL}>QR Target URL</span>
+                            <span style={BRUT_LABEL}>QR Target</span>
                             <span
                                 style={{
                                     padding: '2px 8px',
@@ -598,7 +684,7 @@ export default function TreeQRPage() {
                         </form>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Quick Presets</span>
+                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Quick Links</span>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                 {[
                                     { label: 'CreatorsKit', url: 'https://creatorkit.app/' },
@@ -613,10 +699,10 @@ export default function TreeQRPage() {
                         </div>
                     </div>
 
-                    {/* Personalize Gift Card */}
-                    <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Personalize Living 3D Gift Card */}
+                    <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={BRUT_LABEL}>Personalize Living 3D Gift Card</span>
+                            <span style={BRUT_LABEL}>Gift Message</span>
                             <span
                                 style={{
                                     padding: '2px 8px',
@@ -652,10 +738,26 @@ export default function TreeQRPage() {
                         <textarea
                             value={giftMessage}
                             onChange={(e) => setGiftMessage(e.target.value)}
-                            rows={2}
-                            placeholder="Write your heartfelt message (reveals when scanned on their card)..."
+                            rows={3}
+                            placeholder="Write your heartfelt message (reveals when they scan their card)..."
                             style={{ ...BRUT_INPUT, resize: 'none' }}
                         />
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Message Presets</span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {MESSAGE_PRESETS.map((mp) => (
+                                    <button
+                                        key={mp.label}
+                                        onClick={() => setGiftMessage(mp.text)}
+                                        style={brutChip(giftMessage === mp.text)}
+                                        title={mp.text}
+                                    >
+                                        {mp.glyph} {mp.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <button
                             onClick={handleCreateBouquet}
@@ -684,8 +786,8 @@ export default function TreeQRPage() {
                         </button>
                     </div>
 
-                    {/* Botanical Palette — the one true world selector */}
-                    <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Botanical Palette */}
+                    <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                             <span style={BRUT_LABEL}>Botanical Palette</span>
                             <span
@@ -703,51 +805,48 @@ export default function TreeQRPage() {
                             </span>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Recolors the Entire World — Including the QR Code</span>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                                {Object.values(PRESET_PALETTES).map((pal) => (
-                                    <button
-                                        key={pal.id}
-                                        onClick={() => handlePaletteSelect(pal.id)}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                            {Object.values(PRESET_PALETTES).map((pal) => (
+                                <button
+                                    key={pal.id}
+                                    onClick={() => handlePaletteSelect(pal.id)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        padding: '6px 8px',
+                                        border: `2px solid ${paletteId === pal.id ? '#000' : '#ccc'}`,
+                                        borderRadius: 4,
+                                        background: paletteId === pal.id ? '#FFE500' : '#fff',
+                                        color: '#000',
+                                        fontFamily: 'monospace, system-ui, sans-serif',
+                                        fontWeight: 900,
+                                        fontSize: '0.62rem',
+                                        textTransform: 'uppercase',
+                                        cursor: 'pointer',
+                                        boxShadow: paletteId === pal.id ? '2px 2px 0 #000' : 'none',
+                                        transition: 'all 0.12s',
+                                        minWidth: 0,
+                                    }}
+                                >
+                                    <span
                                         style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 8,
-                                            padding: '6px 8px',
-                                            border: `2px solid ${paletteId === pal.id ? '#000' : '#ccc'}`,
-                                            borderRadius: 4,
-                                            background: paletteId === pal.id ? '#FFE500' : '#fff',
-                                            color: '#000',
-                                            fontFamily: 'monospace, system-ui, sans-serif',
-                                            fontWeight: 900,
-                                            fontSize: '0.62rem',
-                                            textTransform: 'uppercase',
-                                            cursor: 'pointer',
-                                            boxShadow: paletteId === pal.id ? '2px 2px 0 #000' : 'none',
-                                            transition: 'all 0.12s',
-                                            minWidth: 0,
+                                            width: 16,
+                                            height: 16,
+                                            background: pal.primary,
+                                            border: '2px solid #000',
+                                            borderRadius: 2,
+                                            flexShrink: 0,
                                         }}
-                                    >
-                                        <span
-                                            style={{
-                                                width: 16,
-                                                height: 16,
-                                                background: pal.primary,
-                                                border: '2px solid #000',
-                                                borderRadius: 2,
-                                                flexShrink: 0,
-                                            }}
-                                        />
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pal.name}</span>
-                                    </button>
-                                ))}
-                            </div>
+                                    />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pal.name}</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
 
                     {/* Export Studio */}
-                    <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <span style={BRUT_LABEL}>Export Studio</span>
 
                         <button
@@ -789,7 +888,7 @@ export default function TreeQRPage() {
                         </span>
                     </div>
                 </div>
-            </div>
+            </aside>
 
             {/* ─── MODAL: BOUQUET CREATED ─────────────────────────────── */}
             {bouquetSavedModal && (
@@ -797,7 +896,7 @@ export default function TreeQRPage() {
                     style={{
                         position: 'fixed',
                         inset: 0,
-                        zIndex: 50,
+                        zIndex: 60,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

@@ -21,8 +21,13 @@ export const CANOPY_OUTER_RADIUS_FACTOR = 0.46;
 
 // ─── Camera rig ──────────────────────────────────────────────────────────────
 
-export const ISO_ANGLE_Y = 0.78;
-export const ISO_ANGLE_X = 0.55;
+// Strict isometric load view — the stage-rotation equivalent of parking the
+// orbit camera at position.set(10, 10, 10) with lookAt(0, 0, 0):
+// azimuth 45° (π/4), elevation atan(1/√2) ≈ 35.264°. The rig rotates the
+// stage instead of the camera, so stage angle X maps 1:1 to camera elevation
+// (π/2 = the flat top-down QR scan view) and angle Y maps to azimuth.
+export const ISO_ANGLE_Y = Math.PI / 4;
+export const ISO_ANGLE_X = Math.atan(1 / Math.SQRT2);
 export const FLAT_ANGLE_Y = 0.0;
 export const FLAT_ANGLE_X = Math.PI / 2;
 export const LERP_SPEED = 4.0;
@@ -175,30 +180,46 @@ export function deriveVoxelTones(palette: FoliagePalette): VoxelTones {
 
 export type CanopyKind = 'dome' | 'cone' | 'cube' | 'tiers' | 'weeping' | 'palm' | 'puff' | 'none';
 
+/**
+ * Procedural growth rules for the alpha-clipped foliage planes.
+ * A preset doesn't just swap colors — these values change HOW the leaf
+ * clusters scatter: grouping (density), spread (horizontal jitter) and
+ * plane size variance, so sakura grows a wide round cloud while pine
+ * grows tall sparse needles.
+ */
+export interface FoliageRules {
+    density: number; // leaf planes per canopy layer-module
+    spread: number; // horizontal scatter, in module widths (0..1+)
+    size: number; // base plane size in module widths
+    sizeVar: number; // random size variance fraction (0..1)
+    droop: number; // hanging tassels below the rim (weeping presets)
+}
+
 export interface VoxelPresetShape {
     canopy: CanopyKind;
     trunkLayers: number;
     canopyLayers: number;
     canopyRadiusFactor: number; // × gridSize → outer radius in blocks
     trunkRadius?: number;
-    sparse?: number; // probability a canopy block is skipped (frost gaps)
+    sparse?: number; // probability a canopy module is skipped (frost gaps)
     sway: number; // idle 3D orbit sway amplitude (radians)
+    leaves: FoliageRules;
 }
 
 export const VOXEL_SHAPES: Record<SceneType, VoxelPresetShape> = {
-    sakura: { canopy: 'dome', trunkLayers: 12, canopyLayers: 12, canopyRadiusFactor: 0.46, sway: 0.045 },
-    tree: { canopy: 'dome', trunkLayers: 12, canopyLayers: 10, canopyRadiusFactor: 0.44, sway: 0.045 },
-    maple: { canopy: 'dome', trunkLayers: 10, canopyLayers: 10, canopyRadiusFactor: 0.47, sway: 0.05 },
-    ginkgo: { canopy: 'cube', trunkLayers: 9, canopyLayers: 8, canopyRadiusFactor: 0.42, sway: 0.04 },
-    magnolia: { canopy: 'puff', trunkLayers: 7, canopyLayers: 9, canopyRadiusFactor: 0.4, sway: 0.04 },
-    hydrangea: { canopy: 'puff', trunkLayers: 8, canopyLayers: 9, canopyRadiusFactor: 0.42, sway: 0.04 },
-    frost: { canopy: 'dome', trunkLayers: 12, canopyLayers: 11, canopyRadiusFactor: 0.46, sparse: 0.28, sway: 0.03 },
-    oak: { canopy: 'cube', trunkLayers: 9, canopyLayers: 11, canopyRadiusFactor: 0.48, sway: 0.045 },
-    rose: { canopy: 'puff', trunkLayers: 6, canopyLayers: 9, canopyRadiusFactor: 0.37, sway: 0.05 },
-    wisteria: { canopy: 'weeping', trunkLayers: 11, canopyLayers: 9, canopyRadiusFactor: 0.44, sway: 0.05 },
-    bonsai: { canopy: 'tiers', trunkLayers: 5, canopyLayers: 6, canopyRadiusFactor: 0.3, sway: 0.035 },
-    pine: { canopy: 'cone', trunkLayers: 15, canopyLayers: 12, canopyRadiusFactor: 0.4, sway: 0.025 },
-    house: { canopy: 'none', trunkLayers: 0, canopyLayers: 0, canopyRadiusFactor: 0, sway: 0.03 },
+    sakura: { canopy: 'dome', trunkLayers: 12, canopyLayers: 12, canopyRadiusFactor: 0.46, sway: 0.045, leaves: { density: 1.15, spread: 0.9, size: 2.7, sizeVar: 0.55, droop: 0 } },
+    tree: { canopy: 'dome', trunkLayers: 12, canopyLayers: 10, canopyRadiusFactor: 0.44, sway: 0.045, leaves: { density: 1.0, spread: 0.8, size: 2.5, sizeVar: 0.5, droop: 0 } },
+    maple: { canopy: 'dome', trunkLayers: 10, canopyLayers: 10, canopyRadiusFactor: 0.47, sway: 0.05, leaves: { density: 1.2, spread: 0.95, size: 2.6, sizeVar: 0.6, droop: 0 } },
+    ginkgo: { canopy: 'cube', trunkLayers: 9, canopyLayers: 8, canopyRadiusFactor: 0.42, sway: 0.04, leaves: { density: 1.25, spread: 0.6, size: 2.3, sizeVar: 0.45, droop: 0 } },
+    magnolia: { canopy: 'puff', trunkLayers: 7, canopyLayers: 9, canopyRadiusFactor: 0.4, sway: 0.04, leaves: { density: 0.9, spread: 1.05, size: 2.9, sizeVar: 0.7, droop: 0 } },
+    hydrangea: { canopy: 'puff', trunkLayers: 8, canopyLayers: 9, canopyRadiusFactor: 0.42, sway: 0.04, leaves: { density: 1.05, spread: 1.0, size: 2.6, sizeVar: 0.6, droop: 0 } },
+    frost: { canopy: 'dome', trunkLayers: 12, canopyLayers: 11, canopyRadiusFactor: 0.46, sparse: 0.28, sway: 0.03, leaves: { density: 0.55, spread: 1.1, size: 2.4, sizeVar: 0.6, droop: 0 } },
+    oak: { canopy: 'cube', trunkLayers: 9, canopyLayers: 11, canopyRadiusFactor: 0.48, sway: 0.045, leaves: { density: 1.3, spread: 0.7, size: 2.5, sizeVar: 0.5, droop: 0 } },
+    rose: { canopy: 'puff', trunkLayers: 6, canopyLayers: 9, canopyRadiusFactor: 0.37, sway: 0.05, leaves: { density: 1.35, spread: 0.75, size: 2.2, sizeVar: 0.5, droop: 0 } },
+    wisteria: { canopy: 'weeping', trunkLayers: 11, canopyLayers: 9, canopyRadiusFactor: 0.44, sway: 0.05, leaves: { density: 0.95, spread: 0.9, size: 2.3, sizeVar: 0.55, droop: 4 } },
+    bonsai: { canopy: 'tiers', trunkLayers: 5, canopyLayers: 6, canopyRadiusFactor: 0.3, sway: 0.035, leaves: { density: 1.1, spread: 0.5, size: 2.8, sizeVar: 0.45, droop: 0 } },
+    pine: { canopy: 'cone', trunkLayers: 15, canopyLayers: 12, canopyRadiusFactor: 0.4, sway: 0.025, leaves: { density: 0.8, spread: 0.55, size: 2.0, sizeVar: 0.4, droop: 0 } },
+    house: { canopy: 'none', trunkLayers: 0, canopyLayers: 0, canopyRadiusFactor: 0, sway: 0.03, leaves: { density: 0, spread: 0, size: 0, sizeVar: 0, droop: 0 } },
 };
 
 // ─── Shared tiny PRNG (deterministic per url+preset) ────────────────────────
