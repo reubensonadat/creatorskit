@@ -12,6 +12,10 @@ import {
     SceneType,
     FoliagePalette,
 } from '@/lib/tree-qr/tree-generator';
+import {
+    renderBotanicalQRCanvas,
+    generateBotanicalQRDataUrl,
+} from '@/lib/tree-qr/botanical-qr-renderer';
 
 export interface TreeDioramaRef {
     toggleViewMode: () => void;
@@ -22,7 +26,8 @@ export interface TreeDioramaRef {
 
 interface TreeDioramaProps {
     urlText: string;
-    season: SeasonType;
+    /** Kept for backward compatibility — the palette now drives the world. */
+    season?: SeasonType;
     sceneType?: SceneType;
     palette?: FoliagePalette;
     onViewModeChange?: (mode: '2d' | '3d') => void;
@@ -30,14 +35,16 @@ interface TreeDioramaProps {
 }
 
 export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function TreeDiorama(
-    { urlText, season, sceneType = 'tree', palette, onViewModeChange, className },
+    { urlText, season = 'spring', sceneType = 'tree', palette, onViewModeChange, className },
     ref
 ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
     const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
-    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [isQrOverlayVisible, setIsQrOverlayVisible] = useState(false);
+    const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Three.js instances ref
     const threeRef = useRef<{
@@ -58,6 +65,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         currentUp: THREE.Vector3;
         isDragging: boolean;
         prevPointer: { x: number; y: number };
+        pointerStart: { x: number; y: number };
         orbitAngles: { theta: number; phi: number; radius: number };
         frustumSize: number;
     }>({
@@ -78,33 +86,26 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         currentUp: new THREE.Vector3(0, 1, 0),
         isDragging: false,
         prevPointer: { x: 0, y: 0 },
+        pointerStart: { x: 0, y: 0 },
         orbitAngles: { theta: Math.PI / 4, phi: Math.PI / 5, radius: 52 },
         frustumSize: 48,
     });
 
     // ─── CAMERA POSITION CALCULATIONS ──────────────────────────────────────
-    const applyViewTargets = useCallback((mode: '2d' | '3d', animate = true) => {
+    const applyViewTargets = useCallback((animate = true) => {
         const t = threeRef.current;
         if (!t.camera) return;
 
-        if (mode === '2d') {
-            t.targetPos.set(0, 56, 0);
-            t.targetLookAt.set(0, 0, 0);
-            t.targetUp.set(0, 0, -1);
-            t.targetZoom = 1.15;
-            t.targetTreeScale = 0.0;
-        } else {
-            const rad = t.orbitAngles.radius;
-            const x = rad * Math.sin(t.orbitAngles.phi) * Math.sin(t.orbitAngles.theta);
-            const y = rad * Math.cos(t.orbitAngles.phi);
-            const z = rad * Math.sin(t.orbitAngles.phi) * Math.cos(t.orbitAngles.theta);
+        const rad = t.orbitAngles.radius;
+        const x = rad * Math.sin(t.orbitAngles.phi) * Math.sin(t.orbitAngles.theta);
+        const y = rad * Math.cos(t.orbitAngles.phi);
+        const z = rad * Math.sin(t.orbitAngles.phi) * Math.cos(t.orbitAngles.theta);
 
-            t.targetPos.set(x, y, z);
-            t.targetLookAt.set(0, 4.2, 0);
-            t.targetUp.set(0, 1, 0);
-            t.targetZoom = 0.95;
-            t.targetTreeScale = 1.0;
-        }
+        t.targetPos.set(x, y, z);
+        t.targetLookAt.set(0, 4.2, 0);
+        t.targetUp.set(0, 1, 0);
+        t.targetZoom = 0.95;
+        t.targetTreeScale = 1.0;
 
         if (!animate) {
             t.camera.position.copy(t.targetPos);
@@ -114,19 +115,58 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             t.camera.lookAt(t.currentLookAt);
             t.camera.zoom = t.targetZoom;
             t.camera.updateProjectionMatrix();
-        } else {
-            setIsTransitioning(true);
         }
     }, []);
 
-    // ─── VIEW MODE SWITCHER ────────────────────────────────────────────────
+    // ─── SEQUENTIAL 2D ⇄ 3D MAGIC MORPH ────────────────────────────────────
+    // Toggling to 2D drives THREE synchronized phases: (1) the camera glides
+    // overhead while applyDioramaMorph flattens the living courtyard toward
+    // its flat high-contrast QR coloring (morph = 0), then (2) the crisp 2D
+    // botanical QR cross-dissolves on top — no visual jump between worlds.
     const setMode = useCallback(
         (newMode: '2d' | '3d') => {
+            if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+            const t = threeRef.current;
             setViewMode(newMode);
-            applyViewTargets(newMode, true);
             onViewModeChange?.(newMode);
+
+            if (newMode === '2d') {
+                // Phase 1a: diorama flattens toward its scannable QR look
+                t.targetTreeScale = 0;
+                // Phase 1b: camera swoops to direct top-down (0, 56, 0) over (0, 0, 0)
+                // with UP (0, 0, -1) so finder patterns strictly align with 2D corners
+                t.targetPos.set(0, 56, 0);
+                t.targetLookAt.set(0, 0, 0);
+                t.targetUp.set(0, 0, -1);
+                t.targetZoom = 1.02;
+
+                // Phase 2: when the camera finishes turning overhead (~480ms),
+                // the ultra-crisp 2D QR cross-dissolves in over 350ms
+                transitionTimerRef.current = setTimeout(() => {
+                    setIsQrOverlayVisible(true);
+                }, 480);
+            } else {
+                // Phase 1: the 2D QR fades out over 200ms, revealing the
+                // flattened top-down 3D scene already wearing its QR colors
+                setIsQrOverlayVisible(false);
+
+                // Phase 2: the world blooms back to life as the camera swoops
+                // down into the living 3D isometric diorama
+                transitionTimerRef.current = setTimeout(() => {
+                    t.targetTreeScale = 1;
+                    const rad = t.orbitAngles.radius;
+                    const x = rad * Math.sin(t.orbitAngles.phi) * Math.sin(t.orbitAngles.theta);
+                    const y = rad * Math.cos(t.orbitAngles.phi);
+                    const z = rad * Math.sin(t.orbitAngles.phi) * Math.cos(t.orbitAngles.theta);
+
+                    t.targetPos.set(x, y, z);
+                    t.targetLookAt.set(0, 4.2, 0);
+                    t.targetUp.set(0, 1, 0);
+                    t.targetZoom = 0.95;
+                }, 200);
+            }
         },
-        [applyViewTargets, onViewModeChange]
+        [onViewModeChange]
     );
 
     const toggleMode = useCallback(() => {
@@ -142,46 +182,40 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
             resetCamera: () => {
                 const t = threeRef.current;
                 t.orbitAngles = { theta: Math.PI / 4, phi: Math.PI / 5, radius: 52 };
-                applyViewTargets(viewMode, true);
+                applyViewTargets(true);
             },
             captureSnapshot: async (pureQR = false): Promise<string> => {
                 const t = threeRef.current;
-                if (!t.renderer || !t.scene || !t.camera) return '';
-
-                const prevPos = t.camera.position.clone();
-                const prevLookAt = t.currentLookAt.clone();
-                const prevUp = t.camera.up.clone();
-                const prevZoom = t.camera.zoom;
-
                 if (pureQR) {
-                    if (t.diorama) {
-                        applyDioramaMorph(t.diorama, 0.0);
-                    }
-                    t.camera.position.set(0, 56, 0);
-                    t.camera.up.set(0, 0, -1);
-                    t.camera.lookAt(0, 0, 0);
-                    t.camera.zoom = 1.15;
-                    t.camera.updateProjectionMatrix();
+                    const curQr = t.qrResult || generateQRMatrix(urlText);
+                    return generateBotanicalQRDataUrl(curQr, palette, 1024, season);
                 }
-
+                if (!t.renderer || !t.scene || !t.camera) return '';
                 t.renderer.render(t.scene, t.camera);
-                const dataUrl = t.renderer.domElement.toDataURL('image/png');
-
-                if (pureQR && t.diorama) {
-                    applyDioramaMorph(t.diorama, t.currentTreeScale);
-                }
-
-                t.camera.position.copy(prevPos);
-                t.camera.up.copy(prevUp);
-                t.camera.lookAt(prevLookAt);
-                t.camera.zoom = prevZoom;
-                t.camera.updateProjectionMatrix();
-
-                return dataUrl;
+                return t.renderer.domElement.toDataURL('image/png');
             },
         }),
-        [toggleMode, viewMode, applyViewTargets]
+        [toggleMode, viewMode, applyViewTargets, urlText, palette, season]
     );
+
+    // ─── RENDER 2D BOTANICAL QR CODE TO OVERLAY CANVAS ──────────────────
+    useEffect(() => {
+        if (viewMode === '2d' && qrCanvasRef.current) {
+            const curQr = threeRef.current.qrResult || generateQRMatrix(urlText);
+            const container = containerRef.current;
+            const containerW = container?.clientWidth || 600;
+            const containerH = container?.clientHeight || 600;
+            const maxDimension = Math.min(containerW, containerH);
+            const canvasPx = Math.max(280, Math.floor(maxDimension * 0.82));
+
+            renderBotanicalQRCanvas(qrCanvasRef.current, curQr, palette, {
+                canvasSize: canvasPx,
+                dpr: typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 3) : 2,
+                marginModules: 4,
+                showPaverTexture: true,
+            }, season);
+        }
+    }, [viewMode, urlText, palette, season]);
 
     // ─── INITIALIZE THREE.JS SCENE ─────────────────────────────────────────
     useEffect(() => {
@@ -275,7 +309,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         threeRef.current.renderer = renderer;
 
         // Initial camera targets
-        applyViewTargets(viewMode, false);
+        applyViewTargets(false);
 
         // 5. Animation Loop
         let animFrameId = 0;
@@ -393,6 +427,7 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         const t = threeRef.current;
         t.isDragging = true;
         t.prevPointer = { x: e.clientX, y: e.clientY };
+        t.pointerStart = { x: e.clientX, y: e.clientY };
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
@@ -413,8 +448,15 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
         t.targetPos.set(x, y, z);
     };
 
-    const handlePointerUp = () => {
-        threeRef.current.isDragging = false;
+    const handlePointerUp = (e: React.PointerEvent) => {
+        const t = threeRef.current;
+        t.isDragging = false;
+        // Direct tap on the 3D tree / diorama toggles to 2D QR code (matching tree.icqr.com)
+        const dx = e.clientX - t.pointerStart.x;
+        const dy = e.clientY - t.pointerStart.y;
+        if (Math.hypot(dx, dy) < 6 && viewMode === '3d') {
+            setMode('2d');
+        }
     };
 
     const handleWheel = (e: React.WheelEvent) => {
@@ -427,21 +469,38 @@ export const TreeDiorama = forwardRef<TreeDioramaRef, TreeDioramaProps>(function
     return (
         <div
             ref={containerRef}
-            className={`relative w-full h-full select-none cursor-grab active:cursor-grabbing overflow-hidden ${
-                className || ''
-            }`}
+            className={`relative w-full h-full select-none overflow-hidden ${
+                viewMode === '3d' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+            } ${className || ''}`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
+            onPointerLeave={() => { threeRef.current.isDragging = false; }}
             onWheel={handleWheel}
             style={{ touchAction: 'none' }}
         >
-            {/* Canvas — use inline styles to prevent Tailwind CSS from fighting with Three.js sizing */}
+            {/* 3D Living Diorama WebGL Canvas */}
             <canvas
                 ref={canvasRef}
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />
+
+            {/* 2D Botanical QR Code Overlay — Smooth cross-dissolve once camera settles top-down */}
+            <div
+                className={`absolute inset-0 flex items-center justify-center transition-all duration-350 ease-out ${
+                    isQrOverlayVisible
+                        ? 'opacity-100 pointer-events-auto scale-100'
+                        : 'opacity-0 pointer-events-none scale-98'
+                }`}
+                style={{ background: '#f8f5ee' }}
+                onClick={() => setMode('3d')}
+                title="Tap to see the tree"
+            >
+                <canvas
+                    ref={qrCanvasRef}
+                    className="cursor-pointer max-h-[88%] max-w-[88%] object-contain"
+                />
+            </div>
         </div>
     );
 });

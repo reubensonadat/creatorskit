@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 
-export const runtime = 'nodejs';
-// Allow up to 60s for cloud transcription of longer media files
+export const runtime = 'edge';
 export const maxDuration = 60;
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    const chunkSize = 8192;
+    for (let i = 0; i < len; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, Math.min(i + chunkSize, len))));
+    }
+    return btoa(binary);
+}
 
 interface WhisperWord {
     word: string;
@@ -154,37 +163,51 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            // Gemini audio transcription fallback
-            const ai = new GoogleGenAI({ apiKey: geminiKey });
+            // Gemini audio transcription fallback via direct REST API
             const arrayBuffer = await file.arrayBuffer();
-            const base64Audio = Buffer.from(arrayBuffer).toString('base64');
+            const base64Audio = arrayBufferToBase64(arrayBuffer);
             const mimeType = file.type || 'audio/webm';
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
+            const geminiRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [
                             {
-                                inlineData: {
-                                    data: base64Audio,
-                                    mimeType: mimeType.includes('audio') ? mimeType : 'audio/webm',
-                                },
-                            },
-                            {
-                                text:
-                                    'Accurately transcribe this audio verbatim for social video subtitles. ' +
-                                    'Return a valid JSON array of objects with the exact schema: ' +
-                                    '[{"start": number (seconds), "end": number (seconds), "text": string (short 3-5 word phrase)}]. ' +
-                                    'Do not wrap in markdown or backticks, just return raw valid JSON.',
+                                role: 'user',
+                                parts: [
+                                    {
+                                        inlineData: {
+                                            data: base64Audio,
+                                            mimeType: mimeType.includes('audio') ? mimeType : 'audio/webm',
+                                        },
+                                    },
+                                    {
+                                        text:
+                                            'Accurately transcribe this audio verbatim for social video subtitles. ' +
+                                            'Return a valid JSON array of objects with the exact schema: ' +
+                                            '[{"start": number (seconds), "end": number (seconds), "text": string (short 3-5 word phrase)}]. ' +
+                                            'Do not wrap in markdown or backticks, just return raw valid JSON.',
+                                    },
+                                ],
                             },
                         ],
-                    },
-                ],
-            });
+                    }),
+                }
+            );
 
-            const rawText = response.text?.trim() || '[]';
+            if (!geminiRes.ok) {
+                const errText = await geminiRes.text();
+                return NextResponse.json(
+                    { error: `Gemini API Error (${geminiRes.status}): ${errText}` },
+                    { status: geminiRes.status }
+                );
+            }
+
+            const geminiData = await geminiRes.json();
+            const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '[]';
             const cleanedJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
             let parsedCues: Array<{ start: number; end: number; text: string }> = [];
             try {

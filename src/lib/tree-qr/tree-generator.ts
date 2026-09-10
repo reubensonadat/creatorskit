@@ -13,9 +13,23 @@
 
 import * as THREE from 'three';
 import { QRMatrixResult } from './qr-matrix';
+import { getPresetBuilder, PresetResult } from './presets';
 
 export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
-export type SceneType = 'tree' | 'bonsai' | 'wisteria' | 'maple' | 'pine' | 'house' | 'avatar';
+export type SceneType =
+    | 'sakura'
+    | 'tree'
+    | 'maple'
+    | 'ginkgo'
+    | 'magnolia'
+    | 'hydrangea'
+    | 'frost'
+    | 'oak'
+    | 'rose'
+    | 'wisteria'
+    | 'bonsai'
+    | 'pine'
+    | 'house';
 
 export interface FoliagePalette {
     id: string;
@@ -35,6 +49,15 @@ export const PRESET_PALETTES: Record<string, FoliagePalette> = {
         secondary: '#ec4899',
         highlight: '#fdf2f8',
         deepShadow: '#be185d',
+        flowerAccent: '#fda4af',
+    },
+    rose: {
+        id: 'rose',
+        name: 'Velvet Rose',
+        primary: '#e11d48',
+        secondary: '#be123c',
+        highlight: '#ffe4e6',
+        deepShadow: '#881337',
         flowerAccent: '#fda4af',
     },
     wisteria: {
@@ -100,6 +123,15 @@ export const PRESET_PALETTES: Record<string, FoliagePalette> = {
         deepShadow: '#78350f',
         flowerAccent: '#fcd34d',
     },
+    magnolia: {
+        id: 'magnolia',
+        name: 'Blush Magnolia',
+        primary: '#f5c2dd',
+        secondary: '#e18bb4',
+        highlight: '#fff5fa',
+        deepShadow: '#a63d6e',
+        flowerAccent: '#fce7f1',
+    },
 };
 
 /**
@@ -137,6 +169,17 @@ export interface ParticleState {
     season: SeasonType;
 }
 
+export interface BlossomMorphData {
+    mesh: THREE.InstancedMesh;
+    pos3D: Float32Array;
+    pos2D: Float32Array;
+    rot3D: Float32Array;
+    rot2D: Float32Array;
+    scale3D: Float32Array;
+    scale2D: Float32Array;
+    count: number;
+}
+
 export interface DioramaSceneObjects {
     rootGroup: THREE.Group;
     groundGroup: THREE.Group;
@@ -148,6 +191,7 @@ export interface DioramaSceneObjects {
     treeGroup: THREE.Group;
     particles: ParticleState | null;
     leafMeshes: THREE.InstancedMesh[];
+    blossomMorph?: BlossomMorphData;
     trunkMesh: THREE.Group;
     qrSize: number;
     worldSize: number;
@@ -222,6 +266,15 @@ export function buildDiorama(
     const tempScale = new THREE.Vector3(1, 1, 1);
     const colorHelper = new THREE.Color();
 
+    // Winter-white palettes (light primaries) get pale stone foundations;
+    // everything else keeps the warm floating-earth soil.
+    const hsl = { h: 0, s: 0, l: 0 };
+    new THREE.Color(palette.primary).getHSL(hsl);
+    const isWinterStone = hsl.l > 0.72;
+
+    // Shared tint binding the courtyard greens to the chosen world color
+    const grassTint = new THREE.Color(palette.deepShadow);
+
     // ─── 1. FLOATING DIORAMA BASE SLAB (LAYERED EARTH) ─────────────────────
     const earthSlabGroup = new THREE.Group();
     earthSlabGroup.name = 'earthSlabGroup';
@@ -234,7 +287,7 @@ export function buildDiorama(
     // Deep Earth/Soil Layer
     const baseGeo = new THREE.BoxGeometry(totalPlatformWidth, slabDepth, totalPlatformWidth);
     const baseMat = new THREE.MeshStandardMaterial({
-        color: season === 'winter' ? 0xc8cfd6 : 0x3d2e1e,
+        color: isWinterStone ? 0xc8cfd6 : 0x3d2e1e,
         roughness: 0.95,
         metalness: 0.01,
     });
@@ -247,7 +300,7 @@ export function buildDiorama(
     // Mid Earth Strata Layer (lighter soil band)
     const strataGeo = new THREE.BoxGeometry(totalPlatformWidth - 0.1, 0.4, totalPlatformWidth - 0.1);
     const strataMat = new THREE.MeshStandardMaterial({
-        color: season === 'winter' ? 0xd5dbe2 : 0x5c4430,
+        color: isWinterStone ? 0xd5dbe2 : 0x5c4430,
         roughness: 0.9,
         metalness: 0.01,
     });
@@ -352,7 +405,7 @@ export function buildDiorama(
     lightTilesMesh.castShadow = true;
     groundGroup.add(lightTilesMesh);
 
-    // Dark tiles — SOFT WARM COBBLESTONE PAVERS IN 3D, HIGH-CONTRAST IN 2D
+    // Dark tiles — LUSH GREEN GARDEN TURF IN 3D, HIGH-CONTRAST IN 2D
     const darkTileGeo = new THREE.BoxGeometry(cellSize * 0.94, 1.0, cellSize * 0.94);
     const darkTileMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -361,9 +414,13 @@ export function buildDiorama(
     });
     const darkTilesMesh = new THREE.InstancedMesh(darkTileGeo, darkTileMat, darkTileCoords.length);
 
-    // Soft, warm stone cobblestone palette
-    const slatePalette = [0xd4cec3, 0xcbc4b9, 0xc1baa9, 0xd0c9bd, 0xbeb7a7, 0xc7c0b4];
-    const finderTurfColor = 0x558b16;
+    // Dark tiles — BOTANICAL-TINTED COBBLESTONES in 3D: the active palette
+    // tempers the stone so the courtyard itself takes on the chosen world
+    // color (blush slate for sakura, deep wine for rose, amber, cobalt…),
+    // matching the palette-driven 2D QR render underneath.
+    const stoneTemper = new THREE.Color(0x8a8074);
+    const darkStoneBase = new THREE.Color(palette.secondary).lerp(stoneTemper, 0.38);
+    const finderStoneBase = new THREE.Color(palette.deepShadow).lerp(new THREE.Color(0x3a3f36), 0.3);
     const darkTile3DColors: THREE.Color[] = [];
     const darkTile2DColors: THREE.Color[] = [];
 
@@ -378,13 +435,18 @@ export function buildDiorama(
         darkTilesMesh.setMatrixAt(idx, tempMatrix);
 
         let col3d: THREE.Color;
+        let col2d: THREE.Color;
         if (coord.isFinder) {
-            col3d = new THREE.Color(finderTurfColor).offsetHSL(prng.range(-0.02, 0.02), prng.range(-0.04, 0.04), prng.range(-0.03, 0.03));
+            col3d = finderStoneBase
+                .clone()
+                .offsetHSL(prng.range(-0.02, 0.02), prng.range(-0.04, 0.04), prng.range(-0.03, 0.03));
+            col2d = new THREE.Color(0x365314); // deep hedge green for 2D finder scanning
         } else {
-            const hex = prng.choice(slatePalette);
-            col3d = new THREE.Color(hex).offsetHSL(prng.range(-0.01, 0.01), 0, prng.range(-0.02, 0.02));
+            col3d = darkStoneBase
+                .clone()
+                .offsetHSL(prng.range(-0.02, 0.02), prng.range(-0.03, 0.03), prng.range(-0.04, 0.04));
+            col2d = new THREE.Color(palette.primary); // matching blossom tone in 2D
         }
-        const col2d = new THREE.Color(0x111827); // Crisp, high-contrast dark for scanner decoding
         darkTile3DColors.push(col3d);
         darkTile2DColors.push(col2d);
 
@@ -396,7 +458,7 @@ export function buildDiorama(
     darkTilesMesh.receiveShadow = true;
     groundGroup.add(darkTilesMesh);
 
-    // ─── 3. CORNER FINDER FLOWER GARDENS (3D GRASS & WILDFLOWERS) ─────────
+    // ─── 3. CORNER FINDER FLOWER GARDENS (RAISED STONE BEDS, SLENDER GRASS BLADES & WILDFLOWERS) ───
     const finderGardensGroup = new THREE.Group();
     finderGardensGroup.name = 'finderGardensGroup';
     groundGroup.add(finderGardensGroup);
@@ -407,21 +469,82 @@ export function buildDiorama(
         { cx: (-size / 2 + 3.5) * cellSize, cz: (size / 2 - 3.5) * cellSize },
     ];
 
-    const grassBladeCount = 600;
-    const grassGeo = new THREE.ConeGeometry(0.045, 1.15, 4);
+    // Stone kerb border framing each 7x7 corner finder garden bed (Image 2)
+    const kerbMat = new THREE.MeshStandardMaterial({
+        color: 0xded8cc, // Clean Japanese garden stone edging
+        roughness: 0.85,
+        metalness: 0.02,
+    });
+    const kerbThickness = 0.22;
+    const kerbHeight = 0.26;
+    const bedSide = 7 * cellSize;
+
+    finderCenters.forEach((fc) => {
+        const hSegmentGeo = new THREE.BoxGeometry(bedSide, kerbHeight, kerbThickness);
+        const vSegmentGeo = new THREE.BoxGeometry(kerbThickness, kerbHeight, bedSide);
+
+        // North kerb
+        const kNorth = new THREE.Mesh(hSegmentGeo, kerbMat);
+        kNorth.position.set(fc.cx, kerbHeight / 2 + 0.04, fc.cz - bedSide / 2 + kerbThickness / 2);
+        kNorth.castShadow = true;
+        kNorth.receiveShadow = true;
+        finderGardensGroup.add(kNorth);
+
+        // South kerb
+        const kSouth = new THREE.Mesh(hSegmentGeo, kerbMat);
+        kSouth.position.set(fc.cx, kerbHeight / 2 + 0.04, fc.cz + bedSide / 2 - kerbThickness / 2);
+        kSouth.castShadow = true;
+        kSouth.receiveShadow = true;
+        finderGardensGroup.add(kSouth);
+
+        // West kerb
+        const kWest = new THREE.Mesh(vSegmentGeo, kerbMat);
+        kWest.position.set(fc.cx - bedSide / 2 + kerbThickness / 2, kerbHeight / 2 + 0.04, fc.cz);
+        kWest.castShadow = true;
+        kWest.receiveShadow = true;
+        finderGardensGroup.add(kWest);
+
+        // East kerb
+        const kEast = new THREE.Mesh(vSegmentGeo, kerbMat);
+        kEast.position.set(fc.cx + bedSide / 2 - kerbThickness / 2, kerbHeight / 2 + 0.04, fc.cz);
+        kEast.castShadow = true;
+        kEast.receiveShadow = true;
+        finderGardensGroup.add(kEast);
+    });
+
+    // Slender upright grass blades with natural curvature and varied heights (Image 2)
+    const grassBladeCount = 800;
+    const grassGeo = new THREE.ConeGeometry(0.042, 1.45, 4);
     const grassMat = new THREE.MeshStandardMaterial({
-        color: 0x70a81e,
-        roughness: 0.75,
+        color: 0x5b8e18,
+        roughness: 0.72,
     });
     const grassInstanced = new THREE.InstancedMesh(grassGeo, grassMat, grassBladeCount);
 
-    const flowerCount = 240;
-    const flowerGeo = new THREE.SphereGeometry(0.08, 5, 4);
-    const flowerMat = new THREE.MeshStandardMaterial({
+    // Wildflower blossom heads (delicate pink, white, cream, buttercup yellow)
+    const flowerCount = 280;
+    const flowerHeadGeo = new THREE.SphereGeometry(0.11, 7, 6);
+    const flowerHeadMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        roughness: 0.5,
+        roughness: 0.45,
     });
-    const flowerInstanced = new THREE.InstancedMesh(flowerGeo, flowerMat, flowerCount);
+    const flowerInstanced = new THREE.InstancedMesh(flowerHeadGeo, flowerHeadMat, flowerCount);
+
+    // Wildflower stems
+    const stemGeo = new THREE.CylinderGeometry(0.016, 0.02, 1.25, 4);
+    const stemMat = new THREE.MeshStandardMaterial({
+        color: 0x3f6212,
+        roughness: 0.8,
+    });
+    const stemInstanced = new THREE.InstancedMesh(stemGeo, stemMat, flowerCount);
+
+    // Finder-corner wildflower heads follow the chosen palette
+    const finderFlowerColors = [
+        new THREE.Color(palette.primary),
+        new THREE.Color(palette.highlight),
+        new THREE.Color(palette.flowerAccent ?? palette.primary),
+        new THREE.Color(0xffffff),
+    ];
 
     let gIdx = 0;
     let fIdx = 0;
@@ -430,19 +553,22 @@ export function buildDiorama(
         const bladesPerCorner = Math.floor(grassBladeCount / 3);
         for (let b = 0; b < bladesPerCorner; b++) {
             if (gIdx >= grassBladeCount) break;
-            const gx = fc.cx + prng.range(-3.2, 3.2);
-            const gz = fc.cz + prng.range(-3.2, 3.2);
-            const heightScale = prng.range(0.7, 1.4);
-            const gy = 0.12 + (1.15 * heightScale) / 2;
+            const gx = fc.cx + prng.range(-3.1, 3.1);
+            const gz = fc.cz + prng.range(-3.1, 3.1);
+            const heightScale = prng.range(0.75, 1.45);
+            const gy = 0.12 + (1.45 * heightScale) / 2;
 
             tempPos.set(gx, gy, gz);
-            tempRot.set(prng.range(-0.2, 0.2), prng.range(0, Math.PI * 2), prng.range(-0.2, 0.2));
+            tempRot.set(prng.range(-0.22, 0.22), prng.range(0, Math.PI * 2), prng.range(-0.22, 0.22));
             tempQuat.setFromEuler(tempRot);
             tempScale.set(prng.range(0.8, 1.2), heightScale, prng.range(0.8, 1.2));
             tempMatrix.compose(tempPos, tempQuat, tempScale);
 
             grassInstanced.setMatrixAt(gIdx, tempMatrix);
-            colorHelper.setHex(prng.choice([0x70a81e, 0x82b926, 0x5b8e18])).offsetHSL(prng.range(-0.03, 0.03), 0, prng.range(-0.04, 0.04));
+            colorHelper
+                .setHex(prng.choice([0x5b8e18, 0x70a81e, 0x82b926, 0x4d7c0f]))
+                .lerp(grassTint, 0.12)
+                .offsetHSL(prng.range(-0.02, 0.02), 0, prng.range(-0.03, 0.03));
             grassInstanced.setColorAt(gIdx, colorHelper);
             gIdx++;
         }
@@ -450,19 +576,27 @@ export function buildDiorama(
         const flowersPerCorner = Math.floor(flowerCount / 3);
         for (let f = 0; f < flowersPerCorner; f++) {
             if (fIdx >= flowerCount) break;
-            const fx = fc.cx + prng.range(-3.1, 3.1);
-            const fz = fc.cz + prng.range(-3.1, 3.1);
-            const fy = prng.range(0.65, 1.25);
+            const fx = fc.cx + prng.range(-3.0, 3.0);
+            const fz = fc.cz + prng.range(-3.0, 3.0);
+            const stemHeight = prng.range(0.9, 1.5);
+            const stemBaseY = 0.12 + stemHeight / 2;
 
-            tempPos.set(fx, fy, fz);
-            tempRot.set(0, prng.range(0, Math.PI * 2), 0);
+            // Stem placement
+            tempPos.set(fx, stemBaseY, fz);
+            tempRot.set(prng.range(-0.1, 0.1), prng.range(0, Math.PI * 2), prng.range(-0.1, 0.1));
             tempQuat.setFromEuler(tempRot);
-            const fScale = prng.range(0.8, 1.3);
-            tempScale.set(fScale, fScale, fScale);
+            tempScale.set(1, stemHeight / 1.25, 1);
             tempMatrix.compose(tempPos, tempQuat, tempScale);
+            stemInstanced.setMatrixAt(fIdx, tempMatrix);
 
+            // Blossom head on top of stem
+            const headY = 0.12 + stemHeight + 0.08;
+            tempPos.set(fx, headY, fz);
+            tempScale.set(prng.range(0.85, 1.3), prng.range(0.8, 1.1), prng.range(0.85, 1.3));
+            tempMatrix.compose(tempPos, tempQuat, tempScale);
             flowerInstanced.setMatrixAt(fIdx, tempMatrix);
-            colorHelper.setHex(prng.choice([0xf472b6, 0xfbcfe8, 0xffffff, 0xfde047]));
+
+            colorHelper.copy(prng.choice(finderFlowerColors)).offsetHSL(0, 0, prng.range(-0.02, 0.02));
             flowerInstanced.setColorAt(fIdx, colorHelper);
             fIdx++;
         }
@@ -474,315 +608,209 @@ export function buildDiorama(
     grassInstanced.receiveShadow = true;
     finderGardensGroup.add(grassInstanced);
 
+    stemInstanced.instanceMatrix.needsUpdate = true;
+    finderGardensGroup.add(stemInstanced);
+
     flowerInstanced.instanceMatrix.needsUpdate = true;
     if (flowerInstanced.instanceColor) flowerInstanced.instanceColor.needsUpdate = true;
+    flowerInstanced.castShadow = true;
     finderGardensGroup.add(flowerInstanced);
 
-    // ─── 4-6. CENTERPIECE — depends on sceneType ─────────────────────────────
+    // ─── 3b. WIDESPREAD GARDEN GRASS & WILDFLOWERS ACROSS ALL DARK TILES ──────
+    // Filter dark tiles that are NOT in finder areas and NOT in center tree area
+    const gardenDarkTiles = darkTileCoords.filter(c => !c.isFinder && !c.isCenter);
 
+    // Garden grass: 2 blades per eligible dark tile (short lawn grass)
+    const gardenGrassCount = Math.min(gardenDarkTiles.length * 2, 2400);
+    const gardenGrassGeo = new THREE.ConeGeometry(0.04, 0.55, 4);
+    const gardenGrassMat = new THREE.MeshStandardMaterial({
+        color: 0x70a81e,
+        roughness: 0.75,
+    });
+    const gardenGrassInstanced = new THREE.InstancedMesh(gardenGrassGeo, gardenGrassMat, gardenGrassCount);
+    let ggIdx = 0;
+
+    for (const tile of gardenDarkTiles) {
+        const bladesPerTile = Math.min(2, gardenGrassCount - ggIdx);
+        for (let b = 0; b < bladesPerTile; b++) {
+            if (ggIdx >= gardenGrassCount) break;
+            const gx = tile.x + prng.range(-0.35, 0.35);
+            const gz = tile.z + prng.range(-0.35, 0.35);
+            const heightScale = prng.range(0.4, 0.9);
+            const gy = 0.14 + (0.55 * heightScale) / 2;
+
+            tempPos.set(gx, gy, gz);
+            tempRot.set(prng.range(-0.25, 0.25), prng.range(0, Math.PI * 2), prng.range(-0.25, 0.25));
+            tempQuat.setFromEuler(tempRot);
+            tempScale.set(prng.range(0.7, 1.1), heightScale, prng.range(0.7, 1.1));
+            tempMatrix.compose(tempPos, tempQuat, tempScale);
+
+            gardenGrassInstanced.setMatrixAt(ggIdx, tempMatrix);
+            colorHelper
+                .setHex(prng.choice([0x70a81e, 0x82b926, 0x5b8e18, 0x6b9d1c]))
+                .lerp(grassTint, 0.12)
+                .offsetHSL(prng.range(-0.03, 0.03), 0, prng.range(-0.04, 0.04));
+            gardenGrassInstanced.setColorAt(ggIdx, colorHelper);
+            ggIdx++;
+        }
+    }
+    gardenGrassInstanced.instanceMatrix.needsUpdate = true;
+    if (gardenGrassInstanced.instanceColor) gardenGrassInstanced.instanceColor.needsUpdate = true;
+    gardenGrassInstanced.castShadow = true;
+    gardenGrassInstanced.receiveShadow = true;
+    groundGroup.add(gardenGrassInstanced);
+
+    // Scattered wildflowers across dark tiles (~1 per 4 tiles)
+    const gardenFlowerCount = Math.min(Math.floor(gardenDarkTiles.length / 4), 400);
+    const gardenFlowerGeo = new THREE.SphereGeometry(0.06, 5, 4);
+    const gardenFlowerMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.5,
+    });
+    const gardenFlowerInstanced = new THREE.InstancedMesh(gardenFlowerGeo, gardenFlowerMat, gardenFlowerCount);
+
+    const flowerPaletteColors = palette.flowerAccent
+        ? [parseInt(palette.primary.replace('#', ''), 16), parseInt(palette.flowerAccent.replace('#', ''), 16), 0xfbcfe8, 0xffffff, 0xfde047]
+        : [0xf472b6, 0xfbcfe8, 0xffffff, 0xfde047];
+
+    for (let gf = 0; gf < gardenFlowerCount; gf++) {
+        const tile = prng.choice(gardenDarkTiles);
+        const fx = tile.x + prng.range(-0.3, 0.3);
+        const fz = tile.z + prng.range(-0.3, 0.3);
+        const fy = prng.range(0.35, 0.65);
+
+        tempPos.set(fx, fy, fz);
+        tempRot.set(0, prng.range(0, Math.PI * 2), 0);
+        tempQuat.setFromEuler(tempRot);
+        const fScale = prng.range(0.7, 1.2);
+        tempScale.set(fScale, fScale, fScale);
+        tempMatrix.compose(tempPos, tempQuat, tempScale);
+
+        gardenFlowerInstanced.setMatrixAt(gf, tempMatrix);
+        colorHelper.setHex(prng.choice(flowerPaletteColors));
+        gardenFlowerInstanced.setColorAt(gf, colorHelper);
+    }
+    gardenFlowerInstanced.instanceMatrix.needsUpdate = true;
+    if (gardenFlowerInstanced.instanceColor) gardenFlowerInstanced.instanceColor.needsUpdate = true;
+    groundGroup.add(gardenFlowerInstanced);
+
+    // ─── 3c. SMALL BUSH/SHRUB CLUSTERS ON ~18% OF NON-FINDER DARK TILES ──────
+    const bushTiles = gardenDarkTiles.filter(() => prng.next() < 0.18);
+    const bushCount = bushTiles.length;
+    if (bushCount > 0) {
+        const bushGeo = new THREE.SphereGeometry(1.0, 6, 5);
+        const bushMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.78,
+            metalness: 0.02,
+        });
+        const bushInstanced = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
+        const bushGreenPalette = [0x4a8015, 0x578c1a, 0x3f7210, 0x5a9920];
+        const bushTint = new THREE.Color(palette.primary);
+
+        bushTiles.forEach((tile, bIdx) => {
+            const bScale = prng.range(0.2, 0.42);
+            const bScaleY = bScale * prng.range(0.7, 1.1);
+            const by = 0.14 + bScaleY * 0.5;
+
+            tempPos.set(tile.x + prng.range(-0.1, 0.1), by, tile.z + prng.range(-0.1, 0.1));
+            tempRot.set(0, prng.range(0, Math.PI * 2), 0);
+            tempQuat.setFromEuler(tempRot);
+            tempScale.set(bScale, bScaleY, bScale);
+            tempMatrix.compose(tempPos, tempQuat, tempScale);
+
+            bushInstanced.setMatrixAt(bIdx, tempMatrix);
+            colorHelper
+                .setHex(prng.choice(bushGreenPalette))
+                .lerp(bushTint, 0.14)
+                .offsetHSL(prng.range(-0.02, 0.02), prng.range(-0.03, 0.03), prng.range(-0.04, 0.04));
+            bushInstanced.setColorAt(bIdx, colorHelper);
+        });
+        bushInstanced.instanceMatrix.needsUpdate = true;
+        if (bushInstanced.instanceColor) bushInstanced.instanceColor.needsUpdate = true;
+        bushInstanced.castShadow = true;
+        bushInstanced.receiveShadow = true;
+        groundGroup.add(bushInstanced);
+    }
+
+    // ─── 4. MODULAR BOTANICAL CENTERPIECE PRESET ─────────────────────────────
     let trunkGroup: THREE.Group;
-    let blossomInstanced: THREE.InstancedMesh | null = null;
+    let leafMeshes: THREE.InstancedMesh[] = [];
     let fallenMesh: THREE.InstancedMesh | undefined = undefined;
+    let blossomMorphData: BlossomMorphData | undefined = undefined;
 
     if (sceneType === 'house') {
-        // House centerpiece
         trunkGroup = new THREE.Group();
         trunkGroup.name = 'houseCenterpiece';
         treeGroup.add(trunkGroup);
         buildHouseCenterpiece(trunkGroup, season, palette, prng);
-
-    } else if (sceneType === 'avatar') {
-        // Avatar centerpiece
-        trunkGroup = new THREE.Group();
-        trunkGroup.name = 'avatarCenterpiece';
-        treeGroup.add(trunkGroup);
-        buildAvatarCenterpiece(trunkGroup, season, palette, prng);
-
     } else {
-        // ─── DEFAULT: PROCEDURAL GRAND UMBRELLA SAKURA (MATCHING IMAGE 1) ────
-        trunkGroup = new THREE.Group();
-        trunkGroup.name = 'organicTrunkGroup';
-        treeGroup.add(trunkGroup);
-
-        const woodMat = new THREE.MeshStandardMaterial({
-            color: 0x54321b,
-            roughness: 0.92,
-            metalness: 0.01,
+        const builder = getPresetBuilder(sceneType);
+        const presetResult = builder({
+            scene: treeGroup,
+            season,
+            palette,
+            prng,
+            worldSize,
+            qrSize: size,
         });
+        trunkGroup = presetResult.trunkGroup;
+        leafMeshes = presetResult.leafMeshes;
+    }
 
-        // 1. Species-aware trunk posture & height
-        const isBonsai = sceneType === 'bonsai';
-        const isWisteria = sceneType === 'wisteria';
-        const isPine = sceneType === 'pine';
-        const isMaple = sceneType === 'maple';
+    // ─── 6. FALLEN PETAL SCATTER ON COURTYARD PAVERS ─────────────────────────
+    const fallenCount = 450;
+    const fallenGeo = createPetalGeometry(0.28);
+    const fallenMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.65,
+        side: THREE.DoubleSide,
+    });
+    fallenMesh = new THREE.InstancedMesh(fallenGeo, fallenMat, fallenCount);
 
-        const trunkHeight = isBonsai ? 8.2 : isPine ? 11.2 : isWisteria ? 9.5 : 10.2;
-        const trunkRadiusBottom = isBonsai ? 1.55 : 1.25;
-        const trunkRadiusTop = isBonsai ? 0.45 : 0.58;
-        const trunkSegments = 10;
-        const wobbleIntensity = isBonsai ? 0.42 : 0.16;
+    const colPrimaryFallen = new THREE.Color(palette.primary);
+    const colSecondaryFallen = new THREE.Color(palette.secondary);
 
-        let prevPoint = new THREE.Vector3(0, 0.14, 0);
-        const trunkKnots: THREE.Vector3[] = [prevPoint.clone()];
+    for (let f = 0; f < fallenCount; f++) {
+        const rad = prng.range(0.8, 9.8);
+        const fTheta = prng.range(0, Math.PI * 2);
+        const fx = Math.cos(fTheta) * rad;
+        const fz = Math.sin(fTheta) * rad;
+        const fy = 0.17;
 
-        for (let s = 0; s < trunkSegments; s++) {
-            const segHeight = trunkHeight / trunkSegments;
-            const progress = (s + 1) / trunkSegments;
-            const rBottom = trunkRadiusBottom - (trunkRadiusBottom - trunkRadiusTop) * (s / trunkSegments);
-            const rTop = trunkRadiusBottom - (trunkRadiusBottom - trunkRadiusTop) * progress;
+        tempPos.set(fx, fy, fz);
+        tempRot.set(Math.PI / 2, prng.range(0, Math.PI * 2), 0);
+        tempQuat.setFromEuler(tempRot);
+        tempScale.set(prng.range(0.85, 1.35), prng.range(0.85, 1.35), 1);
+        tempMatrix.compose(tempPos, tempQuat, tempScale);
 
-            // Japanese artistic cedar/bonsai posture with graceful organic sway
-            const wobbleX = Math.sin(s * 0.45 + qrResult.seed) * wobbleIntensity * (s + 1);
-            const wobbleZ = Math.cos(s * 0.4 + qrResult.seed) * wobbleIntensity * (s + 1);
-            const nextPoint = new THREE.Vector3(wobbleX, 0.14 + (s + 1) * segHeight, wobbleZ);
-            trunkKnots.push(nextPoint.clone());
+        fallenMesh.setMatrixAt(f, tempMatrix);
+        colorHelper.copy(colPrimaryFallen).lerp(colSecondaryFallen, prng.range(0, 0.5));
+        fallenMesh.setColorAt(f, colorHelper);
+    }
+    fallenMesh.instanceMatrix.needsUpdate = true;
+    if (fallenMesh.instanceColor) fallenMesh.instanceColor.needsUpdate = true;
+    fallenMesh.receiveShadow = true;
+    groundGroup.add(fallenMesh);
 
-            // Cylinder with horizontal ring bevel
-            const segGeo = new THREE.CylinderGeometry(rTop, rBottom, segHeight * 0.92, 12);
-            const segMesh = new THREE.Mesh(segGeo, woodMat);
-
-            const midPoint = prevPoint.clone().add(nextPoint).multiplyScalar(0.5);
-            segMesh.position.copy(midPoint);
-
-            const dir = nextPoint.clone().sub(prevPoint).normalize();
-            const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-            segMesh.quaternion.copy(quat);
-
-            segMesh.castShadow = true;
-            segMesh.receiveShadow = true;
-            trunkGroup.add(segMesh);
-
-            prevPoint = nextPoint;
-        }
-
-        // 2. Thick root buttresses anchoring into stone pavers
-        const numRoots = isBonsai ? 8 : 6;
-        for (let r = 0; r < numRoots; r++) {
-            const rootAngle = (r / numRoots) * Math.PI * 2 + prng.range(-0.15, 0.15);
-            const rootLength = isBonsai ? prng.range(2.2, 3.4) : prng.range(1.6, 2.4);
-            const rootGeo = new THREE.ConeGeometry(isBonsai ? 0.52 : 0.42, rootLength, 6);
-            const rootMesh = new THREE.Mesh(rootGeo, woodMat);
-
-            const rx = Math.cos(rootAngle) * (isBonsai ? 0.95 : 0.72);
-            const rz = Math.sin(rootAngle) * (isBonsai ? 0.95 : 0.72);
-            rootMesh.position.set(rx, 0.18, rz);
-            rootMesh.rotation.set(
-                Math.sin(rootAngle) * 0.78,
-                0,
-                -Math.cos(rootAngle) * 0.78
-            );
-            rootMesh.castShadow = true;
-            trunkGroup.add(rootMesh);
-        }
-
-        // Japanese stone lantern accent for Zen Bonsai
-        if (isBonsai) {
-            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 });
-            const lanternBase = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.35, 6), stoneMat);
-            lanternBase.position.set(2.4, 0.18, 1.8);
-            lanternBase.castShadow = true;
-            trunkGroup.add(lanternBase);
-
-            const lanternPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 6), stoneMat);
-            lanternPillar.position.set(2.4, 0.65, 1.8);
-            lanternPillar.castShadow = true;
-            trunkGroup.add(lanternPillar);
-
-            const lanternRoof = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.35, 6), stoneMat);
-            lanternRoof.position.set(2.4, 1.1, 1.8);
-            lanternRoof.castShadow = true;
-            trunkGroup.add(lanternRoof);
-        }
-
-        // 3. Grand spreading branches supporting the expansive pagoda umbrella canopy
-        const branchTips: Array<{ pos: THREE.Vector3; dir: THREE.Vector3; elevation: number }> = [];
-        const numBranches = 10;
-        const baseAngle = (Math.PI * 2) / numBranches;
-
-        for (let b = 0; b < numBranches; b++) {
-            const angle = b * baseAngle + prng.range(-0.2, 0.2);
-            // Distribute branches across trunk height
-            const knotIdx = Math.min(trunkKnots.length - 1, 3 + (b % 6));
-            const startKnot = trunkKnots[knotIdx];
-            let bStart = startKnot.clone();
-
-            // Lower branches stretch out further (~9.5 - 11.5 units), higher ones shorter (~6 - 8 units)
-            const isLower = knotIdx <= 5;
-            const branchLen = isLower ? prng.range(8.5, 11.5) : prng.range(6.0, 8.5);
-            const branchSteps = 4;
-            const branchDir = new THREE.Vector3(
-                Math.cos(angle) * prng.range(0.85, 1.05),
-                isLower ? prng.range(0.3, 0.5) : prng.range(0.45, 0.7),
-                Math.sin(angle) * prng.range(0.85, 1.05)
-            ).normalize();
-
-            let bRadius = isLower ? 0.38 : 0.28;
-            for (let bs = 0; bs < branchSteps; bs++) {
-                const stepLen = branchLen / branchSteps;
-                const bNext = bStart.clone().addScaledVector(branchDir, stepLen);
-                bNext.y += prng.range(0.12, 0.3);
-
-                const bTopRadius = Math.max(0.12, bRadius - 0.07);
-                const bGeo = new THREE.CylinderGeometry(bTopRadius, bRadius, stepLen, 8);
-                const bMesh = new THREE.Mesh(bGeo, woodMat);
-
-                const bMid = bStart.clone().add(bNext).multiplyScalar(0.5);
-                bMesh.position.copy(bMid);
-
-                const bdir = bNext.clone().sub(bStart).normalize();
-                const bquat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), bdir);
-                bMesh.quaternion.copy(bquat);
-
-                bMesh.castShadow = true;
-                trunkGroup.add(bMesh);
-
-                bStart = bNext;
-                bRadius = bTopRadius;
-            }
-
-            branchTips.push({ pos: bStart.clone(), dir: branchDir.clone(), elevation: bStart.y });
-        }
-
-        // 4. MASSIVE PAGODA UMBRELLA BLOSSOM CANOPY (12,500+ BLOSSOMS SPANNING 24-26 UNITS!)
-        const petalCount = 12500;
-        const petalGeo = createPetalGeometry(0.34);
-        const petalMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 0.5,
-            metalness: 0.02,
-            side: THREE.DoubleSide,
-        });
-        blossomInstanced = new THREE.InstancedMesh(petalGeo, petalMat, petalCount);
-
-        const crownApex = trunkKnots[trunkKnots.length - 1].clone().add(new THREE.Vector3(0, 1.4, 0));
-
-        // Create tiered conical umbrella cloud shelves matching Image 1
-        const clusters: Array<{ pos: THREE.Vector3; radiusX: number; radiusY: number; radiusZ: number; weight: number }> = [
-            // Top Apex Crown (peaked dome)
-            { pos: crownApex.clone().add(new THREE.Vector3(0, 1.8, 0)), radiusX: 4.2, radiusY: 3.2, radiusZ: 4.2, weight: 1.4 },
-            { pos: crownApex, radiusX: 5.8, radiusY: 3.5, radiusZ: 5.8, weight: 1.5 },
-            // Mid-upper shelf
-            { pos: crownApex.clone().add(new THREE.Vector3(2.5, -0.6, -2.5)), radiusX: 5.2, radiusY: 3.2, radiusZ: 5.2, weight: 1.2 },
-            { pos: crownApex.clone().add(new THREE.Vector3(-2.5, -0.6, 2.5)), radiusX: 5.2, radiusY: 3.2, radiusZ: 5.2, weight: 1.2 },
-            { pos: crownApex.clone().add(new THREE.Vector3(-2.5, -0.6, -2.5)), radiusX: 5.2, radiusY: 3.2, radiusZ: 5.2, weight: 1.2 },
-            { pos: crownApex.clone().add(new THREE.Vector3(2.5, -0.6, 2.5)), radiusX: 5.2, radiusY: 3.2, radiusZ: 5.2, weight: 1.2 },
-            // Broad outer branch limb canopies stretching across the whole diorama
-            ...branchTips.map((tip) => ({
-                pos: tip.pos.clone().addScaledVector(tip.dir, 0.4),
-                radiusX: prng.range(4.8, 6.0),
-                radiusY: prng.range(2.8, 3.8),
-                radiusZ: prng.range(4.8, 6.0),
-                weight: 1.1,
-            })),
-        ];
-
-        // Soft pastel Sakura colors (matching Image 1!)
-        const colDeep = new THREE.Color(palette.deepShadow);
-        const colSecondary = new THREE.Color(palette.secondary);
-        const colPrimary = new THREE.Color(palette.primary);
-        const colHighlight = new THREE.Color(palette.highlight);
-
-        let pIdx = 0;
-        const totalWeight = clusters.reduce((sum, c) => sum + c.weight, 0);
-
-        for (const cluster of clusters) {
-            const countForThis = Math.floor((cluster.weight / totalWeight) * petalCount);
-            for (let i = 0; i < countForThis; i++) {
-                if (pIdx >= petalCount) break;
-
-                const u = prng.next();
-                const v = prng.next();
-                const theta = u * 2.0 * Math.PI;
-                const phi = Math.acos(2.0 * v - 1.0);
-                const r = Math.cbrt(prng.next());
-
-                const ox = r * cluster.radiusX * Math.sin(phi) * Math.cos(theta);
-                const oy = r * cluster.radiusY * Math.sin(phi) * Math.sin(theta);
-                const oz = r * cluster.radiusZ * Math.cos(phi);
-
-                const px = cluster.pos.x + ox;
-                const py = cluster.pos.y + oy;
-                const pz = cluster.pos.z + oz;
-
-                tempPos.set(px, py, pz);
-                tempRot.set(prng.range(0, Math.PI * 2), prng.range(0, Math.PI * 2), prng.range(0, Math.PI * 2));
-                tempQuat.setFromEuler(tempRot);
-                const scale = prng.range(0.85, 1.45);
-                tempScale.set(scale, scale, scale);
-                tempMatrix.compose(tempPos, tempQuat, tempScale);
-
-                blossomInstanced.setMatrixAt(pIdx, tempMatrix);
-
-                const heightFactor = (oy / cluster.radiusY + 1) / 2;
-                const depthFactor = r;
-
-                if (heightFactor > 0.68 && depthFactor > 0.4) {
-                    colorHelper.copy(colHighlight);
-                } else if (heightFactor > 0.35) {
-                    colorHelper.copy(colPrimary).lerp(colHighlight, (heightFactor - 0.35) * 0.7);
-                } else if (depthFactor < 0.35) {
-                    colorHelper.copy(colDeep);
-                } else {
-                    colorHelper.copy(colSecondary);
-                }
-
-                colorHelper.offsetHSL(prng.range(-0.015, 0.015), prng.range(-0.02, 0.02), prng.range(-0.02, 0.02));
-                blossomInstanced.setColorAt(pIdx, colorHelper);
-                pIdx++;
-            }
-        }
-
-        blossomInstanced.instanceMatrix.needsUpdate = true;
-        if (blossomInstanced.instanceColor) blossomInstanced.instanceColor.needsUpdate = true;
-        blossomInstanced.castShadow = true;
-        treeGroup.add(blossomInstanced);
-
-        // 5. WIDE RADIAL DUSTING OF FALLEN SAKURA PETALS ACROSS THE COURTYARD
-        const fallenCount = 500;
-        const fallenGeo = createPetalGeometry(0.28);
-        const fallenMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 0.65,
-            side: THREE.DoubleSide,
-        });
-        fallenMesh = new THREE.InstancedMesh(fallenGeo, fallenMat, fallenCount);
-
-        const colPrimaryFallen = new THREE.Color(palette.primary);
-        const colSecondaryFallen = new THREE.Color(palette.secondary);
-
-        for (let f = 0; f < fallenCount; f++) {
-            const rad = prng.range(0.6, 9.8);
-            const fTheta = prng.range(0, Math.PI * 2);
-            const fx = Math.cos(fTheta) * rad;
-            const fz = Math.sin(fTheta) * rad;
-            const fy = 0.17;
-
-            tempPos.set(fx, fy, fz);
-            tempRot.set(Math.PI / 2, prng.range(0, Math.PI * 2), 0);
-            tempQuat.setFromEuler(tempRot);
-            tempScale.set(prng.range(0.85, 1.35), prng.range(0.85, 1.35), 1);
-            tempMatrix.compose(tempPos, tempQuat, tempScale);
-
-            fallenMesh.setMatrixAt(f, tempMatrix);
-            colorHelper.copy(colPrimaryFallen).lerp(colSecondaryFallen, prng.range(0, 0.5));
-            fallenMesh.setColorAt(f, colorHelper);
-        }
-        fallenMesh.instanceMatrix.needsUpdate = true;
-        if (fallenMesh.instanceColor) fallenMesh.instanceColor.needsUpdate = true;
-        fallenMesh.receiveShadow = true;
-        groundGroup.add(fallenMesh);
-
-    } // end of sceneType === 'tree' block
-
-    // ─── 7. DYNAMIC SEASONAL FLOATING PARTICLES (shared by all scene types) ──
-    const particleCount = season === 'autumn' ? 150 : season === 'winter' ? 180 : season === 'spring' ? 140 : 80;
+    // ─── 7. PALETTE-BOUND DRIFTING PETALS (shared by all scene types) ──────────
+    // The breeze itself follows the chosen world color: blush flakes for
+    // sakura, lavender for wisteria, golden leaves for ginkgo — and soft
+    // white snow under the frost palette, with no special-case code.
+    const particleCount = 150;
     const partGeo = createPetalGeometry(0.22);
     const partMat = new THREE.MeshBasicMaterial({
-        color: season === 'winter' ? 0xffffff : season === 'autumn' ? 0xf59e0b : 0xf472b6,
+        color: 0xffffff, // tinted per-instance from the palette
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.85,
     });
+    const particleColors = [
+        new THREE.Color(palette.primary),
+        new THREE.Color(palette.secondary),
+        new THREE.Color(palette.highlight),
+    ];
+    if (palette.flowerAccent) particleColors.push(new THREE.Color(palette.flowerAccent));
 
     const partMesh = new THREE.InstancedMesh(partGeo, partMat, particleCount);
     const positions = new Float32Array(particleCount * 3);
@@ -800,7 +828,8 @@ export function buildDiorama(
         positions[p * 3 + 1] = py;
         positions[p * 3 + 2] = pz;
 
-        const fallSpeed = season === 'autumn' ? prng.range(0.04, 0.08) : season === 'winter' ? prng.range(0.02, 0.05) : prng.range(0.018, 0.042);
+        // Winter-white palettes drift gently like snow; richer tones flutter
+        const fallSpeed = isWinterStone ? prng.range(0.016, 0.038) : prng.range(0.02, 0.05);
         velocities[p * 3] = prng.range(-0.015, 0.015);
         velocities[p * 3 + 1] = -fallSpeed;
         velocities[p * 3 + 2] = prng.range(-0.015, 0.015);
@@ -815,8 +844,13 @@ export function buildDiorama(
 
         tempMatrix.makeTranslation(px, py, pz);
         partMesh.setMatrixAt(p, tempMatrix);
+        colorHelper
+            .copy(prng.choice(particleColors))
+            .offsetHSL(prng.range(-0.012, 0.012), 0, prng.range(-0.03, 0.03));
+        partMesh.setColorAt(p, colorHelper);
     }
     partMesh.instanceMatrix.needsUpdate = true;
+    if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
     rootGroup.add(partMesh);
 
     const particlesState: ParticleState = {
@@ -839,7 +873,7 @@ export function buildDiorama(
         fallenMesh,
         treeGroup,
         particles: particlesState,
-        leafMeshes: blossomInstanced ? [blossomInstanced] : [],
+        leafMeshes,
         trunkMesh: trunkGroup,
         qrSize: size,
         worldSize,
@@ -916,8 +950,7 @@ export function updateDioramaSimulation(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Mind-blowing seamless morph between 2D high-contrast scannable QR Code and
- * living 3D Floating Diorama.
+ * Seamless morph between 2D scannable QR Code and living 3D Floating Diorama.
  *
  * @param diorama Scene objects
  * @param morphProgress 0.0 = pure 2D planar QR code, 1.0 = full 3D living diorama
@@ -941,25 +974,22 @@ export function applyDioramaMorph(
         const fScaleXZ = THREE.MathUtils.lerp(0.72, 1.0, p);
         diorama.finderGardensGroup.scale.set(fScaleXZ, fScaleY, fScaleXZ);
         diorama.finderGardensGroup.position.y = (p - 1.0) * 0.15;
-        diorama.finderGardensGroup.visible = true;
+        diorama.finderGardensGroup.visible = p > 0.05;
     }
 
-    // 3. Centerpiece seamlessly transitions between 2D Top-Down Artistic Tree & 3D Volumetric Tree
+    // 3. Centerpiece smoothly transitions between 2D Top-Down and 3D Volumetric
     if (diorama.treeGroup) {
-        // In 2D (p=0), tree stays visible! Its X and Z span gracefully frames the QR center,
-        // while its vertical height (Y) flattens towards the surface so top-down projection is clean.
-        // In 3D (p=1), it blooms up to full vertical height.
         const scaleY = THREE.MathUtils.lerp(0.06, 1.0, p);
         const scaleXZ = THREE.MathUtils.lerp(0.92, 1.0, p);
         diorama.treeGroup.scale.set(scaleXZ, scaleY, scaleXZ);
         diorama.treeGroup.position.y = (p - 1.0) * 0.12;
         diorama.treeGroup.rotation.y = (1.0 - p) * 0.25;
-        diorama.treeGroup.visible = true;
+        diorama.treeGroup.visible = p > 0.05;
     }
 
     // 4. Fallen petals remain subtly visible as ground scatter
     if (diorama.fallenMesh) {
-        diorama.fallenMesh.visible = true;
+        diorama.fallenMesh.visible = p > 0.05;
         diorama.fallenMesh.position.y = THREE.MathUtils.lerp(0.005, 0.0, p);
     }
 
@@ -1457,436 +1487,159 @@ export function buildHouseCenterpiece(
             pStem.position.set(pLoc.x, pLoc.r * 0.8 + 0.16, pLoc.z);
             cottageRoot.add(pStem);
         });
-    } else if (season === 'winter') {
-        // Soft Snow Cushions on Roof Ridges & Chimney
-        const snowMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
-        const ridgeSnow = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, mainD + roofOverhang * 2 + 0.1), snowMat);
-        ridgeSnow.position.set(0.5, 0.42 + mainH + roofPeak + 0.16, -0.2);
-        cottageRoot.add(ridgeSnow);
-
-        const chimneySnow = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.15, 0.95), snowMat);
-        chimneySnow.position.set(chimneyTop.position.x, chimneyTop.position.y + 1.15, chimneyTop.position.z);
-        cottageRoot.add(chimneySnow);
-    } else if (season === 'spring') {
-        // Blooming Climbing Wisteria Vines scaling the timber posts
-        const petalMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 });
-        for (let i = 0; i < 18; i++) {
-            const blossom = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), petalMat);
-            blossom.position.set(
-                0.5 - mainW / 2 + 0.1 + prng.range(-0.15, 0.15),
-                1.0 + i * 0.14,
-                -0.2 + mainD / 2 + 0.12 + prng.range(-0.08, 0.08)
-            );
-            cottageRoot.add(blossom);
-        }
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ART TOY FIGURINE AVATAR DIORAMA (COLLECTIBLE DESIGNER VINYL FIGURINE)
+// 3D DIGITAL BOUQUET — BLOOMING ROSE ARRANGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Builds an exquisite Collectible Art Toy Figurine (Pop Mart / Nendoroid aesthetic)
- * with stylized chibi proportions, expressive anime eyes, layered sculpted hair,
- * designer oversized streetwear hoodie, platform sneakers, DJ headphones, crossbody
- * bag, and gentle orbiting sparkle aura.
+ * Builds an exquisite Blooming Rose Bouquet:
+ * - Ribbed kraft paper conical wrap with satin belt and tied ribbon bow
+ * - Emerging lower stems and serrated emerald rose leaves
+ * - Layered procedural blooming roses (central queen rose and outer companion blooms)
+ * - Delicate baby's breath floret sprigs
  */
-export function buildAvatarCenterpiece(
-    treeGroup: THREE.Group,
+export function buildRoseBouquetCenterpiece(
+    bouquetGroup: THREE.Group,
     season: SeasonType,
     palette: FoliagePalette,
     prng: PRNG
 ): void {
-    const avatarRoot = new THREE.Group();
-    avatarRoot.name = 'collectibleAvatar';
-    treeGroup.add(avatarRoot);
+    const root = new THREE.Group();
+    root.name = 'roseBouquetRoot';
+    bouquetGroup.add(root);
 
-    // ─── 1. COLLECTOR'S SHOWCASE PEDESTAL ──────────────────────────────────
-    const pedestalMat = new THREE.MeshStandardMaterial({
-        color: 0x18181b, // Satin obsidian base
-        roughness: 0.35,
-        metalness: 0.3,
-    });
-    const pedestalGeo = new THREE.CylinderGeometry(2.6, 2.75, 0.32, 32);
-    const pedestalMesh = new THREE.Mesh(pedestalGeo, pedestalMat);
-    pedestalMesh.position.set(0, 0.16, 0);
-    pedestalMesh.receiveShadow = true;
-    avatarRoot.add(pedestalMesh);
-
-    // Metallic Trim Bevel Ring (Gold / Chrome accent)
-    const goldMat = new THREE.MeshStandardMaterial({
-        color: 0xf59e0b,
-        metalness: 0.85,
-        roughness: 0.25,
-    });
-    const goldRing = new THREE.Mesh(new THREE.TorusGeometry(2.68, 0.04, 8, 36), goldMat);
-    goldRing.rotation.x = Math.PI / 2;
-    goldRing.position.set(0, 0.3, 0);
-    avatarRoot.add(goldRing);
-
-    // ─── 2. MATERIALS & COLOR PALETTES ─────────────────────────────────────
-    const skinMat = new THREE.MeshStandardMaterial({
-        color: 0xfcd5b8, // Porcelain anime skin tone
-        roughness: 0.65,
+    // 1. Tapered Kraft Paper Bouquet Wrap
+    const wrapMat = new THREE.MeshStandardMaterial({
+        color: 0xd6c7b2, // Ribbed kraft wrapping paper
+        roughness: 0.88,
         metalness: 0.02,
+        side: THREE.DoubleSide,
     });
+    // Tapered cone wrap: top radius 2.4, bottom radius 0.85, height 3.8
+    const wrapGeo = new THREE.CylinderGeometry(2.4, 0.85, 3.8, 24, 1, true);
+    const wrapMesh = new THREE.Mesh(wrapGeo, wrapMat);
+    wrapMesh.position.set(0, 2.1, 0);
+    wrapMesh.castShadow = true;
+    wrapMesh.receiveShadow = true;
+    root.add(wrapMesh);
 
-    const blushMat = new THREE.MeshBasicMaterial({
-        color: 0xf472b6,
-        transparent: true,
-        opacity: 0.5,
+    // Satin Ribbon Belt & Bow Knot
+    const ribbonMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(palette.primary),
+        roughness: 0.35,
+        metalness: 0.25,
     });
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.09, 8, 32), ribbonMat);
+    belt.rotation.x = Math.PI / 2;
+    belt.position.set(0, 1.4, 0);
+    belt.castShadow = true;
+    root.add(belt);
 
-    // Hair color with botanical highlight matching the season
-    const hairColor = season === 'autumn' ? 0x78350f : season === 'winter' ? 0x334155 : 0x271e1b;
-    const hairMat = new THREE.MeshStandardMaterial({
-        color: hairColor,
-        roughness: 0.55,
-        metalness: 0.05,
-    });
+    // Bow knot loops
+    const loopGeo = new THREE.TorusGeometry(0.32, 0.06, 6, 16);
+    const leftLoop = new THREE.Mesh(loopGeo, ribbonMat);
+    leftLoop.position.set(-0.35, 1.4, 1.25);
+    leftLoop.rotation.set(0.3, 0.5, 0.2);
+    root.add(leftLoop);
 
-    // Designer Oversized Streetwear Hoodie
-    const jacketColor = new THREE.Color(palette.primary);
-    const jacketMat = new THREE.MeshStandardMaterial({
-        color: jacketColor,
-        roughness: 0.72,
-        metalness: 0.05,
-    });
+    const rightLoop = new THREE.Mesh(loopGeo, ribbonMat);
+    rightLoop.position.set(0.35, 1.4, 1.25);
+    rightLoop.rotation.set(0.3, -0.5, -0.2);
+    root.add(rightLoop);
 
-    const innerShirtMat = new THREE.MeshStandardMaterial({
-        color: 0xf8fafc,
-        roughness: 0.7,
-    });
+    // Ribbon tails
+    const tailGeo = new THREE.BoxGeometry(0.18, 0.9, 0.02);
+    const leftTail = new THREE.Mesh(tailGeo, ribbonMat);
+    leftTail.position.set(-0.25, 0.95, 1.28);
+    leftTail.rotation.set(0.15, 0, 0.25);
+    root.add(leftTail);
 
-    const pantsMat = new THREE.MeshStandardMaterial({
-        color: 0x1e293b, // Dark slate joggers
-        roughness: 0.78,
-    });
+    const rightTail = new THREE.Mesh(tailGeo, ribbonMat);
+    rightTail.position.set(0.25, 0.95, 1.28);
+    rightTail.rotation.set(0.15, 0, -0.25);
+    root.add(rightTail);
 
-    const shoeSoleMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.5,
-    });
-    const shoeUpperMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.secondary),
+    // 2. Stems emerging from bottom
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
+    for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.1, 6), stemMat);
+        stem.position.set(Math.cos(angle) * 0.38, 0.45, Math.sin(angle) * 0.38);
+        stem.rotation.set(Math.sin(angle) * 0.18, 0, -Math.cos(angle) * 0.18);
+        root.add(stem);
+    }
+
+    // 3. Serrated Rose Leaves framing the wrap collar
+    const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x15803d,
         roughness: 0.65,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
     });
+    for (let l = 0; l < 10; l++) {
+        const lAngle = (l / 10) * Math.PI * 2 + prng.range(-0.1, 0.1);
+        const leaf = new THREE.Mesh(createPetalGeometry(0.9), leafMat);
+        leaf.position.set(Math.cos(lAngle) * 2.2, 3.8, Math.sin(lAngle) * 2.2);
+        leaf.rotation.set(-0.4, lAngle, 0.5);
+        leaf.castShadow = true;
+        root.add(leaf);
+    }
 
-    // ─── 3. LEGS & CHUNKY DESIGNER PLATFORM SNEAKERS ───────────────────────
-    const legGeo = new THREE.CylinderGeometry(0.24, 0.26, 1.45, 12);
-    const legPositions = [
-        { x: -0.42, z: 0.08, rotZ: 0.06, rotX: -0.05 }, // Left leg slightly forward
-        { x: 0.42, z: -0.08, rotZ: -0.06, rotX: 0.05 }, // Right leg weight bearing
+    // 4. Center Queen Rose and Satellite Roses
+    const rosePetalMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(palette.deepShadow).lerp(new THREE.Color(palette.primary), 0.5),
+        roughness: 0.6,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+    });
+    const rosePositions = [
+        { x: 0, y: 4.8, z: 0, scale: 1.15 },
+        { x: 1.1, y: 4.4, z: 0.5, scale: 0.95 },
+        { x: -1.0, y: 4.3, z: 0.6, scale: 0.92 },
+        { x: 0.6, y: 4.4, z: -0.9, scale: 0.95 },
+        { x: -0.7, y: 4.3, z: -0.8, scale: 0.9 },
+        { x: 1.2, y: 4.1, z: -0.4, scale: 0.88 },
+        { x: -1.2, y: 4.1, z: 0.3, scale: 0.88 },
     ];
 
-    legPositions.forEach((lp) => {
-        const legGroup = new THREE.Group();
-        legGroup.position.set(lp.x, 0.32, lp.z);
-        legGroup.rotation.z = lp.rotZ;
-        legGroup.rotation.x = lp.rotX;
+    rosePositions.forEach((rp) => {
+        const roseGroup = new THREE.Group();
+        roseGroup.position.set(rp.x, rp.y, rp.z);
+        roseGroup.scale.set(rp.scale, rp.scale, rp.scale);
 
-        // Pants leg
-        const legMesh = new THREE.Mesh(legGeo, pantsMat);
-        legMesh.position.y = 0.72;
-        legMesh.castShadow = true;
-        legGroup.add(legMesh);
+        // Core bud spiral
+        const budCore = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.14, 0.45, 8), rosePetalMat);
+        budCore.position.y = 0.2;
+        roseGroup.add(budCore);
 
-        // Platform Chunky Sneaker
-        const sneakerGroup = new THREE.Group();
-        sneakerGroup.position.set(0, 0, 0.05);
-
-        // Thick platform rubber sole
-        const sole = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.24, 0.85), shoeSoleMat);
-        sole.position.set(0, 0.12, 0.05);
-        sole.castShadow = true;
-        sneakerGroup.add(sole);
-
-        // Sneaker upper body
-        const upper = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.35, 0.78), shoeUpperMat);
-        upper.position.set(0, 0.32, 0.02);
-        upper.castShadow = true;
-        sneakerGroup.add(upper);
-
-        // Toe cap
-        const toeCap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 6), shoeSoleMat);
-        toeCap.scale.set(1, 0.7, 1);
-        toeCap.position.set(0, 0.22, 0.38);
-        sneakerGroup.add(toeCap);
-
-        legGroup.add(sneakerGroup);
-        avatarRoot.add(legGroup);
+        // Petal whorl layers
+        for (let layer = 0; layer < 4; layer++) {
+            const countInLayer = 3 + layer * 2;
+            const radius = 0.3 + layer * 0.22;
+            for (let p = 0; p < countInLayer; p++) {
+                const theta = (p / countInLayer) * Math.PI * 2 + (layer * 0.5);
+                const petal = new THREE.Mesh(createPetalGeometry(0.55 + layer * 0.18), rosePetalMat);
+                petal.position.set(Math.cos(theta) * radius, 0.1 + layer * 0.08, Math.sin(theta) * radius);
+                petal.rotation.set(-0.35 - layer * 0.12, -theta, 0.4);
+                petal.castShadow = true;
+                roseGroup.add(petal);
+            }
+        }
+        root.add(roseGroup);
     });
 
-    // ─── 4. TORSO & OVERSIZED STREETWEAR HOODIE ────────────────────────────
-    const torsoY = 0.32 + 1.45;
-    const torsoGroup = new THREE.Group();
-    torsoGroup.position.set(0, torsoY, 0);
-    avatarRoot.add(torsoGroup);
-
-    // Inner tee
-    const innerTee = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.65), innerShirtMat);
-    innerTee.position.set(0, 0.6, 0);
-    torsoGroup.add(innerTee);
-
-    // Oversized Hoodie Body
-    const hoodieGeo = new THREE.BoxGeometry(1.48, 1.45, 1.05);
-    const hoodie = new THREE.Mesh(hoodieGeo, jacketMat);
-    hoodie.position.set(0, 0.65, 0);
-    hoodie.castShadow = true;
-    torsoGroup.add(hoodie);
-
-    // Dimensional Folded Collar / Lapels
-    const collarGeo = new THREE.BoxGeometry(1.54, 0.32, 1.12);
-    const collar = new THREE.Mesh(collarGeo, jacketMat);
-    collar.position.set(0, 1.35, 0);
-    torsoGroup.add(collar);
-
-    // Front Zipper Line & Toggles
-    const zipper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.25, 0.08), goldMat);
-    zipper.position.set(0, 0.65, 0.54);
-    torsoGroup.add(zipper);
-
-    // ─── 5. ARMS & DYNAMIC CASUAL POSE ─────────────────────────────────────
-    const armGeo = new THREE.CylinderGeometry(0.24, 0.22, 1.35, 10);
-
-    // Left Arm (relaxed by side / hand in pocket)
-    const leftArmGroup = new THREE.Group();
-    leftArmGroup.position.set(-0.85, 1.15, 0);
-    leftArmGroup.rotation.z = 0.15;
-    leftArmGroup.rotation.x = -0.08;
-
-    const leftArmMesh = new THREE.Mesh(armGeo, jacketMat);
-    leftArmMesh.position.y = -0.6;
-    leftArmMesh.castShadow = true;
-    leftArmGroup.add(leftArmMesh);
-
-    const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), skinMat);
-    leftHand.position.set(0, -1.25, 0.05);
-    leftArmGroup.add(leftHand);
-    torsoGroup.add(leftArmGroup);
-
-    // Right Arm (raised slightly holding seasonal prop or giving gentle wave)
-    const rightArmGroup = new THREE.Group();
-    rightArmGroup.position.set(0.85, 1.15, 0);
-    rightArmGroup.rotation.z = -0.32;
-    rightArmGroup.rotation.x = 0.35;
-
-    const rightArmMesh = new THREE.Mesh(armGeo, jacketMat);
-    rightArmMesh.position.y = -0.6;
-    rightArmMesh.castShadow = true;
-    rightArmGroup.add(rightArmMesh);
-
-    const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), skinMat);
-    rightHand.position.set(0, -1.25, 0.05);
-    rightArmGroup.add(rightHand);
-
-    // In-Hand Accessory: Blooming Sprig, Hot Cocoa Mug, or Smartphone
-    if (season === 'spring') {
-        const sprigGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.9, 5);
-        const sprigMesh = new THREE.Mesh(sprigGeo, new THREE.MeshStandardMaterial({ color: 0x4a2e18 }));
-        sprigMesh.position.set(0, -1.25, 0.35);
-        sprigMesh.rotation.x = Math.PI / 3;
-        rightArmGroup.add(sprigMesh);
-
-        const flowerBloom = new THREE.Mesh(
-            new THREE.SphereGeometry(0.16, 6, 5),
-            new THREE.MeshStandardMaterial({ color: 0xf472b6 })
-        );
-        flowerBloom.position.set(0, -1.0, 0.65);
-        rightArmGroup.add(flowerBloom);
-    } else if (season === 'winter') {
-        const mugMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
-        const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.35, 10), mugMat);
-        mug.position.set(0, -1.22, 0.28);
-        rightArmGroup.add(mug);
-
-        const foam = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 5), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-        foam.position.set(0, -1.06, 0.28);
-        rightArmGroup.add(foam);
-    } else {
-        // Smartphone displaying miniature glowing QR screen!
-        const phoneMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
-        const phone = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.45, 0.04), phoneMat);
-        phone.position.set(0, -1.2, 0.25);
-        phone.rotation.x = -0.3;
-
-        const screenMat = new THREE.MeshStandardMaterial({
-            color: 0x67e8f9,
-            emissive: 0x22d3ee,
-            emissiveIntensity: 0.65,
-        });
-        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.38, 0.02), screenMat);
-        screen.position.set(0, 0, 0.025);
-        phone.add(screen);
-        rightArmGroup.add(phone);
-    }
-    torsoGroup.add(rightArmGroup);
-
-    // Crossbody Satchel / Messenger Bag
-    const bagMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-    const bagStrap = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.04, 6, 24), bagMat);
-    bagStrap.rotation.y = Math.PI / 4;
-    bagStrap.rotation.x = Math.PI / 6;
-    bagStrap.position.set(0, 0.75, 0);
-    torsoGroup.add(bagStrap);
-
-    const satchel = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.28), bagMat);
-    satchel.position.set(-0.7, 0.25, 0.25);
-    satchel.rotation.z = -0.15;
-    satchel.castShadow = true;
-    torsoGroup.add(satchel);
-
-    // ─── 6. SCULPTED HEAD & BEAUTIFUL ANIME FACE ───────────────────────────
-    const headY = torsoY + 1.45 + 0.65;
-    const headGroup = new THREE.Group();
-    headGroup.position.set(0, headY, 0);
-    avatarRoot.add(headGroup);
-
-    // Smooth Chibi Head
-    const headGeo = new THREE.SphereGeometry(1.02, 22, 18);
-    headGeo.scale(1.05, 1.0, 1.05);
-    const headMesh = new THREE.Mesh(headGeo, skinMat);
-    headMesh.castShadow = true;
-    headGroup.add(headMesh);
-
-    // Anime Expressive Eyes (Multi-Part Depth)
-    const eyeZ = 0.98;
-    for (const ex of [-0.42, 0.42]) {
-        const eyeGroup = new THREE.Group();
-        eyeGroup.position.set(ex, 0.02, eyeZ);
-
-        // Outer Dark Pupil
-        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
-        const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.18, 16), pupilMat);
-        eyeGroup.add(pupil);
-
-        // Iris Crescent with Season Color
-        const irisMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(palette.primary) });
-        const iris = new THREE.Mesh(new THREE.CircleGeometry(0.12, 14), irisMat);
-        iris.position.set(0, -0.03, 0.005);
-        eyeGroup.add(iris);
-
-        // Double Specular Gleam Dots (Lifelike Anime Sparkle)
-        const gleamMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const bigGleam = new THREE.Mesh(new THREE.CircleGeometry(0.05, 8), gleamMat);
-        bigGleam.position.set(-0.05, 0.06, 0.01);
-        eyeGroup.add(bigGleam);
-
-        const smallGleam = new THREE.Mesh(new THREE.CircleGeometry(0.025, 8), gleamMat);
-        smallGleam.position.set(0.05, -0.04, 0.01);
-        eyeGroup.add(smallGleam);
-
-        // Delicate Upper Lash Curve
-        const lash = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.02), pupilMat);
-        lash.position.set(0, 0.17, 0.01);
-        lash.rotation.z = ex > 0 ? -0.1 : 0.1;
-        eyeGroup.add(lash);
-
-        // Eyebrow
-        const brow = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.02), hairMat);
-        brow.position.set(0, 0.32, 0.01);
-        brow.rotation.z = ex > 0 ? 0.08 : -0.08;
-        eyeGroup.add(brow);
-
-        // Soft Airbrush Peach Blush
-        const blush = new THREE.Mesh(new THREE.CircleGeometry(0.14, 12), blushMat);
-        blush.position.set(0, -0.22, 0.005);
-        eyeGroup.add(blush);
-
-        headGroup.add(eyeGroup);
-    }
-
-    // Cute Smile
-    const smileMat = new THREE.MeshBasicMaterial({ color: 0xc2410c });
-    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 6, 12, Math.PI), smileMat);
-    smile.rotation.x = Math.PI;
-    smile.position.set(0, -0.28, eyeZ);
-    headGroup.add(smile);
-
-    // ─── 7. LAYERED SCULPTED HAIR & ACCESSORIES ────────────────────────────
-    // Front Bangs Sweeping Across Forehead
-    const bangOffsets = [-0.6, -0.32, 0.0, 0.32, 0.6];
-    bangOffsets.forEach((bx, idx) => {
-        const bangGeo = new THREE.ConeGeometry(0.24, 0.85, 8);
-        bangGeo.scale(1, 1, 0.45);
-        const bang = new THREE.Mesh(bangGeo, hairMat);
-        bang.position.set(bx, 0.55 - Math.abs(bx) * 0.18, 0.95);
-        bang.rotation.z = (idx - 2) * -0.18 + Math.PI;
-        bang.rotation.x = -0.2;
-        bang.castShadow = true;
-        headGroup.add(bang);
-    });
-
-    // Side Tresses Framing Cheeks
-    for (const sx of [-0.98, 0.98]) {
-        const tressGeo = new THREE.ConeGeometry(0.25, 1.25, 8);
-        tressGeo.scale(1, 1, 0.55);
-        const tress = new THREE.Mesh(tressGeo, hairMat);
-        tress.position.set(sx, -0.1, 0.5);
-        tress.rotation.z = sx > 0 ? 0.22 + Math.PI : -0.22 + Math.PI;
-        tress.castShadow = true;
-        headGroup.add(tress);
-    }
-
-    // Volumetric Back Hair Mass
-    const backHairGeo = new THREE.SphereGeometry(1.08, 16, 14);
-    backHairGeo.scale(1.08, 1.12, 1.05);
-    const backHair = new THREE.Mesh(backHairGeo, hairMat);
-    backHair.position.set(0, 0.12, -0.22);
-    backHair.castShadow = true;
-    headGroup.add(backHair);
-
-    // OVER-EAR DJ/STUDIO HEADPHONES (Around Neck / Lower Head)
-    const headphoneGroup = new THREE.Group();
-    headphoneGroup.position.set(0, -0.75, 0);
-
-    const hpBandMat = new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.85, roughness: 0.2 });
-    const hpCushionMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 });
-    const hpAccentMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(palette.primary), roughness: 0.4 });
-
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.07, 8, 24, Math.PI * 1.3), hpBandMat);
-    band.rotation.z = Math.PI / 2 + 0.5;
-    band.rotation.x = Math.PI / 2;
-    headphoneGroup.add(band);
-
-    for (const hx of [-0.85, 0.85]) {
-        // Headphone Ear Cup
-        const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.18, 14), hpBandMat);
-        cup.rotation.z = Math.PI / 2;
-        cup.position.set(hx, 0, 0);
-
-        const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.08, 14), hpCushionMat);
-        pad.rotation.z = Math.PI / 2;
-        pad.position.set(hx > 0 ? -0.1 : 0.1, 0, 0);
-        cup.add(pad);
-
-        const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.04, 14), hpAccentMat);
-        badge.rotation.z = Math.PI / 2;
-        badge.position.set(hx > 0 ? 0.1 : -0.1, 0, 0);
-        cup.add(badge);
-
-        headphoneGroup.add(cup);
-    }
-    headGroup.add(headphoneGroup);
-
-    // ─── 8. ORBITING MAGICAL SPARKLES / RUNES AURA ─────────────────────────
-    const sparkleCount = 10;
-    const sparkleMat = new THREE.MeshBasicMaterial({
-        color: 0xfef08a,
-        transparent: true,
-        opacity: 0.85,
-    });
-    for (let s = 0; s < sparkleCount; s++) {
-        const rad = 1.6 + prng.range(0.2, 0.8);
-        const theta = (s / sparkleCount) * Math.PI * 2 + prng.range(-0.2, 0.2);
-        const sGeo = new THREE.OctahedronGeometry(0.12, 0);
-        const sparkle = new THREE.Mesh(sGeo, sparkleMat);
-        sparkle.position.set(
-            Math.cos(theta) * rad,
-            0.5 + Math.sin(s * 1.5) * 1.8,
-            Math.sin(theta) * rad
-        );
-        avatarRoot.add(sparkle);
+    // 5. Baby's breath filler sprigs
+    const babyBreathMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+    const bbGeo = new THREE.SphereGeometry(0.06, 5, 4);
+    for (let bb = 0; bb < 45; bb++) {
+        const bbx = prng.range(-1.9, 1.9);
+        const bbz = prng.range(-1.9, 1.9);
+        const bby = 4.2 + prng.range(-0.3, 0.8);
+        const floret = new THREE.Mesh(bbGeo, babyBreathMat);
+        floret.position.set(bbx, bby, bbz);
+        root.add(floret);
     }
 }

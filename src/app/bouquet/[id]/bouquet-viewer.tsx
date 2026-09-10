@@ -48,7 +48,7 @@ export default function BouquetViewer() {
                     // Fallback demo bouquet so the link is always delightful to view
                     setBouquet({
                         id: params.id,
-                        scene_type: 'tree',
+                        scene_type: 'sakura',
                         season: 'spring',
                         palette_id: 'sakura',
                         target_url: 'https://creatorkit.app',
@@ -62,7 +62,7 @@ export default function BouquetViewer() {
                 // Graceful fallback
                 setBouquet({
                     id: params.id,
-                    scene_type: 'tree',
+                    scene_type: 'sakura',
                     season: 'spring',
                     palette_id: 'sakura',
                     target_url: 'https://creatorkit.app',

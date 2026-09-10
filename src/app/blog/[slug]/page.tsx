@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import type { Metadata } from 'next';
 
+export const dynamicParams = false;
+
 export async function generateStaticParams() {
   return BLOG_POSTS.map((post) => ({
     slug: post.slug,

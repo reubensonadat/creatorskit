@@ -83,14 +83,21 @@ function brutModeButton(active: boolean): React.CSSProperties {
     };
 }
 
+const PRESET_SCENE_IDS = [
+    'sakura', 'tree', 'maple', 'ginkgo', 'magnolia', 'hydrangea',
+    'frost', 'oak', 'rose', 'wisteria', 'bonsai', 'pine', 'house',
+] as const;
+
 export default function TreeQRPage() {
     const dioramaRef = useRef<TreeDioramaRef>(null);
 
     // State
     const [urlInput, setUrlInput] = useState('https://creatorkit.app/');
     const [activeUrl, setActiveUrl] = useState('https://creatorkit.app/');
-    const [sceneType, setSceneType] = useState<SceneType>('tree');
-    const [season, setSeason] = useState<SeasonType>('spring');
+    const [sceneType, setSceneType] = useState<SceneType>('sakura');
+    // Seasons retired — the botanical palette alone drives the whole world:
+    // tree, courtyard cobbles, wildflowers, drifting petals and the QR colors.
+    const season: SeasonType = 'spring';
     const [paletteId, setPaletteId] = useState<string>('sakura');
     const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
     const [isAudioActive, setIsAudioActive] = useState(false);
@@ -105,13 +112,17 @@ export default function TreeQRPage() {
     const [bouquetSavedModal, setBouquetSavedModal] = useState<{ id: string; url: string } | null>(null);
     const [bouquetCopied, setBouquetCopied] = useState(false);
 
-    // Sync palette with season if not manually changed
-    const handleSeasonChange = (s: SeasonType) => {
-        setSeason(s);
-        if (s === 'spring') setPaletteId('sakura');
-        else if (s === 'summer') setPaletteId('lush');
-        else if (s === 'autumn') setPaletteId('autumn');
-        else if (s === 'winter') setPaletteId('frost');
+    // Choosing a centerpiece syncs the world palette to its native bloom
+    const SCENE_PALETTE: Partial<Record<SceneType, string>> = {
+        sakura: 'sakura',
+        maple: 'maple',
+        ginkgo: 'ginkgo',
+        magnolia: 'magnolia',
+        hydrangea: 'hydrangea',
+        frost: 'frost',
+        oak: 'lush',
+        rose: 'rose',
+        wisteria: 'wisteria',
     };
 
     const handlePaletteSelect = (palId: string) => {
@@ -172,7 +183,7 @@ export default function TreeQRPage() {
     const handleCopyShareLink = () => {
         const shareUrl = `${window.location.origin}/tree-qr?url=${encodeURIComponent(
             activeUrl
-        )}&season=${season}&palette=${paletteId}&scene=${sceneType}`;
+        )}&palette=${paletteId}&scene=${sceneType}`;
         navigator.clipboard.writeText(shareUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -221,7 +232,7 @@ export default function TreeQRPage() {
             dt: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
             it: [
                 { d: `3D Digital Bouquet (${sceneType.toUpperCase()})`, q: 1, r: 0 },
-                { d: `Atmosphere: ${season.toUpperCase()} (${currentPalette.name})`, q: 1, r: 0 },
+                { d: `Palette: ${currentPalette.name}`, q: 1, r: 0 },
                 { d: `Target: ${activeUrl.replace(/^https?:\/\//, '').slice(0, 26)}`, q: 1, r: 0 },
             ],
             da: 0,
@@ -252,13 +263,14 @@ export default function TreeQRPage() {
                 setUrlInput(qUrl);
                 setActiveUrl(qUrl);
             }
-            if (qSeason && ['spring', 'summer', 'autumn', 'winter'].includes(qSeason)) {
-                setSeason(qSeason);
-            }
+            // Legacy share links encoded a season — map it onto its palette
+            if (qSeason === 'summer') setPaletteId('lush');
+            else if (qSeason === 'autumn') setPaletteId('autumn');
+            else if (qSeason === 'winter') setPaletteId('frost');
             if (qPalette && PRESET_PALETTES[qPalette]) {
                 setPaletteId(qPalette);
             }
-            if (qScene && ['tree', 'house', 'avatar'].includes(qScene)) {
+            if (qScene && PRESET_SCENE_IDS.includes(qScene)) {
                 setSceneType(qScene);
             }
         };
@@ -336,7 +348,7 @@ export default function TreeQRPage() {
                             margin: 0,
                         }}
                     >
-                        Grow a scannable QR code into a living 3D diorama. Pick a centerpiece, set the season, attach a gift note, and share it as a link anyone can unfold.
+                        Grow a scannable QR code into a living 3D diorama. Pick a centerpiece, choose a living palette that recolors the tree, courtyard and QR itself, then share it as a link anyone can unfold.
                     </p>
                 </div>
             </div>
@@ -382,47 +394,21 @@ export default function TreeQRPage() {
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                <span
-                                    style={{
-                                        display: 'inline-block',
-                                        width: 9,
-                                        height: 9,
-                                        background: viewMode === '3d' ? '#22c55e' : '#eab308',
-                                        border: '1.5px solid #000',
-                                        borderRadius: '50%',
-                                        flexShrink: 0,
-                                    }}
-                                />
                                 <span style={{ color: '#000', fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                                    {viewMode === '3d' ? `3D ${sceneType.toUpperCase()} DIORAMA` : '2D SCANNABLE QR'}
+                                    {viewMode === '3d' ? `${sceneType.toUpperCase()} 3D` : '2D QR'}
                                 </span>
-                                <span style={{ color: '#aaa' }}>|</span>
+                                <span style={{ color: '#aaa' }}>·</span>
                                 <span
                                     style={{
                                         textTransform: 'uppercase',
-                                        color: '#333',
+                                        color: '#555',
                                         fontWeight: 800,
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         whiteSpace: 'nowrap',
                                     }}
                                 >
-                                    {season} · {currentPalette.name}
-                                </span>
-                            </div>
-
-                            <div className="tool-viewport-meta-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span
-                                    style={{
-                                        padding: '3px 8px',
-                                        border: '1.5px solid #000',
-                                        background: '#f4f4f5',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.64rem',
-                                        fontWeight: 900,
-                                    }}
-                                >
-                                    ECC LEVEL-H
+                                    {currentPalette.name} · QR-SYNCED
                                 </span>
                             </div>
                         </div>
@@ -463,9 +449,9 @@ export default function TreeQRPage() {
                             <button
                                 onClick={() => dioramaRef.current?.toggleViewMode()}
                                 className="brutalist-button brutalist-button-primary"
-                                style={{ padding: '8px 14px', fontSize: '0.72rem' }}
+                                style={{ padding: '8px 16px', fontSize: '0.75rem', fontWeight: 900 }}
                             >
-                                {viewMode === '2d' ? 'Switch to 3D View' : 'Switch to 2D QR'}
+                                {viewMode === '2d' ? 'Tap to see the tree' : 'Tap the tree to see QR code'}
                             </button>
                             <button
                                 onClick={toggleAudio}
@@ -531,15 +517,31 @@ export default function TreeQRPage() {
                             </span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8 }}>
                             {(
                                 [
-                                    ['tree', 'Blossom Tree'],
-                                    ['house', 'Cottage'],
-                                    ['avatar', 'Avatar'],
+                                    ['sakura', 'Sakura'],
+                                    ['maple', 'Crimson Maple'],
+                                    ['ginkgo', 'Ginkgo'],
+                                    ['magnolia', 'Magnolia'],
+                                    ['hydrangea', 'Hydrangea'],
+                                    ['frost', 'Winter Frost'],
+                                    ['oak', 'Summer Oak'],
+                                    ['rose', 'Rose Bouquet'],
+                                    ['wisteria', 'Wisteria'],
+                                    ['bonsai', 'Zen Bonsai'],
+                                    ['pine', 'Pagoda Pine'],
                                 ] as [SceneType, string][]
                             ).map(([id, label]) => (
-                                <button key={id} onClick={() => setSceneType(id)} style={brutModeButton(sceneType === id)}>
+                                <button
+                                    key={id}
+                                    onClick={() => {
+                                        setSceneType(id);
+                                        const native = SCENE_PALETTE[id];
+                                        if (native) setPaletteId(native);
+                                    }}
+                                    style={brutModeButton(sceneType === id || (id === 'sakura' && sceneType === 'tree'))}
+                                >
                                     {label}
                                 </button>
                             ))}
@@ -670,20 +672,27 @@ export default function TreeQRPage() {
                         </button>
                     </div>
 
-                    {/* Seasonal Atmosphere & Botanical Palettes */}
+                    {/* Botanical Palette — the one true world selector */}
                     <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <span style={BRUT_LABEL}>Seasonal Atmosphere</span>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                            {(['spring', 'summer', 'autumn', 'winter'] as SeasonType[]).map((s) => (
-                                <button key={s} onClick={() => handleSeasonChange(s)} style={brutModeButton(season === s)}>
-                                    {s}
-                                </button>
-                            ))}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={BRUT_LABEL}>Botanical Palette</span>
+                            <span
+                                style={{
+                                    padding: '2px 8px',
+                                    background: '#bbf7d0',
+                                    border: '2px solid #000',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.6rem',
+                                    fontWeight: 900,
+                                    textTransform: 'uppercase',
+                                }}
+                            >
+                                Syncs Tree · Court · QR
+                            </span>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '2px solid #eee', paddingTop: 10 }}>
-                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Botanical Palettes</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <span style={{ ...BRUT_LABEL, fontSize: '0.6rem', color: '#888' }}>Recolors the Entire World — Including the QR Code</span>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                                 {Object.values(PRESET_PALETTES).map((pal) => (
                                     <button
