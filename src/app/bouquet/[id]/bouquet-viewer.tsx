@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { TreeDiorama, TreeDioramaRef } from '@/components/tree-qr/tree-diorama';
+import VoxelDiorama, { type VoxelDioramaRef } from '@/components/tree-qr/voxel-diorama';
 import { SeasonType, SceneType, PRESET_PALETTES, FoliagePalette } from '@/lib/tree-qr/tree-generator';
 import { getBouquetByShortId, StoredBouquet } from '@/lib/supabase';
 import { ambientSoundscape } from '@/lib/tree-qr/audio-ambient';
@@ -20,55 +20,94 @@ import {
     MessageSquare,
     Gift,
     X,
+    ScanLine,
 } from 'lucide-react';
 
-export default function BouquetViewer() {
-    const params = useParams<{ id: string }>();
-    const dioramaRef = useRef<TreeDioramaRef>(null);
+interface BouquetViewerProps {
+    initialBouquet?: StoredBouquet | null;
+}
 
-    const [bouquet, setBouquet] = useState<StoredBouquet | null>(null);
-    const [loading, setLoading] = useState(true);
+function BouquetViewerInner({ initialBouquet }: BouquetViewerProps) {
+    const params = useParams<{ id: string }>();
+    const searchParams = useSearchParams();
+    const dioramaRef = useRef<VoxelDioramaRef>(null);
+
+    const [bouquet, setBouquet] = useState<StoredBouquet | null>(initialBouquet || null);
+    const [loading, setLoading] = useState(!initialBouquet);
     const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
     const [isAudioActive, setIsAudioActive] = useState(false);
     const [cardOpen, setCardOpen] = useState(true);
 
     useEffect(() => {
+        const fromParam = searchParams.get('from');
+        const toParam = searchParams.get('to');
+        const msgParam = searchParams.get('msg');
+        const sceneParam = searchParams.get('scene') as SceneType;
+        const palParam = searchParams.get('pal');
+        const urlParam = searchParams.get('u');
+        const audioParam = searchParams.get('audio');
+
+        if (initialBouquet) {
+            // Apply any query param overrides if present
+            const merged = {
+                ...initialBouquet,
+                sender_name: fromParam || initialBouquet.sender_name,
+                recipient_name: toParam || initialBouquet.recipient_name,
+                message: msgParam || initialBouquet.message,
+                scene_type: sceneParam || initialBouquet.scene_type,
+                palette_id: palParam || initialBouquet.palette_id,
+                target_url: urlParam ? decodeURIComponent(urlParam) : initialBouquet.target_url,
+            };
+            setBouquet(merged);
+            if (merged.audio_enabled || audioParam === '1') {
+                setIsAudioActive(ambientSoundscape.toggle());
+            }
+            setLoading(false);
+            return;
+        }
+
         async function fetchBouquet() {
             if (!params?.id) return;
 
             try {
                 const data = await getBouquetByShortId(params.id);
                 if (data) {
-                    setBouquet(data);
-                    if (data.audio_enabled) {
-                        // Attempt to enable audio
+                    const merged = {
+                        ...data,
+                        sender_name: fromParam || data.sender_name,
+                        recipient_name: toParam || data.recipient_name,
+                        message: msgParam || data.message,
+                        scene_type: sceneParam || data.scene_type,
+                        palette_id: palParam || data.palette_id,
+                        target_url: urlParam ? decodeURIComponent(urlParam) : data.target_url,
+                    };
+                    setBouquet(merged);
+                    if (merged.audio_enabled || audioParam === '1') {
                         setIsAudioActive(ambientSoundscape.toggle());
                     }
                 } else {
-                    // Fallback demo bouquet so the link is always delightful to view
                     setBouquet({
                         id: params.id,
-                        scene_type: 'sakura',
+                        scene_type: sceneParam || 'sakura',
                         season: 'spring',
-                        palette_id: 'sakura',
-                        target_url: 'https://creatorkit.app',
-                        sender_name: 'A Friend',
-                        recipient_name: 'You',
-                        message: 'Here is a little digital oasis just for you. Rotate it around, watch the petals drift, and enjoy a mindful moment.',
-                        audio_enabled: false,
+                        palette_id: palParam || 'sakura',
+                        target_url: urlParam ? decodeURIComponent(urlParam) : 'https://creatorkit.app',
+                        sender_name: fromParam || 'A Friend',
+                        recipient_name: toParam || 'You',
+                        message: msgParam || 'Here is a living 3D oasis just for you. Rotate it around, watch the petals drift, and tap to reveal the hidden QR surprise!',
+                        audio_enabled: audioParam === '1',
                     });
                 }
             } catch (err) {
-                // Graceful fallback
                 setBouquet({
                     id: params.id,
-                    scene_type: 'sakura',
+                    scene_type: sceneParam || 'sakura',
                     season: 'spring',
-                    palette_id: 'sakura',
-                    target_url: 'https://creatorkit.app',
-                    sender_name: 'A Friend',
-                    recipient_name: 'You',
-                    message: 'A serene Japanese garden to brighten your day.',
+                    palette_id: palParam || 'sakura',
+                    target_url: urlParam ? decodeURIComponent(urlParam) : 'https://creatorkit.app',
+                    sender_name: fromParam || 'A Friend',
+                    recipient_name: toParam || 'You',
+                    message: msgParam || 'A serene Japanese garden to brighten your day.',
                     audio_enabled: false,
                 });
             } finally {
@@ -77,7 +116,7 @@ export default function BouquetViewer() {
         }
 
         fetchBouquet();
-    }, [params?.id]);
+    }, [params?.id, initialBouquet, searchParams]);
 
     const toggleAudio = () => {
         const nextState = ambientSoundscape.toggle();
@@ -86,27 +125,27 @@ export default function BouquetViewer() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-[#f8f5ee] flex flex-col items-center justify-center p-6 font-mono">
-                <div className="flex flex-col items-center gap-3 bg-white border-2 border-black p-8 shadow-[6px_6px_0_#000]">
+            <div className="min-h-screen bg-[#f4f1ea] flex flex-col items-center justify-center p-6 font-mono">
+                <div className="flex flex-col items-center gap-3 bg-white border-3 border-black p-8 shadow-[6px_6px_0_#000]">
                     <div className="w-8 h-8 border-4 border-black border-t-[#FFE500] rounded-full animate-spin" />
                     <span className="text-xs font-black uppercase tracking-wider">
-                        Summoning Digital Bouquet...
+                        Unwrapping Living 3D Gift...
                     </span>
                 </div>
             </div>
         );
     }
 
-    const sceneType: SceneType = (bouquet?.scene_type as SceneType) || 'tree';
+    const sceneType: SceneType = (bouquet?.scene_type as SceneType) || 'sakura';
     const season: SeasonType = (bouquet?.season as SeasonType) || 'spring';
     const palette: FoliagePalette = PRESET_PALETTES[bouquet?.palette_id || 'sakura'] || PRESET_PALETTES.sakura;
     const targetUrl = bouquet?.target_url || 'https://creatorkit.app';
 
     return (
         <div className="relative w-full h-screen overflow-hidden bg-[#f4f1ea] select-none font-sans">
-            {/* Fullscreen 3D Scene Viewport */}
+            {/* Fullscreen 3D Voxel Diorama Viewport */}
             <div className="absolute inset-0 w-full h-full">
-                <TreeDiorama
+                <VoxelDiorama
                     ref={dioramaRef}
                     urlText={targetUrl}
                     season={season}
@@ -122,23 +161,26 @@ export default function BouquetViewer() {
                 {/* Brand Pill */}
                 <Link
                     href="/tree-qr"
-                    className="pointer-events-auto flex items-center gap-2 bg-white/90 backdrop-blur-md border-2 border-black px-3 py-1.5 shadow-[3px_3px_0_#000] hover:bg-[#FFE500] transition-colors"
+                    className="pointer-events-auto flex items-center gap-2 bg-white/95 backdrop-blur-md border-2 border-black px-3 py-1.5 shadow-[3px_3px_0_#000] hover:bg-[#FFE500] transition-colors"
                 >
                     <Gift size={15} />
-                    <span className="text-xs font-mono font-black uppercase">
-                        Digital Bouquet
+                    <span className="text-xs font-mono font-black uppercase tracking-wider">
+                        Living 3D Gift
                     </span>
                     <span className="text-[10px] font-mono font-bold bg-[#FFE500] border border-black px-1">
                         CreatorsKit
                     </span>
                 </Link>
 
-                {/* Control Action Buttons */}
+                {/* Interactive Action Controls */}
                 <div className="pointer-events-auto flex items-center gap-2">
-                    {/* View mode toggle */}
+                    {/* View mode toggle button */}
                     <button
                         onClick={() => dioramaRef.current?.toggleViewMode()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-mono font-black uppercase shadow-[3px_3px_0_#000] hover:bg-neutral-100 transition-colors"
+                        className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-black text-xs font-mono font-black uppercase shadow-[3px_3px_0_#000] transition-colors ${
+                            viewMode === '2d' ? 'bg-[#FFE500]' : 'bg-white hover:bg-neutral-100'
+                        }`}
+                        title={viewMode === '2d' ? 'Return to 3D Orbit' : 'Flatten to 2D QR Code'}
                     >
                         {viewMode === '2d' ? (
                             <>
@@ -147,8 +189,8 @@ export default function BouquetViewer() {
                             </>
                         ) : (
                             <>
-                                <QrCode size={14} />
-                                <span className="hidden sm:inline">2D QR</span>
+                                <ScanLine size={14} />
+                                <span className="hidden sm:inline">Reveal QR</span>
                             </>
                         )}
                     </button>
@@ -159,7 +201,7 @@ export default function BouquetViewer() {
                         className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-black text-xs font-mono font-bold shadow-[3px_3px_0_#000] transition-colors ${
                             isAudioActive ? 'bg-[#FFE500]' : 'bg-white hover:bg-neutral-100'
                         }`}
-                        title={isAudioActive ? 'Mute Atmosphere' : 'Play Breeze Audio'}
+                        title={isAudioActive ? 'Mute Soundscape' : 'Play Gentle Breeze Audio'}
                     >
                         {isAudioActive ? <Volume2 size={15} /> : <VolumeX size={15} />}
                         <span className="hidden sm:inline">
@@ -167,7 +209,7 @@ export default function BouquetViewer() {
                         </span>
                     </button>
 
-                    {/* Reset Camera */}
+                    {/* Reset Camera Angle */}
                     <button
                         onClick={() => dioramaRef.current?.resetCamera()}
                         className="p-1.5 bg-white border-2 border-black shadow-[3px_3px_0_#000] hover:bg-neutral-100 transition-colors"
@@ -178,27 +220,40 @@ export default function BouquetViewer() {
                 </div>
             </div>
 
-            {/* Floating Gift Message Envelope / Card */}
+            {/* Mode Banner notification when in 2D QR view */}
+            {viewMode === '2d' && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                    <button
+                        onClick={() => dioramaRef.current?.toggleViewMode()}
+                        className="flex items-center gap-2 px-4 py-2 bg-black text-[#FFE500] border-2 border-black shadow-[4px_4px_0_#FFE500] font-mono text-xs font-black uppercase hover:scale-105 transition-transform"
+                    >
+                        <QrCode size={16} />
+                        <span>Scannable QR Mode · Tap anywhere to return to 3D</span>
+                    </button>
+                </div>
+            )}
+
+            {/* Floating Gift Keepsake Card / Envelope */}
             {cardOpen ? (
                 <div className="absolute bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-30 pointer-events-auto">
                     <div className="bg-white border-3 border-black p-5 shadow-[6px_6px_0_#000] flex flex-col gap-3 relative animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        {/* Close / Minimize card */}
+                        {/* Minimize card button */}
                         <button
                             onClick={() => setCardOpen(false)}
                             className="absolute top-3 right-3 p-1 text-neutral-500 hover:text-black hover:bg-neutral-100 border border-transparent hover:border-black transition-colors"
-                            title="Minimize Message"
+                            title="Minimize Keepsake Note"
                         >
                             <X size={16} />
                         </button>
 
-                        {/* Card Header */}
-                        <div className="flex items-center gap-2">
-                            <span className="p-1 bg-[#FFE500] border border-black">
-                                <Heart size={14} className="text-black fill-black" />
+                        {/* Gift Header & Dedication */}
+                        <div className="flex items-center gap-2.5">
+                            <span className="p-1.5 bg-[#FFE500] border-2 border-black shadow-[2px_2px_0_#000]">
+                                <Heart size={15} className="text-black fill-black" />
                             </span>
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-mono font-bold uppercase text-neutral-500">
-                                    A Gift From {bouquet?.sender_name || 'Someone Special'}
+                                <span className="text-[10px] font-mono font-bold uppercase text-neutral-500 tracking-wide">
+                                    A Living 3D Gift From {bouquet?.sender_name || 'Someone Special'}
                                 </span>
                                 {bouquet?.recipient_name && (
                                     <span className="text-xs font-mono font-black uppercase text-black">
@@ -208,53 +263,84 @@ export default function BouquetViewer() {
                             </div>
                         </div>
 
-                        {/* Gift Note */}
+                        {/* Personalized Gift Note */}
                         {bouquet?.message && (
-                            <div className="bg-[#fcfaf7] border-2 border-black/80 p-3.5 text-xs font-sans text-neutral-900 leading-relaxed italic">
+                            <div className="bg-[#faf8f5] border-2 border-black/80 p-3.5 text-xs font-serif text-neutral-900 leading-relaxed italic rounded-none">
                                 &ldquo;{bouquet.message}&rdquo;
                             </div>
                         )}
 
-                        {/* Destination Action Link */}
+                        {/* Interaction Prompt */}
+                        <div className="flex items-center gap-2 bg-[#FFE500]/25 border border-black/40 p-2 text-[11px] font-mono text-neutral-800">
+                            <Sparkles size={13} className="text-amber-600 flex-shrink-0" />
+                            <span>
+                                {viewMode === '3d'
+                                    ? 'Tap the diorama to flatten it into a scannable QR code & unlock the surprise!'
+                                    : 'Scan with your phone camera or tap to explore in 3D.'}
+                            </span>
+                        </div>
+
+                        {/* Action Buttons */}
                         <div className="flex flex-col gap-2 pt-1 border-t border-neutral-200">
+                            {/* Direct destination link */}
                             <a
                                 href={targetUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="flex items-center justify-between px-3 py-2 bg-black text-white hover:bg-[#FFE500] hover:text-black border-2 border-black text-xs font-mono font-black uppercase transition-colors group"
+                                className="flex items-center justify-between px-3.5 py-2.5 bg-black text-white hover:bg-[#FFE500] hover:text-black border-2 border-black text-xs font-mono font-black uppercase transition-colors group"
                             >
-                                <div className="flex items-center gap-2">
-                                    <ExternalLink size={14} />
-                                    <span>Open Embedded Link</span>
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <ExternalLink size={14} className="flex-shrink-0" />
+                                    <span className="truncate">
+                                        Open Embedded Link
+                                    </span>
                                 </div>
-                                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform flex-shrink-0" />
                             </a>
 
+                            {/* Viral Growth Loop: Plant your own 3D gift */}
                             <Link
                                 href="/tree-qr"
-                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f4f5] hover:bg-white border-2 border-black text-xs font-mono font-bold uppercase transition-colors"
+                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f4f5] hover:bg-[#FFE500] border-2 border-black text-xs font-mono font-bold uppercase transition-colors"
                             >
-                                <Sparkles size={13} className="text-amber-500" />
-                                <span>Create Your Own 3D Bouquet</span>
+                                <Gift size={13} />
+                                <span>Create Your Own Living 3D Gift →</span>
                             </Link>
                         </div>
                     </div>
                 </div>
             ) : (
-                /* Minimized Card Toggle Button */
+                /* Minimized Keepsake Toggle Button */
                 <button
                     onClick={() => setCardOpen(true)}
                     className="absolute bottom-6 right-6 z-30 pointer-events-auto flex items-center gap-2 px-4 py-2.5 bg-[#FFE500] hover:bg-white border-3 border-black shadow-[4px_4px_0_#000] text-xs font-mono font-black uppercase transition-all"
                 >
                     <MessageSquare size={16} />
-                    <span>View Gift Note ({bouquet?.sender_name || 'Friend'})</span>
+                    <span>View Keepsake Note ({bouquet?.sender_name || 'Friend'})</span>
                 </button>
             )}
 
             {/* Bottom Interaction Hint */}
-            <div className="absolute bottom-4 left-6 z-20 pointer-events-none hidden md:flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-black/40 px-2.5 py-1 text-[10px] font-mono text-neutral-700">
-                <span>🖱️ Drag around to rotate · Scroll to zoom</span>
+            <div className="absolute bottom-4 left-6 z-20 pointer-events-none hidden md:flex items-center gap-2 bg-white/90 backdrop-blur-sm border-2 border-black px-3 py-1.5 text-[10px] font-mono font-bold text-neutral-800 shadow-[2px_2px_0_#000]">
+                <span>🖱️ Drag to orbit 360° · Scroll to zoom · Tap tree to morph into QR</span>
             </div>
         </div>
+    );
+}
+
+export default function BouquetViewer(props: BouquetViewerProps) {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-[#f4f1ea] flex flex-col items-center justify-center p-6 font-mono">
+                <div className="flex flex-col items-center gap-3 bg-white border-3 border-black p-8 shadow-[6px_6px_0_#000]">
+                    <div className="w-8 h-8 border-4 border-black border-t-[#FFE500] rounded-full animate-spin" />
+                    <span className="text-xs font-black uppercase tracking-wider">
+                        Unwrapping Living 3D Gift...
+                    </span>
+                </div>
+            </div>
+        }>
+            <BouquetViewerInner {...props} />
+        </Suspense>
     );
 }

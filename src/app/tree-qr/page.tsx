@@ -1,10 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import {
-    TreeDiorama,
-    TreeDioramaRef,
-} from '@/components/tree-qr/tree-diorama';
+import VoxelDiorama, { type VoxelDioramaRef } from '@/components/tree-qr/voxel-diorama';
 import {
     SeasonType,
     SceneType,
@@ -89,7 +86,7 @@ const PRESET_SCENE_IDS = [
 ] as const;
 
 export default function TreeQRPage() {
-    const dioramaRef = useRef<TreeDioramaRef>(null);
+    const dioramaRef = useRef<VoxelDioramaRef>(null);
 
     // State
     const [urlInput, setUrlInput] = useState('https://creatorkit.app/');
@@ -123,6 +120,7 @@ export default function TreeQRPage() {
         oak: 'lush',
         rose: 'rose',
         wisteria: 'wisteria',
+        house: 'autumn',
     };
 
     const handlePaletteSelect = (palId: string) => {
@@ -189,7 +187,7 @@ export default function TreeQRPage() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    // Save & Share as a Digital Bouquet
+    // Save & Share as a Living 3D Gift
     const handleCreateBouquet = async () => {
         setIsSavingBouquet(true);
         try {
@@ -205,7 +203,20 @@ export default function TreeQRPage() {
             });
 
             const finalId = shortId || 'bq_' + Math.random().toString(36).substring(2, 8);
-            const shareableUrl = `${window.location.origin}/bouquet/${finalId}`;
+            
+            // Build self-contained query parameters so the gift card renders with 100% fidelity
+            // across any device, iMessage, WhatsApp, or offline browser session
+            const qp = new URLSearchParams();
+            if (senderName.trim()) qp.set('from', senderName.trim());
+            if (recipientName.trim()) qp.set('to', recipientName.trim());
+            if (giftMessage.trim()) qp.set('msg', giftMessage.trim());
+            if (sceneType !== 'sakura') qp.set('scene', sceneType);
+            if (paletteId !== 'sakura') qp.set('pal', paletteId);
+            if (activeUrl && activeUrl !== 'https://creatorkit.app/') qp.set('u', activeUrl);
+            if (isAudioActive) qp.set('audio', '1');
+
+            const qs = qp.toString();
+            const shareableUrl = `${window.location.origin}/bouquet/${finalId}${qs ? '?' + qs : ''}`;
             setBouquetSavedModal({ id: finalId, url: shareableUrl });
             navigator.clipboard.writeText(shareableUrl);
             setBouquetCopied(true);
@@ -311,7 +322,7 @@ export default function TreeQRPage() {
                             boxShadow: '2px 2px 0 #000',
                         }}
                     >
-                        3D QR DIORAMA STUDIO
+                        3D LIVING GIFT & KEEPSAKE STUDIO
                     </span>
                     <span
                         style={{
@@ -321,7 +332,7 @@ export default function TreeQRPage() {
                             fontFamily: 'monospace',
                         }}
                     >
-                        DIGITAL BOUQUET · SCANNABLE GIFTS · 4K CINEMATIC
+                        SCANNABLE 3D DIORAMA · DIGITAL BOUQUET · SECRET QR KEEPSAKE
                     </span>
                 </div>
 
@@ -336,7 +347,7 @@ export default function TreeQRPage() {
                             margin: 0,
                         }}
                     >
-                        Digital Bouquet
+                        Living 3D Gift & Keepsake
                     </h1>
                     <p
                         style={{
@@ -348,7 +359,7 @@ export default function TreeQRPage() {
                             margin: 0,
                         }}
                     >
-                        Grow a scannable QR code into a living 3D diorama. Pick a centerpiece, choose a living palette that recolors the tree, courtyard and QR itself, then share it as a link anyone can unfold.
+                        Sculpt a scannable QR code into a living 3D diorama. Pick a centerpiece (botanical bouquets, zen trees, or cozy cottage), personalize a gift note, and share a living 3D keepsake link anyone can unfold and scan.
                     </p>
                 </div>
             </div>
@@ -424,7 +435,7 @@ export default function TreeQRPage() {
                                 overflow: 'hidden',
                             }}
                         >
-                            <TreeDiorama
+                            <VoxelDiorama
                                 ref={dioramaRef}
                                 urlText={activeUrl}
                                 season={season}
@@ -531,6 +542,7 @@ export default function TreeQRPage() {
                                     ['wisteria', 'Wisteria'],
                                     ['bonsai', 'Zen Bonsai'],
                                     ['pine', 'Pagoda Pine'],
+                                    ['house', 'Cottage House'],
                                 ] as [SceneType, string][]
                             ).map(([id, label]) => (
                                 <button
@@ -604,7 +616,7 @@ export default function TreeQRPage() {
                     {/* Personalize Gift Card */}
                     <div className="brutalist-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={BRUT_LABEL}>Personalize Gift Card</span>
+                            <span style={BRUT_LABEL}>Personalize Living 3D Gift Card</span>
                             <span
                                 style={{
                                     padding: '2px 8px',
@@ -616,7 +628,7 @@ export default function TreeQRPage() {
                                     textTransform: 'uppercase',
                                 }}
                             >
-                                Surprise Note
+                                Dedication Note
                             </span>
                         </div>
 
@@ -664,10 +676,10 @@ export default function TreeQRPage() {
                                             display: 'inline-block',
                                         }}
                                     />
-                                    Packaging Bouquet...
+                                    Packaging Living Gift...
                                 </>
                             ) : (
-                                'Create & Share Digital Bouquet Link'
+                                'Create & Share Living 3D Gift Link'
                             )}
                         </button>
                     </div>
@@ -841,10 +853,10 @@ export default function TreeQRPage() {
                             </span>
                             <div>
                                 <h3 style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', margin: 0 }}>
-                                    Digital Bouquet Ready
+                                    Living 3D Gift Ready
                                 </h3>
                                 <p style={{ fontSize: '0.74rem', fontFamily: 'monospace', color: '#666', margin: 0, marginTop: 4 }}>
-                                    Link copied to your clipboard. Anyone who scans or clicks will see your 3D diorama unfold.
+                                    Link copied to clipboard! Anyone who scans or clicks will explore your 3D diorama and tap to reveal the hidden surprise.
                                 </p>
                             </div>
                         </div>
