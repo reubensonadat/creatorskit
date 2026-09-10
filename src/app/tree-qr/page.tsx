@@ -327,12 +327,17 @@ export default function TreeQRPage() {
 
     // Start with the studio panel closed on narrow screens; ESC toggles it.
     useEffect(() => {
-        if (window.innerWidth < 760) setControlsOpen(false);
+        const raf = requestAnimationFrame(() => {
+            if (window.innerWidth < 760) setControlsOpen(false);
+        });
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') setControlsOpen((o) => !o);
         };
         window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('keydown', onKey);
+        };
     }, []);
 
     const currentPalette: FoliagePalette = PRESET_PALETTES[paletteId] || PRESET_PALETTES.sakura;

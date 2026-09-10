@@ -138,7 +138,6 @@ const VoxelDiorama = forwardRef<VoxelDioramaRef, VoxelDioramaProps>(function Vox
         };
         // The mode-change callback is refreshed by the effect below instead
         // of tearing down the whole engine.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Keep the mode-change callback fresh without rebuilding the engine.

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import VoxelDiorama, { type VoxelDioramaRef } from '@/components/tree-qr/voxel-diorama';
 import { SeasonType, SceneType, PRESET_PALETTES, FoliagePalette } from '@/lib/tree-qr/tree-generator';
 import { getBouquetByShortId, StoredBouquet } from '@/lib/supabase';
-import { ambientSoundscape } from '@/lib/tree-qr/audio-ambient';
+import { ambientSoundscape, AMBIENT_SOUND_TYPES, type AmbientSoundType } from '@/lib/tree-qr/audio-ambient';
 import {
     Sparkles,
     Volume2,
@@ -36,6 +36,7 @@ function BouquetViewerInner({ initialBouquet }: BouquetViewerProps) {
     const [loading, setLoading] = useState(!initialBouquet);
     const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
     const [isAudioActive, setIsAudioActive] = useState(false);
+    const [currentSound, setCurrentSound] = useState<AmbientSoundType>('breeze');
     const [cardOpen, setCardOpen] = useState(true);
 
     useEffect(() => {
@@ -119,8 +120,25 @@ function BouquetViewerInner({ initialBouquet }: BouquetViewerProps) {
     }, [params?.id, initialBouquet, searchParams]);
 
     const toggleAudio = () => {
-        const nextState = ambientSoundscape.toggle();
-        setIsAudioActive(nextState);
+        if (!isAudioActive) {
+            ambientSoundscape.setType(currentSound);
+            ambientSoundscape.start();
+            setIsAudioActive(true);
+        } else {
+            ambientSoundscape.stop();
+            setIsAudioActive(false);
+        }
+    };
+
+    const cycleSound = () => {
+        if (!isAudioActive) {
+            toggleAudio();
+            return;
+        }
+        const currentIndex = AMBIENT_SOUND_TYPES.indexOf(currentSound);
+        const nextSound = AMBIENT_SOUND_TYPES[(currentIndex + 1) % AMBIENT_SOUND_TYPES.length];
+        setCurrentSound(nextSound);
+        ambientSoundscape.setType(nextSound);
     };
 
     if (loading) {
@@ -196,18 +214,26 @@ function BouquetViewerInner({ initialBouquet }: BouquetViewerProps) {
                     </button>
 
                     {/* Audio Soundscape Toggle */}
-                    <button
-                        onClick={toggleAudio}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-black text-xs font-mono font-bold shadow-[3px_3px_0_#000] transition-colors ${
-                            isAudioActive ? 'bg-[#FFE500]' : 'bg-white hover:bg-neutral-100'
-                        }`}
-                        title={isAudioActive ? 'Mute Soundscape' : 'Play Gentle Breeze Audio'}
-                    >
-                        {isAudioActive ? <Volume2 size={15} /> : <VolumeX size={15} />}
-                        <span className="hidden sm:inline">
-                            {isAudioActive ? 'Audio ON' : 'Audio OFF'}
-                        </span>
-                    </button>
+                    <div className="flex items-center">
+                        <button
+                            onClick={toggleAudio}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-black border-r-0 text-xs font-mono font-bold shadow-[3px_3px_0_#000] transition-colors ${
+                                isAudioActive ? 'bg-[#FFE500]' : 'bg-white hover:bg-neutral-100'
+                            }`}
+                            title={isAudioActive ? 'Mute Soundscape' : 'Play Ambient Audio'}
+                        >
+                            {isAudioActive ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                        </button>
+                        <button
+                            onClick={cycleSound}
+                            className={`px-3 py-1.5 border-2 border-black text-xs font-mono font-bold shadow-[3px_3px_0_#000] transition-colors capitalize ${
+                                isAudioActive ? 'bg-[#FFE500]' : 'bg-white hover:bg-neutral-100'
+                            }`}
+                            title="Cycle Ambient Soundscape"
+                        >
+                            {isAudioActive ? currentSound : 'Audio OFF'}
+                        </button>
+                    </div>
 
                     {/* Reset Camera Angle */}
                     <button
@@ -298,14 +324,25 @@ function BouquetViewerInner({ initialBouquet }: BouquetViewerProps) {
                                 <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform flex-shrink-0" />
                             </a>
 
-                            {/* Viral Growth Loop: Plant your own 3D gift */}
-                            <Link
-                                href="/tree-qr"
-                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f4f5] hover:bg-[#FFE500] border-2 border-black text-xs font-mono font-bold uppercase transition-colors"
-                            >
-                                <Gift size={13} />
-                                <span>Create Your Own Living 3D Gift →</span>
-                            </Link>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                {/* Send a Reply Note */}
+                                <Link
+                                    href={`/bouquet/response?to=${encodeURIComponent(bouquet?.sender_name || 'Sender')}&from=${encodeURIComponent(bouquet?.recipient_name || 'Recipient')}`}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f4f5] hover:bg-black hover:text-white border-2 border-black text-xs font-mono font-bold uppercase transition-colors text-center"
+                                >
+                                    <Heart size={13} />
+                                    <span>Send a Reply</span>
+                                </Link>
+
+                                {/* Viral Growth Loop: Plant your own 3D gift */}
+                                <Link
+                                    href="/tree-qr"
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f4f5] hover:bg-[#FFE500] border-2 border-black text-xs font-mono font-bold uppercase transition-colors text-center"
+                                >
+                                    <Gift size={13} />
+                                    <span>Create Your Own</span>
+                                </Link>
+                            </div>
                         </div>
                     </div>
                 </div>

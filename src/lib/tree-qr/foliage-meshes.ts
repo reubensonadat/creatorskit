@@ -134,6 +134,41 @@ function crossQuadGeometry(): THREE.BufferGeometry {
     return geo;
 }
 
+/** Three crossed base-anchored quads — a 3D leaf cluster with volume from any angle. */
+function starQuadGeometry(): THREE.BufferGeometry {
+    const positions = new Float32Array([
+        // quad 1 (0°)
+        -0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0,
+        // quad 2 (60°)
+        -0.25, 0, 0.433, 0.25, 0, -0.433, 0.25, 1, -0.433, -0.25, 1, 0.433,
+        // quad 3 (120°)
+        0.25, 0, 0.433, -0.25, 0, -0.433, -0.25, 1, -0.433, 0.25, 1, 0.433,
+    ]);
+    const uvs = new Float32Array([
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+    ]);
+    const indices = [
+        0, 1, 2, 0, 2, 3, 
+        4, 5, 6, 4, 6, 7, 
+        8, 9, 10, 8, 10, 11
+    ];
+    // Normals are all straight up so the lighting treats the whole cluster as one fluffy puff
+    const normals = new Float32Array([
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+    ]);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    geo.setIndex(indices);
+    return geo;
+}
+
 // ─── Builders ────────────────────────────────────────────────────────────────
 
 /** Scatter the canopy: one instanced draw call for every leaf-cluster plane. */
@@ -147,7 +182,7 @@ export function buildLeafCanopy(
     const planes = data.leafPlanes;
     if (planes.length === 0) return null;
 
-    const geometry = baseQuadGeometry();
+    const geometry = starQuadGeometry();
     const material = createWindMaterial(map, shared, { windStrength: 0.065, windSpeed: 1.6 });
     const mesh = new THREE.InstancedMesh(geometry, material, planes.length);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -162,9 +197,16 @@ export function buildLeafCanopy(
 
     for (let i = 0; i < planes.length; i++) {
         const plane = planes[i];
-        p.set(plane.x * BLOCK - data.halfGridWorld, plane.layerY * BLOCK, plane.z * BLOCK - data.halfGridWorld);
+        p.set(
+            plane.x * BLOCK - data.halfGridWorld,
+            plane.layerY * BLOCK,
+            plane.z * BLOCK - data.halfGridWorld
+        );
+
+        // Random tilt and spin for a fluffy 3D cluster look
         e.set((rng() - 0.5) * 0.85, rng() * Math.PI * 2, (rng() - 0.5) * 0.4, 'YXZ');
         q.setFromEuler(e);
+
         const sc = plane.size * BLOCK;
         s.set(sc, sc * (0.85 + rng() * 0.35), sc);
         m.compose(p, q, s);
@@ -209,12 +251,14 @@ export function buildGrassField(
 
     for (let i = 0; i < spots.length; i++) {
         const spot = spots[i];
+        // Keep grass strictly aligned to the tile center, not wildly scattered
         p.set(
-            (spot.col + 0.5 + (rng() - 0.5) * 0.7) * BLOCK - data.halfGridWorld,
+            (spot.col + 0.5) * BLOCK - data.halfGridWorld,
             BLOCK, // rooted on top of the ground tile
-            (spot.row + 0.5 + (rng() - 0.5) * 0.7) * BLOCK - data.halfGridWorld
+            (spot.row + 0.5) * BLOCK - data.halfGridWorld
         );
-        q.setFromAxisAngle(up, rng() * Math.PI);
+        // Orthogonal or diagonal, clean and stylized
+        q.setFromAxisAngle(up, rng() < 0.5 ? 0 : Math.PI / 4);
         const hModules = (1.5 + rng() * 1.3) * spot.blades * 0.62;
         const h = hModules * BLOCK;
         s.set(h * 0.72, h, h * 0.72);

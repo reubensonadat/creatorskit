@@ -167,12 +167,11 @@ export class VoxelQRScene {
         this.slabMesh = buildSlabMesh(data, tones);
 
         // 4. Rounded organic trunk + slender branch struts connecting it to
-        // the canopy (no more blocky Minecraft trunk stacks — the ground
-        // tiles at layer 0 already keep the center modules QR-dark).
-        if (sceneType !== 'house') {
-            this.buildRoundedTrunk(tones, VOXEL_SHAPES[sceneType], rng);
-            this.buildBranches(tones, rng);
-        }
+        // the canopy.
+        // if (sceneType !== 'house') {
+        //     this.buildRoundedTrunk(tones, VOXEL_SHAPES[sceneType], rng);
+        //     this.buildBranches(tones, rng);
+        // }
 
         // 5. Organic foliage — scattered alpha-clipped planes grown from the
         // preset's rules: leaf-cluster canopy, crossed grass-blade tufts on
@@ -372,7 +371,9 @@ export class VoxelQRScene {
         this.camera.bottom = -halfH;
         this.camera.updateProjectionMatrix();
 
-        this.stage.position.y = Y_OFFSET_2D_FACTOR * this.data.halfGridWorld * progress;
+        // Offset the stage downwards in 3D so the base rests near the bottom controls
+        const lowerOffset = -halfH * 0.45 * (1 - progress);
+        this.stage.position.y = Y_OFFSET_2D_FACTOR * this.data.halfGridWorld * progress + lowerOffset;
         this.stage.position.x = X_OFFSET_2D_FACTOR * this.data.halfGridWorld * progress;
     }
 
@@ -393,11 +394,15 @@ export class VoxelQRScene {
         for (let i = 0; i < bm.count; i++) {
             const b = data.blocks[i];
             const x = b.col * BLOCK - halfGrid;
-            // Height descends smoothly towards ground level (layer 0)
-            const y = (b.layer * hFactor + 0.5) * BLOCK;
+            const flattenOffset = (1 - hFactor) * b.layer * 0.005;
+            const y = (b.layer * hFactor + 0.5 + flattenOffset) * BLOCK;
             const z = b.row * BLOCK - halfGrid;
 
+            // Tree blocks shrink to zero in 2D mode so they don't disrupt the QR code
+            const s = b.layer > 0 ? Math.max(0.001, hFactor) : 1;
+
             this.matrix.makeTranslation(x, y, z);
+            if (s !== 1) this.matrix.scale(new THREE.Vector3(s, s, s));
             bm.mesh.setMatrixAt(i, this.matrix);
         }
         bm.mesh.instanceMatrix.needsUpdate = true;
@@ -433,11 +438,14 @@ export class VoxelQRScene {
                 bm.mesh.setMatrixAt(i, this.matrix);
             } else {
                 const x = b.col * BLOCK - halfGrid;
-                const y = (b.layer * hFactor + 0.5) * BLOCK;
+                const flattenOffset = (1 - hFactor) * b.layer * 0.005;
+                const y = (b.layer * hFactor + 0.5 + flattenOffset) * BLOCK;
                 const z = b.row * BLOCK - halfGrid;
 
+                const finalScale = b.layer > 0 ? Math.max(0.001, hFactor) * s : s;
+
                 this.posV.set(x, y, z);
-                this.scaleV.setScalar(s);
+                this.scaleV.setScalar(finalScale);
                 this.matrix.compose(this.posV, this.quat, this.scaleV);
                 bm.mesh.setMatrixAt(i, this.matrix);
             }

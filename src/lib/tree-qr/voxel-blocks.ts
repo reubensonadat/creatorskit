@@ -119,11 +119,13 @@ export function generateVoxelDiorama(url: string, sceneType: SceneType): VoxelDa
             }
 
             let groundType: VoxelBlockType;
+            const isEdge = col <= 0 || col >= size - 1 || row <= 0 || row >= size - 1;
+
             if (isHouse && dist < houseR - 1.7) {
                 groundType = VoxelBlockType.HouseFloor;
             } else if (dist < trunkR) {
                 groundType = VoxelBlockType.Trunk;
-            } else if (dist >= canopyOuter) {
+            } else if (isEdge) {
                 groundType = VoxelBlockType.Grass;
             } else {
                 groundType = VoxelBlockType.PetalBed;
@@ -215,24 +217,32 @@ export function generateVoxelDiorama(url: string, sceneType: SceneType): VoxelDa
             }
         }
     }
-    // (Non-house scenes get a rounded organic trunk MESH — see
-    // VoxelQRScene.buildRoundedTrunk. The ground tiles at layer 0 already
-    // keep the trunk-radius modules QR-dark, so no voxel stack is needed.)
 
-    // ─── Pass 3: canopy foliage — scattered alpha-clipped leaf planes ────────
-    // The Minecraft-style canopy voxel stacks are gone. Each preset's growth
-    // rules now scatter intersecting 2D leaf-cluster planes through the same
-    // silhouette profile (dome / cone / cube / puff / tiers / weeping / palm),
-    // so changing a preset changes the grouping, spread and density of the
-    // foliage — not just its colors. The solid ground tiles beneath every
-    // dark module keep the flattened top-down view a scannable QR.
+    // ─── Pass 2: trunk + house structures ────────────────────────────────────────
+    if (!isHouse) {
+        // Pixel-perfect voxel trunk instead of the smooth cylinder!
+        for (let l = 1; l <= shape.trunkLayers; l++) {
+            for (let row = 0; row < size; row++) {
+                for (let col = 0; col < size; col++) {
+                    const info = modules[row][col];
+                    if (!info.isDark) continue;
+                    const dx = col + 0.5 - c;
+                    const dy = row + 0.5 - c;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < trunkR) {
+                        push(col, row, l, VoxelBlockType.Trunk);
+                    }
+                }
+            }
+        }
+    }
+
+    // ─── Pass 3: canopy foliage — pure voxel block stacks ────────
+    // Reverting to the beautiful clean pure voxel look from ICQR
     if (!isHouse && shape.canopy !== 'none') {
         const H = shape.canopyLayers;
         const base = shape.canopy === 'cone' ? 4 : shape.canopy === 'palm' ? shape.trunkLayers : Math.round(shape.trunkLayers * 0.72);
         const sparse = shape.sparse ?? 0;
-        const rules = shape.leaves;
-
-        const tonePick = (r: number) => (r < 0.22 ? 0 : r < 0.5 ? 1 : r < 0.78 ? 2 : 3);
 
         // Vertical silhouette profile — how many layers of foliage sit over a
         // module at radial position t (1 center → 0 edge), per canopy kind.
@@ -262,62 +272,13 @@ export function generateVoxelDiorama(url: string, sceneType: SceneType): VoxelDa
                 const t = 1 - dist / canopyOuter; // 1 center → 0 edge
                 if (sparse > 0 && rng() < sparse * 0.85) continue; // frost gaps
 
-                const radial = dist / canopyOuter;
-                // Phase doubles as wind-seed and bloom order — mostly radial so
-                // the canopy blooms center-outward like the ground ripple.
-                const phase = Math.min(1, 0.45 * radial + 0.55 * rng());
+                const layersHere = profileLayers(t);
 
-                const scatter = (layerY: number, sizeMul = 1) => {
-                    leafPlanes.push({
-                        x: col + 0.5 + (rng() - 0.5) * rules.spread,
-                        z: row + 0.5 + (rng() - 0.5) * rules.spread,
-                        layerY,
-                        size: rules.size * (1 - rules.sizeVar * 0.5 + rng() * rules.sizeVar) * sizeMul,
-                        tone: tonePick(rng()),
-                        phase,
-                    });
+                // Push actual canopy blocks for that pixel-perfect voxel look
+                for (let l = 1; l <= layersHere; l++) {
+                    const layerY = base + l;
+                    push(col, row, layerY, VoxelBlockType.Canopy);
                     if (layerY > leafTop) leafTop = layerY;
-                };
-
-                switch (shape.canopy) {
-                    case 'tiers': {
-                        // Bonsai: dense pads stacked on shrinking platforms.
-                        for (let j = 0; j < 3; j++) {
-                            const rj = canopyOuter * (1 - j * 0.3);
-                            if (dist < rj) {
-                                const n = Math.max(2, Math.round(rules.density * 2.4));
-                                for (let k = 0; k < n; k++) scatter(base + j * 3 + rng() * 1.4);
-                            }
-                        }
-                        if (dist < canopyOuter * 0.14) scatter(base + 9.2, 0.8); // top cap
-                        break;
-                    }
-                    case 'palm': {
-                        // Plus-shaped fronds fanning from the crown.
-                        if (Math.abs(dx) <= 1.2 || Math.abs(dy) <= 1.2) {
-                            scatter(base + rng() * 1.6);
-                            if (rng() < 0.6) scatter(base + 1 + rng() * 1.2);
-                        }
-                        if (dist < 2.4) {
-                            scatter(base + 2 + rng() * 1.5, 0.9);
-                            if (dist < 1.4) scatter(base + 3.4, 0.8);
-                        }
-                        break;
-                    }
-                    default: {
-                        const layersHere = profileLayers(t);
-                        const n = Math.max(1, Math.round(layersHere * rules.density));
-                        for (let k = 0; k < n; k++) scatter(base + rng() * layersHere);
-
-                        // Weeping tassels draping below the rim.
-                        if (rules.droop > 0 && t < 0.55) {
-                            const hang = 1 + Math.floor(rng() * rules.droop);
-                            for (let k = 1; k <= hang; k++) scatter(base - k * 0.9 - rng() * 0.4, 0.85);
-                        }
-                        // Spire tip for conifers.
-                        if (shape.canopy === 'cone' && t > 0.92) scatter(base + H + 0.6, 0.75);
-                        break;
-                    }
                 }
             }
         }
