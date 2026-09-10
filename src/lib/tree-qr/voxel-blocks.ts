@@ -120,167 +120,155 @@ export function generateVoxelDiorama(url: string, sceneType: SceneType): VoxelDa
 
             let groundType: VoxelBlockType;
             const isEdge = col <= 0 || col >= size - 1 || row <= 0 || row >= size - 1;
+            const isCornerFinder =
+                (col < 8 && row < 8) ||
+                (col >= size - 8 && row < 8) ||
+                (col < 8 && row >= size - 8);
 
             if (isHouse && dist < houseR - 1.7) {
                 groundType = VoxelBlockType.HouseFloor;
             } else if (dist < trunkR) {
                 groundType = VoxelBlockType.Trunk;
-            } else if (isEdge) {
+            } else if (isEdge || isCornerFinder) {
                 groundType = VoxelBlockType.Grass;
             } else {
                 groundType = VoxelBlockType.PetalBed;
             }
             push(col, row, 0, groundType);
 
-            if (groundType === VoxelBlockType.Grass || groundType === VoxelBlockType.PetalBed) {
-                const flower = groundType === VoxelBlockType.Grass && rng() < 0.07;
-                const r = rng();
+            // Clean, manicured courtyard: only perimeter edge tiles & corner finders get grass tufts!
+            // Interior PetalBed tiles remain clean, smooth cobblestone pavers with petal accents.
+            if (groundType === VoxelBlockType.Grass) {
+                const flower = isCornerFinder && rng() < 0.16;
                 grassSpots.push({
                     col,
                     row,
                     flower,
-                    blades: 1 + (r < 0.55 ? 1 : 0) + (r < 0.22 ? 1 : 0),
+                    blades: 1 + (rng() < 0.45 ? 1 : 0),
                 });
-                // Blossoms are now textured planes (foliage-meshes), not blocks.
+            } else if (groundType === VoxelBlockType.PetalBed && rng() < 0.03) {
+                // Rare tiny subtle moss sprig in the courtyard stones
+                grassSpots.push({
+                    col,
+                    row,
+                    flower: false,
+                    blades: 1,
+                });
             }
         }
     }
 
-    // ─── Pass 2: centerpiece — trunk stack or cottage house ──────────────────
-    if (isHouse) {
-        // Pass A — collect the wall ring and pick the door column whose
-        // angle faces the iso camera (≈ π/4).
-        let doorCol = Math.floor(c + houseR - 1);
-        let doorRow = Math.floor(c);
-        let bestAngle = Infinity;
-        const ring: Array<{ col: number; row: number; angle: number }> = [];
-
-        for (let row = 0; row < size; row++) {
-            for (let col = 0; col < size; col++) {
-                const info = modules[row][col];
-                if (!info.isDark) continue;
-                const dx = col + 0.5 - c;
-                const dy = row + 0.5 - c;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < houseR - 1.7 || dist >= houseR) continue;
-
-                const angle = Math.abs(Math.atan2(dy, dx) - Math.PI / 4);
-                ring.push({ col, row, angle });
-                if (angle < bestAngle) {
-                    bestAngle = angle;
-                    doorCol = col;
-                    doorRow = row;
-                }
-            }
-        }
-
-        // Pass B — walls, alternating windows, and the door column.
-        ring.forEach((m, idx) => {
-            const isWindow = idx % 2 === 1 && m.angle > 0.5;
-            for (let l = 1; l <= wallH; l++) {
-                if (m.col === doorCol && m.row === doorRow && l <= 2) {
-                    push(m.col, m.row, l, VoxelBlockType.HouseDoor);
-                } else if (isWindow && (l === 3 || l === 4)) {
-                    push(m.col, m.row, l, VoxelBlockType.HouseWindow);
-                } else {
-                    push(m.col, m.row, l, VoxelBlockType.HouseWall);
-                }
-            }
-        });
-
-        // Roof — stepped pyramid bands, only on dark modules.
-        const nLevels = Math.max(2, Math.ceil((houseR - 0.5) / 1.4));
-        for (let row = 0; row < size; row++) {
-            for (let col = 0; col < size; col++) {
-                const info = modules[row][col];
-                if (!info.isDark) continue;
-                const dx = col + 0.5 - c;
-                const dy = row + 0.5 - c;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= houseR) continue;
-
-                const j = Math.floor((houseR - dist) / 1.4);
-                if (j >= 0 && j < nLevels) {
-                    push(col, row, wallH + 1 + j, VoxelBlockType.HouseRoof);
-                } else if (j >= nLevels) {
-                    push(col, row, wallH + 1 + nLevels, VoxelBlockType.HouseRoof); // apex cap
-                }
-            }
-        }
-
-        // Chimney — a warm little smoke-stack on the far corner.
-        const chimCol = Math.floor(c - houseR * 0.45);
-        const chimRow = Math.floor(c - houseR * 0.45);
-        if (modules[chimRow]?.[chimCol]?.isDark) {
-            for (let l = wallH + 2; l <= wallH + 4; l++) {
-                push(chimCol, chimRow, l, VoxelBlockType.Trunk);
-            }
-        }
-    }
-
-    // ─── Pass 2: trunk + house structures ────────────────────────────────────────
-    if (!isHouse) {
-        // Pixel-perfect voxel trunk instead of the smooth cylinder!
-        for (let l = 1; l <= shape.trunkLayers; l++) {
-            for (let row = 0; row < size; row++) {
-                for (let col = 0; col < size; col++) {
-                    const info = modules[row][col];
-                    if (!info.isDark) continue;
-                    const dx = col + 0.5 - c;
-                    const dy = row + 0.5 - c;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < trunkR) {
-                        push(col, row, l, VoxelBlockType.Trunk);
-                    }
-                }
-            }
-        }
-    }
-
-    // ─── Pass 3: canopy foliage — pure voxel block stacks ────────
-    // Reverting to the beautiful clean pure voxel look from ICQR
+    // ─── Pass 2: Centerpiece & Foliage Cloud Generation ───────────────────────
+    // The ground layer (layer 0) represents the full QR code.
+    // 3D tree canopy clusters are generated as volumetric foliage planes
+    // (with vertex-shader wind and 4-stop altitude lighting).
     if (!isHouse && shape.canopy !== 'none') {
         const H = shape.canopyLayers;
-        const base = shape.canopy === 'cone' ? 4 : shape.canopy === 'palm' ? shape.trunkLayers : Math.round(shape.trunkLayers * 0.72);
-        const sparse = shape.sparse ?? 0;
+        const trunkH = Math.max(12, shape.trunkLayers);
+        const baseLayer =
+            shape.canopy === 'tiers'
+                ? trunkH * 0.5
+                : shape.canopy === 'weeping'
+                ? trunkH * 0.78
+                : shape.canopy === 'cone'
+                ? trunkH * 0.35
+                : trunkH * 0.65;
+        const topLayer = trunkH + H * 1.15;
+        leafTop = topLayer;
 
-        // Vertical silhouette profile — how many layers of foliage sit over a
-        // module at radial position t (1 center → 0 edge), per canopy kind.
-        const profileLayers = (t: number): number => {
-            switch (shape.canopy) {
-                case 'cone':
-                    return Math.max(2, Math.round(H * Math.pow(1 - t, 1.15)));
-                case 'cube':
-                    return t >= 0.25 ? H : Math.max(2, Math.round(H * (t / 0.25)));
-                case 'puff':
-                    return Math.max(2, Math.round(H * (1 - Math.pow(t, 1.7))));
-                default:
-                    // dome / weeping — round bell curve
-                    return Math.max(3, Math.round(H * (0.25 + 0.75 * t * t)));
-            }
-        };
+        const rules = shape.leaves;
+        const targetClusters = Math.min(
+            620,
+            Math.max(380, Math.round(size * size * 0.42 * rules.density))
+        );
 
-        for (let row = 0; row < size; row++) {
-            for (let col = 0; col < size; col++) {
-                const info = modules[row][col];
-                if (!info.isDark) continue;
-                const dx = col + 0.5 - c;
-                const dy = row + 0.5 - c;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= canopyOuter) continue;
+        // Branch arm anchors radiating outwards to form natural foliage clouds
+        const numBoughs = shape.canopy === 'cone' ? 8 : shape.canopy === 'tiers' ? 4 : 6;
+        const boughs: Array<{ x: number; z: number; y: number; r: number }> = [];
+        for (let b = 0; b < numBoughs; b++) {
+            const bAngle = (b / numBoughs) * Math.PI * 2 + rng() * 0.4;
+            const bDist = canopyOuter * (0.35 + rng() * 0.45);
+            const bHeight = baseLayer + (rng() * 0.5 + 0.2) * H;
+            boughs.push({
+                x: c + Math.cos(bAngle) * bDist,
+                z: c + Math.sin(bAngle) * bDist,
+                y: bHeight,
+                r: canopyOuter * (0.28 + rng() * 0.2),
+            });
+        }
 
-                const t = 1 - dist / canopyOuter; // 1 center → 0 edge
-                if (sparse > 0 && rng() < sparse * 0.85) continue; // frost gaps
+        // Central crown anchor
+        boughs.push({
+            x: c,
+            z: c,
+            y: baseLayer + H * 0.62,
+            r: canopyOuter * 0.44,
+        });
 
-                const layersHere = profileLayers(t);
+        for (let i = 0; i < targetClusters; i++) {
+            const anchor = boughs[Math.floor(rng() * boughs.length)];
+            const angle = rng() * Math.PI * 2;
+            const radial = Math.pow(rng(), 0.68) * anchor.r;
+            let px = anchor.x + Math.cos(angle) * radial;
+            let pz = anchor.z + Math.sin(angle) * radial;
 
-                // Push actual canopy blocks for that pixel-perfect voxel look
-                for (let l = 1; l <= layersHere; l++) {
-                    const layerY = base + l;
-                    push(col, row, layerY, VoxelBlockType.Canopy);
-                    if (layerY > leafTop) leafTop = layerY;
+            px = Math.max(1.5, Math.min(size - 2.5, px));
+            pz = Math.max(1.5, Math.min(size - 2.5, pz));
+
+            const distFromTrunk = Math.hypot(px - c, pz - c);
+            const tDist = Math.min(1, distFromTrunk / canopyOuter);
+
+            let py: number;
+            if (shape.canopy === 'weeping') {
+                // Cascading weeping racemes draping down from the boughs
+                const boughY = anchor.y;
+                const droopAmount = (rules.droop || 4.5) * Math.pow(rng(), 0.7);
+                py = boughY + (rng() * 0.25 - 0.05) * H - droopAmount;
+            } else if (shape.canopy === 'cone') {
+                // Pagoda pine conical tiers narrowing upward
+                const relH = rng();
+                py = baseLayer + relH * (topLayer - baseLayer);
+                const maxR = canopyOuter * (1 - relH * 0.75);
+                if (distFromTrunk > maxR) {
+                    px = c + (px - c) * (maxR / (distFromTrunk + 0.01));
+                    pz = c + (pz - c) * (maxR / (distFromTrunk + 0.01));
                 }
+            } else if (shape.canopy === 'tiers') {
+                // Bonsai cloud pads (Niwaki pads) at distinct steps
+                const tier = Math.floor(rng() * 3);
+                py = baseLayer + tier * (H * 0.4) + (rng() - 0.5) * 1.6;
+            } else {
+                // Dome / Puff / Cube rounded natural crown
+                const domeH = Math.sqrt(Math.max(0.04, 1 - tDist * tDist));
+                py = baseLayer + (rng() * 0.72 + 0.28 * domeH) * H;
             }
+
+            // Altitude lighting ramp: bottom is deep shade, top is sunny highlight
+            const altRatio = Math.max(
+                0,
+                Math.min(1, (py - baseLayer) / Math.max(1, topLayer - baseLayer))
+            );
+            let tone = 1;
+            if (altRatio < 0.22) tone = 3; // underbelly deep shadow
+            else if (altRatio < 0.52) tone = 2; // mid shadow
+            else if (altRatio < 0.82) tone = 1; // primary body
+            else tone = 0; // sunlit crown highlight
+
+            if (rng() < 0.14) {
+                tone = Math.max(0, Math.min(3, tone + (rng() < 0.5 ? -1 : 1)));
+            }
+
+            const sizeVar = (rng() - 0.5) * (rules.sizeVar ?? 0.5);
+            const planeSize = Math.max(1.2, rules.size * (1 + sizeVar));
+
+            leafPlanes.push({
+                x: px,
+                z: pz,
+                layerY: py,
+                size: planeSize,
+                tone,
+                phase: rng(),
+            });
         }
     }
 

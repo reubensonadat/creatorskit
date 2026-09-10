@@ -129,15 +129,29 @@ export function buildBlocksMesh(data: VoxelData, tones: VoxelTones): BlocksMesh 
 
 // ─── Earth Slab ──────────────────────────────────────────────────────────────
 
-export function buildSlabMesh(data: VoxelData, tones: VoxelTones): THREE.Mesh {
+export function buildSlabMesh(data: VoxelData, tones: VoxelTones): THREE.Group {
+    const group = new THREE.Group();
     const size = data.gridSize * BLOCK;
-    const geometry = new THREE.BoxGeometry(size, BLOCK * 1.6, size);
-    const material = new THREE.MeshLambertMaterial({
+
+    // 1. Clean stone curb rim — neatly frames the courtyard like a curated diorama
+    const rimMat = new THREE.MeshLambertMaterial({
+        color: new THREE.Color(tones.pathEdge[0] * 0.84, tones.pathEdge[1] * 0.84, tones.pathEdge[2] * 0.84),
+    });
+    const rimGeo = new THREE.BoxGeometry(size + BLOCK * 0.25, BLOCK * 0.42, size + BLOCK * 0.25);
+    const rim = new THREE.Mesh(rimGeo, rimMat);
+    rim.position.y = -BLOCK * 0.21;
+    group.add(rim);
+
+    // 2. Stratified earth slab foundation
+    const earthMat = new THREE.MeshLambertMaterial({
         color: new THREE.Color(tones.slab[0], tones.slab[1], tones.slab[2]),
     });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.y = -BLOCK * 0.8;
-    return mesh;
+    const earthGeo = new THREE.BoxGeometry(size * 0.985, BLOCK * 1.45, size * 0.985);
+    const earth = new THREE.Mesh(earthGeo, earthMat);
+    earth.position.y = -BLOCK * (0.42 + 0.725);
+    group.add(earth);
+
+    return group;
 }
 
 // ─── Drifting Petals ─────────────────────────────────────────────────────────

@@ -207,18 +207,18 @@ export interface VoxelPresetShape {
 }
 
 export const VOXEL_SHAPES: Record<SceneType, VoxelPresetShape> = {
-    sakura: { canopy: 'dome', trunkLayers: 12, canopyLayers: 12, canopyRadiusFactor: 0.46, sway: 0.045, leaves: { density: 1.15, spread: 0.9, size: 2.7, sizeVar: 0.55, droop: 0 } },
-    tree: { canopy: 'dome', trunkLayers: 12, canopyLayers: 10, canopyRadiusFactor: 0.44, sway: 0.045, leaves: { density: 1.0, spread: 0.8, size: 2.5, sizeVar: 0.5, droop: 0 } },
-    maple: { canopy: 'dome', trunkLayers: 10, canopyLayers: 10, canopyRadiusFactor: 0.47, sway: 0.05, leaves: { density: 1.2, spread: 0.95, size: 2.6, sizeVar: 0.6, droop: 0 } },
-    ginkgo: { canopy: 'cube', trunkLayers: 9, canopyLayers: 8, canopyRadiusFactor: 0.42, sway: 0.04, leaves: { density: 1.25, spread: 0.6, size: 2.3, sizeVar: 0.45, droop: 0 } },
-    magnolia: { canopy: 'puff', trunkLayers: 7, canopyLayers: 9, canopyRadiusFactor: 0.4, sway: 0.04, leaves: { density: 0.9, spread: 1.05, size: 2.9, sizeVar: 0.7, droop: 0 } },
-    hydrangea: { canopy: 'puff', trunkLayers: 8, canopyLayers: 9, canopyRadiusFactor: 0.42, sway: 0.04, leaves: { density: 1.05, spread: 1.0, size: 2.6, sizeVar: 0.6, droop: 0 } },
-    frost: { canopy: 'dome', trunkLayers: 12, canopyLayers: 11, canopyRadiusFactor: 0.46, sparse: 0.28, sway: 0.03, leaves: { density: 0.55, spread: 1.1, size: 2.4, sizeVar: 0.6, droop: 0 } },
-    oak: { canopy: 'cube', trunkLayers: 9, canopyLayers: 11, canopyRadiusFactor: 0.48, sway: 0.045, leaves: { density: 1.3, spread: 0.7, size: 2.5, sizeVar: 0.5, droop: 0 } },
-    rose: { canopy: 'puff', trunkLayers: 6, canopyLayers: 9, canopyRadiusFactor: 0.37, sway: 0.05, leaves: { density: 1.35, spread: 0.75, size: 2.2, sizeVar: 0.5, droop: 0 } },
-    wisteria: { canopy: 'weeping', trunkLayers: 11, canopyLayers: 9, canopyRadiusFactor: 0.44, sway: 0.05, leaves: { density: 0.95, spread: 0.9, size: 2.3, sizeVar: 0.55, droop: 4 } },
-    bonsai: { canopy: 'tiers', trunkLayers: 5, canopyLayers: 6, canopyRadiusFactor: 0.3, sway: 0.035, leaves: { density: 1.1, spread: 0.5, size: 2.8, sizeVar: 0.45, droop: 0 } },
-    pine: { canopy: 'cone', trunkLayers: 15, canopyLayers: 12, canopyRadiusFactor: 0.4, sway: 0.025, leaves: { density: 0.8, spread: 0.55, size: 2.0, sizeVar: 0.4, droop: 0 } },
+    sakura: { canopy: 'dome', trunkLayers: 18, canopyLayers: 14, canopyRadiusFactor: 0.46, sway: 0.045, leaves: { density: 1.25, spread: 0.9, size: 2.8, sizeVar: 0.55, droop: 0 } },
+    tree: { canopy: 'dome', trunkLayers: 17, canopyLayers: 13, canopyRadiusFactor: 0.44, sway: 0.045, leaves: { density: 1.15, spread: 0.8, size: 2.6, sizeVar: 0.5, droop: 0 } },
+    maple: { canopy: 'dome', trunkLayers: 16, canopyLayers: 13, canopyRadiusFactor: 0.47, sway: 0.05, leaves: { density: 1.3, spread: 0.95, size: 2.7, sizeVar: 0.6, droop: 0 } },
+    ginkgo: { canopy: 'cube', trunkLayers: 16, canopyLayers: 12, canopyRadiusFactor: 0.43, sway: 0.04, leaves: { density: 1.35, spread: 0.65, size: 2.4, sizeVar: 0.45, droop: 0 } },
+    magnolia: { canopy: 'puff', trunkLayers: 15, canopyLayers: 13, canopyRadiusFactor: 0.41, sway: 0.04, leaves: { density: 1.1, spread: 1.05, size: 3.0, sizeVar: 0.7, droop: 0 } },
+    hydrangea: { canopy: 'puff', trunkLayers: 14, canopyLayers: 12, canopyRadiusFactor: 0.42, sway: 0.04, leaves: { density: 1.2, spread: 1.0, size: 2.7, sizeVar: 0.6, droop: 0 } },
+    frost: { canopy: 'dome', trunkLayers: 18, canopyLayers: 13, canopyRadiusFactor: 0.46, sparse: 0.25, sway: 0.03, leaves: { density: 0.75, spread: 1.1, size: 2.5, sizeVar: 0.6, droop: 0 } },
+    oak: { canopy: 'cube', trunkLayers: 16, canopyLayers: 14, canopyRadiusFactor: 0.48, sway: 0.045, leaves: { density: 1.4, spread: 0.75, size: 2.7, sizeVar: 0.5, droop: 0 } },
+    rose: { canopy: 'puff', trunkLayers: 13, canopyLayers: 12, canopyRadiusFactor: 0.38, sway: 0.05, leaves: { density: 1.45, spread: 0.8, size: 2.3, sizeVar: 0.5, droop: 0 } },
+    wisteria: { canopy: 'weeping', trunkLayers: 19, canopyLayers: 13, canopyRadiusFactor: 0.45, sway: 0.05, leaves: { density: 1.1, spread: 0.9, size: 2.4, sizeVar: 0.55, droop: 5 } },
+    bonsai: { canopy: 'tiers', trunkLayers: 10, canopyLayers: 8, canopyRadiusFactor: 0.35, sway: 0.035, leaves: { density: 1.25, spread: 0.55, size: 2.9, sizeVar: 0.45, droop: 0 } },
+    pine: { canopy: 'cone', trunkLayers: 22, canopyLayers: 15, canopyRadiusFactor: 0.41, sway: 0.025, leaves: { density: 0.95, spread: 0.6, size: 2.2, sizeVar: 0.4, droop: 0 } },
     house: { canopy: 'none', trunkLayers: 0, canopyLayers: 0, canopyRadiusFactor: 0, sway: 0.03, leaves: { density: 0, spread: 0, size: 0, sizeVar: 0, droop: 0 } },
 };
 

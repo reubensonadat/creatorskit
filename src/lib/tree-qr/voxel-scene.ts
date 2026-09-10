@@ -73,7 +73,7 @@ export class VoxelQRScene {
     private tones: VoxelTones | null = null;
     private blocksMesh: BlocksMesh | null = null;
     private petalField: PetalField | null = null;
-    private slabMesh: THREE.Mesh | null = null;
+    private slabMesh: THREE.Object3D | null = null;
     private branchGroup = new THREE.Group();
 
     // Organic foliage — alpha-clipped leaf/grass/blossom planes whose wind
@@ -167,11 +167,13 @@ export class VoxelQRScene {
         this.slabMesh = buildSlabMesh(data, tones);
 
         // 4. Rounded organic trunk + slender branch struts connecting it to
-        // the canopy.
-        // if (sceneType !== 'house') {
-        //     this.buildRoundedTrunk(tones, VOXEL_SHAPES[sceneType], rng);
-        //     this.buildBranches(tones, rng);
-        // }
+        // the canopy, or a charming handcrafted 3D cottage diorama centerpiece
+        if (sceneType === 'house') {
+            this.buildCottageCenterpiece(tones, rng);
+        } else {
+            this.buildRoundedTrunk(tones, VOXEL_SHAPES[sceneType], rng);
+            this.buildBranches(tones, rng);
+        }
 
         // 5. Organic foliage — scattered alpha-clipped planes grown from the
         // preset's rules: leaf-cluster canopy, crossed grass-blade tufts on
@@ -220,15 +222,12 @@ export class VoxelQRScene {
     }
 
     addOrbitDelta(dx: number, dy = 0): void {
-        // Direct-manipulation pan: the pointer delta is inverted before it
-        // reaches the rig so the ENVIRONMENT is dragged with the cursor —
-        // dragging left pulls the 3D world left, dragging down pulls its
-        // top surface down (standard grab/orbit expectations). The old
-        // `-=` yaw moved the world opposite to the pointer.
-        this.targetYaw += dx * 0.007;
-        // Wide pitch range — orbit from near ground level up to near top-down
-        // so the whole 3D scene can be inspected from any angle.
-        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch + dy * 0.006, -0.55, 0.92);
+        if (this.flat) return; // Locked strictly top-down in 2D QR mode
+        // Direct-manipulation orbit: drag left pulls world left, drag down tilts down
+        this.targetYaw += dx * 0.0065;
+        // Curated pitch range: keeps elevation between ~18° and ~58° so the diorama
+        // always looks photogenic and never dips below ground or flips overhead.
+        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch + dy * 0.005, -0.32, 0.42);
     }
 
     addZoomDelta(delta: number): void {
@@ -345,14 +344,21 @@ export class VoxelQRScene {
         const idleSway = Math.sin(this.time * 0.5) * shapeSway * (1 - progress);
 
         // Interpolate yaw and pitch towards calibrated flat 2D values
-        const currentIsoY = ISO_ANGLE_Y + this.dragYaw;
-        const currentIsoX = ISO_ANGLE_X + this.dragPitch;
+        // Drag deltas smoothly blend to 0 as progress approaches 1 (2D mode)
+        // guaranteeing the QR code is strictly squared, upright, and instantly scannable
+        const dragBlend = 1 - progress;
+        const currentIsoY = ISO_ANGLE_Y + this.dragYaw * dragBlend;
+        const currentIsoX = ISO_ANGLE_X + this.dragPitch * dragBlend;
 
         const angleY = THREE.MathUtils.lerp(currentIsoY, FLAT_ANGLE_Y, progress) + idleSway;
         const angleX = THREE.MathUtils.lerp(currentIsoX, FLAT_ANGLE_X, progress);
 
         // Euler order 'YXZ': Rotate yaw (Y) first, then pitch (X)
         this.stage.rotation.set(angleX, angleY, 0, 'YXZ');
+
+        // Scale and fade branch & centerpiece structures alongside the foliage
+        this.branchGroup.scale.set(1, Math.max(0.001, 1 - progress), 1);
+        this.branchGroup.visible = progress < 0.96;
 
         const fit = THREE.MathUtils.lerp(FIT_3D, FIT_2D, progress);
         const halfH = this.data.halfGridWorld * fit * (1 + (this.zoomMul - 1) * (1 - progress * 0.9));
@@ -454,78 +460,399 @@ export class VoxelQRScene {
     }
 
     /**
-     * Rounded trunk — a tapered two-segment shaft with a gentle natural lean
-     * plus root flares ringing the base. Lives in branchGroup so it flattens
-     * into the QR exactly like the branches and foliage do.
+     * Sculpted organic botanical trunk:
+     * - Taller, elegant profile with natural taper and botanical sweep
+     * - Multi-segmented shaft tailored to the preset shape (graceful, bonsai s-curve, or pagoda pine mast)
+     * - Nebari root buttresses fluting outward and tapering onto the courtyard pavers
      */
     private buildRoundedTrunk(tones: VoxelTones, shape: VoxelPresetShape, rng: () => number): void {
-        const trunkH = Math.max(4, shape.trunkLayers) * BLOCK * 0.98;
-        const rBase = (shape.trunkRadius ?? TRUNK_RADIUS) * BLOCK * 0.88;
-        const baseY = BLOCK * 0.95;
+        const isBonsai = this.currentSceneType === 'bonsai';
+        const isPine = this.currentSceneType === 'pine';
+
+        // Taller, more majestic trunk height matching reference aesthetics
+        const trunkH = Math.max(10, shape.trunkLayers * 1.35) * BLOCK;
+        const rBase = (shape.trunkRadius ?? TRUNK_RADIUS) * BLOCK * 0.85;
+        const baseY = BLOCK * 0.85;
 
         const barkDark = new THREE.MeshLambertMaterial({
             color: new THREE.Color(tones.trunk[2][0], tones.trunk[2][1], tones.trunk[2][2]),
         });
-        const barkLight = new THREE.MeshLambertMaterial({
+        const barkMid = new THREE.MeshLambertMaterial({
             color: new THREE.Color(tones.trunk[1][0], tones.trunk[1][1], tones.trunk[1][2]),
         });
+        const barkLight = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.trunk[0][0], tones.trunk[0][1], tones.trunk[0][2]),
+        });
 
-        // Lower shaft — widest at the roots, softly tapered
-        const lowerGeo = new THREE.CylinderGeometry(rBase * 0.8, rBase, trunkH * 0.58, 12, 1);
-        lowerGeo.translate(0, (trunkH * 0.58) / 2, 0);
-        const lower = new THREE.Mesh(lowerGeo, barkDark);
-        lower.position.y = baseY;
-        this.branchGroup.add(lower);
+        if (isBonsai) {
+            // Classical Japanese aged Bonsai trunk with gnarly S-curve elbows
+            const seg1H = trunkH * 0.45;
+            const seg1Geo = new THREE.CylinderGeometry(rBase * 0.78, rBase * 1.15, seg1H, 12);
+            seg1Geo.translate(0, seg1H * 0.5, 0);
+            seg1Geo.rotateZ(0.22);
+            const seg1 = new THREE.Mesh(seg1Geo, barkDark);
+            seg1.position.set(-rBase * 0.15, baseY, 0);
+            this.branchGroup.add(seg1);
 
-        // Upper shaft — continues the taper with a slight organic lean
-        const upperGeo = new THREE.CylinderGeometry(rBase * 0.52, rBase * 0.8, trunkH * 0.46, 12, 1);
-        upperGeo.rotateZ(0.05);
-        upperGeo.translate(rBase * 0.1, (trunkH * 0.46) / 2, 0);
-        const upper = new THREE.Mesh(upperGeo, barkLight);
-        upper.position.set(rBase * 0.06, baseY + trunkH * 0.55, 0);
-        this.branchGroup.add(upper);
+            const seg2H = trunkH * 0.45;
+            const seg2Geo = new THREE.CylinderGeometry(rBase * 0.52, rBase * 0.78, seg2H, 12);
+            seg2Geo.translate(0, seg2H * 0.5, 0);
+            seg2Geo.rotateZ(-0.28);
+            const seg2 = new THREE.Mesh(seg2Geo, barkMid);
+            seg2.position.set(rBase * 0.25, baseY + seg1H * 0.85, 0);
+            this.branchGroup.add(seg2);
 
-        // Root flare — small tapered spurs ringing the base
-        const nFlares = 5;
+            const seg3H = trunkH * 0.35;
+            const seg3Geo = new THREE.CylinderGeometry(rBase * 0.32, rBase * 0.52, seg3H, 10);
+            seg3Geo.translate(0, seg3H * 0.5, 0);
+            seg3Geo.rotateZ(0.15);
+            const seg3 = new THREE.Mesh(seg3Geo, barkLight);
+            seg3.position.set(rBase * 0.05, baseY + seg1H * 0.85 + seg2H * 0.82, 0);
+            this.branchGroup.add(seg3);
+        } else if (isPine) {
+            // Pagoda Pine: Straight central mast tapering smoothly upward
+            const seg1H = trunkH * 0.55;
+            const seg1Geo = new THREE.CylinderGeometry(rBase * 0.65, rBase * 1.1, seg1H, 14);
+            seg1Geo.translate(0, seg1H * 0.5, 0);
+            const seg1 = new THREE.Mesh(seg1Geo, barkDark);
+            seg1.position.set(0, baseY, 0);
+            this.branchGroup.add(seg1);
+
+            const seg2H = trunkH * 0.55;
+            const seg2Geo = new THREE.CylinderGeometry(rBase * 0.28, rBase * 0.65, seg2H, 12);
+            seg2Geo.translate(0, seg2H * 0.5, 0);
+            const seg2 = new THREE.Mesh(seg2Geo, barkMid);
+            seg2.position.set(0, baseY + seg1H * 0.95, 0);
+            this.branchGroup.add(seg2);
+        } else {
+            // Sakura, Maple, Oak, Ginkgo, Magnolia, Frost, Rose, Wisteria:
+            // Graceful, organic sculpted trunk with gentle botanical lean and smooth taper
+            const seg1H = trunkH * 0.52;
+            const seg1Geo = new THREE.CylinderGeometry(rBase * 0.72, rBase * 1.08, seg1H, 14);
+            seg1Geo.translate(0, seg1H * 0.5, 0);
+            const seg1 = new THREE.Mesh(seg1Geo, barkDark);
+            seg1.position.set(0, baseY, 0);
+            this.branchGroup.add(seg1);
+
+            const seg2H = trunkH * 0.52;
+            const seg2Geo = new THREE.CylinderGeometry(rBase * 0.44, rBase * 0.72, seg2H, 12);
+            seg2Geo.translate(0, seg2H * 0.5, 0);
+            seg2Geo.rotateZ(0.06);
+            seg2Geo.rotateX(0.04);
+            const seg2 = new THREE.Mesh(seg2Geo, barkMid);
+            seg2.position.set(rBase * 0.05, baseY + seg1H * 0.96, rBase * 0.04);
+            this.branchGroup.add(seg2);
+        }
+
+        // Fluted Root Buttresses (Nebari) spreading onto the stone pavers
+        const nFlares = isBonsai ? 7 : 6;
         for (let i = 0; i < nFlares; i++) {
-            const ang = (i / nFlares) * Math.PI * 2 + rng() * 0.5;
-            const len = rBase * (1.1 + rng() * 0.5);
-            const geo = new THREE.CylinderGeometry(rBase * 0.16, rBase * 0.42, len, 7, 1);
-            geo.translate(0, len / 2, 0);
-            const m = new THREE.Mesh(geo, barkDark);
-            m.position.set(Math.cos(ang) * rBase * 0.72, baseY, Math.sin(ang) * rBase * 0.72);
-            m.rotation.z = Math.cos(ang) * 0.55;
-            m.rotation.x = -Math.sin(ang) * 0.55;
-            this.branchGroup.add(m);
+            const ang = (i / nFlares) * Math.PI * 2 + (rng() - 0.5) * 0.35;
+            const flareLen = rBase * (1.15 + rng() * 0.6);
+            const flareR1 = rBase * 0.12;
+            const flareR2 = rBase * 0.38;
+            const geo = new THREE.CylinderGeometry(flareR1, flareR2, flareLen, 7);
+            geo.translate(0, flareLen * 0.5, 0);
+            const flareMesh = new THREE.Mesh(geo, barkDark);
+
+            const spawnDist = rBase * 0.72;
+            flareMesh.position.set(
+                Math.cos(ang) * spawnDist,
+                baseY,
+                Math.sin(ang) * spawnDist
+            );
+            flareMesh.rotation.y = -ang;
+            flareMesh.rotation.z = -0.62 - rng() * 0.15;
+            this.branchGroup.add(flareMesh);
         }
     }
 
+    /**
+     * Multi-tiered botanical branches extending from the trunk into the foliage clusters
+     */
     private buildBranches(tones: VoxelTones, rng: () => number): void {
         const shape = VOXEL_SHAPES[this.currentSceneType];
-        const trunkH = Math.max(4, shape.trunkLayers) * BLOCK;
+        const trunkH = Math.max(10, shape.trunkLayers * 1.35) * BLOCK;
+        const isBonsai = this.currentSceneType === 'bonsai';
+        const isPine = this.currentSceneType === 'pine';
+        const isWeeping = this.currentSceneType === 'wisteria';
 
         const branchMat = new THREE.MeshLambertMaterial({
             color: new THREE.Color(tones.trunk[1][0], tones.trunk[1][1], tones.trunk[1][2]),
         });
+        const twigMat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.trunk[0][0], tones.trunk[0][1], tones.trunk[0][2]),
+        });
 
-        // Slender branching wooden struts radiating outward and upward (reference photo)
-        const numBranches = 7;
-        for (let i = 0; i < numBranches; i++) {
-            const angle = (i / numBranches) * Math.PI * 2 + rng() * 0.35;
-            const len = BLOCK * (3.5 + rng() * 3.5);
-            const r = BLOCK * 0.22;
+        if (isPine) {
+            // Pagoda Pine: 4 tiers of horizontal whorls radiating outward
+            const nTiers = 4;
+            for (let t = 0; t < nTiers; t++) {
+                const tierY = trunkH * (0.42 + t * 0.16);
+                const tierLen = BLOCK * (6.5 - t * 1.1);
+                const nBranchesInTier = 5;
+                for (let b = 0; b < nBranchesInTier; b++) {
+                    const ang = (b / nBranchesInTier) * Math.PI * 2 + t * 0.45;
+                    const r = BLOCK * (0.24 - t * 0.03);
+                    const geo = new THREE.CylinderGeometry(r * 0.4, r, tierLen, 6);
+                    geo.translate(0, tierLen * 0.5, 0);
+                    const mesh = new THREE.Mesh(geo, branchMat);
+                    mesh.position.set(0, tierY, 0);
+                    mesh.rotation.y = -ang;
+                    mesh.rotation.z = -1.25 + rng() * 0.15;
+                    this.branchGroup.add(mesh);
+                }
+            }
+        } else if (isBonsai) {
+            // Bonsai: 4 asymmetrical cloud-pad branches with sharp horizontal elbows
+            const arms = [
+                { y: trunkH * 0.48, ang: 0.2, len: BLOCK * 5.2, tilt: -1.1 },
+                { y: trunkH * 0.65, ang: 2.8, len: BLOCK * 6.0, tilt: -1.05 },
+                { y: trunkH * 0.82, ang: 1.4, len: BLOCK * 4.5, tilt: -0.95 },
+                { y: trunkH * 0.95, ang: 4.6, len: BLOCK * 3.8, tilt: -0.85 },
+            ];
+            for (const arm of arms) {
+                const r = BLOCK * 0.28;
+                const geo = new THREE.CylinderGeometry(r * 0.55, r, arm.len, 7);
+                geo.translate(0, arm.len * 0.5, 0);
+                const mesh = new THREE.Mesh(geo, branchMat);
+                mesh.position.set(0, arm.y, 0);
+                mesh.rotation.y = -arm.ang;
+                mesh.rotation.z = arm.tilt;
+                this.branchGroup.add(mesh);
+            }
+        } else if (isWeeping) {
+            // Weeping Wisteria: Arching boughs extending horizontally with downward hanging spur hooks
+            const numBoughs = 8;
+            for (let i = 0; i < numBoughs; i++) {
+                const ang = (i / numBoughs) * Math.PI * 2 + (rng() - 0.5) * 0.3;
+                const len = BLOCK * (6.5 + rng() * 2.8);
+                const r = BLOCK * 0.26;
+                const geo = new THREE.CylinderGeometry(r * 0.45, r, len, 6);
+                geo.translate(0, len * 0.5, 0);
+                const mesh = new THREE.Mesh(geo, branchMat);
+                mesh.position.set(0, trunkH * (0.75 + (i / numBoughs) * 0.2), 0);
+                mesh.rotation.y = -ang;
+                mesh.rotation.z = -1.15 - rng() * 0.2;
+                this.branchGroup.add(mesh);
 
-            const geo = new THREE.CylinderGeometry(r * 0.5, r, len, 6);
-            geo.translate(0, len * 0.5, 0);
+                // Hanging spur hook
+                const spurLen = BLOCK * (2.0 + rng() * 1.5);
+                const spurGeo = new THREE.CylinderGeometry(r * 0.25, r * 0.4, spurLen, 5);
+                spurGeo.translate(0, spurLen * 0.5, 0);
+                const spurMesh = new THREE.Mesh(spurGeo, twigMat);
+                const endDist = len * 0.82;
+                spurMesh.position.set(
+                    Math.cos(ang) * endDist,
+                    trunkH * 0.85 - BLOCK * 0.5,
+                    Math.sin(ang) * endDist
+                );
+                spurMesh.rotation.z = Math.PI * 0.85;
+                this.branchGroup.add(spurMesh);
+            }
+        } else {
+            // Dome / Puff / Cube presets (Sakura, Maple, Oak, Ginkgo, Magnolia, Hydrangea, Rose, Frost):
+            // 10 organic curving boughs radiating outward and reaching into the canopy clouds
+            const numBranches = 10;
+            for (let i = 0; i < numBranches; i++) {
+                const angle = (i / numBranches) * Math.PI * 2 + (rng() - 0.5) * 0.4;
+                const len = BLOCK * (5.5 + rng() * 4.2);
+                const r = BLOCK * (0.28 - (i / numBranches) * 0.08);
 
-            const mesh = new THREE.Mesh(geo, branchMat);
-            const attachY = trunkH * (0.55 + (i / numBranches) * 0.35);
-            mesh.position.set(0, attachY, 0);
+                const geo = new THREE.CylinderGeometry(r * 0.48, r, len, 7);
+                geo.translate(0, len * 0.5, 0);
 
-            mesh.rotation.y = angle;
-            mesh.rotation.z = -0.7 - rng() * 0.25;
+                const mesh = new THREE.Mesh(geo, branchMat);
+                const attachY = trunkH * (0.62 + (i / numBranches) * 0.34);
+                mesh.position.set(0, attachY, 0);
 
-            this.branchGroup.add(mesh);
+                mesh.rotation.y = -angle;
+                mesh.rotation.z = -0.72 - rng() * 0.32;
+
+                this.branchGroup.add(mesh);
+
+                // Secondary twig branch
+                if (rng() < 0.65) {
+                    const twigLen = BLOCK * (2.8 + rng() * 2.2);
+                    const twigGeo = new THREE.CylinderGeometry(r * 0.25, r * 0.45, twigLen, 5);
+                    twigGeo.translate(0, twigLen * 0.5, 0);
+                    const twig = new THREE.Mesh(twigGeo, twigMat);
+                    const twigDist = len * 0.65;
+                    const twigY = attachY + Math.cos(0.72) * twigDist;
+                    twig.position.set(
+                        Math.cos(angle) * twigDist * 0.8,
+                        twigY,
+                        Math.sin(angle) * twigDist * 0.8
+                    );
+                    twig.rotation.y = -(angle + 0.5);
+                    twig.rotation.z = -0.55 - rng() * 0.25;
+                    this.branchGroup.add(twig);
+                }
+            }
+        }
+    }
+
+    /**
+     * Handcrafted 3D cottage diorama centerpiece:
+     * - Plastered timber-frame walls with solid oak corner posts
+     * - Pitched gable roof with overhanging eaves and ridge cap
+     * - Fieldstone chimney with chimney smoke puffs
+     * - Rustic timber front door, doorstep, glowing warm wall lantern
+     * - Casement windows with flower boxes and blossom specks
+     * Attached to branchGroup so it seamlessly flattens down in 2D mode for the QR code!
+     */
+    private buildCottageCenterpiece(tones: VoxelTones, _rng: () => number): void {
+        const wallLight = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.wall[0][0], tones.wall[0][1], tones.wall[0][2]),
+        });
+        const wallDark = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.wall[1][0], tones.wall[1][1], tones.wall[1][2]),
+        });
+        const roofLight = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.roof[0][0], tones.roof[0][1], tones.roof[0][2]),
+        });
+        const roofDark = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.roof[1][0], tones.roof[1][1], tones.roof[1][2]),
+        });
+        const timberMat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.trunk[1][0], tones.trunk[1][1], tones.trunk[1][2]),
+        });
+        const doorMat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.door[0], tones.door[1], tones.door[2]),
+        });
+        const windowMat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.window[0], tones.window[1], tones.window[2]),
+            emissive: new THREE.Color(0x3a2510),
+        });
+        const flowerMat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(tones.flower[0], tones.flower[1], tones.flower[2]),
+        });
+
+        const baseY = BLOCK * 0.85;
+        const cottageW = BLOCK * 8.2;
+        const cottageL = BLOCK * 7.0;
+        const cottageH = BLOCK * 4.6;
+
+        // 1. Stone Foundation Footing
+        const fGeo = new THREE.BoxGeometry(cottageW + BLOCK * 0.6, BLOCK * 0.45, cottageL + BLOCK * 0.6);
+        const fMesh = new THREE.Mesh(fGeo, wallDark);
+        fMesh.position.set(0, baseY + BLOCK * 0.22, 0);
+        this.branchGroup.add(fMesh);
+
+        // 2. Main Wall Body
+        const wGeo = new THREE.BoxGeometry(cottageW, cottageH, cottageL);
+        const wMesh = new THREE.Mesh(wGeo, wallLight);
+        wMesh.position.set(0, baseY + BLOCK * 0.45 + cottageH * 0.5, 0);
+        this.branchGroup.add(wMesh);
+
+        // 3. Exposed Timber Corner Posts
+        const postGeo = new THREE.BoxGeometry(BLOCK * 0.65, cottageH + BLOCK * 0.1, BLOCK * 0.65);
+        const hw = cottageW * 0.5;
+        const hl = cottageL * 0.5;
+        const postOffsets = [
+            [-hw, -hl],
+            [hw, -hl],
+            [-hw, hl],
+            [hw, hl],
+        ];
+        for (const [px, pz] of postOffsets) {
+            const p = new THREE.Mesh(postGeo, timberMat);
+            p.position.set(px, baseY + BLOCK * 0.45 + cottageH * 0.5, pz);
+            this.branchGroup.add(p);
+        }
+
+        // 4. Gable Roof with Overhanging Eaves
+        const roofSlopeL = (cottageW + BLOCK * 1.8) * 0.58;
+        const roofGeo = new THREE.BoxGeometry(roofSlopeL, BLOCK * 0.4, cottageL + BLOCK * 1.6);
+        const roofPeakY = baseY + BLOCK * 0.45 + cottageH + BLOCK * 2.8;
+
+        // Left roof slope
+        const rLeft = new THREE.Mesh(roofGeo, roofLight);
+        rLeft.position.set(-cottageW * 0.26, roofPeakY - BLOCK * 1.25, 0);
+        rLeft.rotation.z = 0.58;
+        this.branchGroup.add(rLeft);
+
+        // Right roof slope
+        const rRight = new THREE.Mesh(roofGeo, roofDark);
+        rRight.position.set(cottageW * 0.26, roofPeakY - BLOCK * 1.25, 0);
+        rRight.rotation.z = -0.58;
+        this.branchGroup.add(rRight);
+
+        // Ridge Beam Cap
+        const ridgeGeo = new THREE.BoxGeometry(BLOCK * 0.75, BLOCK * 0.5, cottageL + BLOCK * 1.7);
+        const ridge = new THREE.Mesh(ridgeGeo, timberMat);
+        ridge.position.set(0, roofPeakY + BLOCK * 0.05, 0);
+        this.branchGroup.add(ridge);
+
+        // Triangular Gable Wall Infill
+        const gableGeo = new THREE.CylinderGeometry(0.01, cottageW * 0.5, BLOCK * 2.5, 3);
+        gableGeo.rotateY(Math.PI / 2);
+        gableGeo.rotateZ(Math.PI);
+        const gFront = new THREE.Mesh(gableGeo, wallLight);
+        gFront.position.set(0, baseY + BLOCK * 0.45 + cottageH + BLOCK * 1.25, hl - BLOCK * 0.02);
+        this.branchGroup.add(gFront);
+
+        // 5. Stone Chimney with Smoke Puffs
+        const chimW = BLOCK * 1.4;
+        const chimH = cottageH + BLOCK * 4.2;
+        const chimGeo = new THREE.BoxGeometry(chimW, chimH, chimW);
+        const chim = new THREE.Mesh(chimGeo, wallDark);
+        chim.position.set(-hw * 0.65, baseY + chimH * 0.5, -hl * 0.4);
+        this.branchGroup.add(chim);
+
+        // Soft chimney smoke puffs
+        const smokeMat = new THREE.MeshLambertMaterial({
+            color: 0xedeae2,
+            transparent: true,
+            opacity: 0.65,
+        });
+        for (let s = 1; s <= 3; s++) {
+            const smokeGeo = new THREE.SphereGeometry(BLOCK * (0.35 + s * 0.22), 6, 6);
+            const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+            smoke.position.set(
+                -hw * 0.65 + (s * 0.12 - 0.05) * BLOCK,
+                baseY + chimH + s * BLOCK * 0.85,
+                -hl * 0.4 + s * 0.15 * BLOCK
+            );
+            this.branchGroup.add(smoke);
+        }
+
+        // 6. Rustic Front Door facing viewer
+        const doorGeo = new THREE.BoxGeometry(BLOCK * 1.6, BLOCK * 2.8, BLOCK * 0.22);
+        const door = new THREE.Mesh(doorGeo, doorMat);
+        door.position.set(BLOCK * 0.6, baseY + BLOCK * 0.45 + BLOCK * 1.4, hl + BLOCK * 0.1);
+        this.branchGroup.add(door);
+
+        // Doorstep
+        const stepGeo = new THREE.BoxGeometry(BLOCK * 2.0, BLOCK * 0.25, BLOCK * 0.7);
+        const step = new THREE.Mesh(stepGeo, wallDark);
+        step.position.set(BLOCK * 0.6, baseY + BLOCK * 0.12, hl + BLOCK * 0.4);
+        this.branchGroup.add(step);
+
+        // Cozy Wall Lantern
+        const lanternGeo = new THREE.BoxGeometry(BLOCK * 0.4, BLOCK * 0.55, BLOCK * 0.35);
+        const lantern = new THREE.Mesh(lanternGeo, flowerMat);
+        lantern.position.set(BLOCK * 2.0, baseY + BLOCK * 0.45 + BLOCK * 2.2, hl + BLOCK * 0.2);
+        this.branchGroup.add(lantern);
+
+        // 7. Paned Windows with Warm Interior Glow
+        const winGeo = new THREE.BoxGeometry(BLOCK * 1.4, BLOCK * 1.4, BLOCK * 0.18);
+        const winFront = new THREE.Mesh(winGeo, windowMat);
+        winFront.position.set(-BLOCK * 2.2, baseY + BLOCK * 0.45 + BLOCK * 2.2, hl + BLOCK * 0.1);
+        this.branchGroup.add(winFront);
+
+        // Window Flower Box
+        const boxGeo = new THREE.BoxGeometry(BLOCK * 1.6, BLOCK * 0.4, BLOCK * 0.5);
+        const box = new THREE.Mesh(boxGeo, timberMat);
+        box.position.set(-BLOCK * 2.2, baseY + BLOCK * 0.45 + BLOCK * 1.25, hl + BLOCK * 0.28);
+        this.branchGroup.add(box);
+
+        // Flower specks in the box
+        for (let f = 0; f < 4; f++) {
+            const flGeo = new THREE.SphereGeometry(BLOCK * 0.2, 4, 4);
+            const fl = new THREE.Mesh(flGeo, flowerMat);
+            fl.position.set(-BLOCK * 2.8 + f * BLOCK * 0.4, baseY + BLOCK * 0.45 + BLOCK * 1.55, hl + BLOCK * 0.3);
+            this.branchGroup.add(fl);
         }
     }
 
@@ -563,8 +890,17 @@ export class VoxelQRScene {
         }
         if (this.slabMesh) {
             this.stage.remove(this.slabMesh);
-            this.slabMesh.geometry.dispose();
-            (this.slabMesh.material as THREE.Material).dispose();
+            this.slabMesh.traverse((obj) => {
+                if ((obj as THREE.Mesh).isMesh) {
+                    const m = obj as THREE.Mesh;
+                    m.geometry?.dispose();
+                    if (Array.isArray(m.material)) {
+                        m.material.forEach((mat) => mat.dispose());
+                    } else if (m.material) {
+                        m.material.dispose();
+                    }
+                }
+            });
             this.slabMesh = null;
         }
         const disposeFoliageLayer = (layer: FoliageLayer | null) => {
@@ -580,10 +916,19 @@ export class VoxelQRScene {
         this.grassLayer = null;
         this.blossomLayer = null;
         while (this.branchGroup.children.length > 0) {
-            const child = this.branchGroup.children[0] as THREE.Mesh;
+            const child = this.branchGroup.children[0];
             this.branchGroup.remove(child);
-            child.geometry?.dispose();
-            (child.material as THREE.Material)?.dispose();
+            child.traverse((obj) => {
+                if ((obj as THREE.Mesh).isMesh) {
+                    const m = obj as THREE.Mesh;
+                    m.geometry?.dispose();
+                    if (Array.isArray(m.material)) {
+                        m.material.forEach((mat) => mat.dispose());
+                    } else if (m.material) {
+                        m.material.dispose();
+                    }
+                }
+            });
         }
     }
 }
