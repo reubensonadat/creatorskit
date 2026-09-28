@@ -166,18 +166,29 @@ export interface CreatorProfileData {
 }
 
 export interface StoredBouquet {
-  id: string;                    // short code e.g. "bq_k8w2x3"
-  scene_type: BouquetSceneType;  // tree species or scene
-  season: string;                // 'spring' | 'summer' | 'autumn' | 'winter'
-  palette_id: string;            // 'sakura' | 'wisteria' | etc.
-  target_url: string;            // the URL the QR encodes
+  id: string;                    // Clean 6-character short code e.g. "k8w2ab"
+  scene_type?: BouquetSceneType;  // tree species or scene
+  season?: string;                // 'spring' | 'summer' | 'autumn' | 'winter'
+  palette_id?: string;            // 'sakura' | 'wisteria' | etc.
+  target_url?: string;            // the URL the QR encodes
   sender_name?: string;          // "From: ..."
   recipient_name?: string;       // "To: ..."
   message?: string;              // personal gift message
-  audio_enabled: boolean;        // ambient soundscape preference
+  gift_format?: string;          // 'both' | 'flower' | 'card'
+  sound_preset?: string | null;  // 'music-box' | 'gentle-piano' | 'spring-garden' | 'harp-melody' | etc.
+  audio_enabled?: boolean;       // ambient soundscape preference
   custom_colors?: any;           // custom palette overrides
   metadata?: {
     creatorProfile?: CreatorProfileData;
+    flowers?: string[];
+    greenery?: string[];
+    seed?: number;
+    cardFont?: string;
+    cardPlacement?: string;
+    giftFormat?: string;
+    greeting?: string;
+    closing?: string;
+    soundPreset?: string | null;
     [key: string]: any;
   } | null;
   view_count?: number;           // track views
@@ -185,56 +196,127 @@ export interface StoredBouquet {
 }
 
 /**
- * Save a Digital Bouquet to Supabase and return the short code.
+ * Save a Digital Bouquet to Supabase, Next.js local storage/API fallback, and return the clean 6-char short code.
  */
 export async function saveBouquetToDatabase(data: {
-  sceneType: BouquetSceneType;
-  season: string;
-  paletteId: string;
-  targetUrl: string;
+  sceneType?: BouquetSceneType;
+  season?: string;
+  paletteId?: string;
+  targetUrl?: string;
   senderName?: string;
   recipientName?: string;
   message?: string;
+  giftFormat?: string;
+  soundPreset?: string | null;
   audioEnabled?: boolean;
   customColors?: any;
   metadata?: any;
 }): Promise<string> {
-  const shortId = 'bq_' + Math.random().toString(36).substring(2, 8);
+  // Generate clean 6-character alphanumeric short code (e.g. "k8w2ab")
+  const shortId = Math.random().toString(36).substring(2, 8);
 
+  const payload: StoredBouquet = {
+    id: shortId,
+    scene_type: data.sceneType || 'botanical-2d',
+    season: data.season || 'spring',
+    palette_id: data.paletteId || 'classic-cream',
+    target_url: data.targetUrl || '',
+    sender_name: data.senderName || null || undefined,
+    recipient_name: data.recipientName || null || undefined,
+    message: data.message || null || undefined,
+    gift_format: data.giftFormat || data.metadata?.giftFormat || 'both',
+    sound_preset: data.soundPreset ?? data.metadata?.soundPreset ?? null,
+    audio_enabled: data.audioEnabled ?? (Boolean(data.soundPreset)),
+    custom_colors: data.customColors || null,
+    metadata: data.metadata || null,
+    view_count: 0,
+    created_at: new Date().toISOString(),
+  };
+
+  // 1. Save to browser localStorage for instantaneous client load
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
+    } catch {
+      // Ignore quota errors
+    }
+  }
+
+  // 2. Persist to Next.js API route fallback
+  if (typeof window !== 'undefined') {
+    try {
+      fetch('/api/bouquets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  // 3. Save to Supabase
   try {
     const { error } = await supabase.from('digital_bouquets').insert([
       {
         id: shortId,
-        scene_type: data.sceneType,
-        season: data.season,
-        palette_id: data.paletteId,
-        target_url: data.targetUrl,
-        sender_name: data.senderName || null,
-        recipient_name: data.recipientName || null,
-        message: data.message || null,
-        audio_enabled: data.audioEnabled ?? false,
-        custom_colors: data.customColors || null,
-        metadata: data.metadata || null,
+        scene_type: payload.scene_type,
+        season: payload.season,
+        palette_id: payload.palette_id,
+        target_url: payload.target_url,
+        sender_name: payload.sender_name || null,
+        recipient_name: payload.recipient_name || null,
+        message: payload.message || null,
+        gift_format: payload.gift_format || 'both',
+        sound_preset: payload.sound_preset || null,
+        audio_enabled: payload.audio_enabled ?? false,
+        custom_colors: payload.custom_colors || null,
+        metadata: payload.metadata || null,
         view_count: 0,
       },
     ]);
 
     if (error) {
-      console.warn('Supabase bouquet insert error:', error.message);
-      return '';
+      console.warn('Supabase bouquet insert note (using fallback):', error.message);
     }
-
-    return shortId;
   } catch (err) {
-    console.warn('Failed to save bouquet to Supabase:', err);
-    return '';
+    console.warn('Failed to save bouquet to Supabase (using fallback):', err);
   }
+
+  return shortId;
 }
 
 /**
- * Fetch a Digital Bouquet by its short code.
+ * Fetch a Digital Bouquet by its short code (with fallback to local storage & API).
  */
 export async function getBouquetByShortId(id: string): Promise<StoredBouquet | null> {
+  // 1. Check local storage if in browser
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(`ck_bouquet_${id}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.id) return parsed as StoredBouquet;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  // 2. Check Next.js local API fallback
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/bouquets?id=${encodeURIComponent(id)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.id) return json.data as StoredBouquet;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 3. Query Supabase
   try {
     const { data, error } = await supabase
       .from('digital_bouquets')
@@ -242,23 +324,24 @@ export async function getBouquetByShortId(id: string): Promise<StoredBouquet | n
       .eq('id', id)
       .single();
 
-    if (error || !data) {
-      return null;
+    if (!error && data) {
+      // Increment view count (fire-and-forget)
+      supabase
+        .from('digital_bouquets')
+        .update({ view_count: (data.view_count || 0) + 1 })
+        .eq('id', id)
+        .then(() => {});
+
+      return data as StoredBouquet;
     }
-
-    // Increment view count (fire-and-forget)
-    supabase
-      .from('digital_bouquets')
-      .update({ view_count: (data.view_count || 0) + 1 })
-      .eq('id', id)
-      .then(() => {});
-
-    return data as StoredBouquet;
   } catch (err) {
     console.error('Error fetching bouquet from Supabase:', err);
-    return null;
   }
+
+  return null;
 }
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 📰 BLOG & MASTERCLASS DATABASE OPERATIONS

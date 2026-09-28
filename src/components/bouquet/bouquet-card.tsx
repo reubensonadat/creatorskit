@@ -69,19 +69,87 @@ export const NOTE_FONTS: NoteFontOption[] = [
   },
 ];
 
-export interface BouquetCardProps {
-  note: {
-    to: string;
-    message: string;
-    from: string;
-    closing?: string;
+export function getDynamicNameFontSize(text: string, baseRem = 1.25, minRem = 0.72): string {
+  const len = (text || '').trim().length;
+  if (len <= 10) return `${baseRem}rem`;
+  const factor = Math.max(0, Math.min(1, (len - 10) / 26));
+  const rem = baseRem - factor * (baseRem - minRem);
+  return `${Math.round(rem * 100) / 100}rem`;
+}
+
+export function getDynamicMessageStyle(
+  text: string,
+  fontId?: string
+): {
+  fontSize: string;
+  lineHeight: string;
+  paddingClass: string;
+} {
+  const clean = text || '';
+  const charCount = clean.length;
+  const lineBreaks = (clean.match(/\n/g) || []).length;
+  // Effective character load accounting for line breaks
+  const effectiveScore = charCount + lineBreaks * 34;
+
+  const cleanFont = (fontId || '').toLowerCase();
+  const isTypewriter = cleanFont.includes('mono') || cleanFont.includes('elite');
+  // Typewriter fonts have wider fixed-pitch glyphs, so scale down slightly more
+  const factor = isTypewriter ? 0.94 : 1.0;
+
+  if (effectiveScore <= 70) {
+    return {
+      fontSize: `${(1.22 * factor).toFixed(2)}rem`,
+      lineHeight: '1.65',
+      paddingClass: 'p-7 sm:p-9',
+    };
+  }
+  if (effectiveScore <= 140) {
+    return {
+      fontSize: `${(1.08 * factor).toFixed(2)}rem`,
+      lineHeight: '1.58',
+      paddingClass: 'p-6 sm:p-8',
+    };
+  }
+  if (effectiveScore <= 220) {
+    return {
+      fontSize: `${(0.96 * factor).toFixed(2)}rem`,
+      lineHeight: '1.5',
+      paddingClass: 'p-5 sm:p-7',
+    };
+  }
+  if (effectiveScore <= 320) {
+    return {
+      fontSize: `${(0.84 * factor).toFixed(2)}rem`,
+      lineHeight: '1.42',
+      paddingClass: 'p-4 sm:p-6',
+    };
+  }
+  if (effectiveScore <= 420) {
+    return {
+      fontSize: `${(0.76 * factor).toFixed(2)}rem`,
+      lineHeight: '1.34',
+      paddingClass: 'p-4 sm:p-5',
+    };
+  }
+  // Up to 500 characters
+  return {
+    fontSize: `${(0.68 * factor).toFixed(2)}rem`,
+    lineHeight: '1.26',
+    paddingClass: 'p-3.5 sm:p-4.5',
   };
-  onNoteChange?: (note: {
-    to: string;
-    message: string;
-    from: string;
-    closing?: string;
-  }) => void;
+}
+
+export interface CardNoteData {
+  greeting?: string;
+  to: string;
+  message: string;
+  closing?: string;
+  from: string;
+}
+
+export interface BouquetCardProps {
+  note: CardNoteData;
+  onNoteChange?: (note: CardNoteData) => void;
   cardFont?: string;
   cardTemplateId?: string;
   editable?: boolean;
@@ -103,16 +171,18 @@ export function BouquetCard({
   onClick,
   className = '',
 }: BouquetCardProps) {
+  const greeting = note.greeting !== undefined ? note.greeting : 'Dear';
   const recipient = note.to.trim() || 'Beloved';
   const sender = note.from.trim() || 'Secret Admirer';
-  const closing = note.closing?.trim() || 'Sincerely';
+  const closing = note.closing !== undefined ? note.closing : 'Sincerely,';
   const rawMessage =
     note.message.trim() ||
     'I have so much to tell you, but only this much space on this card! Still, you must know...';
 
   // Resolve active font family
   const selectedFont = useMemo(() => {
-    const found = NOTE_FONTS.find((f) => f.id === cardFont);
+    const norm = (cardFont || '').replace(/^font-/, '');
+    const found = NOTE_FONTS.find((f) => f.id === norm || f.id === cardFont);
     return found?.fontFamily || '"Space Mono", monospace';
   }, [cardFont]);
 
@@ -207,6 +277,11 @@ export function BouquetCard({
   const displayBody = isTypingActive ? typedBody : rawMessage;
   const displayFrom = isTypingActive ? typedSender : sender;
 
+  const currentMessageText = editable ? note.message : rawMessage;
+  const messageStyle = useMemo(() => {
+    return getDynamicMessageStyle(currentMessageText, cardFont);
+  }, [currentMessageText, cardFont]);
+
   return (
     <>
       {/* Direct Google Fonts stylesheet to ensure all 8 card fonts are loaded and immediate */}
@@ -217,7 +292,7 @@ export function BouquetCard({
 
       <div
         onClick={onClick}
-        className={`relative w-full max-w-[460px] aspect-[4/3.6] bg-white border-2 border-black p-7 sm:p-9 flex flex-col justify-between shadow-[4px_4px_0_#000] select-text transition-all ${
+        className={`relative w-full max-w-[460px] aspect-[4/3.6] bg-white border-2 border-black ${messageStyle.paddingClass} flex flex-col justify-between shadow-[4px_4px_0_#000] select-text transition-all ${
           onClick ? 'cursor-pointer hover:-translate-y-0.5' : ''
         } ${className}`}
         style={{
@@ -225,37 +300,69 @@ export function BouquetCard({
         }}
       >
 
-        {/* ── TOP: DEAR [RECIPIENT], ── */}
-        <div className="text-left flex items-baseline gap-1.5 text-lg sm:text-xl text-black">
-          <span className="font-bold">Dear</span>
+        {/* ── TOP: [GREETING] [RECIPIENT] ── */}
+        <div className="text-left flex items-baseline gap-1.5 w-full text-black">
           {editable ? (
-            <input
-              type="text"
-              value={note.to}
-              onChange={(e) =>
-                onNoteChange?.({
-                  ...note,
-                  to: e.target.value,
-                })
-              }
-              placeholder="Beloved"
-              maxLength={36}
-              style={{ fontFamily: selectedFont }}
-              className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 font-normal text-black placeholder:text-stone-400 placeholder:font-normal min-w-[80px] max-w-[240px]"
-            />
+            <>
+              <input
+                type="text"
+                value={note.greeting !== undefined ? note.greeting : 'Dear'}
+                onChange={(e) =>
+                  onNoteChange?.({
+                    ...note,
+                    greeting: e.target.value,
+                  })
+                }
+                placeholder="Dear"
+                maxLength={20}
+                style={{
+                  fontFamily: selectedFont,
+                  width: `${Math.max(2, ((note.greeting !== undefined ? note.greeting : 'Dear') || '').length + 0.5)}ch`,
+                }}
+                className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none font-bold text-lg sm:text-xl text-black shrink-0"
+                title="Edit greeting (e.g. Dear, Dearest, To)"
+              />
+              <input
+                type="text"
+                value={note.to}
+                onChange={(e) =>
+                  onNoteChange?.({
+                    ...note,
+                    to: e.target.value,
+                  })
+                }
+                placeholder="Beloved"
+                maxLength={40}
+                style={{
+                  fontFamily: selectedFont,
+                  fontSize: getDynamicNameFontSize(note.to, 1.25, 0.75),
+                }}
+                className="flex-1 min-w-[60px] bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 font-normal text-black placeholder:text-stone-400"
+                title="Edit recipient name"
+              />
+            </>
           ) : (
-            <span className="font-normal">
-              {displayTo}
-              {activeCursor === 'to' && (
-                <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
-              )}
-            </span>
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="font-bold text-lg sm:text-xl">
+                {note.greeting !== undefined ? note.greeting : 'Dear'}
+              </span>
+              <span
+                className="font-normal"
+                style={{
+                  fontSize: getDynamicNameFontSize(displayTo, 1.25, 0.75),
+                }}
+              >
+                {displayTo}
+                {activeCursor === 'to' && (
+                  <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
+                )}
+              </span>
+            </div>
           )}
-          <span className="font-bold">,</span>
         </div>
 
         {/* ── CENTER: MESSAGE BODY ── */}
-        <div className="my-3 flex-1 flex flex-col justify-center">
+        <div className="my-2.5 flex-1 flex flex-col justify-center min-h-0">
           {editable ? (
             <div className="relative w-full h-full flex flex-col">
               <textarea
@@ -269,8 +376,12 @@ export function BouquetCard({
                 placeholder="I have so much to tell you, but only this much space on this card! Still, you must know..."
                 maxLength={500}
                 rows={5}
-                style={{ fontFamily: selectedFont }}
-                className="w-full flex-1 bg-transparent resize-none border-none outline-none text-base sm:text-lg leading-relaxed font-normal text-black placeholder:text-stone-400 placeholder:font-normal"
+                style={{
+                  fontFamily: selectedFont,
+                  fontSize: messageStyle.fontSize,
+                  lineHeight: messageStyle.lineHeight,
+                }}
+                className="w-full flex-1 bg-transparent resize-none border-none outline-none font-normal text-black placeholder:text-stone-400 placeholder:font-normal"
               />
               <div
                 style={{ fontFamily: 'monospace' }}
@@ -281,8 +392,12 @@ export function BouquetCard({
             </div>
           ) : (
             <p
-              className="text-base sm:text-lg leading-relaxed font-normal text-black whitespace-pre-wrap break-words"
-              style={{ fontFamily: selectedFont }}
+              className="font-normal text-black whitespace-pre-wrap break-words"
+              style={{
+                fontFamily: selectedFont,
+                fontSize: messageStyle.fontSize,
+                lineHeight: messageStyle.lineHeight,
+              }}
             >
               {displayBody}
               {activeCursor === 'body' && (
@@ -292,31 +407,64 @@ export function BouquetCard({
           )}
         </div>
 
-        {/* ── BOTTOM RIGHT: SINCERELY, [SENDER] ── */}
-        <div className="text-right flex flex-col items-end gap-0.5 text-base sm:text-lg text-black">
-          <span className="font-bold">{closing},</span>
+        {/* ── BOTTOM RIGHT: [CLOSING] [SENDER] ── */}
+        <div className="text-right flex flex-col items-end gap-1 w-full text-black">
           {editable ? (
-            <input
-              type="text"
-              value={note.from}
-              onChange={(e) =>
-                onNoteChange?.({
-                  ...note,
-                  from: e.target.value,
-                })
-              }
-              placeholder="Secret Admirer"
-              maxLength={36}
-              style={{ fontFamily: selectedFont }}
-              className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 text-right font-normal text-black placeholder:text-stone-400 placeholder:font-normal min-w-[80px] max-w-[240px]"
-            />
+            <>
+              <input
+                type="text"
+                value={note.closing !== undefined ? note.closing : 'Sincerely,'}
+                onChange={(e) =>
+                  onNoteChange?.({
+                    ...note,
+                    closing: e.target.value,
+                  })
+                }
+                placeholder="Sincerely,"
+                maxLength={24}
+                style={{
+                  fontFamily: selectedFont,
+                  width: `${Math.max(4, ((note.closing !== undefined ? note.closing : 'Sincerely,') || '').length + 0.5)}ch`,
+                }}
+                className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none text-right font-bold text-base sm:text-lg text-black"
+                title="Edit sign-off (e.g. Sincerely, With love, Forever yours)"
+              />
+              <input
+                type="text"
+                value={note.from}
+                onChange={(e) =>
+                  onNoteChange?.({
+                    ...note,
+                    from: e.target.value,
+                  })
+                }
+                placeholder="Secret Admirer"
+                maxLength={40}
+                style={{
+                  fontFamily: selectedFont,
+                  fontSize: getDynamicNameFontSize(note.from, 1.15, 0.72),
+                }}
+                className="w-full max-w-[320px] bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 text-right font-normal text-black placeholder:text-stone-400"
+                title="Edit sender name"
+              />
+            </>
           ) : (
-            <span className="font-normal">
-              {displayFrom}
-              {activeCursor === 'from' && (
-                <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
-              )}
-            </span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="font-bold text-base sm:text-lg">
+                {note.closing !== undefined ? note.closing : 'Sincerely,'}
+              </span>
+              <span
+                className="font-normal"
+                style={{
+                  fontSize: getDynamicNameFontSize(displayFrom, 1.15, 0.72),
+                }}
+              >
+                {displayFrom}
+                {activeCursor === 'from' && (
+                  <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
+                )}
+              </span>
+            </div>
           )}
         </div>
       </div>

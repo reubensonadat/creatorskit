@@ -8,11 +8,13 @@ import { ALL_TOOLS } from '@/data/tools';
 interface StudioToolsDropdownProps {
   currentHref: string;
   theme?: 'dark' | 'light';
+  align?: 'left' | 'right';
 }
 
 export default function StudioToolsDropdown({
   currentHref,
   theme = 'dark',
+  align = 'right',
 }: StudioToolsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -42,21 +44,23 @@ export default function StudioToolsDropdown({
       <button
         onClick={() => setIsOpen(!isOpen)}
         style={{
-          padding: '5px 9px',
-          fontSize: '0.7rem',
+          padding: '6px 12px',
+          fontSize: '0.74rem',
           borderRadius: 4,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
           background: isOpen ? (isDark ? '#27272a' : '#000000') : isDark ? '#141417' : '#ffffff',
           color: isOpen ? '#ffffff' : isDark ? '#ffffff' : '#000000',
-          border: isDark ? '1px solid #27272a' : '1.5px solid #000000',
+          border: isDark ? '1px solid #27272a' : '2px solid #000000',
+          boxShadow: isDark ? 'none' : '2px 2px 0 #000000',
           fontFamily: 'monospace',
           fontWeight: 900,
           cursor: 'pointer',
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
           transition: 'all 0.12s',
+          whiteSpace: 'nowrap',
         }}
       >
         <LayoutGrid size={13} />
@@ -75,9 +79,10 @@ export default function StudioToolsDropdown({
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
-            left: 0,
-            width: 320,
-            maxHeight: 460,
+            ...(align === 'right' ? { right: 0, left: 'auto' } : { left: 0, right: 'auto' }),
+            width: 300,
+            maxWidth: 'calc(100vw - 32px)',
+            maxHeight: 'min(460px, calc(100vh - 120px))',
             overflowY: 'auto',
             background: isDark ? '#141417' : '#ffffff',
             border: isDark ? '1px solid #27272a' : '2px solid #000000',

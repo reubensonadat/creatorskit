@@ -86,7 +86,7 @@ export const BouquetCanvas = forwardRef<HTMLDivElement, BouquetCanvasProps>(
               <div
                 className={
                   layer.item.flowerSize === 'big'
-                    ? 'w-36 h-36 sm:w-44 sm:h-44 md:w-50 md:h-50 flex items-center justify-center'
+                    ? 'w-30 h-30 sm:w-36 sm:h-36 md:w-40 md:h-40 flex items-center justify-center'
                     : 'w-22 h-22 sm:w-26 sm:h-26 md:w-28 md:h-28 flex items-center justify-center'
                 }
               >

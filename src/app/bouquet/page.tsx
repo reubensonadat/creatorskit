@@ -13,7 +13,7 @@ import {
   BouquetPreset,
 } from '@/lib/bouquet/arrangement';
 import { BouquetCanvas } from '@/components/bouquet/bouquet-canvas';
-import { BouquetCard, NOTE_FONTS } from '@/components/bouquet/bouquet-card';
+import { BouquetCard, NOTE_FONTS, getDynamicNameFontSize } from '@/components/bouquet/bouquet-card';
 import {
   ReceiptPrinter,
   ReceiptPrinterStage,
@@ -35,8 +35,20 @@ import {
   Search,
   Home,
   LayoutTemplate,
+  Sparkles,
+  Volume2,
+  VolumeX,
+  Play,
+  Square,
+  Layers,
+  Flower2,
+  Mail,
+  Eye,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import { soundEngine, SOUND_PRESETS } from '@/lib/bouquet/soundscapes';
+import { getBouquetFontEmbedCSS, prefetchBouquetFonts } from '@/lib/bouquet/font-embed';
 
 type StudioStep = 1 | 2 | 3 | 4;
 type CardPlacement = 'right' | 'left' | 'bottom';
@@ -47,8 +59,18 @@ export default function BouquetStudioPage() {
   const [toolsSidebarOpen, setToolsSidebarOpen] = useState(false);
   const [toolSearch, setToolSearch] = useState('');
 
+  // Soundscape Preset State & Audio Preview
+  const [selectedSoundPreset, setSelectedSoundPreset] = useState<string>('music-box');
+  const [previewingSound, setPreviewingSound] = useState<string | null>(null);
+
+  // Image Export Background State ('white' or 'clear')
+  const [exportBg, setExportBg] = useState<'white' | 'clear'>('white');
+
   // Collapsible Floating Control Panel state (user can hide completely to enjoy full canvas)
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+
+  // Mobile Studio View Mode: 'stage' (Full Canvas Preview) vs 'sidebar' (Full Controls Panel)
+  const [mobileStudioTab, setMobileStudioTab] = useState<'stage' | 'sidebar'>('stage');
 
   // Studio Step: 1 = Greenery, 2 = Blooms, 3 = Write Card, 4 = Finalize
   const [activeStep, setActiveStep] = useState<StudioStep>(1);
@@ -72,9 +94,10 @@ export default function BouquetStudioPage() {
 
   // Note card content: starts empty so placeholder text shows and disappears on typing
   const [note, setNote] = useState({
+    greeting: 'Dear',
     to: '',
     message: '',
-    closing: 'Sincerely',
+    closing: 'Sincerely,',
     from: '',
   });
 
@@ -100,12 +123,29 @@ export default function BouquetStudioPage() {
   const paperRef = useRef<HTMLDivElement>(null);
   const [paperHeight, setPaperHeight] = useState<number | null>(null);
 
-  const maxAllowed = flowerCategory === 'big' ? 5 : 10;
+  const minAllowed = flowerCategory === 'big' ? 2 : 3;
+  const maxAllowed = flowerCategory === 'big' ? 3 : 10;
 
   // Selected handwriting font style
   const selectedFontFamily = useMemo(() => {
     return NOTE_FONTS.find((f) => f.id === cardFont)?.fontFamily || '"Space Mono", monospace';
   }, [cardFont]);
+
+  // Pre-cache base64 font data so PNG export contains exact fonts with zero delay
+  useEffect(() => {
+    prefetchBouquetFonts(cardFont);
+  }, [cardFont]);
+
+  // Normalized note object for preview cards & print sheets
+  const fullNote = useMemo(() => ({
+    greeting: note.greeting !== undefined ? note.greeting : 'Dear',
+    to: note.to.trim() || 'Beloved',
+    message:
+      note.message.trim() ||
+      'I have so much to tell you, but only this much space on this card! Still, you must know...',
+    closing: note.closing !== undefined ? note.closing : 'Sincerely,',
+    from: note.from.trim() || 'Secret Admirer',
+  }), [note]);
 
   // Start animated document feed sequence
   const startPrintFeedSequence = () => {
@@ -128,12 +168,16 @@ export default function BouquetStudioPage() {
   useEffect(() => {
     const el = paperRef.current;
     if (!el) return;
-    const measure = () => setPaperHeight(el.scrollHeight);
+    const measure = () => {
+      if (el.scrollHeight > 0) {
+        setPaperHeight(el.scrollHeight);
+      }
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [cardPlacement, activeStep]);
+  }, [cardPlacement, activeStep, giftFormat, note, selectedFlowers.length, printerStage]);
 
   // Close tools drawer on Escape key
   useEffect(() => {
@@ -187,7 +231,7 @@ export default function BouquetStudioPage() {
         setSelectedFlowers(['net-tulip', 'net-rose', 'net-lily']);
       } else {
         setSelectedFlowers((prev) =>
-          prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'big').slice(0, 5)
+          prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'big').slice(0, 3)
         );
       }
       const validBigGreeneries = selectedGreenery.filter(
@@ -231,7 +275,7 @@ export default function BouquetStudioPage() {
     const pool = visibleFlowers;
     const targetCount =
       flowerCategory === 'big'
-        ? 3 + Math.floor(Math.random() * 3)
+        ? (Math.random() > 0.5 ? 3 : 2)
         : 4 + Math.floor(Math.random() * 5);
 
     const randomFlowers = [...pool]
@@ -314,7 +358,7 @@ export default function BouquetStudioPage() {
 
   // Remove 1 bloom
   const removeOneFlower = (id: string) => {
-    if (selectedFlowers.length <= 1) return;
+    if (selectedFlowers.length <= minAllowed) return;
     setSelectedFlowers((prev) => {
       const idx = prev.lastIndexOf(id);
       if (idx === -1) return prev;
@@ -328,8 +372,8 @@ export default function BouquetStudioPage() {
   const toggleFlower = (id: string) => {
     const count = selectedFlowers.filter((fId) => fId === id).length;
     if (count > 0) {
-      if (selectedFlowers.filter((fId) => fId !== id).length === 0) {
-        // Preserve at least 1 bloom
+      if (selectedFlowers.filter((fId) => fId !== id).length < minAllowed) {
+        // Preserve minimum required blooms (2 for big, 3 for small)
         return;
       }
       setSelectedFlowers((prev) => prev.filter((fId) => fId !== id));
@@ -343,70 +387,272 @@ export default function BouquetStudioPage() {
   const handleGenerateShareLink = async (): Promise<string> => {
     if (shareUrl) return shareUrl;
 
-    try {
-      const shortId = await saveBouquetToDatabase({
-        sceneType: 'botanical-2d',
-        season: 'spring',
-        paletteId: 'minimalist-letterhead',
-        targetUrl: typeof window !== 'undefined' ? window.location.origin : '',
-        senderName: note.from.trim() || 'Secret Admirer',
-        recipientName: note.to.trim() || 'Beloved',
-        message:
-          note.message.trim() ||
-          'I have so much to tell you, but only this much space on this card! Still, you must know...',
-        audioEnabled: false,
-        metadata: {
-          flowers: selectedFlowers,
-          greenery: selectedGreenery,
-          seed,
-          cardFont,
-          cardPlacement,
-          giftFormat,
-        },
-      });
+    const shortId = Math.random().toString(36).substring(2, 8);
+    const params = new URLSearchParams();
+    if (giftFormat !== 'both') params.set('format', giftFormat);
+    if (selectedSoundPreset && selectedSoundPreset !== 'none') params.set('sound', selectedSoundPreset);
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${queryStr}`;
+    setShareUrl(url);
 
-      const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${
-        giftFormat !== 'both' ? `?format=${giftFormat}` : ''
-      }`;
-      setShareUrl(url);
-      return url;
-    } catch (e) {
-      console.error('Failed to generate bouquet link', e);
-      return '';
-    }
+    // Save in background
+    saveBouquetToDatabase({
+      sceneType: 'botanical-2d',
+      season: 'spring',
+      paletteId: 'minimalist-letterhead',
+      targetUrl: typeof window !== 'undefined' ? window.location.origin : '',
+      senderName: note.from.trim() || 'Secret Admirer',
+      recipientName: note.to.trim() || 'Beloved',
+      message:
+        note.message.trim() ||
+        'I have so much to tell you, but only this much space on this card! Still, you must know...',
+      giftFormat,
+      soundPreset: selectedSoundPreset,
+      audioEnabled: selectedSoundPreset !== 'none',
+      metadata: {
+        flowers: selectedFlowers,
+        greenery: selectedGreenery,
+        seed,
+        cardFont,
+        cardPlacement,
+        giftFormat,
+        greeting: note.greeting || 'Dear',
+        closing: note.closing || 'Sincerely,',
+        soundPreset: selectedSoundPreset,
+      },
+    }).catch((e) => console.warn('Background save note:', e));
+
+    return url;
   };
 
   const handleCopyLink = async () => {
-    const url = await handleGenerateShareLink();
-    if (url) {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    let url = shareUrl;
+    let shortId = '';
+
+    if (!url) {
+      shortId = Math.random().toString(36).substring(2, 8);
+      const params = new URLSearchParams();
+      if (giftFormat !== 'both') params.set('format', giftFormat);
+      if (selectedSoundPreset && selectedSoundPreset !== 'none') params.set('sound', selectedSoundPreset);
+      const queryStr = params.toString() ? `?${params.toString()}` : '';
+      url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${queryStr}`;
+      setShareUrl(url);
+    } else {
+      shortId = url.split('/bouquet/')[1]?.split('?')[0] || '';
+    }
+
+    // 1. Immediately copy to clipboard within synchronous user click gesture
+    if (typeof window !== 'undefined') {
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // 2. Synchronous local cache for instant zero-latency loading
+    const payload = {
+      id: shortId,
+      scene_type: 'botanical-2d',
+      season: 'spring',
+      palette_id: 'minimalist-letterhead',
+      target_url: typeof window !== 'undefined' ? window.location.origin : '',
+      sender_name: note.from.trim() || 'Secret Admirer',
+      recipient_name: note.to.trim() || 'Beloved',
+      message:
+        note.message.trim() ||
+        'I have so much to tell you, but only this much space on this card! Still, you must know...',
+      gift_format: giftFormat,
+      sound_preset: selectedSoundPreset,
+      audio_enabled: selectedSoundPreset !== 'none',
+      metadata: {
+        flowers: selectedFlowers,
+        greenery: selectedGreenery,
+        seed,
+        cardFont,
+        cardPlacement,
+        giftFormat,
+        greeting: note.greeting || 'Dear',
+        closing: note.closing || 'Sincerely,',
+        soundPreset: selectedSoundPreset,
+      },
+      view_count: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    if (shortId && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
+      } catch {}
+
+      // 3. Asynchronous non-blocking save to API fallback & Supabase
+      fetch('/api/bouquets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+
+      saveBouquetToDatabase({
+        sceneType: 'botanical-2d',
+        season: 'spring',
+        paletteId: 'minimalist-letterhead',
+        targetUrl: window.location.origin,
+        senderName: payload.sender_name,
+        recipientName: payload.recipient_name,
+        message: payload.message,
+        giftFormat,
+        soundPreset: selectedSoundPreset,
+        audioEnabled: selectedSoundPreset !== 'none',
+        metadata: payload.metadata,
+      }).catch(() => {});
     }
   };
+
+  // Soundscape preview toggle
+  const handlePreviewSound = (presetId: string) => {
+    if (previewingSound === presetId) {
+      soundEngine.stop();
+      setPreviewingSound(null);
+    } else {
+      soundEngine.play(presetId);
+      setPreviewingSound(presetId);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      soundEngine.stop();
+    };
+  }, []);
 
   // Real, native printing
   const handleNativePrint = () => {
     window.print();
   };
 
-  // Direct PNG export of the keepsake sheet
+  // Direct PNG export: Always renders the high-res desktop A4 keepsake sheet regardless of user device
   const handleExportPng = async () => {
-    const el = document.getElementById('bouquet-document-sheet') || document.getElementById('bouquet-canvas-export');
+    const standaloneFlower = giftFormat === 'flower' && exportBg === 'clear';
+    const wrapper = document.getElementById('bouquet-a4-export-wrapper');
+    const el = standaloneFlower
+      ? document.getElementById('bouquet-canvas-export')
+      : document.getElementById('bouquet-a4-export-node') || document.getElementById('bouquet-document-sheet');
     if (!el) return;
+
     try {
       setIsExporting(true);
-      const dataUrl = await toPng(el, { cacheBust: true, pixelRatio: 2 });
+
+      // Temporarily reveal wrapper behind the screen so the browser renders real layout & pixels
+      if (wrapper && !standaloneFlower) {
+        wrapper.style.opacity = '1';
+        wrapper.style.zIndex = '-50';
+        wrapper.style.overflow = 'visible';
+      }
+
+      const originalBg = el.style.backgroundColor;
+      const originalBorder = el.style.border;
+      const originalShadow = el.style.boxShadow;
+
+      if (exportBg === 'clear') {
+        el.style.backgroundColor = 'transparent';
+        el.style.boxShadow = 'none';
+        if (giftFormat === 'flower') {
+          el.style.border = 'none';
+        }
+      } else {
+        el.style.backgroundColor = '#ffffff';
+      }
+
+      // Prepare font embedding so custom fonts render identically in exported image
+      const fontEmbedCSS = await getBouquetFontEmbedCSS(cardFont);
+
+      // Options for html-to-image:
+      // Note: cacheBust MUST be false because cacheBust appends query param which breaks WebP mime detection
+      const options = {
+        cacheBust: false,
+        pixelRatio: 2,
+        fontEmbedCSS: fontEmbedCSS || undefined,
+        skipFonts: !fontEmbedCSS,
+        backgroundColor: exportBg === 'white' ? '#ffffff' : undefined,
+        style: {
+          opacity: '1',
+          visibility: 'visible',
+          transform: 'none',
+          position: 'static',
+          left: '0',
+          top: '0',
+          margin: '0',
+        },
+      };
+
+      let dataUrl: string;
+      try {
+        dataUrl = await toPng(el, options);
+      } catch (e) {
+        console.warn('First toPng attempt failed, retrying with pixelRatio 1.5:', e);
+        dataUrl = await toPng(el, {
+          cacheBust: false,
+          fontEmbedCSS: fontEmbedCSS || undefined,
+          skipFonts: !fontEmbedCSS,
+          pixelRatio: 1.5,
+          backgroundColor: exportBg === 'white' ? '#ffffff' : undefined,
+          style: {
+            opacity: '1',
+            visibility: 'visible',
+            transform: 'none',
+            position: 'static',
+            left: '0',
+            top: '0',
+            margin: '0',
+          },
+        });
+      }
+
+      // Restore original styles
+      el.style.backgroundColor = originalBg;
+      el.style.border = originalBorder;
+      el.style.boxShadow = originalShadow;
+
+      if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 500) {
+        throw new Error('Image generation produced empty data');
+      }
+
+      // Download via Blob for 100% reliability on mobile and desktop
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.download = `bouquet-${(note.to || 'keepsake').toLowerCase().replace(/\s+/g, '-')}.png`;
-      a.href = dataUrl;
+      a.download = `bouquet-${(note.to || 'keepsake').toLowerCase().replace(/\s+/g, '-')}-${exportBg}.png`;
+      a.href = blobUrl;
+      document.body.appendChild(a);
       a.click();
-    } catch (e) {
-      console.error('Failed to export image', e);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err2) {
+      console.error('Failed to export image', err2);
     } finally {
+      if (wrapper && !standaloneFlower) {
+        wrapper.style.opacity = '0';
+        wrapper.style.zIndex = '-9999';
+        wrapper.style.overflow = 'hidden';
+      }
       setIsExporting(false);
     }
   };
+
 
   const stepsList = [
     { num: 1, label: 'GREENERY' },
@@ -425,6 +671,110 @@ export default function BouquetStudioPage() {
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Courier+Prime:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Indie+Flower&family=Kalam:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Shadows+Into+Light&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Special+Elite&display=swap"
       />
+
+      {/* ── HIGH-RES A4 KEEPSAKE EXPORT NODE (FIXED DESKTOP/A4 GEOMETRY REGARDLESS OF USER DEVICE) ── */}
+      <div
+        id="bouquet-a4-export-wrapper"
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '840px',
+          height: 'auto',
+          pointerEvents: 'none',
+          zIndex: -9999,
+          opacity: 0,
+        }}
+      >
+        <div
+          id="bouquet-a4-export-node"
+          style={{
+            width: '840px',
+            minWidth: '840px',
+            maxWidth: '840px',
+            position: 'relative',
+            left: 0,
+            top: 0,
+            backgroundColor: '#ffffff',
+          }}
+          className="bg-white p-8 flex flex-col gap-6 text-black border-2 border-black h-auto min-h-[580px]"
+        >
+          <div className="flex items-center justify-between border-b-2 border-black pb-2 text-[11px] font-mono font-black uppercase tracking-wider">
+            <span>BOTANICAL KEEPSAKE · CREATORKIT</span>
+            <span className="text-stone-500">NO. BK-{seed}</span>
+          </div>
+
+        {/* PRINT FORMAT: FLOWER ONLY */}
+        {giftFormat === 'flower' && (
+          <div className="flex flex-col items-center justify-center py-6 gap-6">
+            <div className="w-[480px] aspect-[4/5] flex items-center justify-center">
+              <BouquetCanvas
+                greeneryLayers={arrangement.greeneryLayers}
+                flowerLayers={arrangement.flowerLayers}
+                showRibbon={true}
+                borderless={true}
+                className="w-full h-full"
+              />
+            </div>
+            <div className="text-center font-mono">
+              <div className="text-sm font-bold uppercase tracking-wider">
+                FOR: {note.to.trim() || 'BELOVED'}
+              </div>
+              <div className="text-xs text-stone-500 uppercase mt-0.5">
+                FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BOTANICAL BLOOMS
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PRINT FORMAT: CARD ONLY */}
+        {giftFormat === 'card' && (
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
+            <div className="w-[520px]">
+              <BouquetCard
+                note={fullNote}
+                cardFont={cardFont}
+                editable={false}
+                className="w-full border-2 border-black shadow-sm"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* PRINT FORMAT: BOTH (Fixed desktop A4 side-by-side or stacked layout!) */}
+        {giftFormat === 'both' && (
+          <div className={`w-full items-center ${cardPlacement === 'bottom' ? 'flex flex-col gap-6' : 'grid grid-cols-2 gap-8'}`}>
+            <div className="w-full aspect-[4/5] flex items-center justify-center">
+              <BouquetCanvas
+                greeneryLayers={arrangement.greeneryLayers}
+                flowerLayers={arrangement.flowerLayers}
+                showRibbon={true}
+                borderless={true}
+                className="w-full h-full"
+              />
+            </div>
+            <div className="w-full flex items-center justify-center">
+              <BouquetCard
+                note={fullNote}
+                cardFont={cardFont}
+                editable={false}
+                className="w-full aspect-[4/5] border border-stone-300"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="pt-3 border-t border-stone-200 flex items-center justify-between text-[10px] font-mono text-stone-500 uppercase tracking-widest">
+          <span>
+            {giftFormat === 'card'
+              ? 'Handcrafted personal stationery'
+              : 'Hand-arranged organic botanicals'}
+          </span>
+          <span>Verified keepsake gift</span>
+        </div>
+      </div>
+    </div>
 
       {/* ── NATIVE PRINT DOCUMENT (REVEALED EXCLUSIVELY DURING BROWSER PRINT / PDF EXPORT) ── */}
       <div
@@ -465,14 +815,7 @@ export default function BouquetStudioPage() {
             <div className="flex flex-col items-center justify-center py-8 gap-4">
               <div className="w-full max-w-[500px]">
                 <BouquetCard
-                  note={{
-                    to: note.to.trim() || 'Beloved',
-                    message:
-                      note.message.trim() ||
-                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                    from: note.from.trim() || 'Secret Admirer',
-                    closing: note.closing || 'Sincerely',
-                  }}
+                  note={fullNote}
                   cardFont={cardFont}
                   editable={false}
                   className="w-full border-2 border-black shadow-sm"
@@ -498,14 +841,7 @@ export default function BouquetStudioPage() {
                   </div>
                   <div className="w-full flex items-center justify-center">
                     <BouquetCard
-                      note={{
-                        to: note.to.trim() || 'Beloved',
-                        message:
-                          note.message.trim() ||
-                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                        from: note.from.trim() || 'Secret Admirer',
-                        closing: note.closing || 'Sincerely',
-                      }}
+                      note={fullNote}
                       cardFont={cardFont}
                       editable={false}
                       className="w-full aspect-[4/5] border border-stone-300"
@@ -519,14 +855,7 @@ export default function BouquetStudioPage() {
                 <div className="grid grid-cols-2 gap-8 items-center">
                   <div className="w-full flex items-center justify-center">
                     <BouquetCard
-                      note={{
-                        to: note.to.trim() || 'Beloved',
-                        message:
-                          note.message.trim() ||
-                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                        from: note.from.trim() || 'Secret Admirer',
-                        closing: note.closing || 'Sincerely',
-                      }}
+                      note={fullNote}
                       cardFont={cardFont}
                       editable={false}
                       className="w-full aspect-[4/5] border border-stone-300"
@@ -558,14 +887,7 @@ export default function BouquetStudioPage() {
                   </div>
                   <div className="w-full max-w-[460px] flex items-center justify-center">
                     <BouquetCard
-                      note={{
-                        to: note.to.trim() || 'Beloved',
-                        message:
-                          note.message.trim() ||
-                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                        from: note.from.trim() || 'Secret Admirer',
-                        closing: note.closing || 'Sincerely',
-                      }}
+                      note={fullNote}
                       cardFont={cardFont}
                       editable={false}
                       className="w-full border border-stone-300"
@@ -590,26 +912,26 @@ export default function BouquetStudioPage() {
       {/* ── FULLSCREEN INTERACTIVE STUDIO (HIDDEN ON PRINT) ── */}
       <div className="w-full h-full flex flex-col overflow-hidden print:hidden">
         {/* ── TOP UTILITY HUD BAR ── */}
-        <header className="shrink-0 h-12 px-3 sm:px-5 flex items-center justify-between border-b-2 border-black bg-white z-30">
+        <header className="shrink-0 h-12 px-2 sm:px-5 flex items-center justify-between border-b-2 border-black bg-white z-30">
           {/* Left: Home link, Tools Navigation Toggle, Title */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <Link
               href="/"
-              className="px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1"
+              className="px-2 sm:px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1"
               title="Return to CreatorKit Home"
             >
               <span>‹</span>
-              <span>HOME</span>
+              <span className="hidden sm:inline">HOME</span>
             </Link>
 
             <button
               type="button"
               onClick={() => setToolsSidebarOpen(true)}
-              className="px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
+              className="px-2 sm:px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1"
               title="Open CreatorKit Tools Menu"
             >
               <LayoutTemplate size={13} />
-              <span>TOOLS</span>
+              <span className="hidden sm:inline">TOOLS</span>
             </button>
 
             <span className="font-mono text-xs font-black uppercase tracking-wider hidden lg:inline text-black pl-1 border-l-2 border-stone-200">
@@ -617,8 +939,8 @@ export default function BouquetStudioPage() {
             </span>
           </div>
 
-          {/* Center: Step Navigation Pills */}
-          <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Center: Step Navigation Pills (Single row, horizontally scrollable, zero line wrap) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar mx-1 sm:mx-2 py-1 shrink">
             {stepsList.map((step) => {
               const isActive = activeStep === step.num;
               return (
@@ -626,21 +948,49 @@ export default function BouquetStudioPage() {
                   key={step.num}
                   type="button"
                   onClick={() => setActiveStep(step.num as StudioStep)}
-                  className={`px-2.5 py-1 font-mono text-[11px] font-black uppercase tracking-wider transition-all border-2 border-black cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1 font-mono text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all border-2 border-black cursor-pointer shrink-0 whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
                     isActive
                       ? 'bg-black text-white shadow-[2px_2px_0_#000]'
                       : 'bg-white text-stone-700 hover:text-black hover:bg-stone-50'
                   }`}
                 >
-                  <span className="hidden sm:inline">0{step.num}. </span>
-                  <span>{step.label}</span>
+                  0{step.num}. {step.label}
                 </button>
               );
             })}
           </div>
 
-          {/* Right: Category Toggle, Physical Shuffle Button & Collapsible Sidebar Toggle */}
-          <div className="flex items-center gap-2">
+          {/* Right: Mobile View/Edit Toggle + Desktop Category / Shuffle / Panel Toggle */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* On Mobile: Segmented Tab for View (Stage) vs Edit (Controls) */}
+            <div className="md:hidden flex items-center bg-stone-100 border-2 border-black rounded p-0.5 shadow-[1.5px_1.5px_0_#000]">
+              <button
+                type="button"
+                onClick={() => setMobileStudioTab('stage')}
+                className={`px-2 py-0.5 font-mono text-[10px] font-black uppercase rounded transition-all cursor-pointer flex items-center gap-1 ${
+                  mobileStudioTab === 'stage'
+                    ? 'bg-black text-white shadow-xs'
+                    : 'text-stone-600 hover:text-black'
+                }`}
+              >
+                <Eye size={10} />
+                <span>VIEW</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileStudioTab('sidebar')}
+                className={`px-2 py-0.5 font-mono text-[10px] font-black uppercase rounded transition-all cursor-pointer flex items-center gap-1 ${
+                  mobileStudioTab === 'sidebar'
+                    ? 'bg-black text-white shadow-xs'
+                    : 'text-stone-600 hover:text-black'
+                }`}
+              >
+                <SlidersHorizontal size={10} />
+                <span>EDIT</span>
+              </button>
+            </div>
+
+            {/* Desktop Category Toggle */}
             {activeStep <= 2 && (
               <div className="hidden sm:flex items-center bg-white border-2 border-black p-0.5 shadow-[2px_2px_0_#000]">
                 <button
@@ -668,29 +1018,30 @@ export default function BouquetStudioPage() {
               </div>
             )}
 
+            {/* Desktop Shuffle */}
             {activeStep <= 2 && (
               <button
                 type="button"
                 onClick={handleAutoShuffle}
-                className="px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 border-2 border-black rounded-none font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5"
+                className="hidden sm:flex px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 border-2 border-black rounded-none font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 items-center gap-1.5"
                 title="Physically shuffle floral arrangement"
               >
                 <Shuffle size={13} />
-                <span className="hidden sm:inline">SHUFFLE</span>
+                <span>SHUFFLE</span>
               </button>
             )}
 
-            {/* Collapsible Panel Toggle Button */}
+            {/* Desktop Collapsible Panel Toggle */}
             <button
               type="button"
               onClick={() => setSidebarOpen((prev) => !prev)}
-              className={`px-2.5 py-1 font-mono text-xs font-black uppercase tracking-wider border-2 border-black transition-all cursor-pointer flex items-center gap-1.5 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 ${
+              className={`hidden md:flex px-2.5 py-1 font-mono text-xs font-black uppercase tracking-wider border-2 border-black transition-all cursor-pointer items-center gap-1.5 shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 ${
                 sidebarOpen ? 'bg-white hover:bg-stone-50 text-black' : 'bg-black text-white'
               }`}
               title={sidebarOpen ? 'Hide controls to expand canvas view' : 'Open controls panel'}
             >
               {sidebarOpen ? <PanelRightClose size={13} /> : <PanelRightOpen size={13} />}
-              <span className="hidden md:inline">{sidebarOpen ? 'HIDE PANEL' : 'CONTROLS'}</span>
+              <span>{sidebarOpen ? 'HIDE PANEL' : 'CONTROLS'}</span>
             </button>
           </div>
         </header>
@@ -710,7 +1061,9 @@ export default function BouquetStudioPage() {
           )}
 
           {/* ── MAIN UNBLOCKED CANVAS STAGE (LEFT / CENTER) ── */}
-          <main className="flex-1 min-h-0 relative overflow-hidden flex items-center justify-center p-2 sm:p-5">
+          <main className={`flex-1 min-h-0 relative overflow-hidden flex items-center justify-center p-2 sm:p-5 ${
+            mobileStudioTab === 'sidebar' ? 'hidden md:flex' : 'flex'
+          }`}>
             {/* Subtle warm center radial ambiance */}
             <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-stone-200/40" />
 
@@ -734,10 +1087,11 @@ export default function BouquetStudioPage() {
                   note={note}
                   onNoteChange={(updated) =>
                     setNote({
+                      greeting: updated.greeting !== undefined ? updated.greeting : 'Dear',
                       to: updated.to,
                       message: updated.message,
                       from: updated.from,
-                      closing: updated.closing || 'Sincerely',
+                      closing: updated.closing !== undefined ? updated.closing : 'Sincerely,',
                     })
                   }
                   cardFont={cardFont}
@@ -750,8 +1104,8 @@ export default function BouquetStudioPage() {
             {/* ── Step 4: Animated Document Printer Machine (or Card View) ── */}
             {activeStep === 4 && (
               <div className="relative z-10 w-full h-full max-h-[86vh] overflow-y-auto flex flex-col items-center justify-start p-2 sm:p-4 select-text">
-                {/* Mode & Choice Switcher Bar */}
-                <div className="mb-3 flex flex-wrap items-center justify-center gap-2 bg-white border-2 border-black p-1.5 shadow-[2px_2px_0_#000] shrink-0 z-20">
+                {/* Mode & Choice Switcher Bar: Hidden on mobile to prevent duplicate controls */}
+                <div className="mb-3 hidden md:flex flex-wrap items-center justify-center gap-2 bg-white border-2 border-black p-1.5 shadow-[2px_2px_0_#000] shrink-0 z-20">
                   {/* Format Selector: Flower & Card | Flower Only | Card Only */}
                   <div className="flex items-center bg-stone-100 p-0.5 border border-black">
                     <button
@@ -760,13 +1114,14 @@ export default function BouquetStudioPage() {
                         setGiftFormat('both');
                         setShareUrl('');
                       }}
-                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                         giftFormat === 'both'
                           ? 'bg-black text-white shadow-xs'
                           : 'text-stone-700 hover:text-black'
                       }`}
                     >
-                      <span>🌸 FLOWER & CARD</span>
+                      <Layers size={11} />
+                      <span>FLOWER & CARD</span>
                     </button>
                     <button
                       type="button"
@@ -774,13 +1129,14 @@ export default function BouquetStudioPage() {
                         setGiftFormat('flower');
                         setShareUrl('');
                       }}
-                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                         giftFormat === 'flower'
                           ? 'bg-black text-white shadow-xs'
                           : 'text-stone-700 hover:text-black'
                       }`}
                     >
-                      <span>🌷 FLOWER ONLY</span>
+                      <Flower2 size={11} />
+                      <span>FLOWER ONLY</span>
                     </button>
                     <button
                       type="button"
@@ -788,13 +1144,14 @@ export default function BouquetStudioPage() {
                         setGiftFormat('card');
                         setShareUrl('');
                       }}
-                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                         giftFormat === 'card'
                           ? 'bg-black text-white shadow-xs'
                           : 'text-stone-700 hover:text-black'
                       }`}
                     >
-                      <span>💌 CARD ONLY</span>
+                      <Mail size={11} />
+                      <span>CARD ONLY</span>
                     </button>
                   </div>
 
@@ -918,14 +1275,18 @@ export default function BouquetStudioPage() {
                       </ReceiptPrinter.Machine>
 
                       <ReceiptPrinter.Output
+                        className={printerStage === 'complete' ? '!overflow-visible' : 'overflow-hidden'}
                         style={{
                           height:
-                            printerStage === 'processing'
+                            printerStage === 'complete'
+                              ? 'auto'
+                              : printerStage === 'processing'
                               ? 240
                               : paperHeight
-                              ? paperHeight + 24
-                              : 580,
-                          transition: 'height 1850ms linear',
+                              ? Math.max(paperHeight + 36, 680)
+                              : 780,
+                          overflow: printerStage === 'complete' ? 'visible' : 'hidden',
+                          transition: printerStage === 'complete' ? 'none' : 'height 1850ms linear',
                         }}
                       >
                         <div ref={paperRef}>
@@ -967,14 +1328,7 @@ export default function BouquetStudioPage() {
                                 <div className="flex flex-col items-center justify-center py-4 gap-3">
                                   <div className="w-full max-w-[420px] flex items-center justify-center">
                                     <BouquetCard
-                                      note={{
-                                        to: note.to.trim() || 'Beloved',
-                                        message:
-                                          note.message.trim() ||
-                                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                        from: note.from.trim() || 'Secret Admirer',
-                                        closing: note.closing || 'Sincerely',
-                                      }}
+                                      note={fullNote}
                                       cardFont={cardFont}
                                       editable={false}
                                       className="w-full border border-stone-300 shadow-sm"
@@ -999,14 +1353,7 @@ export default function BouquetStudioPage() {
                                       </div>
                                       <div className="w-full flex items-center justify-center">
                                         <BouquetCard
-                                          note={{
-                                            to: note.to.trim() || 'Beloved',
-                                            message:
-                                              note.message.trim() ||
-                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                            from: note.from.trim() || 'Secret Admirer',
-                                            closing: note.closing || 'Sincerely',
-                                          }}
+                                          note={fullNote}
                                           cardFont={cardFont}
                                           editable={false}
                                           className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
@@ -1019,14 +1366,7 @@ export default function BouquetStudioPage() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
                                       <div className="w-full flex items-center justify-center">
                                         <BouquetCard
-                                          note={{
-                                            to: note.to.trim() || 'Beloved',
-                                            message:
-                                              note.message.trim() ||
-                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                            from: note.from.trim() || 'Secret Admirer',
-                                            closing: note.closing || 'Sincerely',
-                                          }}
+                                          note={fullNote}
                                           cardFont={cardFont}
                                           editable={false}
                                           className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
@@ -1057,14 +1397,7 @@ export default function BouquetStudioPage() {
                                       </div>
                                       <div className="w-full max-w-[420px] flex items-center justify-center">
                                         <BouquetCard
-                                          note={{
-                                            to: note.to.trim() || 'Beloved',
-                                            message:
-                                              note.message.trim() ||
-                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                            from: note.from.trim() || 'Secret Admirer',
-                                            closing: note.closing || 'Sincerely',
-                                          }}
+                                          note={fullNote}
                                           cardFont={cardFont}
                                           editable={false}
                                           className="w-full border border-stone-300 shadow-sm"
@@ -1090,7 +1423,7 @@ export default function BouquetStudioPage() {
                     </ReceiptPrinter.Root>
 
                     {printerStage === 'complete' && (
-                      <div className="mt-4 flex flex-wrap items-center justify-center gap-3 w-full max-w-xl pb-6">
+                      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 w-full max-w-xl pb-24">
                         <button
                           type="button"
                           onClick={() => setFinalizeView('presentation')}
@@ -1107,6 +1440,27 @@ export default function BouquetStudioPage() {
                           <Printer size={15} />
                           <span>PRINT / SAVE AS PDF</span>
                         </button>
+                        {/* PNG Background selector */}
+                        <div className="inline-flex border-2 border-black bg-stone-100 rounded p-0.5 shadow-[2px_2px_0_#000]">
+                          <button
+                            type="button"
+                            onClick={() => setExportBg('white')}
+                            className={`px-2 py-1 text-[10px] font-mono font-black uppercase rounded cursor-pointer ${
+                              exportBg === 'white' ? 'bg-white text-black shadow-[1px_1px_0_#000]' : 'text-stone-600'
+                            }`}
+                          >
+                            WHITE
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExportBg('clear')}
+                            className={`px-2 py-1 text-[10px] font-mono font-black uppercase rounded cursor-pointer ${
+                              exportBg === 'clear' ? 'bg-black text-white shadow-[1px_1px_0_#000]' : 'text-stone-600'
+                            }`}
+                          >
+                            CLEAR
+                          </button>
+                        </div>
                         <button
                           type="button"
                           onClick={handleExportPng}
@@ -1114,7 +1468,7 @@ export default function BouquetStudioPage() {
                           className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                         >
                           <Download size={15} />
-                          <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                          <span>{isExporting ? 'SAVING...' : `SAVE PNG (${exportBg.toUpperCase()})`}</span>
                         </button>
                         <button
                           type="button"
@@ -1180,17 +1534,31 @@ export default function BouquetStudioPage() {
                             style={{ fontFamily: selectedFontFamily }}
                             className="w-full bg-white border-2 border-black p-6 sm:p-8 shadow-[4px_4px_0_#000]"
                           >
-                            <div className="text-left text-base sm:text-lg mb-2 text-black">
-                              <span className="font-bold">Dear</span>{' '}
-                              <span className="font-normal">{note.to.trim() || 'Beloved'}</span>,
+                            <div className="text-left text-base sm:text-lg mb-2 text-black flex items-baseline gap-1.5 flex-wrap">
+                              <span className="font-bold">{note.greeting || 'Dear'}</span>{' '}
+                              <span
+                                className="font-normal"
+                                style={{
+                                  fontSize: getDynamicNameFontSize(note.to.trim() || 'Beloved', 1.15, 0.75),
+                                }}
+                              >
+                                {note.to.trim() || 'Beloved'}
+                              </span>
                             </div>
                             <p className="text-sm sm:text-base leading-relaxed font-normal my-2 text-black whitespace-pre-wrap break-words">
                               {note.message.trim() ||
                                 'I have so much to tell you, but only this much space on this card! Still, you must know...'}
                             </p>
-                            <div className="text-right text-base sm:text-lg mt-3 text-black">
-                              <span className="font-bold">{note.closing || 'Sincerely'},</span>
-                              <div className="font-normal">{note.from.trim() || 'Secret Admirer'}</div>
+                            <div className="text-right text-base sm:text-lg mt-3 text-black flex flex-col items-end">
+                              <span className="font-bold">{note.closing || 'Sincerely,'}</span>
+                              <div
+                                className="font-normal"
+                                style={{
+                                  fontSize: getDynamicNameFontSize(note.from.trim() || 'Secret Admirer', 1.1, 0.72),
+                                }}
+                              >
+                                {note.from.trim() || 'Secret Admirer'}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1217,17 +1585,31 @@ export default function BouquetStudioPage() {
                             style={{ fontFamily: selectedFontFamily }}
                             className="w-full bg-white border-2 border-black p-5 sm:p-7 shadow-[4px_4px_0_#000] rotate-[-1.5deg]"
                           >
-                            <div className="text-left text-base sm:text-lg mb-2 text-black">
-                              <span className="font-bold">Dear</span>{' '}
-                              <span className="font-normal">{note.to.trim() || 'Beloved'}</span>,
+                            <div className="text-left text-base sm:text-lg mb-2 text-black flex items-baseline gap-1.5 flex-wrap">
+                              <span className="font-bold">{note.greeting || 'Dear'}</span>{' '}
+                              <span
+                                className="font-normal"
+                                style={{
+                                  fontSize: getDynamicNameFontSize(note.to.trim() || 'Beloved', 1.15, 0.75),
+                                }}
+                              >
+                                {note.to.trim() || 'Beloved'}
+                              </span>
                             </div>
                             <p className="text-sm sm:text-base leading-relaxed font-normal my-2 text-black whitespace-pre-wrap break-words">
                               {note.message.trim() ||
                                 'I have so much to tell you, but only this much space on this card! Still, you must know...'}
                             </p>
-                            <div className="text-right text-base sm:text-lg mt-3 text-black">
-                              <span className="font-bold">{note.closing || 'Sincerely'},</span>
-                              <div className="font-normal">{note.from.trim() || 'Secret Admirer'}</div>
+                            <div className="text-right text-base sm:text-lg mt-3 text-black flex flex-col items-end">
+                              <span className="font-bold">{note.closing || 'Sincerely,'}</span>
+                              <div
+                                className="font-normal"
+                                style={{
+                                  fontSize: getDynamicNameFontSize(note.from.trim() || 'Secret Admirer', 1.1, 0.72),
+                                }}
+                              >
+                                {note.from.trim() || 'Secret Admirer'}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1283,6 +1665,28 @@ export default function BouquetStudioPage() {
                         </span>
                       </button>
 
+                      {/* PNG Background Toggle & Save Button */}
+                      <div className="inline-flex border-2 border-black bg-stone-100 rounded p-0.5 shadow-[2px_2px_0_#000]">
+                        <button
+                          type="button"
+                          onClick={() => setExportBg('white')}
+                          className={`px-2 py-1 text-[10px] font-mono font-black uppercase rounded cursor-pointer ${
+                            exportBg === 'white' ? 'bg-white text-black shadow-[1px_1px_0_#000]' : 'text-stone-600'
+                          }`}
+                        >
+                          WHITE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExportBg('clear')}
+                          className={`px-2 py-1 text-[10px] font-mono font-black uppercase rounded cursor-pointer ${
+                            exportBg === 'clear' ? 'bg-black text-white shadow-[1px_1px_0_#000]' : 'text-stone-600'
+                          }`}
+                        >
+                          CLEAR
+                        </button>
+                      </div>
+
                       {/* SAVE PNG */}
                       <button
                         type="button"
@@ -1291,31 +1695,71 @@ export default function BouquetStudioPage() {
                         className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                       >
                         <Download size={13} />
-                        <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                        <span>{isExporting ? 'SAVING...' : `SAVE PNG (${exportBg.toUpperCase()})`}</span>
                       </button>
                     </div>
                   </div>
                 )}
               </div>
             )}
+
+            {/* Mobile floating button to switch from Stage to Controls */}
+            <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+              <button
+                type="button"
+                onClick={() => setMobileStudioTab('sidebar')}
+                className="px-4 py-2 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[2px_2px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
+              >
+                <SlidersHorizontal size={13} />
+                <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
+              </button>
+            </div>
           </main>
 
-          {/* ── DEDICATED EDITING SIDEBAR (RIGHT ON DESKTOP, BOTTOM SHEET ON MOBILE) ── */}
+          {/* ── DEDICATED EDITING SIDEBAR (RIGHT ON DESKTOP, FULL SCREEN TAB ON MOBILE) ── */}
           {sidebarOpen && (
-            <aside className="w-full md:w-[360px] lg:w-[400px] shrink-0 border-t-2 md:border-t-0 md:border-l-2 border-black bg-white flex flex-col h-[45vh] md:h-full min-h-0 overflow-hidden z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.04)] animate-in slide-in-from-right duration-200">
+            <aside className={`w-full md:w-[360px] lg:w-[400px] shrink-0 border-t-2 md:border-t-0 md:border-l-2 border-black bg-white flex flex-col h-full min-h-0 overflow-hidden z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.04)] animate-in slide-in-from-right duration-200 ${
+              mobileStudioTab === 'stage' ? 'hidden md:flex' : 'flex'
+            }`}>
               {/* Sidebar Header */}
-              <div className="h-11 px-4 bg-stone-50 border-b-2 border-black flex items-center justify-between shrink-0">
-                <span className="font-mono text-xs font-black uppercase tracking-wider text-black">
+              <div className="h-11 px-3 sm:px-4 bg-stone-50 border-b-2 border-black flex items-center justify-between shrink-0">
+                <span className="font-mono text-xs font-black uppercase tracking-wider text-black whitespace-nowrap truncate mr-2">
                   {activeStep === 1 && '01. CHOOSE GREENERY'}
                   {activeStep === 2 && `02. SELECT BLOOMS (${selectedFlowers.length}/${maxAllowed})`}
                   {activeStep === 3 && '03. NOTE CARD & TYPOGRAPHY'}
                   {activeStep === 4 && '04. FINALIZE & PRINT'}
                 </span>
 
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-stone-500 font-bold uppercase">
-                    STEP {activeStep}/4
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-mono text-[10px] text-stone-500 font-bold uppercase whitespace-nowrap">
+                    {activeStep}/4
                   </span>
+
+                  {/* Mobile Compact Navigation directly in header: zero vertical waste */}
+                  {activeStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep((prev) => (prev - 1) as StudioStep)}
+                      className="md:hidden px-2 py-1 bg-white hover:bg-stone-100 text-black border border-black font-mono text-[10px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5"
+                    >
+                      ‹
+                    </button>
+                  )}
+
+                  {activeStep < 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep((prev) => (prev + 1) as StudioStep)}
+                      disabled={
+                        (activeStep === 1 && flowerCategory === 'big' && selectedGreenery.length < 2) ||
+                        (activeStep === 2 && selectedFlowers.length < minAllowed)
+                      }
+                      className="md:hidden px-2.5 py-1 bg-black hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed text-white border border-black font-mono text-[10px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5"
+                    >
+                      NEXT ›
+                    </button>
+                  ) : null}
+
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
@@ -1387,7 +1831,9 @@ export default function BouquetStudioPage() {
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-stone-600 font-mono">
-                        Tap (+) to add multiples. Snug bouquet clustering.
+                        {flowerCategory === 'big'
+                          ? 'Pick 2 to 3 statement blooms for a balanced, majestic bouquet.'
+                          : 'Pick 3 to 10 petite blooms for a snug cottage garden bunch.'}
                       </p>
                       <button
                         type="button"
@@ -1437,7 +1883,7 @@ export default function BouquetStudioPage() {
                                 <button
                                   type="button"
                                   onClick={() => removeOneFlower(item.id)}
-                                  disabled={selectedFlowers.length <= 1}
+                                  disabled={selectedFlowers.length <= minAllowed}
                                   className="flex-1 py-1 bg-stone-900 hover:bg-stone-700 text-white border border-stone-700 text-xs font-mono font-bold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                   title="Decrease quantity (-)"
                                 >
@@ -1525,21 +1971,38 @@ export default function BouquetStudioPage() {
                     </div>
 
                     {/* Form Fields */}
-                    <div className="flex flex-col gap-2 pt-2 border-t border-stone-200">
-                      <div>
-                        <label className="block text-[10px] font-mono font-black uppercase mb-1">
-                          Recipient (To)
-                        </label>
-                        <input
-                          type="text"
-                          value={note.to}
-                          onChange={(e) => setNote((prev) => ({ ...prev, to: e.target.value }))}
-                          placeholder="Beloved"
-                          maxLength={40}
-                          className="w-full px-2.5 py-1.5 border-2 border-black font-mono text-xs font-normal outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
-                        />
+                    <div className="flex flex-col gap-2.5 pt-2 border-t border-stone-200">
+                      {/* Greeting & Recipient Row */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-1">
+                          <label className="block text-[10px] font-mono font-black uppercase mb-1">
+                            Greeting
+                          </label>
+                          <input
+                            type="text"
+                            value={note.greeting !== undefined ? note.greeting : 'Dear'}
+                            onChange={(e) => setNote((prev) => ({ ...prev, greeting: e.target.value }))}
+                            placeholder="Dear"
+                            maxLength={20}
+                            className="w-full px-2 py-1.5 border-2 border-black font-mono text-xs font-bold outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[10px] font-mono font-black uppercase mb-1">
+                            Recipient (To)
+                          </label>
+                          <input
+                            type="text"
+                            value={note.to}
+                            onChange={(e) => setNote((prev) => ({ ...prev, to: e.target.value }))}
+                            placeholder="Beloved"
+                            maxLength={40}
+                            className="w-full px-2.5 py-1.5 border-2 border-black font-mono text-xs font-normal outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
+                          />
+                        </div>
                       </div>
 
+                      {/* Message Body */}
                       <div>
                         <div className="flex items-center justify-between mb-1 font-mono text-[10px] font-black uppercase">
                           <span>Message Body</span>
@@ -1555,18 +2018,34 @@ export default function BouquetStudioPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] font-mono font-black uppercase mb-1">
-                          Sender (From)
-                        </label>
-                        <input
-                          type="text"
-                          value={note.from}
-                          onChange={(e) => setNote((prev) => ({ ...prev, from: e.target.value }))}
-                          placeholder="Secret Admirer"
-                          maxLength={40}
-                          className="w-full px-2.5 py-1.5 border-2 border-black font-mono text-xs font-normal outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
-                        />
+                      {/* Closing & Sender Row */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-1">
+                          <label className="block text-[10px] font-mono font-black uppercase mb-1">
+                            Sign-off
+                          </label>
+                          <input
+                            type="text"
+                            value={note.closing !== undefined ? note.closing : 'Sincerely,'}
+                            onChange={(e) => setNote((prev) => ({ ...prev, closing: e.target.value }))}
+                            placeholder="Sincerely,"
+                            maxLength={24}
+                            className="w-full px-2 py-1.5 border-2 border-black font-mono text-xs font-bold outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[10px] font-mono font-black uppercase mb-1">
+                            Sender (From)
+                          </label>
+                          <input
+                            type="text"
+                            value={note.from}
+                            onChange={(e) => setNote((prev) => ({ ...prev, from: e.target.value }))}
+                            placeholder="Secret Admirer"
+                            maxLength={40}
+                            className="w-full px-2.5 py-1.5 border-2 border-black font-mono text-xs font-normal outline-none bg-stone-50 focus:bg-white placeholder:text-stone-400"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1590,14 +2069,15 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('both');
                             setShareUrl('');
+                            setMobileStudioTab('stage');
                           }}
-                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'both'
                               ? 'bg-black text-white shadow-xs'
                               : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          <span className="text-xs">🌸</span>
+                          <Layers size={14} className="shrink-0" />
                           <span>BOTH</span>
                           <span className="text-[8px] opacity-70">FLOWER & CARD</span>
                         </button>
@@ -1606,14 +2086,15 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('flower');
                             setShareUrl('');
+                            setMobileStudioTab('stage');
                           }}
-                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'flower'
                               ? 'bg-black text-white shadow-xs'
                               : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          <span className="text-xs">🌷</span>
+                          <Flower2 size={14} className="shrink-0" />
                           <span>FLOWER ONLY</span>
                           <span className="text-[8px] opacity-70">PURE BOUQUET</span>
                         </button>
@@ -1622,14 +2103,15 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('card');
                             setShareUrl('');
+                            setMobileStudioTab('stage');
                           }}
-                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'card'
                               ? 'bg-black text-white shadow-xs'
                               : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          <span className="text-xs">💌</span>
+                          <Mail size={14} className="shrink-0" />
                           <span>CARD ONLY</span>
                           <span className="text-[8px] opacity-70">LETTER ONLY</span>
                         </button>
@@ -1644,8 +2126,11 @@ export default function BouquetStudioPage() {
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setFinalizeView('presentation')}
-                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                          onClick={() => {
+                            setFinalizeView('presentation');
+                            setMobileStudioTab('stage');
+                          }}
+                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
                             finalizeView === 'presentation'
                               ? 'bg-black text-white shadow-xs'
                               : 'bg-white text-stone-800 hover:bg-stone-100'
@@ -1659,8 +2144,9 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setFinalizeView('printer');
                             startPrintFeedSequence();
+                            setMobileStudioTab('stage');
                           }}
-                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
                             finalizeView === 'printer'
                               ? 'bg-black text-white shadow-xs'
                               : 'bg-white text-stone-800 hover:bg-stone-100'
@@ -1681,9 +2167,12 @@ export default function BouquetStudioPage() {
                           </span>
                           <button
                             type="button"
-                            onClick={startPrintFeedSequence}
+                            onClick={() => {
+                              startPrintFeedSequence();
+                              setMobileStudioTab('stage');
+                            }}
                             title="Replay printer feed animation"
-                            className="text-[9px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer"
+                            className="text-[9px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer whitespace-nowrap"
                           >
                             <RotateCcw size={11} />
                             <span>REPRINT</span>
@@ -1692,8 +2181,11 @@ export default function BouquetStudioPage() {
                         <div className="grid grid-cols-3 gap-1">
                           <button
                             type="button"
-                            onClick={() => setCardPlacement('right')}
-                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                            onClick={() => {
+                              setCardPlacement('right');
+                              setMobileStudioTab('stage');
+                            }}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'right' ? 'bg-black text-white' : 'bg-white text-black'
                             }`}
                           >
@@ -1701,8 +2193,11 @@ export default function BouquetStudioPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCardPlacement('bottom')}
-                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                            onClick={() => {
+                              setCardPlacement('bottom');
+                              setMobileStudioTab('stage');
+                            }}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'bottom' ? 'bg-black text-white' : 'bg-white text-black'
                             }`}
                           >
@@ -1710,8 +2205,11 @@ export default function BouquetStudioPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCardPlacement('left')}
-                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                            onClick={() => {
+                              setCardPlacement('left');
+                              setMobileStudioTab('stage');
+                            }}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'left' ? 'bg-black text-white' : 'bg-white text-black'
                             }`}
                           >
@@ -1725,9 +2223,12 @@ export default function BouquetStudioPage() {
                       <div className="flex items-center justify-end">
                         <button
                           type="button"
-                          onClick={startPrintFeedSequence}
+                          onClick={() => {
+                            startPrintFeedSequence();
+                            setMobileStudioTab('stage');
+                          }}
                           title="Replay printer feed animation"
-                          className="text-[10px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer"
+                          className="text-[10px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer whitespace-nowrap"
                         >
                           <RotateCcw size={11} />
                           <span>REPRINT ANIMATION</span>
@@ -1753,14 +2254,145 @@ export default function BouquetStudioPage() {
                       </button>
                     </div>
 
+                    {/* Soundscape Ambient Music Preset */}
+                    <div className="p-3 bg-stone-50 border-2 border-black flex flex-col gap-2 shadow-[2px_2px_0_#000]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-black uppercase text-stone-600">
+                          REVEAL SOUNDTRACK
+                        </span>
+                        <span className="text-[9px] font-mono text-stone-400 font-bold uppercase">
+                          AUDIO AMBIENCE
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        {SOUND_PRESETS.map((preset) => {
+                          const isSelected = selectedSoundPreset === preset.id;
+                          const isPlayingThis = previewingSound === preset.id;
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`p-2 border border-black flex items-center justify-between transition-colors ${
+                                isSelected ? 'bg-black text-white' : 'bg-white text-black hover:bg-stone-50'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSoundPreset(preset.id)}
+                                className="flex-1 text-left flex items-center gap-2 cursor-pointer"
+                              >
+                                <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 border border-current rounded opacity-60 shrink-0">
+                                  {preset.trackNumber}
+                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-mono text-xs font-black uppercase tracking-wider">
+                                    {preset.name}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] ${
+                                      isSelected ? 'text-stone-300' : 'text-stone-500'
+                                    }`}
+                                  >
+                                    {preset.description}
+                                  </span>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewSound(preset.id)}
+                                title={isPlayingThis ? 'Stop preview' : 'Play preview'}
+                                className={`px-2 py-1 border border-black text-[10px] font-mono font-bold uppercase cursor-pointer flex items-center gap-1 ${
+                                  isPlayingThis
+                                    ? 'bg-[#FFE500] text-black shadow-[1px_1px_0_#000]'
+                                    : isSelected
+                                    ? 'bg-stone-800 text-white hover:bg-stone-700'
+                                    : 'bg-stone-100 text-black hover:bg-stone-200'
+                                }`}
+                              >
+                                {isPlayingThis ? <Square size={10} /> : <Play size={10} />}
+                                <span>{isPlayingThis ? 'STOP' : 'TEST'}</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* None / Muted Option */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSoundPreset('none');
+                            if (previewingSound) {
+                              soundEngine.stop();
+                              setPreviewingSound(null);
+                            }
+                          }}
+                          className={`p-2 border border-black text-left flex items-center gap-2 cursor-pointer transition-colors ${
+                            selectedSoundPreset === 'none'
+                              ? 'bg-black text-white'
+                              : 'bg-white text-black hover:bg-stone-50'
+                          }`}
+                        >
+                          <VolumeX size={14} className="shrink-0" />
+                          <div className="flex flex-col">
+                            <span className="font-mono text-xs font-black uppercase tracking-wider">
+                              None (Muted)
+                            </span>
+                            <span
+                              className={`text-[10px] ${
+                                selectedSoundPreset === 'none' ? 'text-stone-300' : 'text-stone-500'
+                              }`}
+                            >
+                              Silent reveal with no background music
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* PNG Export Background Option */}
+                    <div className="p-3 bg-stone-50 border-2 border-black flex flex-col gap-2 shadow-[2px_2px_0_#000]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-black uppercase text-stone-600">
+                          PNG BACKGROUND
+                        </span>
+                        <span className="text-[9px] font-mono text-stone-400 font-bold uppercase">
+                          IMAGE SAVE
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setExportBg('white')}
+                          className={`p-2 font-mono text-xs font-black uppercase border border-black rounded cursor-pointer flex items-center justify-center gap-1.5 ${
+                            exportBg === 'white'
+                              ? 'bg-black text-white shadow-[1px_1px_0_#000]'
+                              : 'bg-white text-black hover:bg-stone-50'
+                          }`}
+                        >
+                          <span>WHITE</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExportBg('clear')}
+                          className={`p-2 font-mono text-xs font-black uppercase border border-black rounded cursor-pointer flex items-center justify-center gap-1.5 ${
+                            exportBg === 'clear'
+                              ? 'bg-black text-white shadow-[1px_1px_0_#000]'
+                              : 'bg-white text-black hover:bg-stone-50'
+                          }`}
+                        >
+                          <span>CLEAR</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Primary Print with Printer Animation Action */}
                     <button
                       type="button"
                       onClick={() => {
                         setFinalizeView('printer');
                         startPrintFeedSequence();
+                        setMobileStudioTab('stage');
                       }}
-                      className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 whitespace-nowrap"
                     >
                       <Printer size={16} />
                       <span>PRINT WITH PRINTER ANIMATION</span>
@@ -1788,7 +2420,7 @@ export default function BouquetStudioPage() {
                       className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                     >
                       <Download size={16} />
-                      <span>{isExporting ? 'SAVING...' : 'DOWNLOAD HIGH-RES PNG'}</span>
+                      <span>{isExporting ? 'SAVING...' : `DOWNLOAD PNG (${exportBg.toUpperCase()})`}</span>
                     </button>
 
                     <button
@@ -1807,17 +2439,30 @@ export default function BouquetStudioPage() {
                           : 'COPY SHARE LINK'}
                       </span>
                     </button>
+
+                    {shareUrl && (
+                      <a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 text-center"
+                      >
+                        <Sparkles size={15} />
+                        <span>PREVIEW RECIPIENT PAGE ↗</span>
+                      </a>
+                    )}
                   </div>
+
                 )}
               </div>
 
-              {/* Sidebar Footer Navigation: [ BACK ] and [ NEXT ] */}
-              <div className="h-16 px-4 bg-stone-50 border-t-2 border-black flex items-center justify-between shrink-0">
+              {/* Desktop Sidebar Footer Navigation: Hidden on mobile to grant 100% vertical space to sidebar controls */}
+              <div className="hidden md:flex h-14 px-4 bg-stone-50 border-t-2 border-black items-center justify-between shrink-0">
                 {activeStep > 1 ? (
                   <button
                     type="button"
                     onClick={() => setActiveStep((prev) => (prev - 1) as StudioStep)}
-                    className="px-5 py-2 bg-white hover:bg-stone-100 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    className="px-4 py-2 bg-white hover:bg-stone-100 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 whitespace-nowrap"
                   >
                     ‹ BACK
                   </button>
@@ -1829,7 +2474,11 @@ export default function BouquetStudioPage() {
                   <button
                     type="button"
                     onClick={() => setActiveStep((prev) => (prev + 1) as StudioStep)}
-                    className="px-6 py-2 bg-black hover:bg-neutral-800 text-white border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ml-auto"
+                    disabled={
+                      (activeStep === 1 && flowerCategory === 'big' && selectedGreenery.length < 2) ||
+                      (activeStep === 2 && selectedFlowers.length < minAllowed)
+                    }
+                    className="px-5 py-2 bg-black hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed text-white border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ml-auto whitespace-nowrap"
                   >
                     NEXT ›
                   </button>
@@ -1844,7 +2493,7 @@ export default function BouquetStudioPage() {
                         handleNativePrint();
                       }
                     }}
-                    className="px-6 py-2 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ml-auto flex items-center gap-1.5"
+                    className="px-5 py-2 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ml-auto flex items-center gap-1.5 whitespace-nowrap"
                   >
                     <Printer size={13} />
                     <span>{finalizeView === 'presentation' ? 'PRINT ANIMATION ›' : 'PRINT / PDF'}</span>

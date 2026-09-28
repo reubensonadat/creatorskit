@@ -105,28 +105,72 @@ export interface GrabVariant {
     id: string;
     label: string;           // e.g. "1080p", "720p", "Audio only"
     kind: 'video' | 'audio';
-    streamUrl: string;       // one-time ticketed URL
+    streamUrl?: string;      // one-time ticketed URL (absent on pre-ad format peeks)
     sizeBytes?: number;      // estimated size (HEAD probe at claim time)
 }
 
 export interface ClaimResult {
     mode: 'direct' | 'worker';
-    streamUrl: string;
+    streamUrl?: string;      // absent on a pending handoff (see below)
     variants?: GrabVariant[]; // resolution / format options (direct links have 1)
     platform: Platform;
     expiresInSeconds: number;
+    // Pending handoff: the worker is still processing and the edge function's
+    // time budget (~130s) ran out. The browser takes over polling the worker.
+    pending?: boolean;
+    jobId?: string;
+    jobToken?: string;
+    workerBase?: string;
 }
 
 /** Step 2 — after the ad wait, claim the one-time download ticket. */
-export async function claimDownload(url: string, challengeId: string): Promise<ClaimResult> {
+export async function claimDownload(url: string, challengeId: string, variantId?: string): Promise<ClaimResult> {
     const res = await fetch(VIDEO_GRAB_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'claim', url, challengeId }),
+        body: JSON.stringify({ action: 'claim', url, challengeId, variantId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new GrabError(data?.error ?? 'Could not unlock the download.', data?.code ?? 'unknown');
     return data as ClaimResult;
+}
+
+/**
+ * Pending handoff — the edge function's time budget ran out while the worker
+ * was still processing (slow home-hosted engines). The browser takes over the
+ * polling; the random per-job token is the only credential needed.
+ */
+export async function pollWorkerJob(
+    workerBase: string,
+    jobId: string,
+    jobToken: string,
+    platform: Platform,
+): Promise<ClaimResult> {
+    let misses = 0;
+    for (let i = 0; i < 120; i++) { // up to ~9 minutes — matches the worker's resolve budget
+        // Adaptive backoff: eager at first, gentler during long merges —
+        // keeps free-tier request volume low when many users are queued.
+        await new Promise((r) => setTimeout(r, i < 20 ? 3000 : 5000));
+        const res = await fetch(`${workerBase}/job/${encodeURIComponent(jobId)}?t=${encodeURIComponent(jobToken)}`);
+        if (!res.ok) {
+            // Tolerate transient tunnel hiccups — only a streak means real trouble.
+            if (++misses >= 8) throw new GrabError(`Lost the engine connection (${res.status}).`, 'worker_error');
+            continue;
+        }
+        misses = 0;
+        const j: any = await res.json().catch(() => ({}));
+        if (j.status === 'failed') throw new GrabError(`Resolver: ${j.error ?? 'failed'}`, 'worker_error');
+        if (j.status === 'ready' && typeof j.streamUrl === 'string') {
+            return {
+                mode: 'worker',
+                streamUrl: j.streamUrl,
+                variants: Array.isArray(j.variants) ? j.variants : undefined,
+                platform,
+                expiresInSeconds: 600,
+            };
+        }
+    }
+    throw new GrabError('The engine is still busy — try a smaller resolution.', 'worker_timeout');
 }
 
 /** Preview endpoint — first 256KB of a direct media link (free, no ticket). */

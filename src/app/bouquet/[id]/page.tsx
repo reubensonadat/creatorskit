@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import BouquetViewer from './bouquet-viewer';
 import { getBouquetByShortId, type StoredBouquet } from '@/lib/supabase';
 
+export const runtime = 'edge';
+
 type Props = {
     params: Promise<{ id: string }>;
     searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -75,24 +77,31 @@ export default async function BouquetPage({ params, searchParams }: Props) {
     const sender = bouquet?.sender_name?.trim() || (typeof sp.from === 'string' ? sp.from.trim() : undefined);
     const recipient = bouquet?.recipient_name?.trim() || (typeof sp.to === 'string' ? sp.to.trim() : undefined);
     const message = bouquet?.message?.trim() || (typeof sp.msg === 'string' ? sp.msg.trim() : undefined);
+    const format = bouquet?.gift_format || (typeof sp.format === 'string' ? sp.format : undefined) || bouquet?.metadata?.giftFormat || 'both';
+    const soundPreset = bouquet?.sound_preset || (typeof sp.sound === 'string' ? sp.sound : undefined) || bouquet?.metadata?.soundPreset || 'music-box';
 
     const initialBouquet: StoredBouquet = bouquet || {
         id,
         scene_type: 'botanical-2d',
         season: 'spring',
         palette_id: 'classic-cream',
-        target_url: 'https://creatorkit.app/bouquet',
+        target_url: `https://creatorkit.app/bouquet/${id}`,
         sender_name: sender || 'A Friend',
         recipient_name: recipient || 'Someone Special',
         message: message || 'Thinking of you and sending this freshly picked bouquet to brighten your day.',
-        audio_enabled: false,
+        gift_format: format,
+        sound_preset: soundPreset,
+        audio_enabled: Boolean(soundPreset),
         metadata: {
             flowers: ['rose-pink', 'sunflower-golden', 'peony-blush', 'tulip-rose', 'lily-ivory'],
             greenery: ['fern-illustration', 'olive-spray'],
             cardTemplateId: 'classic-cream',
             seed: 1042,
+            giftFormat: format,
+            soundPreset,
         },
     };
+
 
     const jsonLd = {
         '@context': 'https://schema.org',

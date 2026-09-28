@@ -28,8 +28,11 @@ const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/v
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isFullscreen = fullscreenApps.includes(pathname);
+  const isFullscreen = fullscreenApps.some(
+    (app) => pathname === app || pathname.startsWith(app + "/")
+  );
   const isTool = toolPaths.includes(pathname);
+
 
   return (
     <>

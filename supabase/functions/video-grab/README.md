@@ -57,6 +57,9 @@ and auth happens via the ad-challenge + ticket flow.
   `supabase secrets set VIDEO_WORKER_URL=https://your-resolver.example`
   It must expose `POST /resolve` → `{ "streamUrl": "https://..." }` and
   `POST /formats` → `{ "variants": [...] }` (powers the resolution sheet).
+  **Ready-made**: the full resolver (yt-dlp + PO-token provider + these
+  endpoints + auth) lives in `video-worker/` — deployable free on a
+  Hugging Face Space in ~10 minutes. See `video-worker/README.md`.
   For the resolution selector, it may also return `variants`:
   `{ "streamUrl": "...", "variants": [ { "id": "1080p", "label": "1080p · MP4",
      "kind": "video", "streamUrl": "..." },

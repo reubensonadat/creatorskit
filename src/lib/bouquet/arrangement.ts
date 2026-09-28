@@ -56,7 +56,7 @@ export interface BouquetPreset {
 }
 
 export const BOUQUET_PRESETS: BouquetPreset[] = [
-  // ── Big Flowers Presets (Pick 3 to 5 Statement Blooms · TWO Sets of Foliage) ──
+  // ── Big Flowers Presets (Pick 2 to 3 Statement Blooms · TWO Sets of Foliage) ──
   {
     id: 'tulip-trio',
     name: 'Velvet Trio (Big)',
@@ -71,15 +71,15 @@ export const BOUQUET_PRESETS: BouquetPreset[] = [
     tagline: 'Stately ruby tulips, stargazer lilies & royal orchids with weeping willow',
     type: 'big',
     greeneryIds: ['net-willow', 'net-eucalyptus'],
-    flowerIds: ['net-tulip', 'net-lily', 'net-orchid', 'net-lotus', 'net-peony'],
+    flowerIds: ['net-tulip', 'net-lily', 'net-orchid'],
   },
   {
     id: 'pure-serenity',
     name: 'Pure Serenity (Big)',
-    tagline: 'Sacred lotus, stargazer lilies & classic camellias framed by eucalyptus',
+    tagline: 'Sacred lotus & classic camellia duo framed by eucalyptus',
     type: 'big',
     greeneryIds: ['net-eucalyptus', 'net-leafy'],
-    flowerIds: ['net-lotus', 'net-lily', 'net-orchid', 'net-camellia'],
+    flowerIds: ['net-lotus', 'net-camellia'],
   },
   {
     id: 'royal-meadow',
@@ -87,7 +87,7 @@ export const BOUQUET_PRESETS: BouquetPreset[] = [
     tagline: 'Velvet rose, imperial peony & meadow daisy with rich garden greenery',
     type: 'big',
     greeneryIds: ['net-leafy', 'net-willow'],
-    flowerIds: ['net-rose', 'net-orchid', 'net-peony', 'net-daisy'],
+    flowerIds: ['net-rose', 'net-peony', 'net-daisy'],
   },
 
   // ── Small Flowers Presets (Pick 3 to 10 Petite Blooms · ONE Clean Backdrop) ──
@@ -180,15 +180,16 @@ export function generateBouquetArrangement(
   // Filter activeFlowers to ONLY contain flowers of collectionType:
   const validFlowers = activeItems.filter(f => f.flowerSize === collectionType);
 
-  const maxAllowed = isBigCollection ? 5 : 10;
+  const minAllowed = isBigCollection ? 2 : 3;
+  const maxAllowed = isBigCollection ? 3 : 10;
   const activeFlowers = validFlowers.slice(0, maxAllowed);
 
-  if (activeFlowers.length < 3) {
+  if (activeFlowers.length < minAllowed) {
     const defaults = isBigCollection
       ? ['net-rose', 'net-tulip', 'net-lily']
       : ['rose-pink', 'sunflower-golden', 'peony-blush'];
     for (const defId of defaults) {
-      if (activeFlowers.length >= 3) break;
+      if (activeFlowers.length >= minAllowed) break;
       const found = FLOWERS.find(f => f.id === defId);
       if (found && !activeFlowers.some(f => f.id === found.id)) {
         activeFlowers.push(found);
@@ -255,25 +256,16 @@ export function generateBouquetArrangement(
   const flowerLayers: ArrangedElement[] = [];
   const fCount = activeFlowers.length;
 
-  // ── A. BIG FLOWERS SLOTS (Max 5 · 2-column clustered bouquet like digibouquet) ──
+  // ── A. BIG FLOWERS SLOTS (Min 2 · Max 3 Statement Blooms with Wide Balanced Spacing) ──
   const bigSlotLayouts: Record<number, Array<{ x: number; y: number; rot: number; z: number }>> = {
+    2: [
+      { x: -12, y: -5, rot: -7, z: 10 },
+      { x: 12, y: 7, rot: 7, z: 12 },
+    ],
     3: [
-      { x: 0, y: -8, rot: 0, z: 10 },
-      { x: -10, y: 6, rot: -6, z: 12 },
-      { x: 10, y: 6, rot: 6, z: 12 },
-    ],
-    4: [
-      { x: -9, y: -8, rot: -5, z: 10 },
-      { x: 9, y: -8, rot: 5, z: 10 },
-      { x: -9, y: 7, rot: -5, z: 12 },
-      { x: 9, y: 7, rot: 5, z: 12 },
-    ],
-    5: [
-      { x: -9, y: -11, rot: -5, z: 10 },
-      { x: 9, y: -11, rot: 5, z: 10 },
-      { x: 0, y: 0, rot: 0, z: 12 },
-      { x: -9, y: 11, rot: -5, z: 13 },
-      { x: 9, y: 11, rot: 5, z: 13 },
+      { x: 0, y: -13, rot: 0, z: 10 },
+      { x: -16, y: 9, rot: -10, z: 12 },
+      { x: 16, y: 9, rot: 10, z: 12 },
     ],
   };
 
@@ -350,7 +342,7 @@ export function generateBouquetArrangement(
   };
 
   const activeSlotTable = isBigCollection ? bigSlotLayouts : smallSlotLayouts;
-  const currentSlots = activeSlotTable[fCount] || activeSlotTable[Math.min(maxAllowed, Math.max(3, fCount))];
+  const currentSlots = activeSlotTable[fCount] || activeSlotTable[Math.min(maxAllowed, Math.max(minAllowed, fCount))];
 
   // Shuffle slot assignments using the PRNG so clicking SHUFFLE physically swaps bloom locations!
   const slotIndices = activeFlowers.map((_, i) => i);

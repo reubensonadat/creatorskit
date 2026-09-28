@@ -11,8 +11,10 @@ import {
   fetchMetadata,
   createChallenge,
   claimDownload,
+  GrabError,
   fetchFormats,
   probeMedia,
+  pollWorkerJob,
   PLATFORM_LABELS,
   type GrabMetadata,
   type ClaimResult,
@@ -68,15 +70,21 @@ export default function VideoGrabberPage() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [playerUrl, setPlayerUrl] = useState('');
   const [playerKind, setPlayerKind] = useState<'video' | 'audio'>('video');
+  const [fetchSecs, setFetchSecs] = useState(0);
   const autoDlRef = useRef(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetVariants, setSheetVariants] = useState<GrabVariant[]>([]);
+  const [formatsLoading, setFormatsLoading] = useState(false);
   const [chosenFormatId, setChosenFormatId] = useState('');
 
   const platform: Platform | null = url.trim() ? detectPlatform(url.trim()) : null;
   const pct = dl.total > 0 ? Math.min(100, Math.floor((dl.received / dl.total) * 100)) : 0;
   const activeVariant = result ? (variants.find((v) => v.id === (variantId || 'original')) ?? null) : null;
   const etaSec = dl.state === 'downloading' && dl.speed > 0 && dl.total > dl.received ? Math.max(1, Math.round((dl.total - dl.received) / dl.speed)) : null;
+  // Progress theater: the engine's fetch already filled 0–50% of the story
+  // while "DOWNLOADING…" ticked on the claiming card — so the real transfer
+  // is mapped into 50–100%. One continuous bar; the visible half feels fast.
+  const shownPct = dl.state === 'downloading' || dl.state === 'failed' ? 50 + Math.floor(pct / 2) : 100;
   const statusColor = phase === 'error' || dl.state === 'failed' ? RED : dl.state === 'done' ? GREEN : dl.state === 'downloading' ? BLACK : GRAY;
 
   // ── Auto-fetch metadata + first-frame preview (debounced) ─
@@ -123,9 +131,14 @@ export default function VideoGrabberPage() {
     if (!trimmed || detectPlatform(trimmed) === 'direct') return;
     let cancelled = false;
     setSheetVariants([]);
-    fetchFormats(trimmed).then((vs) => {
-      if (!cancelled) setSheetVariants(vs);
-    });
+    setFormatsLoading(true);
+    fetchFormats(trimmed)
+      .then((vs) => {
+        if (!cancelled) setSheetVariants(vs);
+      })
+      .finally(() => {
+        if (!cancelled) setFormatsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -178,7 +191,28 @@ export default function VideoGrabberPage() {
     claimStartedRef.current = true;
     setPhase('claiming');
     try {
-      const res = await claimDownload(url.trim(), challengeId);
+      const wantedVariant = chosenFormatId ?? (preference === 'audio' ? 'audio' : undefined);
+      let res;
+      try {
+        res = await claimDownload(url.trim(), challengeId, wantedVariant);
+      } catch (e1) {
+        // The ad lock is advisory — a boundary race with the server clock
+        // gets one automatic retry so nobody is ever locked out.
+        if (e1 instanceof GrabError && e1.code === 'too_early') {
+          await new Promise((r) => setTimeout(r, 1500));
+          res = await claimDownload(url.trim(), challengeId, wantedVariant);
+        } else {
+          throw e1;
+        }
+      }
+      if (res.pending && res.jobId && res.jobToken && res.workerBase) {
+        // The edge function's time budget ran out — this browser finishes the
+        // job itself: poll the worker directly until the file is ready.
+        res = await pollWorkerJob(res.workerBase, res.jobId, res.jobToken, res.platform);
+      }
+      // The user pasted a new link mid-claim (reset flipped the ref) —
+      // abandon this result quietly instead of overwriting the new session.
+      if (!claimStartedRef.current) return;
       setResult(res);
       setVariants(res.variants ?? []);
       const wanted = chosenFormatId ? (res.variants ?? []).find((v) => v.id === chosenFormatId) : undefined;
@@ -192,6 +226,15 @@ export default function VideoGrabberPage() {
     }
   }, [url, challengeId, preference, chosenFormatId]);
 
+  // ── TRY AGAIN — the ad already counted, never re-show it ──
+  const retryClaim = useCallback(() => {
+    claimStartedRef.current = false;
+    autoDlRef.current = false;
+    setError('');
+    setDl({ state: 'idle', received: 0, total: 0, speed: 0 });
+    doClaim();
+  }, [doClaim]);
+
   // ── Ticket expiry ticker ─────────────────────────────────
   useEffect(() => {
     if (phase !== 'ready' || ticketSeconds <= 0) return;
@@ -204,6 +247,10 @@ export default function VideoGrabberPage() {
     if (!result || dl.state === 'downloading' || dl.state === 'done') return;
     const activeVariant = variants.find((v) => v.id === variantId);
     const streamUrl = activeVariant?.streamUrl ?? result.streamUrl;
+    if (!streamUrl) {
+      setError('No stream URL was returned — restart the download.');
+      return;
+    }
     const kind: 'video' | 'audio' = activeVariant?.kind ?? preference;
     const finalName = sanitizeName(filename, kind === 'audio' ? 'mp3' : 'mp4');
     const startedAt = Date.now();
@@ -260,6 +307,15 @@ export default function VideoGrabberPage() {
     startDownload();
   }, [phase, result, dl.state, startDownload]);
 
+  // ── Fetch-status ticker (the claiming screen) ────────────
+  useEffect(() => {
+    if (phase !== 'claiming') return;
+    setFetchSecs(0);
+    const t0 = Date.now();
+    const iv = setInterval(() => setFetchSecs(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [phase]);
+
   const reset = useCallback(() => {
     setPhase('idle');
     setCountdown(0);
@@ -298,6 +354,8 @@ export default function VideoGrabberPage() {
               textDecoration: 'none',
               color: BLACK,
               border: '2px solid #000',
+              borderRadius: 4,
+              boxShadow: '2px 2px 0 #000',
               background: '#fff',
               display: 'inline-block',
             }}
@@ -444,13 +502,36 @@ export default function VideoGrabberPage() {
               </div>
             )}
 
+            {/* Fetching on the engine — shown IN the page, not a takeover */}
+            {phase === 'claiming' && (
+              <div style={{ border: `2px solid ${BLACK}`, background: '#fff', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.1em', color: BLACK }}>
+                  ● DOWNLOADING YOUR FILE — {fetchSecs}S
+                </span>
+                <div style={{ width: '100%', height: 14, background: '#F4F4F5', border: `1px solid ${BLACK}` }}>
+                  {/* Asymptotic creep toward 49%: fast early, always moving — never
+                      the frozen half-bar. The real device download then maps 50→100. */}
+                  <div style={{ width: `${Math.min(49, Math.floor(52 * (1 - Math.exp(-fetchSecs / 100))))}%`, height: '100%', background: GREEN, transition: 'width 1s linear' }} />
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'monospace', fontWeight: 700, fontSize: '0.68rem', color: GRAY, textAlign: 'left' }}>
+                  <li style={{ color: GREEN }}>✓ AD WATCHED — DOWNLOAD UNLOCKED</li>
+                  <li style={{ color: BLACK }}>● DOWNLOADING…</li>
+                  <li>○ PREPARING FILE</li>
+                  <li>○ SAVED TO YOUR DEVICE</li>
+                </ul>
+                <p style={{ margin: 0, fontSize: '0.68rem', fontWeight: 700, color: '#3F3F46', lineHeight: 1.5 }}>
+                  Keep this tab open — when this completes, the file saves itself to your device.
+                </p>
+              </div>
+            )}
+
             {/* Progress / status */}
             {(dl.state === 'downloading' || dl.state === 'done' || dl.state === 'failed') && (
               <div>
                 <div style={{ border: `2px solid ${BLACK}`, background: '#fff', height: 26, position: 'relative' }}>
                   <div
                     style={{
-                      width: dl.state === 'done' ? '100%' : `${pct}%`,
+                      width: `${shownPct}%`,
                       height: '100%',
                       background: progressFill,
                       transition: 'width 0.25s ease',
@@ -474,7 +555,7 @@ export default function VideoGrabberPage() {
                       : dl.state === 'done'
                         ? `SAVED TO DEVICE · ${formatBytes(dl.received)}`
                         : dl.total > 0
-                          ? `${pct}% · ${formatBytes(dl.received)} / ${formatBytes(dl.total)}${etaSec !== null ? ` · ${etaSec}S LEFT` : ''}`
+                          ? `${shownPct}% · ${formatBytes(dl.received)} / ${formatBytes(dl.total)}${etaSec !== null ? ` · ${etaSec}S LEFT` : ''}`
                           : `${formatBytes(dl.received)} DOWNLOADED`}
                   </span>
                 </div>
@@ -490,7 +571,7 @@ export default function VideoGrabberPage() {
                 )}
                 {(dl.state === 'done' || dl.state === 'failed') && (
                   <button
-                    onClick={reset}
+                    onClick={dl.state === 'failed' ? startDownload : reset}
                     style={{
                       marginTop: 10,
                       padding: '11px 16px',
@@ -516,7 +597,7 @@ export default function VideoGrabberPage() {
                 </p>
                 <p style={{ margin: '0 0 10px', fontSize: '0.78rem', fontWeight: 600, color: '#3F3F46' }}>{error}</p>
                 <button
-                  onClick={reset}
+                  onClick={retryClaim}
                   style={{
                     padding: '8px 14px',
                     border: `2px solid ${BLACK}`,
@@ -547,11 +628,16 @@ export default function VideoGrabberPage() {
               </p>
               <input
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Pasting a new link restarts everything — no extra
+                  // "grab another" step needed, the box is never locked.
+                  if (phase !== 'idle' && phase !== 'error') reset();
+                  setUrl(v);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleStart()}
                 placeholder="Paste any video or audio link"
                 spellCheck={false}
-                disabled={phase !== 'idle' && phase !== 'error'}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
@@ -612,10 +698,12 @@ export default function VideoGrabberPage() {
                           { id: 'video', label: 'Video · MP4', kind: 'video' as const },
                           { id: 'audio', label: 'Audio track · MP3', kind: 'audio' as const },
                         ]
-                      : [
-                        { id: 'video', label: 'Best video · Auto', kind: 'video' as const },
-                        { id: 'audio', label: 'Audio only · MP3', kind: 'audio' as const },
-                      ]
+                      : formatsLoading
+                        ? [{ id: 'loading', label: '● READING FORMATS…', kind: 'video' as const }]
+                        : [
+                          { id: 'video', label: 'Best video · Auto', kind: 'video' as const },
+                          { id: 'audio', label: 'Audio only · MP3', kind: 'audio' as const },
+                        ]
                   ).map((v) => {
                     const ready = phase === 'ready' && result;
                     const selected = v.id === (ready ? variantId || 'original' : preference);
@@ -623,6 +711,7 @@ export default function VideoGrabberPage() {
                       <button
                         key={v.id}
                         onClick={() => {
+                          if (v.id === 'loading') return;
                           if (ready) setVariantId(v.id);
                           else setPreference(v.id as 'video' | 'audio');
                         }}
@@ -830,7 +919,9 @@ export default function VideoGrabberPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               {(sheetVariants.length
                 ? sheetVariants
-                : [
+                : formatsLoading
+                  ? [{ id: 'loading', label: '● READING FORMATS…', kind: 'video' as const }]
+                  : [
                     { id: 'video', label: 'Best video · MP4', kind: 'video' as const },
                     { id: 'audio', label: 'Audio only · MP3', kind: 'audio' as const },
                   ]
@@ -840,6 +931,7 @@ export default function VideoGrabberPage() {
                   <button
                     key={v.id}
                     onClick={() => {
+                      if (v.id === 'loading') return;
                       setChosenFormatId(v.id);
                       setPreference(v.kind);
                     }}
@@ -881,7 +973,7 @@ export default function VideoGrabberPage() {
                   </button>
                 );
               })}
-              {!sheetVariants.length && (
+              {!sheetVariants.length && !formatsLoading && (
                 <p style={{ margin: '4px 0 0', fontSize: '0.66rem', fontWeight: 600, color: GRAY, lineHeight: 1.5 }}>
                   Every resolution YouTube allows will be listed here the moment the platform engine connects. For now: best MP4 or MP3.
                 </p>
@@ -914,8 +1006,8 @@ export default function VideoGrabberPage() {
         </>
       )}
 
-      {/* ── FULLSCREEN AD — watch 5s, tap X, file downloads itself ── */}
-      {(phase === 'adgate' || phase === 'claiming') && (
+      {/* ── FULLSCREEN AD — watch 5s, tap X, back to the page to fetch ── */}
+      {phase === 'adgate' && (
         <div
           style={{
             position: 'fixed',
@@ -939,11 +1031,9 @@ export default function VideoGrabberPage() {
             }}
           >
             <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.7rem', letterSpacing: '0.12em', color: WHITE }}>
-              {phase === 'claiming'
-                ? 'VERIFYING…'
-                : countdown > 0
-                  ? `YOUR DOWNLOAD STARTS IN ${countdown}S`
-                  : 'TAP THE X TO GET YOUR FILE'}
+              {countdown > 0
+                ? `YOUR DOWNLOAD STARTS IN ${countdown}S`
+                : 'TAP THE X TO GET YOUR FILE'}
             </span>
             <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.62rem', letterSpacing: '0.1em', color: '#52525B' }}>
               CREATOR ENGINE · ONE AD PER DOWNLOAD
@@ -987,7 +1077,14 @@ export default function VideoGrabberPage() {
                 ) : (
                   phase === 'adgate' && (
                     <button
-                      onClick={doClaim}
+                      type="button"
+                      onClick={(e) => {
+                        // Never navigate, never fall through into the ad below —
+                        // the tap goes to the server check, nothing else.
+                        e.preventDefault();
+                        e.stopPropagation();
+                        doClaim();
+                      }}
                       aria-label="Close ad and start download"
                       style={{
                         position: 'absolute',
@@ -1011,7 +1108,9 @@ export default function VideoGrabberPage() {
                 )}
               </div>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#A1A1AA', textAlign: 'center' }}>
-                {countdown > 0 ? 'Keep this tab open — this ad pays for your download.' : 'The ad is done. Tap the X and your file saves itself.'}
+                {countdown > 0
+                  ? 'Keep this tab open — this ad pays for your download.'
+                  : 'The ad is done. Tap the X and your file saves itself.'}
               </p>
             </div>
           </div>

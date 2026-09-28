@@ -1,0 +1,337 @@
+[
+  {
+    "id": "0gnr0y",
+    "sender_name": "Alex",
+    "recipient_name": "Sarah",
+    "message": "Testing our new bouquet short code storage!",
+    "gift_format": "both",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "classic-cream",
+    "target_url": "",
+    "audio_enabled": false,
+    "metadata": {},
+    "view_count": 0,
+    "created_at": "2026-09-28T16:59:20.209Z"
+  },
+  {
+    "id": "5i4o5g",
+    "sender_name": "Secret Admirer",
+    "recipient_name": "Beloved",
+    "message": "I have so much to tell you, but only this much space on this card! Still, you must know...",
+    "gift_format": "both",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": false,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "space-mono",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Dear",
+      "closing": "Sincerely,"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T17:05:40.525Z"
+  },
+  {
+    "id": "s9f50a",
+    "sender_name": "Secret Admirer",
+    "recipient_name": "Beloved",
+    "message": "I have so much to tell you, but only this much space on this card! Still, you must know...",
+    "gift_format": "both",
+    "sound_preset": "lofi-chill",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream"
+      ],
+      "greenery": [
+        "fern-fan"
+      ],
+      "seed": 1043,
+      "cardFont": "kalam",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Dear",
+      "closing": "Sincerely,",
+      "soundPreset": "lofi-chill"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T18:31:47.159Z"
+  },
+  {
+    "id": "9ktsch",
+    "sender_name": "Secret Admirer",
+    "recipient_name": "Beloved",
+    "message": "I have so much to tell you, but only this much space on this card! Still, you must know...",
+    "gift_format": "both",
+    "sound_preset": "lofi-chill",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream"
+      ],
+      "greenery": [
+        "fern-fan"
+      ],
+      "seed": 1043,
+      "cardFont": "kalam",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Dear",
+      "closing": "Sincerely,",
+      "soundPreset": "lofi-chill"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T18:31:47.180Z"
+  },
+  {
+    "id": "i6upim",
+    "sender_name": "Senam & Mawuƒɛmor",
+    "recipient_name": "Mummy",
+    "message": "One day you were Yvonne, the next, you became a mother, and you have never stopped being a wonderful mom!\n\nHappy birthday, Mommy!\n\nWe pray for long life, strength to continue being our mother, and all your secret wishes to come true.\n\nHappy, happy birthday, Mommy!",
+    "gift_format": "both",
+    "sound_preset": "ocean-waves",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream",
+        "ranunculus-blush",
+        "camellia-pink",
+        "african-daisy-coral",
+        "tulip-rose"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "caveat",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Happy Birthday",
+      "closing": "From,",
+      "soundPreset": "ocean-waves"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:29:57.824Z"
+  },
+  {
+    "id": "k00wd3",
+    "sender_name": "Senam & Mawuƒɛmor",
+    "recipient_name": "Mummy",
+    "message": "One day you were Yvonne, the next, you became a mother, and you have never stopped being a wonderful mom!\n\nHappy birthday, Mommy!\n\nWe pray for long life, strength to continue being our mother, and all your secret wishes to come true.\n\nHappy, happy birthday, Mommy!",
+    "gift_format": "both",
+    "sound_preset": "ocean-waves",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream",
+        "ranunculus-blush",
+        "camellia-pink",
+        "african-daisy-coral",
+        "tulip-rose"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "kalam",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Happy Birthday",
+      "closing": "From,",
+      "soundPreset": "ocean-waves"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:24:53.000Z"
+  },
+  {
+    "id": "jp6dtx",
+    "sender_name": "Senam & Mawuƒɛmor",
+    "recipient_name": "Mummy",
+    "message": "One day you were Yvonne, the next, you became a mother, and you have never stopped being a wonderful mom!\n\nHappy birthday, Mommy!\n\nWe pray for long life, strength to continue being our mother, and all your secret wishes to come true.\n\nHappy, happy birthday, Mommy!",
+    "gift_format": "both",
+    "sound_preset": "ocean-waves",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream",
+        "ranunculus-blush",
+        "camellia-pink",
+        "african-daisy-coral",
+        "tulip-rose"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "caveat",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Happy Birthday",
+      "closing": "From,",
+      "soundPreset": "ocean-waves"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:28:53.764Z"
+  },
+  {
+    "id": "kqtx7l",
+    "sender_name": "Senam & Mawuƒɛmor",
+    "recipient_name": "Mummy",
+    "message": "One day you were Yvonne, the next, you became a mother, and you have never stopped being a wonderful mom!\n\nHappy birthday, Mommy!\n\nWe pray for long life, strength to continue being our mother, and all your secret wishes to come true.\n\nHappy, happy birthday, Mommy!",
+    "gift_format": "both",
+    "sound_preset": "ocean-waves",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream",
+        "ranunculus-blush",
+        "camellia-pink",
+        "african-daisy-coral",
+        "tulip-rose"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "caveat",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Happy Birthday",
+      "closing": "From,",
+      "soundPreset": "ocean-waves"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:29:57.907Z"
+  },
+  {
+    "id": "y8nbwm",
+    "sender_name": "Secret Admirer",
+    "recipient_name": "Beloved",
+    "message": "I have so much to tell you, but only this much space on this card! Still, you must know...",
+    "gift_format": "both",
+    "sound_preset": "music-box",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "space-mono",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Dear",
+      "closing": "Sincerely,",
+      "soundPreset": "music-box"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:55:57.983Z"
+  },
+  {
+    "id": "nq8lhk",
+    "sender_name": "Secret Admirer",
+    "recipient_name": "Beloved",
+    "message": "I have so much to tell you, but only this much space on this card! Still, you must know...",
+    "gift_format": "both",
+    "sound_preset": "music-box",
+    "scene_type": "botanical-2d",
+    "season": "spring",
+    "palette_id": "minimalist-letterhead",
+    "target_url": "http://localhost:3000",
+    "audio_enabled": true,
+    "metadata": {
+      "flowers": [
+        "rose-pink",
+        "sunflower-golden",
+        "peony-blush",
+        "carnation-blush",
+        "daisy-cream"
+      ],
+      "greenery": [
+        "fern-illustration"
+      ],
+      "seed": 1042,
+      "cardFont": "space-mono",
+      "cardPlacement": "right",
+      "giftFormat": "both",
+      "greeting": "Dear",
+      "closing": "Sincerely,",
+      "soundPreset": "music-box"
+    },
+    "view_count": 0,
+    "created_at": "2026-09-28T19:55:58.052Z"
+  }
+]

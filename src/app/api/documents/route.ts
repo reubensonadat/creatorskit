@@ -1,10 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+export const runtime = 'edge';
 
-// Memory cache + local JSON persistence fallback for documents
-const DATA_DIR = path.join(process.cwd(), '.data');
-const DATA_FILE = path.join(DATA_DIR, 'documents.json');
+import { NextRequest, NextResponse } from 'next/server';
 
 interface StoredDoc {
   id: string;
@@ -24,42 +20,8 @@ interface StoredDoc {
   created_at: string;
 }
 
-// In-memory cache
+// In-memory cache for Edge isolates
 const memoryDocs = new Map<string, StoredDoc>();
-
-function ensureStorage(): void {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(DATA_FILE)) {
-      const content = fs.readFileSync(DATA_FILE, 'utf-8');
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        parsed.forEach((doc: StoredDoc) => {
-          if (doc?.id) memoryDocs.set(doc.id, doc);
-        });
-      }
-    }
-  } catch (err) {
-    // Graceful fallback to memoryDocs
-  }
-}
-
-function persistStorage(): void {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    const docs = Array.from(memoryDocs.values());
-    fs.writeFileSync(DATA_FILE, JSON.stringify(docs, null, 2), 'utf-8');
-  } catch (err) {
-    // Ignore write errors in read-only environments
-  }
-}
-
-// Initialize on module load
-ensureStorage();
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -70,13 +32,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Check memory
-  let doc = memoryDocs.get(id);
-
-  // If not found in memory, try re-reading file
-  if (!doc) {
-    ensureStorage();
-    doc = memoryDocs.get(id);
-  }
+  const doc = memoryDocs.get(id);
 
   if (!doc) {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 });
@@ -114,7 +70,6 @@ export async function POST(request: NextRequest) {
     };
 
     memoryDocs.set(id, doc);
-    persistStorage();
 
     return NextResponse.json({ success: true, id, data: doc });
   } catch (err: any) {

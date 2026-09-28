@@ -22,6 +22,7 @@ const DAILY_LIMIT = parseInt(Deno.env.get('DAILY_LIMIT') ?? '15', 10);
 const TICKET_TTL = parseInt(Deno.env.get('TICKET_TTL_SECONDS') ?? '600', 10);
 const CHALLENGE_TTL = 180;
 const WORKER_URL = (Deno.env.get('VIDEO_WORKER_URL') ?? '').replace(/\/+$/, '');
+const WORKER_TOKEN = Deno.env.get('VIDEO_WORKER_TOKEN') ?? '';
 const APP_ORIGIN = Deno.env.get('APP_ORIGIN') ?? '*';
 
 // Public origin of this function. Do NOT use req.url inside edge runtime —
@@ -131,19 +132,20 @@ async function logEvent(outcome: string, opts: { platform?: string; urlHash?: st
 
 // ── actions ─────────────────────────────────────────────────
 
-type VariantLike = { id: string; label: string; kind: 'video' | 'audio'; streamUrl: string; sizeBytes?: number };
+type VariantLike = { id: string; label: string; kind: 'video' | 'audio'; streamUrl?: string; sizeBytes?: number };
 
-/** Normalize a resolver's format list into safe variant objects. */
+/** Normalize a resolver's format list into safe variant objects.
+ * streamUrl is optional: /formats lists resolutions BEFORE they exist. */
 function sanitizeVariants(list: unknown): VariantLike[] {
   if (!Array.isArray(list)) return [];
   return list
-    .filter((v: any) => v && typeof v.streamUrl === 'string')
+    .filter((v: any) => v && (typeof v.id === 'string' || typeof v.label === 'string'))
     .slice(0, 12)
     .map((v: any, i: number) => ({
       id: typeof v.id === 'string' ? v.id : `v${i}`,
       label: typeof v.label === 'string' ? v.label : `Option ${i + 1}`,
       kind: v.kind === 'audio' ? ('audio' as const) : ('video' as const),
-      streamUrl: v.streamUrl,
+      streamUrl: typeof v.streamUrl === 'string' ? v.streamUrl : undefined,
       sizeBytes: typeof v.sizeBytes === 'number' ? v.sizeBytes : undefined,
     }));
 }
@@ -180,7 +182,9 @@ async function handleChallenge(req: Request, body: { url?: string }) {
     .insert({
       url_hash: urlHash,
       ip_hash: ipHash,
-      not_before: new Date(now + WAIT_SECONDS * 1000).toISOString(),
+      // Ad-wait is advisory with grace: the frontend locks 5s, the server
+      // forgives 2 — a clock/network race must NEVER lock a real user out.
+      not_before: new Date(now + Math.max(1, WAIT_SECONDS - 2) * 1000).toISOString(),
       expires_at: new Date(now + CHALLENGE_TTL * 1000).toISOString(),
     })
     .select('id')
@@ -195,7 +199,7 @@ async function handleChallenge(req: Request, body: { url?: string }) {
   });
 }
 
-async function handleClaim(req: Request, body: { url?: string; challengeId?: string }) {
+async function handleClaim(req: Request, body: { url?: string; challengeId?: string; variantId?: string }) {
   const ipHash = await hashIp(clientIp(req));
   const check = isSafeUpstream(body.url ?? '');
   if (!check.ok) return json({ error: 'Invalid URL.', code: check.reason }, 400);
@@ -206,14 +210,23 @@ async function handleClaim(req: Request, body: { url?: string; challengeId?: str
 
   const { data: challenge } = await admin
     .from('ad_challenges')
-    .select('id, url_hash, not_before, expires_at, claimed')
+    .select('id, url_hash, not_before, expires_at, claimed, claimed_at')
     .eq('id', body.challengeId)
     .eq('ip_hash', ipHash)
     .maybeSingle();
 
   const now = new Date();
   if (!challenge) return json({ error: 'Challenge not found. Restart the download.', code: 'challenge' }, 410);
-  if (challenge.claimed) return json({ error: 'Challenge already used. Restart the download.', code: 'challenge' }, 410);
+  // A used challenge may be RE-CLAIMED for a short window: if the engine
+  // hiccuped (530/524/…) the user already paid the ad — retrying must never
+  // force them to watch it again. Trust the frontend, count quota on success.
+  const reclaim = !!challenge.claimed;
+  if (reclaim) {
+    const claimedAt = challenge.claimed_at ? new Date(challenge.claimed_at).getTime() : 0;
+    if (claimedAt && now.getTime() - claimedAt > 10 * 60_000) {
+      return json({ error: 'This unlock expired. Restart the download.', code: 'challenge' }, 410);
+    }
+  }
   if (now > new Date(challenge.expires_at)) return json({ error: 'Challenge expired. Restart the download.', code: 'challenge' }, 410);
   if (now < new Date(challenge.not_before)) {
     // The ad-wait was skipped — refuse early claims.
@@ -221,15 +234,17 @@ async function handleClaim(req: Request, body: { url?: string; challengeId?: str
   }
   if (challenge.url_hash !== urlHash) return json({ error: 'Challenge does not match this URL.', code: 'challenge' }, 400);
 
-  // Consume challenge + count quota
-  const { error: consumeErr } = await admin
-    .from('ad_challenges')
-    .update({ claimed: true, claimed_at: now.toISOString() })
-    .eq('id', challenge.id)
-    .eq('claimed', false);
-  if (consumeErr) return json({ error: 'Challenge conflict. Restart.', code: 'challenge' }, 409);
+  // Consume challenge (first claim only — re-claims skip this)
+  if (!reclaim) {
+    const { error: consumeErr } = await admin
+      .from('ad_challenges')
+      .update({ claimed: true, claimed_at: now.toISOString() })
+      .eq('id', challenge.id)
+      .eq('claimed', false);
+    if (consumeErr) return json({ error: 'Challenge conflict. Restart.', code: 'challenge' }, 409);
+  }
 
-  await admin.rpc('increment_download_quota', { p_ip_hash: ipHash });
+  // (quota is counted only on SUCCESS — see both return paths below)
 
   const platform = detectPlatform(url.toString());
 
@@ -243,15 +258,84 @@ async function handleClaim(req: Request, body: { url?: string; challengeId?: str
       }, 501);
     }
     try {
-      const res = await fetch(`${WORKER_URL}/resolve`, {
+      // Kick off the job — the worker answers instantly and finishes in the
+      // background. (A held-open request dies at ~100s behind Cloudflare
+      // proxies: that was the 524.)
+      let startRes = await fetch(`${WORKER_URL}/resolve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.toString(), platform }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(WORKER_TOKEN ? { 'X-Worker-Token': WORKER_TOKEN } : {}),
+        },
+        body: JSON.stringify({ url: url.toString(), platform, variantId: body.variantId }),
       });
-      if (!res.ok) throw new Error(`worker_${res.status}`);
-      const data = await res.json();
-      if (!data?.streamUrl) throw new Error('worker_empty');
+      if (!startRes.ok) {
+        // Transient tunnel error (530 etc.)? One immediate retry before failing.
+        await new Promise((r) => setTimeout(r, 2000));
+        startRes = await fetch(`${WORKER_URL}/resolve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(WORKER_TOKEN ? { 'X-Worker-Token': WORKER_TOKEN } : {}),
+          },
+          body: JSON.stringify({ url: url.toString(), platform, variantId: body.variantId }),
+        });
+        if (!startRes.ok) throw new Error(`worker_${startRes.status}`);
+      }
+      const start = await startRes.json();
+      // Poll every 2s (typical resolve: 10–90s; datacenter hosts are faster).
+      // TIME budget, not an iteration count: the platform kills this function
+      // at ~150s wall clock and each poll round-trip costs 2–3s — a fixed
+      // 65-iteration loop overran it (that was the user's 504). Stop polling
+      // at 100s and hand the job to the browser (pending), which can wait
+      // as long as the worker needs.
+      const deadline = Date.now() + 100_000;
+      let data: any = null;
+      let misses = 0;
+      let tick = 0;
+      while (Date.now() < deadline) {
+        // Adaptive backoff: quick ticks at first (datacenter hosts answer in
+        // 5–30s), then gentler — polite to free tiers under load.
+        await new Promise((r) => setTimeout(r, tick < 10 ? 2000 : tick < 30 ? 3000 : 5000));
+        tick++;
+        const poll = await fetch(
+          `${WORKER_URL}/job/${start.jobId}?t=${encodeURIComponent(start.token)}`,
+          { headers: { ...(WORKER_TOKEN ? { 'X-Worker-Token': WORKER_TOKEN } : {}) } },
+        );
+        if (!poll.ok) {
+          // A single tunnel hiccup (530/502) must not kill the claim — the
+          // job keeps running on the worker. Only give up after a streak.
+          misses++;
+          if (misses >= 5) throw new Error(`worker_${poll.status}`);
+          continue;
+        }
+        misses = 0;
+        const j = await poll.json();
+        if (j.status === 'failed') throw new Error(String(j.error ?? 'worker_failed').slice(0, 200));
+        if (j.status === 'ready') { data = j; break; }
+      }
+      if (!data) {
+        // Still processing after ~130s of polling — the platform kills this
+        // function at 150s, so waiting longer here is impossible. Instead of
+        // failing, HAND THE JOB TO THE BROWSER: the page polls the worker
+        // directly (its per-job token is the credential) and downloads the
+        // moment the file is ready. Slow home-hosted workers survive this
+        // way; a Render datacenter usually finishes long before this branch.
+        await logEvent('worker_pending', { platform, urlHash, ipHash });
+        await admin.rpc('increment_download_quota', { p_ip_hash: ipHash });
+        return json({
+          mode: 'worker',
+          pending: true,
+          jobId: start.jobId,
+          jobToken: start.token,
+          workerBase: WORKER_URL.replace(/\/+$/, ''),
+          platform,
+          expiresInSeconds: 600,
+        });
+      }
+      if (!data.streamUrl) throw new Error('engine busy — pick a smaller resolution and retry');
       await logEvent('worker_pass', { platform, urlHash, ipHash });
+      await admin.rpc('increment_download_quota', { p_ip_hash: ipHash });
       // Resolution selector: the resolver may return several formats
       // (e.g. 1080p / 720p / audio-only). Pass them through when present.
       const variants = sanitizeVariants(data.variants);
@@ -279,6 +363,7 @@ async function handleClaim(req: Request, body: { url?: string; challengeId?: str
   if (ticketErr) return json({ error: 'Could not mint ticket.', code: 'db' }, 500);
 
   await logEvent('granted', { platform, urlHash, ipHash });
+  await admin.rpc('increment_download_quota', { p_ip_hash: ipHash });
 
   const streamUrl = `${FN_ORIGIN}/functions/v1/video-grab?tq=${ticket}&u=${encodeURIComponent(url.toString())}`;
   // Best-effort size probe (HEAD) so the page can show size + time estimates.
@@ -326,7 +411,10 @@ async function handleFormats(req: Request, body: { url?: string }) {
   try {
     const res = await fetch(`${WORKER_URL}/formats`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(WORKER_TOKEN ? { 'X-Worker-Token': WORKER_TOKEN } : {}),
+      },
       body: JSON.stringify({ url: url.toString(), platform }),
     });
     if (!res.ok) throw new Error(`worker_${res.status}`);
