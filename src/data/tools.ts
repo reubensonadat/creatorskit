@@ -67,13 +67,13 @@ export const NATIVE_TOOLS: ToolItem[] = [
     badge: 'NEW',
   },
   {
-    label: '3D Tree QR Diorama',
-    href: '/tree-qr',
-    hint: 'SCANNABLE 3D ART',
-    desc: 'Transform any URL or text into a scannable 3D voxel tree diorama with seasonal particles',
+    label: 'Digital Bouquet Studio',
+    href: '/bouquet',
+    hint: 'PRINTABLE BOTANICAL GIFT',
+    desc: 'Craft a handcrafted flower bouquet with a personalized card and print it in real-time',
     isFlagship: true,
     category: 'studio',
-    badge: '3D ART',
+    badge: 'NEW',
   },
 
   {
@@ -108,6 +108,15 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Slice wide panoramic graphics into seamless multi-slide Instagram & LinkedIn posts',
     isFlagship: false,
     category: 'utility',
+  },
+  {
+    label: 'Video Grabber',
+    href: '/video-grabber',
+    hint: 'AD-UNLOCKED SAVES',
+    desc: 'Paste any video or audio link, watch one short ad, and save the file straight to your device',
+    isFlagship: true,
+    category: 'utility',
+    badge: 'POWERFUL',
   },
 ];
 

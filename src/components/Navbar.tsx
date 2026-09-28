@@ -68,7 +68,7 @@ export default function Navbar() {
           maxWidth: 1200,
           margin: "0 auto",
           padding: "0 24px",
-          height: 52,
+          height: 54,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -91,17 +91,18 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 28,
-              height: 28,
+              width: 30,
+              height: 30,
               overflow: "hidden",
-              border: "2px solid #000",
-              background: "#fff",
+              border: "2px solid #000000",
+              background: "#ffffff",
+              boxShadow: "2px 2px 0 #000000",
             }}
           >
             <img src="/logo.png" alt="CK" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
-          <span style={{ fontWeight: 900, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#000", fontFamily: "monospace" }}>
-            CK<span style={{ color: "#888" }}>.win</span>
+          <span style={{ fontWeight: 900, fontSize: "0.95rem", letterSpacing: "-0.02em", color: "#000000", fontFamily: "monospace" }}>
+            CK<span style={{ color: "#71717a" }}>.win</span>
           </span>
         </Link>
 
@@ -113,20 +114,23 @@ export default function Navbar() {
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "6px 12px",
+              padding: "7px 14px",
               fontSize: "0.75rem",
               fontWeight: 900,
               cursor: "pointer",
               background: pathname.startsWith('/blog') ? "#000000" : "#ffffff",
-              color: pathname.startsWith('/blog') ? "#FFE500" : "#000000",
-              border: "2px solid #000",
+              color: pathname.startsWith('/blog') ? "#ffffff" : "#000000",
+              border: "2px solid #000000",
+              borderRadius: "4px",
               fontFamily: "monospace",
               textTransform: "uppercase",
-              letterSpacing: "0.04em",
+              letterSpacing: "0.05em",
               textDecoration: "none",
-              boxShadow: "2px 2px 0 #000",
-              borderRadius: "4px",
+              boxShadow: "2px 2px 0 #000000",
+              transition: "all 0.12s ease",
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translate(-1px, -1px)"; e.currentTarget.style.boxShadow = "3px 3px 0 #000"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "2px 2px 0 #000"; }}
           >
             Blog
           </Link>
@@ -141,22 +145,33 @@ export default function Navbar() {
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                padding: "6px 12px",
+                padding: "7px 14px",
                 fontSize: "0.75rem",
                 fontWeight: 900,
                 cursor: "pointer",
-                background: menuOpen ? "#000" : "transparent",
-                color: menuOpen ? "#fff" : "#666",
-                border: "2px solid #000",
+                background: menuOpen ? "#000000" : "#ffffff",
+                color: menuOpen ? "#ffffff" : "#000000",
+                border: "2px solid #000000",
+                boxShadow: "2px 2px 0 #000000",
                 fontFamily: "monospace",
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
-                transition: "all 0.15s",
+                transition: "all 0.12s ease",
               }}
-              onMouseEnter={(e) => { if (!menuOpen) { e.currentTarget.style.background = "#000"; e.currentTarget.style.color = "#fff"; } }}
-              onMouseLeave={(e) => { if (!menuOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#666"; } }}
+              onMouseEnter={(e) => {
+                if (!menuOpen) {
+                  e.currentTarget.style.transform = "translate(-1px, -1px)";
+                  e.currentTarget.style.boxShadow = "3px 3px 0 #000";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!menuOpen) {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "2px 2px 0 #000";
+                }
+              }}
             >
-              <LayoutGrid size={14} />
+              <LayoutGrid size={13} />
               Tools
               <ChevronDown size={12} style={{ transform: menuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
             </button>
@@ -168,18 +183,18 @@ export default function Navbar() {
                   top: "calc(100% + 8px)",
                   right: 0,
                   zIndex: 60,
-                  minWidth: 320,
-                  maxHeight: "min(70vh, 640px)",
+                  width: 320,
+                  maxHeight: "min(70vh, 560px)",
                   overflowY: "auto",
-                  background: "#fff",
-                  border: "2px solid #000",
-                  boxShadow: "4px 4px 0 #000",
+                  background: "#ffffff",
+                  border: "2px solid #000000",
+                  boxShadow: "4px 4px 0 #000000",
                   padding: 8,
                 }}
               >
-                <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#888", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", padding: "8px 12px", borderBottom: "1px solid #eee", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>All tools</span>
-                  <span style={{ background: "#000", color: "#fff", fontSize: "0.6rem", fontWeight: 900, fontFamily: "monospace", padding: "1px 6px" }}>
+                <div style={{ fontSize: "0.62rem", fontWeight: 900, color: "#666666", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "monospace", padding: "8px 12px", borderBottom: "1px solid #e5e5e5", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>ALL TOOLS</span>
+                  <span style={{ background: "#000000", color: "#ffffff", fontSize: "0.62rem", fontWeight: 900, padding: "1px 6px" }}>
                     {ALL_TOOLS.length}
                   </span>
                 </div>
@@ -203,14 +218,14 @@ export default function Navbar() {
                           gap: 12,
                           padding: "8px 12px",
                           textDecoration: "none",
-                          transition: "background 0.12s",
-                          color: "#000",
+                          transition: "background 0.1s",
+                          color: "#000000",
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#f5f5f5"; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "#f4f4f5"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                       >
                         <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{tool.label}</span>
-                        <span style={{ fontSize: "0.55rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: "#888" }}>
+                        <span style={{ fontSize: "0.58rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: "#71717a" }}>
                           {tool.hint} ↗
                         </span>
                       </a>
@@ -229,15 +244,15 @@ export default function Navbar() {
                         gap: 12,
                         padding: "8px 12px",
                         textDecoration: "none",
-                        transition: "background 0.12s",
-                        background: isActive ? "#000" : "transparent",
-                        color: isActive ? "#fff" : "#000",
+                        transition: "background 0.1s",
+                        background: isActive ? "#000000" : "transparent",
+                        color: isActive ? "#ffffff" : "#000000",
                       }}
-                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f5f5f5"; }}
+                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f4f4f5"; }}
                       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                     >
                       <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{tool.label}</span>
-                      <span style={{ fontSize: "0.55rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: isActive ? "#999" : "#aaa" }}>
+                      <span style={{ fontSize: "0.58rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: isActive ? "#a1a1aa" : "#71717a" }}>
                         {tool.hint}
                       </span>
                     </Link>
@@ -251,20 +266,21 @@ export default function Navbar() {
           <Link
             href="/#tools"
             style={{
-              fontSize: "0.72rem",
-              padding: "6px 14px",
-              background: "#000",
-              color: "#fff",
-              border: "2px solid #000",
+              fontSize: "0.75rem",
+              padding: "7px 16px",
+              background: "#000000",
+              color: "#ffffff",
+              border: "2px solid #000000",
+              boxShadow: "2px 2px 0 #000000",
               fontWeight: 900,
               textDecoration: "none",
               fontFamily: "monospace",
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              transition: "all 0.15s",
+              transition: "all 0.12s ease",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#333"; e.currentTarget.style.borderColor = "#333"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#000"; e.currentTarget.style.borderColor = "#000"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translate(-1px, -1px)"; e.currentTarget.style.boxShadow = "3px 3px 0 #000"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "2px 2px 0 #000"; }}
           >
             All Tools
           </Link>
@@ -297,17 +313,18 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 28,
-              height: 28,
+              width: 32,
+              height: 32,
               overflow: "hidden",
-              border: "2px solid #000",
-              background: "#fff",
+              border: "1px solid #e4e4e7",
+              borderRadius: "8px",
+              background: "#fafafa",
             }}
           >
             <img src="/logo.png" alt="CK" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
-          <span style={{ fontWeight: 900, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#000", fontFamily: "monospace" }}>
-            CK<span style={{ color: "#888" }}>.win</span>
+          <span style={{ fontWeight: 800, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#09090b" }}>
+            CreatorKit<span style={{ color: "#71717a", fontWeight: 500, fontSize: "0.8rem", marginLeft: 4 }}>studio</span>
           </span>
         </Link>
 
@@ -320,22 +337,23 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 40,
-              height: 40,
-              background: mobileMenuOpen ? "#000" : "transparent",
-              border: "2px solid #000",
+              width: 38,
+              height: 38,
+              background: mobileMenuOpen ? "#f4f4f5" : "transparent",
+              border: "1px solid #e4e4e7",
+              borderRadius: "8px",
               cursor: "pointer",
-              color: mobileMenuOpen ? "#fff" : "#000",
+              color: "#18181b",
             }}
           >
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
           {mobileMenuOpen && (
             <div
               style={{
                 position: "fixed",
-                top: 52,
+                top: 58,
                 left: 0,
                 right: 0,
                 bottom: 0,
@@ -351,20 +369,18 @@ export default function Navbar() {
                   onClick={() => setMobileMenuOpen(false)}
                   style={{
                     display: "block",
-                    padding: "10px 8px",
+                    padding: "10px 14px",
                     textAlign: "center",
-                    background: pathname.startsWith('/blog') ? "#000000" : "#ffffff",
-                    color: pathname.startsWith('/blog') ? "#FFE500" : "#000000",
-                    border: "2px solid #000",
-                    fontWeight: 900,
-                    fontFamily: "monospace",
-                    fontSize: "0.78rem",
+                    background: pathname.startsWith('/blog') ? "#18181b" : "#f4f4f5",
+                    color: pathname.startsWith('/blog') ? "#ffffff" : "#18181b",
+                    border: "1px solid #e4e4e7",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
                     textDecoration: "none",
-                    boxShadow: "2px 2px 0 #000",
-                    borderRadius: "4px",
+                    borderRadius: "8px",
                   }}
                 >
-                  BLOG &amp; CASE STUDIES
+                  Blog &amp; Case Studies
                 </Link>
               </div>
 

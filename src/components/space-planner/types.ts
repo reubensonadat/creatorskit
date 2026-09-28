@@ -4,7 +4,7 @@
 
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'GHS' | 'NGN';
 
-export type ViewMode = 'perspective' | 'top' | 'camera-pov' | 'walkthrough';
+export type ViewMode = '2d' | '3d' | 'perspective' | 'top' | 'camera-pov' | 'walkthrough';
 
 export type CameraLensPreset = '16mm' | '24mm' | '35mm' | '50mm' | '85mm' | '105mm';
 
@@ -12,7 +12,175 @@ export type CameraSensorSize = 'full-frame' | 'aps-c' | 'micro-four-thirds' | 's
 
 export type CameraAperture = 'f/1.4' | 'f/1.8' | 'f/2.8' | 'f/4.0' | 'f/5.6';
 
-export type FloorFinish = 'oak-parquet' | 'dark-epoxy' | 'acoustic-carpet' | 'concrete-loft';
+export type FloorFinish =
+  | 'oak-parquet'
+  | 'dark-epoxy'
+  | 'acoustic-carpet'
+  | 'concrete-loft'
+  | 'porcelain-cream'
+  | 'porcelain-grey'
+  | 'marble-white'
+  | 'hardwood-teak'
+  | 'terrazzo-polish'
+  | 'bathroom-tile'
+  | 'pavement-blocks'
+  | 'grass-lawn'
+  | 'stamped-concrete';
+
+// ============================================================
+// Ghanaian & Modern Architectural Types
+// ============================================================
+
+export type FloorLevel = 'ground' | 'first';
+
+export type PlotPresetId = '100x80' | '100x70' | '100x50' | '70x50' | 'custom';
+
+export type CompoundFinish = 'pavement-blocks' | 'grass-lawn' | 'stamped-concrete' | 'mixed';
+
+export interface PlotConfig {
+  preset: PlotPresetId;
+  name: string;
+  widthFt: number;  // e.g. 100 ft
+  depthFt: number;  // e.g. 80 ft
+  widthM: number;   // calculated in meters
+  depthM: number;
+  compoundFinish: CompoundFinish;
+  showPerimeterFence: boolean;
+  fenceHeightM: number; // default 2.2m for Ghanaian standard perimeter
+  frontSetbackFt: number; // typically 15-20 ft from road
+  rearSetbackFt: number;  // 10 ft
+  sideSetbackFt: number;  // 6-10 ft
+}
+
+export type WallThickness = '5-inch' | '6-inch' | '9-inch';
+
+export interface WallSegment {
+  id: string;
+  startX: number;
+  startZ: number;
+  endX: number;
+  endZ: number;
+  thickness: WallThickness; // 5" (0.13m), 6" (0.15m), 9" (0.23m)
+  height: number;           // standard 3.0m ceiling
+  floor: FloorLevel;
+  isPerimeter?: boolean;
+}
+
+export type OpeningType =
+  | 'door-single'
+  | 'door-double'
+  | 'door-sliding'
+  | 'window-sliding'
+  | 'window-casement'
+  | 'window-louver'
+  | 'archway';
+
+export interface HouseOpening {
+  id: string;
+  type: OpeningType;
+  x: number;
+  z: number;
+  rotationY: number;
+  width: number;
+  height: number;
+  floor: FloorLevel;
+  wallId?: string;
+  label?: string;
+}
+
+export type RoomType =
+  | 'master-suite'
+  | 'bedroom'
+  | 'living-hall'
+  | 'dining'
+  | 'kitchen'
+  | 'pantry-store'
+  | 'bathroom'
+  | 'porch-terrace'
+  | 'balcony'
+  | 'carport'
+  | 'corridor';
+
+export interface RoomZone {
+  id: string;
+  name: string;
+  type: RoomType;
+  x: number; // center or top-left
+  z: number;
+  width: number;
+  depth: number;
+  floor: FloorLevel;
+  floorFinish: FloorFinish;
+  color?: string;
+}
+
+export type RoofType = 'hidden-parapet' | 'hip' | 'monoslope' | 'flat-terrace' | 'open-cutaway';
+
+export interface RoofConfig {
+  type: RoofType;
+  visible: boolean;
+  parapetHeightM: number; // 0.8m default for hidden parapet
+  pitchDegrees: number;   // 15 deg aluzinc slope or 25 deg hip
+  material: 'aluzinc' | 'concrete-slab' | 'shingle';
+  colorHex: string;
+}
+
+export interface MaterialUnitRates {
+  cementBagGHS: number;          // 50kg bag (GH₵ 98)
+  sandcrete6InchBlockGHS: number; // Standard wall block (GH₵ 8.50)
+  sandcrete5InchBlockGHS: number; // Partition block (GH₵ 7.50)
+  sandcrete9InchBlockGHS: number; // Foundation/Fence block (GH₵ 12.00)
+  sandTripGHS: number;           // Coarse river sand 20-tonne trip (GH₵ 1,900)
+  chippingsTripGHS: number;      // Granite chippings trip (GH₵ 2,400)
+  rebarTonGHS: number;           // High-tensile iron rods per ton (GH₵ 14,500)
+  roofingSheetM2GHS: number;     // Aluzinc roofing sheet per m² (GH₵ 120)
+  exchangeRateGHSPerUSD: number; // GH₵ per USD (15.5)
+}
+
+export interface ConstructionBoQ {
+  grossWallAreaM2: number;
+  openingsAreaM2: number;
+  netWallAreaM2: number;
+  
+  // Sandcrete blocks
+  blocks6InchCount: number;
+  blocks5InchCount: number;
+  blocks9InchCount: number;
+  totalBlocksCount: number;
+  blocksWastagePct: number; // 8%
+
+  // Cement (50kg bags)
+  cementLayingBags: number;
+  cementPlasteringBags: number; // internal + external
+  cementGermanFloorBags: number; // oversite concrete slab
+  cementBeamsLintelsBags: number;
+  totalCementBags: number;
+
+  // Aggregates
+  sandTrips: number;
+  chippingsTrips: number;
+
+  // Structural & Roofing
+  rebarTons: number;
+  roofingAreaM2: number;
+
+  // Total built footprint & floor area
+  builtFootprintM2: number;
+  totalFloorAreaM2: number;
+  plotCoveragePct: number;
+
+  // Costs
+  totalCostGHS: number;
+  totalCostUSD: number;
+  itemizedCostsGHS: {
+    blocks: number;
+    cement: number;
+    sandChippings: number;
+    rebar: number;
+    roofing: number;
+    estimatedLabor: number;
+  };
+}
 
 export interface AffiliateLinks {
   amazon?: string;
@@ -30,6 +198,10 @@ export interface LightSettings {
 }
 
 export type CreatorTemplateId =
+  | 'preset-3bed-bungalow'
+  | 'preset-4bed-villa'
+  | 'preset-2bed-halfplot'
+  | 'preset-custom-blank'
   | 'diy-bedroom-phone'
   | 'bedroom-studio'
   | 'podcast'
@@ -61,6 +233,12 @@ export interface CreatorTemplate {
   description: string;
   defaultRoom: { width: number; depth: number };
   items: TemplateItemPlacement[];
+  plotConfig?: Partial<PlotConfig>;
+  roofConfig?: Partial<RoofConfig>;
+  wallSegments?: WallSegment[];
+  openings?: HouseOpening[];
+  roomZones?: RoomZone[];
+  hasFirstFloor?: boolean;
 }
 
 export interface TemplateItemPlacement {
@@ -68,6 +246,7 @@ export interface TemplateItemPlacement {
   x: number;
   z: number;
   rotationY: number;
+  floor?: FloorLevel;
   isMainCamera?: boolean;
   lensPreset?: CameraLensPreset;
   lightSettings?: LightSettings;
@@ -115,6 +294,7 @@ export interface PlacedObject {
   x: number;
   z: number;
   rotationY: number;
+  floor?: FloorLevel;
   isMainCamera?: boolean;
   lensPreset?: CameraLensPreset; // 16mm, 24mm, 35mm, 50mm, 85mm, 105mm
   sensorSize?: CameraSensorSize; // full-frame, aps-c, micro-four-thirds, smartphone

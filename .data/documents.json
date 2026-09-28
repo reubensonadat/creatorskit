@@ -1,0 +1,54 @@
+[
+  {
+    "id": "wrv5gt",
+    "receipt_number": "",
+    "creator_name": "Creator",
+    "client_name": "Client",
+    "currency": "GHS",
+    "total_amount": 0,
+    "amount_paid": 0,
+    "balance_due": 0,
+    "status": "paid",
+    "payload_string": "",
+    "metadata": {},
+    "created_at": "2026-09-27T19:03:36.220Z"
+  },
+  {
+    "id": "d6dlob",
+    "receipt_number": "INV-2026-0042",
+    "creator_name": "Creators Kit / Reubenson Adat",
+    "creator_email": "hello@creatorskit.com",
+    "creator_phone": "+233 24 000 0000",
+    "client_name": "Synapse",
+    "currency": "GHS",
+    "total_amount": 7500,
+    "amount_paid": 3750,
+    "balance_due": 3750,
+    "status": "partial",
+    "payment_channel": "momo",
+    "payload_string": "eyJuIjoiQ3JlYXRvcnMgS2l0IC8gUmV1YmVuc29uIEFkYXQiLCJoIjoiQHJldWJlbnNvbl9jcmVhdGVzIiwiZSI6ImhlbGxvQGNyZWF0b3Jza2l0LmNvbSIsInAiOiIrMjMzIDI0IDAwMCAwMDAwIiwibCI6IkFjY3JhLCBHaGFuYSIsImMiOiJTeW5hcHNlIiwiYSI6IlN5bmFwc2UiLCJjdSI6IkdIUyIsInJuIjoiSU5WLTIwMjYtMDA0MiIsImR0IjoiMjAyNi0wOS0yNyIsIml0IjpbeyJkIjoiMXggRGVkaWNhdGVkIFRpa1RvayBWaWRlbyAoNjBzIHdpdGggSG9vaywgS2V5IE1lc3NhZ2UgJiBCaW8gTGluaykiLCJxIjoxLCJyIjozNTAwfSx7ImQiOiIxeCBJbnN0YWdyYW0gUmVlbCArIDN4IFN0b3J5IFNsaWRlcyB3aXRoIEJyYW5kIFRhZyAmIExpbmsgU3RpY2tlciIsInEiOjEsInIiOjQwMDB9XSwiZGEiOjAsInRwIjowLCJhcCI6Mzc1MCwicHQiOiJtb21vIiwibW4iOiJNVE4gTW9iaWxlIE1vbmV5IiwibXUiOiIwMjQgMTIzIDQ1NjciLCJibiI6IlN0YW5iaWMgQmFuayBHaGFuYSAvIFplbml0aCBCYW5rIiwiYmEiOiI5MDQwMDAxMjM0NTY3IiwiYnIiOjEsImsiOiJpbnZvaWNlIiwieCI6eyJ0cGwiOiJuYXZ5IiwibmljaGUiOiJUZWNoICYgTGlmZXN0eWxlIENyZWF0b3IiLCJjZSI6InBhcnRuZXJzaGlwc0BzeW5hcHNlLmNvbSIsImNhIjoiQWlycG9ydCBSZXNpZGVudGlhbCwgQWNjcmEiLCJzYSI6IkFpcnBvcnQgUmVzaWRlbnRpYWwgQXJlYSwgQWNjcmEsIEdoYW5hIiwicG8iOiJQTy1HSC0yMDI2IiwiZHVlIjoiMjAyNi0xMC0xMiIsImRlcCI6NTAsImRlcHIiOjM3NTAsIm1ubSI6IlJldWJlbnNvbiBBZGF0IiwiYmFuIjoiQ3JlYXRvcnMgS2l0IC8gUmV1YmVuc29uIEFkYXQiLCJwcyI6Imh0dHBzOi8vcGF5c3RhY2suc2hvcC9rb2ZpY3JlYXRlcyIsInN3IjoiU0JJQ0dIQUMiLCJpYiI6IkdIMTJTQklDMDAwMDEyMzQ1Njc4OTAiLCJ1cCI6IjMwIERheXMgT3JnYW5pYyBTb2NpYWwiLCJyciI6MiwidGQiOjUsInNpZyI6IktvZmkgTWVuc2FoIiwibnRzIjoiIiwiaGYiOiJPc3dhbGQiLCJiZiI6IkludGVyIiwic2YiOiJDYXZlYXQiLCJwYyI6IiMxNjJhNDUiLCJhYyI6IiNlMTViM2MifX0",
+    "metadata": {
+      "kind": "invoice"
+    },
+    "created_at": "2026-09-27T19:10:57.746Z"
+  },
+  {
+    "id": "s230c1",
+    "receipt_number": "INV-2026-0042",
+    "creator_name": "Creators Kit / Reubenson Adat",
+    "creator_email": "hello@creatorskit.com",
+    "creator_phone": "+233 24 000 0000",
+    "client_name": "Synapse",
+    "currency": "GHS",
+    "total_amount": 7500,
+    "amount_paid": 3750,
+    "balance_due": 3750,
+    "status": "partial",
+    "payment_channel": "momo",
+    "payload_string": "eyJuIjoiQ3JlYXRvcnMgS2l0IC8gUmV1YmVuc29uIEFkYXQiLCJoIjoiQHJldWJlbnNvbl9jcmVhdGVzIiwiZSI6ImhlbGxvQGNyZWF0b3Jza2l0LmNvbSIsInAiOiIrMjMzIDI0IDAwMCAwMDAwIiwibCI6IkFjY3JhLCBHaGFuYSIsImMiOiJTeW5hcHNlIiwiYSI6IlN5bmFwc2UiLCJjdSI6IkdIUyIsInJuIjoiSU5WLTIwMjYtMDA0MiIsImR0IjoiMjAyNi0wOS0yNyIsIml0IjpbeyJkIjoiMXggRGVkaWNhdGVkIFRpa1RvayBWaWRlbyAoNjBzIHdpdGggSG9vaywgS2V5IE1lc3NhZ2UgJiBCaW8gTGluaykiLCJxIjoxLCJyIjozNTAwfSx7ImQiOiIxeCBJbnN0YWdyYW0gUmVlbCArIDN4IFN0b3J5IFNsaWRlcyB3aXRoIEJyYW5kIFRhZyAmIExpbmsgU3RpY2tlciIsInEiOjEsInIiOjQwMDB9XSwiZGEiOjAsInRwIjowLCJhcCI6Mzc1MCwicHQiOiJtb21vIiwibW4iOiJNVE4gTW9iaWxlIE1vbmV5IiwibXUiOiIwMjQgMTIzIDQ1NjciLCJibiI6IlN0YW5iaWMgQmFuayBHaGFuYSAvIFplbml0aCBCYW5rIiwiYmEiOiI5MDQwMDAxMjM0NTY3IiwiYnIiOjEsImsiOiJpbnZvaWNlIiwieCI6eyJ0cGwiOiJuYXZ5IiwibmljaGUiOiJUZWNoICYgTGlmZXN0eWxlIENyZWF0b3IiLCJjZSI6InBhcnRuZXJzaGlwc0BzeW5hcHNlLmNvbSIsImNhIjoiQWlycG9ydCBSZXNpZGVudGlhbCwgQWNjcmEiLCJzYSI6IkFpcnBvcnQgUmVzaWRlbnRpYWwgQXJlYSwgQWNjcmEsIEdoYW5hIiwicG8iOiJQTy1HSC0yMDI2IiwiZHVlIjoiMjAyNi0xMC0xMiIsImRlcCI6NTAsImRlcHIiOjM3NTAsIm1ubSI6IlJldWJlbnNvbiBBZGF0IiwiYmFuIjoiQ3JlYXRvcnMgS2l0IC8gUmV1YmVuc29uIEFkYXQiLCJwcyI6Imh0dHBzOi8vcGF5c3RhY2suc2hvcC9rb2ZpY3JlYXRlcyIsInN3IjoiU0JJQ0dIQUMiLCJpYiI6IkdIMTJTQklDMDAwMDEyMzQ1Njc4OTAiLCJ1cCI6IjMwIERheXMgT3JnYW5pYyBTb2NpYWwiLCJyciI6MiwidGQiOjUsInNpZyI6IktvZmkgTWVuc2FoIiwibnRzIjoiIiwiaGYiOiJPc3dhbGQiLCJiZiI6IkludGVyIiwic2YiOiJDYXZlYXQiLCJwYyI6IiMxNjJhNDUiLCJhYyI6IiNlMTViM2MifX0",
+    "metadata": {
+      "kind": "invoice"
+    },
+    "created_at": "2026-09-27T19:11:01.680Z"
+  }
+]

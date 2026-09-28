@@ -27,6 +27,7 @@ import {
   Home,
   Footprints,
   Trash2,
+  Compass,
 } from 'lucide-react';
 import { usePlannerStore } from './store';
 import { COMPREHENSIVE_TEMPLATES, COMPREHENSIVE_TEMPLATE_IDS } from './templates';
@@ -37,7 +38,8 @@ import PlannerCanvas from './PlannerCanvas';
 import TemplateSelector from './TemplateSelector';
 import EquipmentLibrary from './EquipmentLibrary';
 import InspectorPanel from './InspectorPanel';
-import BudgetPanel from './BudgetPanel';
+import ConstructionEstimatorPanel from './ConstructionEstimatorPanel';
+import PlotSitePanel from './PlotSitePanel';
 import SpacingWarnings from './SpacingWarnings';
 import ProjectInfoPanel from './ProjectInfoPanel';
 import PlannerToolbar from './PlannerToolbar';
@@ -75,6 +77,7 @@ export default function SpacePlannerApp() {
   const toggleRightPanel = usePlannerStore((s) => s.toggleRightPanel);
   const isZenMode = usePlannerStore((s) => s.isZenMode);
   const toggleZenMode = usePlannerStore((s) => s.toggleZenMode);
+  const toggleBudgetPanel = usePlannerStore((s) => s.toggleBudgetPanel);
   const clearAll = usePlannerStore((s) => s.clearAll);
   const timeOfDay = usePlannerStore((s) => s.timeOfDay);
   const setTimeOfDay = usePlannerStore((s) => s.setTimeOfDay);
@@ -311,21 +314,22 @@ export default function SpacePlannerApp() {
             </button>
           </div>
 
-          {/* 1-Click 100% Client-Side Share Button */}
+          {/* Ghanaian Construction Material Estimator (BoQ) Button */}
           <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="px-2.5 py-1 bg-white hover:bg-stone-100 text-black border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center gap-1.5 transition-all hover:translate-x-[-1px]"
-            title="100% Client-Side 3D Studio Kit URL Generator (No Backend Needed)"
+            onClick={toggleBudgetPanel}
+            className="px-3 py-1 bg-[#FFDE59] hover:bg-[#FFE57F] text-black border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center gap-1.5 transition-all hover:translate-x-[-1px] cursor-pointer"
+            title="Ghanaian Sandcrete Blocks, Cement Bags & Construction BoQ"
           >
-            <Share2 size={13} />
-            <span className="hidden sm:inline">Share 3D Kit</span>
+            <span>🇬🇭</span>
+            <span className="font-mono font-black hidden sm:inline">Material Estimator (BoQ)</span>
+            <span className="font-mono font-black sm:hidden">BoQ</span>
           </button>
 
           {/* PNG & PDF Export Buttons */}
           <div className="flex items-center gap-1">
             <button
               onClick={handleExportPNG}
-              className="px-2 py-1 bg-white hover:bg-stone-100 text-black border-2 border-black font-bold text-xs shadow-[1.5px_1.5px_0_#000] hidden md:flex items-center gap-1"
+              className="px-2 py-1 bg-white hover:bg-stone-100 text-black border-2 border-black font-bold text-xs shadow-[1.5px_1.5px_0_#000] hidden md:flex items-center gap-1 cursor-pointer"
               title="Export High-Resolution Canvas PNG"
             >
               <Download size={13} />
@@ -333,11 +337,11 @@ export default function SpacePlannerApp() {
             </button>
             <button
               onClick={() => setIsPdfModalOpen(true)}
-              className="px-2.5 py-1 bg-black hover:bg-stone-800 text-white border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center gap-1"
-              title="Generate 5-Page Architectural PDF Dossier"
+              className="px-2.5 py-1 bg-black hover:bg-stone-800 text-white border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center gap-1 cursor-pointer"
+              title="Generate Architectural PDF Blueprint Drawing"
             >
               <FileDown size={13} />
-              <span>PDF</span>
+              <span>Print Plan</span>
             </button>
           </div>
         </div>
@@ -360,7 +364,7 @@ export default function SpacePlannerApp() {
                   }`}
               >
                 <Package size={12} />
-                <span>Gear</span>
+                <span>Elements</span>
               </button>
               <button
                 onClick={() => setLeftSidebarTab('templates')}
@@ -379,8 +383,8 @@ export default function SpacePlannerApp() {
                   : 'bg-white text-stone-700 hover:bg-stone-200'
                   }`}
               >
-                <Building size={12} />
-                <span>Room</span>
+                <Compass size={12} />
+                <span>Plot & Roof</span>
               </button>
             </div>
 
@@ -392,12 +396,7 @@ export default function SpacePlannerApp() {
                 <TemplateSelector onSelectTemplate={() => setLeftSidebarTab('equipment')} />
               )}
 
-              {leftSidebarTab === 'room-ai' && (
-                <div className="space-y-4">
-                  <RoomGeometryPanel />
-                  <WindowsPanel />
-                </div>
-              )}
+              {leftSidebarTab === 'room-ai' && <PlotSitePanel />}
             </div>
 
             {/* Left Sidebar Collapse Button Strip */}
@@ -532,8 +531,22 @@ export default function SpacePlannerApp() {
               {/* Active Inspector */}
               <InspectorPanel />
 
-              {/* Power & Budget BOM */}
-              <BudgetPanel />
+              {/* Ghanaian Construction Material & BoQ Panel Trigger */}
+              <div className="p-3 bg-stone-50 space-y-2">
+                <div className="flex items-center justify-between font-black text-xs uppercase tracking-wider text-black">
+                  <span>🇬🇭 Construction BoQ</span>
+                  <span className="text-[9px] bg-[#FFDE59] px-1.5 py-0.2 border border-black font-bold">Ghana Est.</span>
+                </div>
+                <p className="text-[10px] text-[#6B6863] leading-relaxed">
+                  Live Bill of Quantities: Sandcrete blocks (5", 6", 9"), 50kg cement bags, sand trips, rebar & budget.
+                </p>
+                <button
+                  onClick={toggleBudgetPanel}
+                  className="w-full py-1.5 bg-[#FFDE59] hover:bg-[#FFE57F] text-black border-2 border-black font-bold text-xs shadow-[2px_2px_0_#000] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <span>Open Material Estimator</span>
+                </button>
+              </div>
 
               {/* Spacing & Acoustic Diagnostics */}
               <SpacingWarnings />
@@ -647,8 +660,10 @@ export default function SpacePlannerApp() {
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          3. MODALS & SLIDE-OUT DRAWERS (PDF & 100% Client-Side Kit Share)
+          3. MODALS (Ghanaian BoQ Estimator, Blueprint PDF & Kit Share)
       ────────────────────────────────────────────────────────────── */}
+      <ConstructionEstimatorPanel />
+
       <PdfExportModal
         isOpen={isPdfModalOpen}
         onClose={() => setIsPdfModalOpen(false)}

@@ -14,11 +14,27 @@ import type {
   FloorFinish,
   LightSettings,
   WallDisplayMode,
+  PlotConfig,
+  PlotPresetId,
+  CompoundFinish,
+  RoofConfig,
+  RoofType,
+  FloorLevel,
+  WallSegment,
+  HouseOpening,
+  RoomZone,
+  MaterialUnitRates,
+  ConstructionBoQ,
 } from './types';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG } from './gear-library';
 import { COMPREHENSIVE_TEMPLATES } from './templates';
 import { validateGearCompatibility, calculateRoomAcoustics, analyzeStudioLighting } from '@/lib/space-planner/acoustics-lighting-engine';
 import { evaluateFramingQuality } from '@/lib/space-planner/optical-engine';
+import {
+  calculateConstructionBoQ,
+  DEFAULT_UNIT_RATES,
+  STANDARD_PLOT_PRESETS,
+} from '@/lib/space-planner/construction-calculator';
 
 // Generate unique ID
 let idCounter = 0;
@@ -77,6 +93,17 @@ interface StoreState {
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
 
+  // Architectural State
+  plotConfig: PlotConfig;
+  roofConfig: RoofConfig;
+  activeFloor: FloorLevel;
+  hasFirstFloor: boolean;
+  showFloorGhost: boolean;
+  wallSegments: WallSegment[];
+  houseOpenings: HouseOpening[];
+  roomZones: RoomZone[];
+  materialUnitRates: MaterialUnitRates;
+
   // Actions
   setRoomDimensions: (width: number, depth: number, height?: number) => void;
   setWallDisplayMode: (mode: WallDisplayMode) => void;
@@ -130,20 +157,58 @@ interface StoreState {
   getBudgetTotal: () => number;
   getWarnings: () => SpacingWarning[];
   getObjectY: (obj: PlacedObject) => number;
+
+  // Architectural Actions
+  setPlotPreset: (preset: PlotPresetId) => void;
+  setPlotDimensions: (widthFt: number, depthFt: number) => void;
+  setCompoundFinish: (finish: CompoundFinish) => void;
+  togglePerimeterFence: () => void;
+  setRoofType: (type: RoofType) => void;
+  toggleRoofVisible: () => void;
+  setActiveFloor: (floor: FloorLevel) => void;
+  setHasFirstFloor: (has: boolean) => void;
+  toggleFloorGhost: () => void;
+  addWallSegment: (wall: Omit<WallSegment, 'id'>) => string;
+  updateWallSegment: (id: string, updates: Partial<WallSegment>) => void;
+  deleteWallSegment: (id: string) => void;
+  addHouseOpening: (opening: Omit<HouseOpening, 'id'>) => string;
+  deleteHouseOpening: (id: string) => void;
+  addRoomZone: (room: Omit<RoomZone, 'id'>) => string;
+  updateRoomZone: (id: string, updates: Partial<RoomZone>) => void;
+  deleteRoomZone: (id: string) => void;
+  updateMaterialUnitRate: (key: keyof MaterialUnitRates, value: number) => void;
+  getConstructionBoQ: () => ConstructionBoQ;
 }
 
 export const usePlannerStore = create<StoreState>((set, get) => ({
-  roomWidth: 5,
-  roomDepth: 4,
+  roomWidth: 16.0,
+  roomDepth: 14.0,
   roomHeight: 3.0,
 
-  templateId: 'bedroom-studio',
-  viewMode: 'perspective',
+  templateId: 'preset-3bed-bungalow',
+  viewMode: '2d',
   wallDisplayMode: 'auto-cutaway',
-  floorFinish: 'oak-parquet',
+  floorFinish: 'porcelain-cream',
   placedObjects: [],
   selectedObjectId: null,
   placingEquipmentId: null,
+
+  plotConfig: STANDARD_PLOT_PRESETS['100x80'],
+  roofConfig: {
+    type: 'hidden-parapet',
+    visible: true,
+    parapetHeightM: 0.8,
+    pitchDegrees: 12,
+    material: 'aluzinc',
+    colorHex: '#3a3f44',
+  },
+  activeFloor: 'ground',
+  hasFirstFloor: false,
+  showFloorGhost: true,
+  wallSegments: COMPREHENSIVE_TEMPLATES['preset-3bed-bungalow']?.wallSegments || [],
+  houseOpenings: COMPREHENSIVE_TEMPLATES['preset-3bed-bungalow']?.openings || [],
+  roomZones: COMPREHENSIVE_TEMPLATES['preset-3bed-bungalow']?.roomZones || [],
+  materialUnitRates: DEFAULT_UNIT_RATES,
 
   currency: 'USD',
   userAffiliateTag: '',
@@ -491,10 +556,137 @@ export const usePlannerStore = create<StoreState>((set, get) => ({
       templateId,
       roomWidth: tpl.defaultRoom.width,
       roomDepth: tpl.defaultRoom.depth,
+      plotConfig: tpl.plotConfig ? { ...get().plotConfig, ...tpl.plotConfig } : get().plotConfig,
+      roofConfig: tpl.roofConfig ? { ...get().roofConfig, ...tpl.roofConfig } : get().roofConfig,
+      hasFirstFloor: Boolean(tpl.hasFirstFloor),
+      wallSegments: tpl.wallSegments || [],
+      houseOpenings: tpl.openings || [],
+      roomZones: tpl.roomZones || [],
+      activeFloor: 'ground',
       placedObjects: objects,
       activeCameraId: mainCam ? (mainCam as PlacedObject).id : (objects.find(o => o.equipmentId.includes('cam') || o.equipmentId.includes('phone'))?.id ?? null),
       selectedObjectId: null,
       placingEquipmentId: null,
+    });
+  },
+
+  setPlotPreset: (preset) => {
+    const presetConfig = STANDARD_PLOT_PRESETS[preset];
+    if (presetConfig) {
+      set({ plotConfig: { ...presetConfig } });
+    } else {
+      set((s) => ({ plotConfig: { ...s.plotConfig, preset } }));
+    }
+  },
+
+  setPlotDimensions: (widthFt, depthFt) => {
+    set((s) => ({
+      plotConfig: {
+        ...s.plotConfig,
+        preset: 'custom',
+        widthFt,
+        depthFt,
+        widthM: Number((widthFt * 0.3048).toFixed(2)),
+        depthM: Number((depthFt * 0.3048).toFixed(2)),
+      },
+    }));
+  },
+
+  setCompoundFinish: (compoundFinish) => {
+    set((s) => ({ plotConfig: { ...s.plotConfig, compoundFinish } }));
+  },
+
+  togglePerimeterFence: () => {
+    set((s) => ({
+      plotConfig: { ...s.plotConfig, showPerimeterFence: !s.plotConfig.showPerimeterFence },
+    }));
+  },
+
+  setRoofType: (type) => {
+    set((s) => ({ roofConfig: { ...s.roofConfig, type } }));
+  },
+
+  toggleRoofVisible: () => {
+    set((s) => ({ roofConfig: { ...s.roofConfig, visible: !s.roofConfig.visible } }));
+  },
+
+  setActiveFloor: (activeFloor) => {
+    set({ activeFloor });
+  },
+
+  setHasFirstFloor: (hasFirstFloor) => {
+    set({ hasFirstFloor });
+  },
+
+  toggleFloorGhost: () => {
+    set((s) => ({ showFloorGhost: !s.showFloorGhost }));
+  },
+
+  addWallSegment: (wall) => {
+    const id = `wall-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    set((s) => ({ wallSegments: [...s.wallSegments, { ...wall, id }] }));
+    return id;
+  },
+
+  updateWallSegment: (id, updates) => {
+    set((s) => ({
+      wallSegments: s.wallSegments.map((w) => (w.id === id ? { ...w, ...updates } : w)),
+    }));
+  },
+
+  deleteWallSegment: (id) => {
+    set((s) => ({
+      wallSegments: s.wallSegments.filter((w) => w.id !== id),
+      houseOpenings: s.houseOpenings.filter((o) => o.wallId !== id),
+    }));
+  },
+
+  addHouseOpening: (opening) => {
+    const id = `open-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    set((s) => ({ houseOpenings: [...s.houseOpenings, { ...opening, id }] }));
+    return id;
+  },
+
+  deleteHouseOpening: (id) => {
+    set((s) => ({
+      houseOpenings: s.houseOpenings.filter((o) => o.id !== id),
+    }));
+  },
+
+  addRoomZone: (room) => {
+    const id = `room-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    set((s) => ({ roomZones: [...s.roomZones, { ...room, id }] }));
+    return id;
+  },
+
+  updateRoomZone: (id, updates) => {
+    set((s) => ({
+      roomZones: s.roomZones.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+    }));
+  },
+
+  deleteRoomZone: (id) => {
+    set((s) => ({
+      roomZones: s.roomZones.filter((r) => r.id !== id),
+    }));
+  },
+
+  updateMaterialUnitRate: (key, value) => {
+    set((s) => ({
+      materialUnitRates: { ...s.materialUnitRates, [key]: value },
+    }));
+  },
+
+  getConstructionBoQ: () => {
+    const s = get();
+    return calculateConstructionBoQ({
+      walls: s.wallSegments,
+      openings: s.houseOpenings,
+      rooms: s.roomZones,
+      plot: s.plotConfig,
+      roof: s.roofConfig,
+      rates: s.materialUnitRates,
+      hasFirstFloor: s.hasFirstFloor,
     });
   },
 

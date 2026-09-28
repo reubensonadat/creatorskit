@@ -6,16 +6,28 @@ import { usePlannerStore } from './store';
 import { COMPREHENSIVE_EQUIPMENT_CATALOG, ALL_EQUIPMENT_IDS } from './gear-library';
 import type { EquipmentCategory } from './types';
 
-const CATEGORY_ORDER = ['all', 'camera', 'lighting', 'audio', 'furniture', 'power', 'props'] as const;
+const CATEGORY_ORDER = [
+  'all',
+  'bedroom',
+  'living',
+  'dining',
+  'kitchen',
+  'bathroom',
+  'doors-windows',
+  'outdoor',
+  'furniture',
+] as const;
 
 const CATEGORY_META: Record<string, { label: string; tag: string; desc: string }> = {
-  all: { label: 'All Gear', tag: 'ALL', desc: 'Complete studio catalog' },
-  camera: { label: 'Cameras & Optics', tag: 'CAM', desc: 'Full-frame, cinema, webcams & teleprompters' },
-  lighting: { label: 'Lighting & Key', tag: 'LUX', desc: 'COB lights, softboxes, RGB tubes & practicals' },
-  audio: { label: 'Audio & Mics', tag: 'MIC', desc: 'Broadcast dynamic, condenser, arms & interfaces' },
-  furniture: { label: 'Desks & Seating', tag: 'DSK', desc: 'Sit-stand desks, ergonomic chairs & acoustic panels' },
-  power: { label: 'Power & Rigging', tag: 'PWR', desc: 'Cable raceways, C-stands & power strips' },
-  props: { label: 'Props & Decor', tag: 'SET', desc: 'Plants, neon signs & ambient backdrops' },
+  all: { label: 'All Elements', tag: 'ALL', desc: 'Complete architectural elements & fixtures' },
+  bedroom: { label: 'Bedrooms', tag: 'BED', desc: 'King/Queen beds, wardrobes, nightstands' },
+  living: { label: 'Living & Lounge', tag: 'LVG', desc: 'Sectional sofas, couches, TV consoles, armchairs' },
+  dining: { label: 'Dining Sets', tag: 'DIN', desc: '6-seater & 8-seater dining tables & chairs' },
+  kitchen: { label: 'Kitchen & Island', tag: 'KIT', desc: 'Countertops, cooking islands, refrigerators, sinks' },
+  bathroom: { label: 'Bathroom & Sanitary', tag: 'SAN', desc: 'Water closet toilets, showers, vanities, baths' },
+  'doors-windows': { label: 'Doors & Windows', tag: 'OPN', desc: 'Pivot entrance doors, sliders, aluminium windows' },
+  outdoor: { label: 'Compound & Vehicles', tag: 'OUT', desc: 'SUVs, sedans, perimeter gates, royal palms' },
+  furniture: { label: 'Other Furniture', tag: 'FUR', desc: 'Additional interior furniture' },
 };
 
 export default function EquipmentLibrary() {
@@ -36,13 +48,14 @@ export default function EquipmentLibrary() {
 
   const filteredItems = useMemo(() => {
     return ALL_EQUIPMENT_IDS.filter((id) => {
-      const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[id];
+      const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[id] as any;
       if (!eq) return false;
       const matchesSearch =
         search.trim() === '' ||
         eq.name.toLowerCase().includes(search.toLowerCase()) ||
         eq.description.toLowerCase().includes(search.toLowerCase());
-      const matchesCat = selectedCat === 'all' || eq.category === selectedCat;
+      const itemCat = eq.architecturalCategory || eq.category;
+      const matchesCat = selectedCat === 'all' || itemCat === selectedCat || eq.category === selectedCat;
       return matchesSearch && matchesCat;
     });
   }, [search, selectedCat]);
@@ -51,8 +64,13 @@ export default function EquipmentLibrary() {
     if (selectedCat !== 'all') {
       return [selectedCat];
     }
-    const cats = new Set(filteredItems.map((id) => COMPREHENSIVE_EQUIPMENT_CATALOG[id]?.category).filter(Boolean));
-    return ['camera', 'lighting', 'audio', 'furniture', 'power', 'props'].filter((c) => cats.has(c as EquipmentCategory));
+    const cats = new Set(
+      filteredItems.map((id) => {
+        const eq = COMPREHENSIVE_EQUIPMENT_CATALOG[id] as any;
+        return eq?.architecturalCategory || eq?.category;
+      }).filter(Boolean)
+    );
+    return ['bedroom', 'living', 'dining', 'kitchen', 'bathroom', 'doors-windows', 'outdoor', 'furniture'].filter((c) => cats.has(c));
   }, [selectedCat, filteredItems]);
 
   return (

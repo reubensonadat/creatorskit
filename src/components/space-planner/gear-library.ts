@@ -160,5 +160,10 @@ addGearItem('human-creator-standing', 'Human Creator Figure (Standing - 1.75m / 
 addGearItem('human-creator-seated', 'Human Creator Figure (Seated at Desk / Podcaster)', '🪑', 'props', 0.5, 0.55, 1.35, 0, 0, 0, 0x445577, 'Seated talent model for checking camera framing across podcast and desk setups');
 addGearItem('human-guest-standing', 'Host / Interviewee Talent Model (Standing - 1.7m)', '🧍‍♀️', 'props', 0.42, 0.32, 1.7, 0, 0, 0, 0x553344, 'Scale model for 2-person interviews, co-hosts, and depth of field checks');
 
-export const COMPREHENSIVE_EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = gearCatalog;
+import { ARCHITECTURAL_CATALOG } from './house-catalog';
+
+export const COMPREHENSIVE_EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = {
+  ...ARCHITECTURAL_CATALOG,
+  ...gearCatalog,
+};
 export const ALL_EQUIPMENT_IDS: string[] = Object.keys(COMPREHENSIVE_EQUIPMENT_CATALOG);

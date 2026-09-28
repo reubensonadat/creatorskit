@@ -25,7 +25,8 @@ import {
   X,
   PanelLeftOpen,
   FileText,
-  QrCode,
+  Flower2,
+  Video,
 } from "lucide-react";
 
 import { ALL_TOOLS } from "@/data/tools";
@@ -52,7 +53,8 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: Re
   "/text-highlighter": Highlighter,
   "/thumbnail-lab": Images,
   "/watermark": Droplets,
-  "/tree-qr": QrCode,
+  "/bouquet": Flower2,
+  "/video-grabber": Video,
 };
 
 export default function ToolLayout({ children }: { children: React.ReactNode }) {

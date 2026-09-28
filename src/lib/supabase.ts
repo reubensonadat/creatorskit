@@ -27,7 +27,7 @@ export interface StoredReceipt {
 }
 
 /**
- * Save a receipt to Supabase and return the short code for branded share links.
+ * Save a receipt to Supabase and local storage, returning the short code for branded share links.
  */
 export async function saveReceiptToDatabase(data: {
   receiptNumber: string;
@@ -46,42 +46,76 @@ export async function saveReceiptToDatabase(data: {
   // Generate random 6-character clean slug
   const shortId = Math.random().toString(36).substring(2, 8);
 
+  const record: StoredReceipt = {
+    id: shortId,
+    receipt_number: data.receiptNumber,
+    creator_name: data.creatorName,
+    creator_email: data.creatorEmail,
+    creator_phone: data.creatorPhone,
+    client_name: data.clientName,
+    currency: data.currency,
+    total_amount: data.totalAmount,
+    amount_paid: data.amountPaid,
+    balance_due: data.balanceDue,
+    status: data.amountPaid >= data.totalAmount ? 'paid' : 'partial',
+    payment_channel: data.paymentChannel,
+    payload_string: data.payloadString,
+    metadata: data.metadata,
+  };
+
+  // 1. Save to Next.js local documents API
   try {
-    const { error } = await supabase.from('receipts').insert([
-      {
-        id: shortId,
-        receipt_number: data.receiptNumber,
-        creator_name: data.creatorName,
-        creator_email: data.creatorEmail,
-        creator_phone: data.creatorPhone,
-        client_name: data.clientName,
-        currency: data.currency,
-        total_amount: data.totalAmount,
-        amount_paid: data.amountPaid,
-        balance_due: data.balanceDue,
-        status: data.amountPaid >= data.totalAmount ? 'paid' : 'partial',
-        payment_channel: data.paymentChannel,
-        payload_string: data.payloadString,
-        metadata: data.metadata,
-      },
-    ]);
+    if (typeof window !== 'undefined') {
+      fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+      }).catch(() => {});
 
-    if (error) {
-      console.warn('Supabase insert error (falling back to direct payload link):', error.message);
-      return '';
+      // 2. Also keep in client localStorage for instant offline retrieval
+      localStorage.setItem(`ck_doc_${shortId}`, JSON.stringify(record));
     }
-
-    return shortId;
-  } catch (err) {
-    console.warn('Failed to save receipt to Supabase:', err);
-    return '';
+  } catch (e) {
+    // Ignore storage errors
   }
+
+  // 3. Save to Supabase
+  try {
+    await supabase.from('receipts').insert([record]);
+  } catch (err) {
+    // Supabase non-blocking fallback
+  }
+
+  return shortId;
 }
 
 /**
- * Fetch a receipt by its short code.
+ * Fetch a receipt by its short code. Checks Supabase, local API, and localStorage.
  */
 export async function getReceiptByShortId(id: string): Promise<StoredReceipt | null> {
+  // 1. Check local storage if in browser
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(`ck_doc_${id}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.payload_string) return parsed as StoredReceipt;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Check Next.js local API
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/documents?id=${id}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.payload_string) return json.data as StoredReceipt;
+      }
+    } catch (e) {}
+  }
+
+  // 3. Check Supabase
   try {
     const { data, error } = await supabase
       .from('receipts')
@@ -89,15 +123,14 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
       .eq('id', id)
       .single();
 
-    if (error || !data) {
-      return null;
+    if (!error && data) {
+      return data as StoredReceipt;
     }
-
-    return data as StoredReceipt;
   } catch (err) {
     console.error('Error fetching receipt from Supabase:', err);
-    return null;
   }
+
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════

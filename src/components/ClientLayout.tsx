@@ -22,11 +22,10 @@ const toolPaths = [
   "/color-gradient",
   "/captions",
   "/auto-captions",
+  "/bouquet",
 ];
 
-// tree-qr is a full-page living diorama — the canvas owns the viewport and
-// the studio controls dock over it as a toggleable side panel.
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/tree-qr"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/video-grabber"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

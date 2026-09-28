@@ -334,8 +334,8 @@ function BusinessSuiteContent() {
   const isPrintOverlayOpen = printStage !== 'idle';
 
   const startAnimatedPrint = async () => {
-    // Ensure the Supabase short link exists so the printed QR code is scannable (receipts only)
-    if (activeTab === 'receipt') await ensureReceiptShortUrl();
+    // Generate the Supabase short link in background so QR code and share links are live
+    ensureReceiptShortUrl().catch(() => {});
     printTimersRef.current.forEach(clearTimeout);
     printTimersRef.current = [
       setTimeout(() => setPrintStage('processing'), 0),
@@ -524,21 +524,31 @@ function BusinessSuiteContent() {
       metadata: { kind: payload.k ?? 'receipt' },
     });
 
-    if (shortId) {
-      return `${window.location.origin}/r/${shortId}`;
-    }
-
-    // Offline fallback: keep the URL lean — never embed the heavy branding
-    // payload (logo data URL) or template extras in a shareable link.
-    const leanPayload = { ...payload, lg: undefined, x: undefined };
-    return `${window.location.origin}/receipt?r=${encodeReceipt(leanPayload)}`;
+    const finalId = shortId || Math.random().toString(36).substring(2, 8);
+    return `${window.location.origin}/r/${finalId}`;
   };
 
   const copyClientLink = async () => {
-    const link = await ensureReceiptShortUrl();
-    navigator.clipboard.writeText(link);
-    setClientLinkCopied(true);
-    setTimeout(() => setClientLinkCopied(false), 2500);
+    try {
+      const link = await ensureReceiptShortUrl();
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = link;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setClientLinkCopied(true);
+      setTimeout(() => setClientLinkCopied(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy client link:', err);
+    }
   };
 
   const shareReceiptOnWhatsApp = async () => {
@@ -686,14 +696,10 @@ function BusinessSuiteContent() {
     }
   };
 
-  // Single export entry point for every action bar: desktop prints a PDF
-  // (through the animated printer overlay), mobile saves the document image.
+  // Standardized print entry point: desktop and mobile both launch the
+  // real-time thermal printer animation so the user sees their document print!
   const handleExport = () => {
-    if (isMobileDevice) {
-      saveDocumentAsImage();
-    } else {
-      startAnimatedPrint();
-    }
+    startAnimatedPrint();
   };
 
   const sym = CURRENCY_SYMBOLS[currency];
@@ -960,7 +966,7 @@ function BusinessSuiteContent() {
             </h1>
           </div>
 
-          {/* Quick Actions (Print, WhatsApp copy, Currency) */}
+          {/* Quick Actions (Badge, Currency, Copy Link, WhatsApp, Print) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {/* CreatorKit badge toggle — controls branding on all printed documents */}
             <button
@@ -974,18 +980,19 @@ function BusinessSuiteContent() {
                 background: brandingOn ? '#000' : '#fff',
                 color: brandingOn ? '#fff' : '#000',
                 border: '2px solid #000',
+                borderRadius: '4px',
                 fontWeight: 900,
                 fontSize: '0.72rem',
                 fontFamily: 'monospace',
                 cursor: 'pointer',
-                boxShadow: '2px 2px 0 #000',
+                boxShadow: '3px 3px 0 #000',
               }}
             >
               {brandingOn ? <Check size={13} /> : <X size={13} />} BADGE: {brandingOn ? 'ON' : 'OFF'}
             </button>
 
             {/* Currency Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '2px solid #000', padding: '4px 8px', background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '2px solid #000', borderRadius: '4px', padding: '4px 8px', background: '#fff', boxShadow: '3px 3px 0 #000' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace' }}>CURRENCY:</span>
               {(['GHS', 'NGN', 'USD', 'GBP'] as CurrencyType[]).map((c) => (
                 <button
@@ -1000,6 +1007,7 @@ function BusinessSuiteContent() {
                     background: currency === c ? '#000' : 'transparent',
                     color: currency === c ? '#fff' : '#000',
                     border: 'none',
+                    borderRadius: '2px',
                   }}
                 >
                   {c}
@@ -1008,7 +1016,53 @@ function BusinessSuiteContent() {
             </div>
 
             <button
-              onClick={copyWhatsAppSummary}
+              onClick={copyClientLink}
+              title="Copy interactive client link that prints live in real-time"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                background: '#fff',
+                color: '#000',
+                border: '2px solid #000',
+                borderRadius: '4px',
+                fontWeight: 900,
+                fontSize: '0.75rem',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                boxShadow: '3px 3px 0 #000',
+              }}
+            >
+              {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />}
+              {clientLinkCopied ? 'LINK COPIED!' : 'COPY LINK'}
+            </button>
+
+            <button
+              onClick={sendWhatsAppSummary}
+              title="Share document link via WhatsApp"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                background: '#16a34a',
+                color: '#fff',
+                border: '2px solid #000',
+                borderRadius: '4px',
+                fontWeight: 900,
+                fontSize: '0.75rem',
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                boxShadow: '3px 3px 0 #000',
+              }}
+            >
+              WHATSAPP
+            </button>
+
+            <button
+              onClick={startAnimatedPrint}
+              title="Watch document print out in real-time"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1017,37 +1071,15 @@ function BusinessSuiteContent() {
                 background: '#FFE500',
                 color: '#000',
                 border: '2px solid #000',
+                borderRadius: '4px',
                 fontWeight: 900,
                 fontSize: '0.78rem',
                 fontFamily: 'monospace',
                 cursor: 'pointer',
-                boxShadow: '2px 2px 0 #000',
+                boxShadow: '3px 3px 0 #000',
               }}
             >
-              {copiedNotification ? <Check size={14} /> : <Share2 size={14} />}
-              {copiedNotification ? 'COPIED TO CLIPBOARD' : 'COPY FOR WHATSAPP'}
-            </button>
-
-            <button
-              onClick={handleExport}
-              disabled={isMobileDevice && isSavingImage}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 16px',
-                background: '#000',
-                color: '#fff',
-                border: '2px solid #000',
-                fontWeight: 900,
-                fontSize: '0.78rem',
-                fontFamily: 'monospace',
-                cursor: 'pointer',
-                boxShadow: '2px 2px 0 #000',
-              }}
-            >
-              {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
-              {isMobileDevice ? (isSavingImage ? 'SAVING…' : 'SAVE IMAGE') : 'PRINT / SAVE PDF'}
+              <Printer size={15} /> PRINT / PREVIEW
             </button>
           </div>
         </div>
@@ -1969,9 +2001,11 @@ function BusinessSuiteContent() {
               </div>
             </div>
 
-            <SectionToggle id="deliverables" title="2. Campaign Deliverables & Pricing" />
+            {activeTab !== 'letterhead' && (
+              <>
+                <SectionToggle id="deliverables" title="2. Campaign Deliverables & Pricing" />
 
-            {/* 2. Deliverables & Pricing */}
+                {/* 2. Deliverables & Pricing */}
             <div
               style={{
                 display: openSections.deliverables ? 'block' : 'none',
@@ -2141,6 +2175,8 @@ function BusinessSuiteContent() {
                 <Plus size={14} /> ADD CUSTOM DELIVERABLE
               </button>
             </div>
+          </>
+        )}
 
             <SectionToggle id="payment" title="3. Payment Details (MoMo · Bank · Paystack · Wire)" />
 
@@ -2402,113 +2438,118 @@ function BusinessSuiteContent() {
 
           {/* ─── RIGHT COLUMN: PREVIEW & ACTIONS ─── */}
           <div className="ck-preview-col" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Top Document Action Bar (Only when not on receipt tab) */}
-            {activeTab !== 'receipt' && (
-              <div
-                className="ck-noprint"
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: '12px 18px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 900,
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      background: '#000',
-                      color: '#fff',
-                      padding: '3px 8px',
-                    }}
-                  >
-                    {activeTab === 'invoice' ? 'INVOICE' : activeTab === 'agreement' ? 'CONTRACT' : 'LETTERHEAD'}
-                  </span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
-                    Live Document Preview
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, width: '100%', maxWidth: 540 }}>
-                  <button
-                    onClick={handleExport}
-                    disabled={isMobileDevice && isSavingImage}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: '#FFE500',
-                      color: '#000',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 900,
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
-                    {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print / PDF'}
-                  </button>
-                  <button
-                    onClick={copyWhatsAppSummary}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    onClick={sendWhatsAppSummary}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      background: '#16a34a',
-                      color: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    WhatsApp
-                  </button>
-                </div>
+            {/* Top Document Action Bar (Standardized across all tabs including receipt) */}
+            <div
+              className="ck-noprint"
+              style={{
+                background: '#fff',
+                border: '2px solid #000',
+                borderRadius: '4px',
+                boxShadow: '3px 3px 0 #000',
+                padding: '12px 18px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    background: '#000',
+                    color: '#fff',
+                    borderRadius: '3px',
+                    padding: '3px 8px',
+                  }}
+                >
+                  {activeTab === 'invoice' ? 'INVOICE' : activeTab === 'receipt' ? 'RECEIPT' : activeTab === 'agreement' ? 'CONTRACT' : 'LETTERHEAD'}
+                </span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
+                  Live Document Preview
+                </span>
               </div>
-            )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={startAnimatedPrint}
+                  title="Watch document print out in real-time"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    background: '#FFE500',
+                    color: '#000',
+                    border: '2px solid #000',
+                    borderRadius: '4px',
+                    boxShadow: '2px 2px 0 #000',
+                    height: 38,
+                    padding: '0 14px',
+                    fontSize: '0.74rem',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Printer size={14} /> Print Document
+                </button>
+                <button
+                  onClick={copyClientLink}
+                  title="Copy interactive client link that prints live in real-time"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    background: '#fff',
+                    color: '#000',
+                    border: '2px solid #000',
+                    borderRadius: '4px',
+                    boxShadow: '2px 2px 0 #000',
+                    height: 38,
+                    padding: '0 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Link Copied' : 'Copy Link'}
+                </button>
+                <button
+                  onClick={sendWhatsAppSummary}
+                  title="Share document link via WhatsApp"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    background: '#16a34a',
+                    color: '#fff',
+                    border: '2px solid #000',
+                    borderRadius: '4px',
+                    boxShadow: '2px 2px 0 #000',
+                    height: 38,
+                    padding: '0 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  WhatsApp
+                </button>
+              </div>
+            </div>
 
             {/* Edit hint — the live document below is directly editable */}
             <div
@@ -2563,8 +2604,8 @@ function BusinessSuiteContent() {
                     </div>
                   </div>
 
-                  {/* ─── BRAND LOGO + ANIMATED THERMAL PRINT CONTROLS ─── */}
-                  <div className="ck-noprint" contentEditable={false} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: 8, marginBottom: 24 }}>
+                  {/* ─── BRAND LOGO CONTROLS ─── */}
+                  <div className="ck-noprint" contentEditable={false} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, marginBottom: 20 }}>
                     <input
                       ref={logoFileInputRef}
                       type="file"
@@ -2574,39 +2615,18 @@ function BusinessSuiteContent() {
                     />
                     <button
                       onClick={() => logoFileInputRef.current?.click()}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 12px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      <ImagePlus size={14} /> {logoUrl ? 'Logo' : 'Upload Logo'}
+                      <ImagePlus size={14} /> {logoUrl ? 'Change Receipt Logo' : 'Upload Receipt Logo'}
                     </button>
                     {logoUrl && (
                       <button
                         onClick={() => setLogoUrl(null)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 10px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
                       >
                         <Trash2 size={12} /> Remove
                       </button>
                     )}
-
-                    <button
-                      onClick={handleExport}
-                      disabled={isMobileDevice && isSavingImage}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
-                      {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print'}
-                    </button>
-                    <button
-                      onClick={copyClientLink}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Copied' : 'Client Link'}
-                    </button>
-                    <button
-                      onClick={shareReceiptOnWhatsApp}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      WhatsApp
-                    </button>
                   </div>
                 </div>
               )}
@@ -2615,97 +2635,6 @@ function BusinessSuiteContent() {
 
               {activeTab === 'letterhead' && letterheadDocument}
             </div>
-
-            {/* Bottom Action Bar */}
-            {activeTab !== 'receipt' && (
-              <div
-                className="ck-noprint"
-                style={{
-                  background: '#fff',
-                  border: '2px solid #000',
-                  boxShadow: '3px 3px 0 #000',
-                  padding: '12px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontSize: '0.75rem', color: '#666', fontWeight: 600 }}>
-                  Ready to bill? Export your document in one tap.
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, width: '100%' }}>
-                  <button
-                    onClick={handleExport}
-                    disabled={isMobileDevice && isSavingImage}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      background: '#FFE500',
-                      color: '#000',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 4px',
-                      fontSize: '0.72rem',
-                      fontWeight: 900,
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {isMobileDevice ? <Download size={13} /> : <Printer size={13} />}
-                    {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print / PDF'}
-                  </button>
-                  <button
-                    onClick={copyWhatsAppSummary}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      background: '#fff',
-                      color: '#000',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 4px',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {copiedNotification ? <Check size={13} /> : <Share2 size={13} />} {copiedNotification ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    onClick={sendWhatsAppSummary}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      background: '#16a34a',
-                      color: '#fff',
-                      border: '2px solid #000',
-                      boxShadow: '2px 2px 0 #000',
-                      height: 38,
-                      padding: '0 4px',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    WhatsApp
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -2783,7 +2712,7 @@ function BusinessSuiteContent() {
               </ReceiptPrinter.Machine>
 
               <ReceiptPrinter.Output
-                className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem] px-0'}
+                className={activeTab === 'receipt' ? 'h-[36rem]' : 'h-[44rem] sm:h-[48rem]'}
                 style={
                   printPaperHeight
                     ? { height: printPaperHeight + 24, transition: 'height 1850ms linear' }
@@ -2803,26 +2732,162 @@ function BusinessSuiteContent() {
               </ReceiptPrinter.Output>
             </ReceiptPrinter.Root>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 8, width: '100%', maxWidth: 480, marginTop: 4 }}>
+            {/* Standardized Device-Adaptive Actions */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, width: '100%', maxWidth: 540, marginTop: 6 }}>
+              {isMobileDevice ? (
+                <>
+                  <button
+                    onClick={saveDocumentAsImage}
+                    disabled={isSavingImage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#FFE500',
+                      color: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '4px',
+                      boxShadow: '3px 3px 0 #000',
+                      height: 40,
+                      padding: '0 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Download size={14} /> {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
+                  </button>
+                  <button
+                    onClick={handlePrint}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#fff',
+                      color: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '4px',
+                      boxShadow: '3px 3px 0 #000',
+                      height: 40,
+                      padding: '0 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Printer size={14} /> PRINT / PDF
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handlePrint}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#FFE500',
+                      color: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '4px',
+                      boxShadow: '3px 3px 0 #000',
+                      height: 40,
+                      padding: '0 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Printer size={14} /> PRINT / SAVE PDF
+                  </button>
+                  <button
+                    onClick={saveDocumentAsImage}
+                    disabled={isSavingImage}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#fff',
+                      color: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '4px',
+                      boxShadow: '3px 3px 0 #000',
+                      height: 40,
+                      padding: '0 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Download size={14} /> {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
+                  </button>
+                </>
+              )}
               <button
-                onClick={isMobileDevice ? saveDocumentAsImage : handlePrint}
-                disabled={isMobileDevice && isSavingImage}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                onClick={copyClientLink}
+                title="Copy client link that opens this live printer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: '#fff',
+                  color: '#000',
+                  border: '2px solid #000',
+                  borderRadius: '4px',
+                  boxShadow: '3px 3px 0 #000',
+                  height: 40,
+                  padding: '0 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                {isMobileDevice ? <Download size={14} /> : <Printer size={14} />}
-                {isMobileDevice ? (isSavingImage ? 'Saving…' : 'Save Image') : 'Print PDF'}
-              </button>
-              <button
-                onClick={copyWhatsAppSummary}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                {copiedNotification ? <Check size={14} /> : <Share2 size={14} />} {copiedNotification ? 'Copied' : 'Copy'}
+                {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'LINK COPIED!' : 'COPY CLIENT LINK'}
               </button>
               <button
                 onClick={sendWhatsAppSummary}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#16a34a', color: '#fff', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 8px', fontSize: '0.75rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                title="Send document link via WhatsApp"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: '#16a34a',
+                  color: '#fff',
+                  border: '2px solid #000',
+                  borderRadius: '4px',
+                  boxShadow: '3px 3px 0 #000',
+                  height: 40,
+                  padding: '0 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                WhatsApp
+                WHATSAPP
               </button>
             </div>
           </div>

@@ -8,6 +8,10 @@ import type { CreatorTemplateId } from './types';
 
 const CATEGORIES = [
   'All',
+  'Modern Homes (Ghana)',
+  'Storey Building (2-Floor)',
+  'Compact & Half-Plot',
+  'Custom Builder',
   'Audio & Music',
   'Video & Tech',
   'Commercial & Photo',
@@ -57,7 +61,7 @@ export default function TemplateSelector({ onSelectTemplate, compact = false }: 
       <div className="flex items-center justify-between">
         <div>
           <span className="text-[11px] font-mono font-black uppercase tracking-wider text-black">
-            Studio Setups ({COMPREHENSIVE_TEMPLATE_IDS.length})
+            House Presets & Blueprints ({COMPREHENSIVE_TEMPLATE_IDS.length})
           </span>
         </div>
       </div>

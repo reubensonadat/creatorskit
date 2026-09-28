@@ -537,7 +537,13 @@ export const EQUIPMENT_IDS: EquipmentId[] = [
 // Each returns a THREE.Group positioned at origin (y=0)
 // ============================================================
 
+import { createArchitectural3DModel } from './house-catalog';
+
 export function createEquipmentModel(equipmentId: EquipmentId | string): THREE.Group {
+  if (typeof equipmentId === 'string' && equipmentId.startsWith('arch-')) {
+    return createArchitectural3DModel(equipmentId);
+  }
+
   switch (equipmentId) {
     case 'camera': return createCameraModel();
     case 'phone-gimbal': return createPhoneGimbalModel();

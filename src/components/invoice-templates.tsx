@@ -455,14 +455,54 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
               </td>
             </tr>
           ))}
-          <tr style={{ background: '#f9fafb', fontWeight: 800 }}>
-            <td colSpan={3} style={{ border: '1px solid #000', padding: '8px 10px', textAlign: 'right' }}>
+          {(data.discountAmount > 0 || data.tax > 0) && (
+            <tr style={{ background: '#ffffff', color: '#4b5563', fontSize: '10px' }}>
+              <td colSpan={3} style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>
+                SUBTOTAL
+              </td>
+              <td style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>
+                {data.sym}{data.subtotal.toLocaleString()}
+              </td>
+            </tr>
+          )}
+          {data.discountAmount > 0 && (
+            <tr style={{ background: '#f0fdf4', color: '#16a34a', fontSize: '10px', fontWeight: 700 }}>
+              <td colSpan={3} style={{ border: '1px solid #bbf7d0', padding: '6px 10px', textAlign: 'right' }}>
+                DISCOUNT
+              </td>
+              <td style={{ border: '1px solid #bbf7d0', padding: '6px 10px', textAlign: 'right' }}>
+                -{data.sym}{data.discountAmount.toLocaleString()}
+              </td>
+            </tr>
+          )}
+          {data.tax > 0 && (
+            <tr style={{ background: '#ffffff', color: '#4b5563', fontSize: '10px' }}>
+              <td colSpan={3} style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>
+                TAX / VAT ({data.taxPercentage}%)
+              </td>
+              <td style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>
+                +{data.sym}{data.tax.toLocaleString()}
+              </td>
+            </tr>
+          )}
+          <tr style={{ background: '#f9fafb', fontWeight: 900 }}>
+            <td colSpan={3} style={{ border: '1px solid #000', padding: '8px 10px', textAlign: 'right', fontSize: '11px' }}>
               TOTAL INVOICE AMOUNT
             </td>
-            <td style={{ border: '1px solid #000', padding: '8px 10px', textAlign: 'right', fontSize: '11.5px' }}>
+            <td style={{ border: '1px solid #000', padding: '8px 10px', textAlign: 'right', fontSize: '12px' }}>
               {data.sym}{data.totalAmount.toLocaleString()}
             </td>
           </tr>
+          {data.depositPercentage < 100 && (
+            <tr style={{ background: '#fff1f2', color: '#be123c', fontWeight: 800, fontSize: '10px' }}>
+              <td colSpan={3} style={{ border: '1px solid #fecdd3', padding: '6px 10px', textAlign: 'right' }}>
+                BALANCE DUE ({100 - data.depositPercentage}% AFTER DEPOSIT)
+              </td>
+              <td style={{ border: '1px solid #fecdd3', padding: '6px 10px', textAlign: 'right' }}>
+                {data.sym}{data.balanceDue.toLocaleString()}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 
@@ -625,6 +665,18 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
             <span style={{ color: '#6b7280' }}>Subtotal</span>
             <span>{data.sym}{data.subtotal.toLocaleString()}</span>
           </div>
+          {data.discountAmount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#16a34a', fontWeight: 700 }}>
+              <span>Discount</span>
+              <span>-{data.sym}{data.discountAmount.toLocaleString()}</span>
+            </div>
+          )}
+          {data.tax > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#4b5563' }}>
+              <span>Tax ({data.taxPercentage}%)</span>
+              <span>+{data.sym}{data.tax.toLocaleString()}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #111827', marginTop: 4, paddingTop: 4, fontWeight: 900, fontSize: '12px' }}>
             <span>Total</span>
             <span>{data.sym}{data.totalAmount.toLocaleString()}</span>
@@ -740,10 +792,34 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
               <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800 }}>{data.sym}{(i.quantity * i.rate).toLocaleString()}</td>
             </tr>
           ))}
+          {(data.discountAmount > 0 || data.tax > 0) && (
+            <tr style={{ borderBottom: '1px solid #e4e4e7', fontSize: '10.5px' }}>
+              <td colSpan={3} style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#52525b' }}>SUBTOTAL</td>
+              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800 }}>{data.sym}{data.subtotal.toLocaleString()}</td>
+            </tr>
+          )}
+          {data.discountAmount > 0 && (
+            <tr style={{ borderBottom: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontSize: '10.5px' }}>
+              <td colSpan={3} style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800 }}>DISCOUNT</td>
+              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 900 }}>-{data.sym}{data.discountAmount.toLocaleString()}</td>
+            </tr>
+          )}
+          {data.tax > 0 && (
+            <tr style={{ borderBottom: '1px solid #e4e4e7', fontSize: '10.5px', color: '#52525b' }}>
+              <td colSpan={3} style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>TAX / VAT ({data.taxPercentage}%)</td>
+              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800 }}>+{data.sym}{data.tax.toLocaleString()}</td>
+            </tr>
+          )}
           <tr style={{ background: '#f4f4f5', fontWeight: 900 }}>
             <td colSpan={3} style={{ padding: '8px 10px', textAlign: 'right' }}>TOTAL AMOUNT</td>
             <td style={{ padding: '8px 10px', textAlign: 'right', fontSize: '12px' }}>{data.sym}{data.totalAmount.toLocaleString()}</td>
           </tr>
+          {data.depositPercentage < 100 && (
+            <tr style={{ background: '#fee2e2', color: '#991b1b', fontWeight: 900 }}>
+              <td colSpan={3} style={{ padding: '6px 10px', textAlign: 'right', fontSize: '10px' }}>BALANCE DUE</td>
+              <td style={{ padding: '6px 10px', textAlign: 'right', fontSize: '11px' }}>{data.sym}{data.balanceDue.toLocaleString()}</td>
+            </tr>
+          )}
         </tbody>
       </table>
 

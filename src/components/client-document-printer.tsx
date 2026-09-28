@@ -11,7 +11,7 @@
  * Used by /r/[id] (database short links) and /receipt (encoded payload links).
  */
 import { useEffect, useRef, useState } from 'react';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, Share2, Check } from 'lucide-react';
 import { exportDocumentAsImage } from '@/lib/export-document-image';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import SharedDocumentView from '@/components/shared-document-view';
@@ -40,9 +40,17 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
     const [stage, setStage] = useState<'processing' | 'printing' | 'complete'>('processing');
     const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
     const [isSavingImage, setIsSavingImage] = useState(false);
+    const [isMobileDevice, setIsMobileDevice] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
     const paperRef = useRef<HTMLDivElement>(null);
     const captureRef = useRef<HTMLDivElement>(null);
     const [paperHeight, setPaperHeight] = useState<number | null>(null);
+
+    useEffect(() => {
+        const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+        const mobileUA = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+        setIsMobileDevice(coarsePointer || mobileUA);
+    }, []);
 
     useEffect(() => {
         timersRef.current = [
@@ -175,19 +183,51 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                 </ReceiptPrinter.Root>
 
                 {stage === 'complete' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%', maxWidth: 360 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, width: '100%', maxWidth: 440 }}>
+                        {isMobileDevice ? (
+                            <>
+                                <button
+                                    onClick={saveImage}
+                                    disabled={isSavingImage}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                >
+                                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
+                                </button>
+                                <button
+                                    onClick={() => window.print()}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                >
+                                    <Printer size={14} /> Print / PDF
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => window.print()}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                >
+                                    <Printer size={14} /> Print / Save PDF
+                                </button>
+                                <button
+                                    onClick={saveImage}
+                                    disabled={isSavingImage}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                >
+                                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
+                                </button>
+                            </>
+                        )}
                         <button
-                            onClick={() => window.print()}
-                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 12px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            onClick={() => {
+                                if (navigator.clipboard) {
+                                    navigator.clipboard.writeText(window.location.href);
+                                    setLinkCopied(true);
+                                    setTimeout(() => setLinkCopied(false), 2500);
+                                }
+                            }}
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                         >
-                            <Printer size={14} /> Print PDF
-                        </button>
-                        <button
-                            onClick={saveImage}
-                            disabled={isSavingImage}
-                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', boxShadow: '2px 2px 0 #000', height: 38, padding: '0 12px', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                            <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Image'}
+                            {linkCopied ? <Check size={14} /> : <Share2 size={14} />} {linkCopied ? 'Link Copied' : 'Share Link'}
                         </button>
                     </div>
                 )}

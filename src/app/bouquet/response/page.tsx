@@ -128,7 +128,7 @@ function BouquetResponseForm() {
 
                 <div className="mt-8 text-center">
                     <Link
-                        href="/tree-qr"
+                        href="/bouquet"
                         className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-neutral-500 hover:text-black transition-colors"
                     >
                         <Heart size={14} /> Built with CreatorsKit

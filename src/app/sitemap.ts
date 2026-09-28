@@ -6,7 +6,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     return [
         {
-            url: `${baseUrl}/tree-qr`,
+            url: `${baseUrl}/bouquet`,
             lastModified: now,
             changeFrequency: 'daily',
             priority: 1.0,
@@ -16,12 +16,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
             lastModified: now,
             changeFrequency: 'daily',
             priority: 1.0,
-        },
-        {
-            url: `${baseUrl}/keepsake`,
-            lastModified: now,
-            changeFrequency: 'weekly',
-            priority: 0.9,
         },
         {
             url: `${baseUrl}/space-planner`,
