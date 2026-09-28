@@ -931,9 +931,9 @@ Control your speed, adjust your font size, and download your voice recording in 
       // Desktop uses continuous: true (proven rock solid). What killed mobile
       // before was never this model — it was the 30ms restart cadence, which
       // stacked into dozens of start() calls/sec until Google's speech endpoint
-      // throttled the tab into silent death. The delays below (~250ms mobile
-      // base, backing off only on crash-streaks) keep the same utterance-cycle
-      // model without ever tripping throttling.
+      // throttled the tab into silent death. The delays below (fast mobile
+      // base, backing off automatically on crash-streaks) keep the same
+      // utterance-cycle model without ever tripping throttling.
       recognition.continuous = !isMobileDevice;
       recognition.interimResults = true;
       // Multi-hypothesis ASR feeds the accent-aware matcher; iOS serves 1 reliably.
