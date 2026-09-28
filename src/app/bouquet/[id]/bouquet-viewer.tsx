@@ -38,6 +38,9 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
   const seed = metadata.seed || 1042;
   const cardFont = metadata.cardFont || 'space-mono';
 
+  const giftFormat = (metadata.giftFormat as 'both' | 'flower' | 'card') || 'both';
+  const cardPlacement = (metadata.cardPlacement as 'right' | 'left' | 'bottom') || 'right';
+
   const note = {
     to: initialBouquet.recipient_name || 'Beloved',
     message:
@@ -91,30 +94,128 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
         id="bouquet-print-document"
         className="hidden print:flex flex-col items-center justify-center p-8 bg-white min-h-screen text-black w-full"
       >
-        <div className="w-[420px] aspect-[4/5] flex items-center justify-center mb-6">
-          <BouquetCanvas
-            greeneryLayers={arrangement.greeneryLayers}
-            flowerLayers={arrangement.flowerLayers}
-            showRibbon={true}
-            borderless={true}
-            className="w-full h-full"
-          />
-        </div>
-        <div className="w-[440px]">
-          <BouquetCard
-            note={{
-              to: note.to,
-              message: note.message,
-              from: note.from,
-              closing: note.closing,
-            }}
-            cardFont={cardFont}
-            editable={false}
-            className="w-full border-2 border-black"
-          />
-        </div>
-        <div className="mt-8 text-center font-mono text-[10px] text-stone-400 uppercase tracking-widest">
-          Botanical Bouquet · CreatorsKit Keepsake
+        <div className="w-full max-w-[760px] flex flex-col gap-6">
+          <div className="flex items-center justify-between border-b-2 border-black pb-2 text-[11px] font-mono font-black uppercase tracking-wider">
+            <span>BOTANICAL KEEPSAKE · CREATORKIT</span>
+            <span className="text-stone-500">NO. BK-{seed}</span>
+          </div>
+
+          {/* PRINT FORMAT: FLOWER ONLY */}
+          {giftFormat === 'flower' && (
+            <div className="flex flex-col items-center justify-center py-6 gap-6">
+              <div className="w-full max-w-[480px] aspect-[4/5] flex items-center justify-center">
+                <BouquetCanvas
+                  greeneryLayers={arrangement.greeneryLayers}
+                  flowerLayers={arrangement.flowerLayers}
+                  showRibbon={true}
+                  borderless={true}
+                  className="w-full h-full"
+                />
+              </div>
+              <div className="text-center font-mono">
+                <div className="text-sm font-bold uppercase tracking-wider">
+                  FOR: {note.to}
+                </div>
+                <div className="text-xs text-stone-500 uppercase mt-0.5">
+                  FROM: {note.from} · {flowers.length} BOTANICAL BLOOMS
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PRINT FORMAT: CARD ONLY */}
+          {giftFormat === 'card' && (
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <div className="w-full max-w-[500px]">
+                <BouquetCard
+                  note={note}
+                  cardFont={cardFont}
+                  editable={false}
+                  className="w-full border-2 border-black shadow-sm"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* PRINT FORMAT: BOTH */}
+          {giftFormat === 'both' && (
+            <>
+              {cardPlacement === 'right' && (
+                <div className="grid grid-cols-2 gap-8 items-center">
+                  <div className="w-full aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div className="w-full flex items-center justify-center">
+                    <BouquetCard
+                      note={note}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/5] border border-stone-300"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {cardPlacement === 'left' && (
+                <div className="grid grid-cols-2 gap-8 items-center">
+                  <div className="w-full flex items-center justify-center">
+                    <BouquetCard
+                      note={note}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/5] border border-stone-300"
+                    />
+                  </div>
+                  <div className="w-full aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {cardPlacement === 'bottom' && (
+                <div className="flex flex-col gap-6 items-center">
+                  <div className="w-full max-w-[340px] aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div className="w-full max-w-[420px] flex items-center justify-center">
+                    <BouquetCard
+                      note={note}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/3] border border-stone-300"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="pt-3 border-t border-stone-200 flex items-center justify-between text-[10px] font-mono text-stone-500 uppercase tracking-widest">
+            <span>
+              {giftFormat === 'card'
+                ? 'Handcrafted personal stationery'
+                : 'Hand-arranged organic botanicals'}
+            </span>
+            <span>Verified keepsake gift</span>
+          </div>
         </div>
       </div>
 
@@ -152,93 +253,259 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
           {/* Header Title */}
           <div className="text-center mb-6 sm:mb-8">
             <span className="font-mono text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 bg-black text-white mb-2 inline-block">
-              PERSONAL BOTANICAL DELIVERY
+              {giftFormat === 'flower'
+                ? 'PERSONAL BOTANICAL BOUQUET'
+                : giftFormat === 'card'
+                ? 'PERSONAL HANDWRITTEN LETTER'
+                : 'PERSONAL BOTANICAL DELIVERY'}
             </span>
             <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-black mt-1">
               For {note.to}
             </h1>
             <p className="font-mono text-xs text-stone-600 mt-1">
-              Hand-arranged with organic botanicals from{' '}
+              {giftFormat === 'card'
+                ? `Handwritten letter sent with love from `
+                : `Hand-arranged with organic botanicals from `}
               <span className="font-bold text-black">{note.from}</span>
             </p>
           </div>
 
-          {/* Central Grid: Bouquet Canvas on Left, Handwritten Card on Right */}
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center justify-center max-w-4xl">
-            {/* Bouquet Canvas */}
-            <div
-              id="bouquet-canvas-export"
-              className="w-full max-w-[420px] aspect-[4/5] mx-auto flex items-center justify-center p-2"
-            >
-              <BouquetCanvas
-                greeneryLayers={arrangement.greeneryLayers}
-                flowerLayers={arrangement.flowerLayers}
-                showRibbon={true}
-                borderless={true}
-                className="w-full h-full"
-              />
-            </div>
-
-            {/* Handwritten Note Card */}
-            <div className="w-full max-w-[380px] mx-auto flex flex-col gap-4">
-              <BouquetCard
-                cardTemplateId={cardTemplateId}
-                cardFont={cardFont}
-                note={note}
-                editable={false}
-                className="w-full aspect-[4/5] border-2 border-black shadow-[4px_4px_0_#000]"
-              />
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={handleNativePrint}
-                  className="px-3 py-2 bg-black hover:bg-neutral-800 text-white border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Printer size={13} />
-                  <span>PRINT / PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportPng}
-                  disabled={isExporting}
-                  className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Download size={13} />
-                  <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {copied ? (
-                    <>
-                      <Check size={13} />
-                      <span>COPIED!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 size={13} />
-                      <span>SHARE</span>
-                    </>
-                  )}
-                </button>
+          {/* VIEW: FLOWER ONLY */}
+          {giftFormat === 'flower' && (
+            <div className="w-full flex flex-col items-center justify-center max-w-md mx-auto gap-6">
+              <div
+                id="bouquet-canvas-export"
+                className="w-full aspect-[4/5] flex items-center justify-center p-2"
+              >
+                <BouquetCanvas
+                  greeneryLayers={arrangement.greeneryLayers}
+                  flowerLayers={arrangement.flowerLayers}
+                  showRibbon={true}
+                  borderless={true}
+                  className="w-full h-full"
+                />
               </div>
 
-              {/* Thank you reply link */}
-              <Link
-                href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
-                className="w-full p-2.5 bg-stone-50 hover:bg-white text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] text-center flex items-center justify-center gap-2"
-              >
-                <MessageCircle size={14} />
-                <span>SEND A BOUQUET BACK TO {note.from.toUpperCase()}</span>
-              </Link>
+              {/* Action Buttons */}
+              <div className="w-full flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleNativePrint}
+                    className="px-3 py-2 bg-black hover:bg-neutral-800 text-white border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Printer size={13} />
+                    <span>PRINT BOUQUET</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportPng}
+                    disabled={isExporting}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Download size={13} />
+                    <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={13} />
+                        <span>COPIED!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={13} />
+                        <span>SHARE</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <Link
+                  href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
+                  className="w-full p-2.5 bg-stone-50 hover:bg-white text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] text-center flex items-center justify-center gap-2"
+                >
+                  <MessageCircle size={14} />
+                  <span>SEND A BOUQUET BACK TO {note.from.toUpperCase()}</span>
+                </Link>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* VIEW: CARD ONLY */}
+          {giftFormat === 'card' && (
+            <div className="w-full flex flex-col items-center justify-center max-w-md mx-auto gap-6">
+              <div
+                id="bouquet-canvas-export"
+                className="w-full"
+              >
+                <BouquetCard
+                  cardTemplateId={cardTemplateId}
+                  cardFont={cardFont}
+                  note={note}
+                  editable={false}
+                  className="w-full aspect-[4/3.6] border-2 border-black shadow-[4px_4px_0_#000]"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="w-full flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleNativePrint}
+                    className="px-3 py-2 bg-black hover:bg-neutral-800 text-white border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Printer size={13} />
+                    <span>PRINT CARD</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportPng}
+                    disabled={isExporting}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Download size={13} />
+                    <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={13} />
+                        <span>COPIED!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={13} />
+                        <span>SHARE</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <Link
+                  href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
+                  className="w-full p-2.5 bg-stone-50 hover:bg-white text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] text-center flex items-center justify-center gap-2"
+                >
+                  <MessageCircle size={14} />
+                  <span>REPLY WITH A BOUQUET TO {note.from.toUpperCase()}</span>
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: FLOWER WITH CARD */}
+          {giftFormat === 'both' && (
+            <div
+              className={`w-full items-center justify-center max-w-4xl ${
+                cardPlacement === 'bottom'
+                  ? 'flex flex-col gap-6'
+                  : 'grid grid-cols-1 md:grid-cols-2 gap-8'
+              }`}
+            >
+              {/* Bouquet Canvas */}
+              <div
+                id="bouquet-canvas-export"
+                className={`w-full aspect-[4/5] mx-auto flex items-center justify-center p-2 ${
+                  cardPlacement === 'bottom'
+                    ? 'max-w-[360px]'
+                    : cardPlacement === 'left'
+                    ? 'max-w-[420px] md:order-2'
+                    : 'max-w-[420px]'
+                }`}
+              >
+                <BouquetCanvas
+                  greeneryLayers={arrangement.greeneryLayers}
+                  flowerLayers={arrangement.flowerLayers}
+                  showRibbon={true}
+                  borderless={true}
+                  className="w-full h-full"
+                />
+              </div>
+
+              {/* Handwritten Note Card */}
+              <div
+                className={`w-full mx-auto flex flex-col gap-4 ${
+                  cardPlacement === 'bottom'
+                    ? 'max-w-[440px]'
+                    : cardPlacement === 'left'
+                    ? 'max-w-[380px] md:order-1'
+                    : 'max-w-[380px]'
+                }`}
+              >
+                <BouquetCard
+                  cardTemplateId={cardTemplateId}
+                  cardFont={cardFont}
+                  note={note}
+                  editable={false}
+                  className={`w-full border-2 border-black shadow-[4px_4px_0_#000] ${
+                    cardPlacement === 'bottom' ? 'aspect-[4/3]' : 'aspect-[4/5]'
+                  }`}
+                />
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleNativePrint}
+                    className="px-3 py-2 bg-black hover:bg-neutral-800 text-white border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Printer size={13} />
+                    <span>PRINT / PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportPng}
+                    disabled={isExporting}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Download size={13} />
+                    <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-3 py-2 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={13} />
+                        <span>COPIED!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={13} />
+                        <span>SHARE</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Thank you reply link */}
+                <Link
+                  href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
+                  className="w-full p-2.5 bg-stone-50 hover:bg-white text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] text-center flex items-center justify-center gap-2"
+                >
+                  <MessageCircle size={14} />
+                  <span>SEND A BOUQUET BACK TO {note.from.toUpperCase()}</span>
+                </Link>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </>

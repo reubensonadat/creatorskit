@@ -40,6 +40,7 @@ import { toPng } from 'html-to-image';
 
 type StudioStep = 1 | 2 | 3 | 4;
 type CardPlacement = 'right' | 'left' | 'bottom';
+export type GiftFormat = 'both' | 'flower' | 'card';
 
 export default function BouquetStudioPage() {
   // Navigation & Drawer states
@@ -86,8 +87,12 @@ export default function BouquetStudioPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Gift format choice: 'both' (Flower & Card), 'flower' (Flower Only), 'card' (Card Only)
+  const [giftFormat, setGiftFormat] = useState<GiftFormat>('both');
+
   // Keepsake layout choice in Step 4: 'right' | 'left' | 'bottom'
   const [cardPlacement, setCardPlacement] = useState<CardPlacement>('right');
+  const [finalizeView, setFinalizeView] = useState<'printer' | 'presentation'>('presentation');
 
   // Document Printer animation sequence
   const [printerStage, setPrinterStage] = useState<ReceiptPrinterStage>('processing');
@@ -96,6 +101,11 @@ export default function BouquetStudioPage() {
   const [paperHeight, setPaperHeight] = useState<number | null>(null);
 
   const maxAllowed = flowerCategory === 'big' ? 5 : 10;
+
+  // Selected handwriting font style
+  const selectedFontFamily = useMemo(() => {
+    return NOTE_FONTS.find((f) => f.id === cardFont)?.fontFamily || '"Space Mono", monospace';
+  }, [cardFont]);
 
   // Start animated document feed sequence
   const startPrintFeedSequence = () => {
@@ -107,13 +117,12 @@ export default function BouquetStudioPage() {
     ];
   };
 
-  // Trigger print sequence when switching to Step 4
   useEffect(() => {
-    if (activeStep === 4) {
+    if (activeStep === 4 && finalizeView === 'printer') {
       startPrintFeedSequence();
     }
     return () => printerTimersRef.current.forEach(clearTimeout);
-  }, [activeStep]);
+  }, [activeStep, finalizeView]);
 
   // Dynamically measure paper height for expandable printer tray
   useEffect(() => {
@@ -352,10 +361,13 @@ export default function BouquetStudioPage() {
           seed,
           cardFont,
           cardPlacement,
+          giftFormat,
         },
       });
 
-      const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}`;
+      const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${
+        giftFormat !== 'both' ? `?format=${giftFormat}` : ''
+      }`;
       setShareUrl(url);
       return url;
     } catch (e) {
@@ -408,6 +420,12 @@ export default function BouquetStudioPage() {
       suppressHydrationWarning
       className="relative w-screen h-screen overflow-hidden flex flex-col bg-[#FAF7F2] select-none text-black font-sans"
     >
+      {/* Google Fonts for card handwriting styles and preset swatch previews */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Courier+Prime:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Indie+Flower&family=Kalam:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Shadows+Into+Light&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Special+Elite&display=swap"
+      />
+
       {/* ── NATIVE PRINT DOCUMENT (REVEALED EXCLUSIVELY DURING BROWSER PRINT / PDF EXPORT) ── */}
       <div
         id="bouquet-print-document"
@@ -419,10 +437,10 @@ export default function BouquetStudioPage() {
             <span className="text-stone-500">NO. BK-{seed}</span>
           </div>
 
-          {/* Side by side: Bouquet on Left, Card on Right */}
-          {cardPlacement === 'right' && (
-            <div className="grid grid-cols-2 gap-8 items-center">
-              <div className="w-full aspect-[4/5] flex items-center justify-center">
+          {/* FORMAT: FLOWER ONLY (Centred Large Bouquet) */}
+          {giftFormat === 'flower' && (
+            <div className="flex flex-col items-center justify-center py-6 gap-6">
+              <div className="w-full max-w-[480px] aspect-[4/5] flex items-center justify-center">
                 <BouquetCanvas
                   greeneryLayers={arrangement.greeneryLayers}
                   flowerLayers={arrangement.flowerLayers}
@@ -431,7 +449,21 @@ export default function BouquetStudioPage() {
                   className="w-full h-full"
                 />
               </div>
-              <div className="w-full flex items-center justify-center">
+              <div className="text-center font-mono">
+                <div className="text-sm font-bold uppercase tracking-wider">
+                  FOR: {note.to.trim() || 'BELOVED'}
+                </div>
+                <div className="text-xs text-stone-500 uppercase mt-0.5">
+                  FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BOTANICAL BLOOMS
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* FORMAT: CARD ONLY (Centred Elegant Stationery Note) */}
+          {giftFormat === 'card' && (
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <div className="w-full max-w-[500px]">
                 <BouquetCard
                   note={{
                     to: note.to.trim() || 'Beloved',
@@ -443,74 +475,113 @@ export default function BouquetStudioPage() {
                   }}
                   cardFont={cardFont}
                   editable={false}
-                  className="w-full aspect-[4/5] border border-stone-300"
+                  className="w-full border-2 border-black shadow-sm"
                 />
               </div>
             </div>
           )}
 
-          {/* Side by side: Card on Left, Bouquet on Right */}
-          {cardPlacement === 'left' && (
-            <div className="grid grid-cols-2 gap-8 items-center">
-              <div className="w-full flex items-center justify-center">
-                <BouquetCard
-                  note={{
-                    to: note.to.trim() || 'Beloved',
-                    message:
-                      note.message.trim() ||
-                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                    from: note.from.trim() || 'Secret Admirer',
-                    closing: note.closing || 'Sincerely',
-                  }}
-                  cardFont={cardFont}
-                  editable={false}
-                  className="w-full aspect-[4/5] border border-stone-300"
-                />
-              </div>
-              <div className="w-full aspect-[4/5] flex items-center justify-center">
-                <BouquetCanvas
-                  greeneryLayers={arrangement.greeneryLayers}
-                  flowerLayers={arrangement.flowerLayers}
-                  showRibbon={true}
-                  borderless={true}
-                  className="w-full h-full"
-                />
-              </div>
-            </div>
-          )}
+          {/* FORMAT: FLOWER WITH CARD */}
+          {giftFormat === 'both' && (
+            <>
+              {/* Side by side: Bouquet on Left, Card on Right */}
+              {cardPlacement === 'right' && (
+                <div className="grid grid-cols-2 gap-8 items-center">
+                  <div className="w-full aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div className="w-full flex items-center justify-center">
+                    <BouquetCard
+                      note={{
+                        to: note.to.trim() || 'Beloved',
+                        message:
+                          note.message.trim() ||
+                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                        from: note.from.trim() || 'Secret Admirer',
+                        closing: note.closing || 'Sincerely',
+                      }}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/5] border border-stone-300"
+                    />
+                  </div>
+                </div>
+              )}
 
-          {/* Stacked: Bouquet on Top, Card at Bottom */}
-          {cardPlacement === 'bottom' && (
-            <div className="flex flex-col items-center gap-6">
-              <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
-                <BouquetCanvas
-                  greeneryLayers={arrangement.greeneryLayers}
-                  flowerLayers={arrangement.flowerLayers}
-                  showRibbon={true}
-                  borderless={true}
-                  className="w-full h-full"
-                />
-              </div>
-              <div className="w-full max-w-[460px] flex items-center justify-center">
-                <BouquetCard
-                  note={{
-                    to: note.to.trim() || 'Beloved',
-                    message:
-                      note.message.trim() ||
-                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                    from: note.from.trim() || 'Secret Admirer',
-                    closing: note.closing || 'Sincerely',
-                  }}
-                  cardFont={cardFont}
-                  editable={false}
-                  className="w-full border border-stone-300"
-                />
-              </div>
-            </div>
+              {/* Side by side: Card on Left, Bouquet on Right */}
+              {cardPlacement === 'left' && (
+                <div className="grid grid-cols-2 gap-8 items-center">
+                  <div className="w-full flex items-center justify-center">
+                    <BouquetCard
+                      note={{
+                        to: note.to.trim() || 'Beloved',
+                        message:
+                          note.message.trim() ||
+                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                        from: note.from.trim() || 'Secret Admirer',
+                        closing: note.closing || 'Sincerely',
+                      }}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/5] border border-stone-300"
+                    />
+                  </div>
+                  <div className="w-full aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Stacked: Bouquet on Top, Card at Bottom */}
+              {cardPlacement === 'bottom' && (
+                <div className="flex flex-col items-center gap-6">
+                  <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div className="w-full max-w-[460px] flex items-center justify-center">
+                    <BouquetCard
+                      note={{
+                        to: note.to.trim() || 'Beloved',
+                        message:
+                          note.message.trim() ||
+                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                        from: note.from.trim() || 'Secret Admirer',
+                        closing: note.closing || 'Sincerely',
+                      }}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full border border-stone-300"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="pt-3 border-t border-stone-200 flex items-center justify-between text-[10px] font-mono text-stone-500 uppercase tracking-widest">
-            <span>Hand-arranged organic botanicals</span>
+            <span>
+              {giftFormat === 'card'
+                ? 'Handcrafted personal stationery'
+                : 'Hand-arranged organic botanicals'}
+            </span>
             <span>Verified keepsake gift</span>
           </div>
         </div>
@@ -676,250 +747,553 @@ export default function BouquetStudioPage() {
               </div>
             )}
 
-            {/* ── Step 4: The Official CreatorKit Keepsake Document Printer ── */}
+            {/* ── Step 4: Animated Document Printer Machine (or Card View) ── */}
             {activeStep === 4 && (
               <div className="relative z-10 w-full h-full max-h-[86vh] overflow-y-auto flex flex-col items-center justify-start p-2 sm:p-4 select-text">
-                {/* Layout Selector Bar */}
-                <div className="mb-3 flex items-center gap-1 bg-white border-2 border-black p-1 shadow-[2px_2px_0_#000] shrink-0">
-                  <span className="text-[10px] font-mono font-black uppercase px-2 text-stone-500 hidden sm:inline">
-                    CARD PLACEMENT:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCardPlacement('right')}
-                    className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
-                      cardPlacement === 'right'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-stone-700 hover:text-black'
-                    }`}
-                  >
-                    RIGHT
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCardPlacement('bottom')}
-                    className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
-                      cardPlacement === 'bottom'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-stone-700 hover:text-black'
-                    }`}
-                  >
-                    BOTTOM
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCardPlacement('left')}
-                    className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
-                      cardPlacement === 'left'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-stone-700 hover:text-black'
-                    }`}
-                  >
-                    LEFT
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startPrintFeedSequence}
-                    title="Replay printer feed animation"
-                    className="ml-2 px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <RotateCcw size={11} />
-                    <span className="hidden sm:inline">REPRINT</span>
-                  </button>
+                {/* Mode & Choice Switcher Bar */}
+                <div className="mb-3 flex flex-wrap items-center justify-center gap-2 bg-white border-2 border-black p-1.5 shadow-[2px_2px_0_#000] shrink-0 z-20">
+                  {/* Format Selector: Flower & Card | Flower Only | Card Only */}
+                  <div className="flex items-center bg-stone-100 p-0.5 border border-black">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGiftFormat('both');
+                        setShareUrl('');
+                      }}
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        giftFormat === 'both'
+                          ? 'bg-black text-white shadow-xs'
+                          : 'text-stone-700 hover:text-black'
+                      }`}
+                    >
+                      <span>🌸 FLOWER & CARD</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGiftFormat('flower');
+                        setShareUrl('');
+                      }}
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        giftFormat === 'flower'
+                          ? 'bg-black text-white shadow-xs'
+                          : 'text-stone-700 hover:text-black'
+                      }`}
+                    >
+                      <span>🌷 FLOWER ONLY</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGiftFormat('card');
+                        setShareUrl('');
+                      }}
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        giftFormat === 'card'
+                          ? 'bg-black text-white shadow-xs'
+                          : 'text-stone-700 hover:text-black'
+                      }`}
+                    >
+                      <span>💌 CARD ONLY</span>
+                    </button>
+                  </div>
+
+                  {/* View Selector: As It Is vs Animated Printer */}
+                  <div className="flex items-center bg-stone-100 p-0.5 border border-black">
+                    <button
+                      type="button"
+                      onClick={() => setFinalizeView('presentation')}
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        finalizeView === 'presentation'
+                          ? 'bg-black text-white shadow-xs'
+                          : 'text-stone-700 hover:text-black'
+                      }`}
+                    >
+                      <LayoutTemplate size={12} />
+                      <span>CARD VIEW (AS IT IS)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinalizeView('printer');
+                        startPrintFeedSequence();
+                      }}
+                      className={`px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        finalizeView === 'printer'
+                          ? 'bg-black text-white shadow-xs'
+                          : 'text-stone-700 hover:text-black'
+                      }`}
+                    >
+                      <Printer size={12} />
+                      <span>PRINTER ANIMATION</span>
+                    </button>
+                  </div>
+
+                  {/* Sheet Card Layout Placement (Only when Format is BOTH and in Printer View) */}
+                  {finalizeView === 'printer' && giftFormat === 'both' && (
+                    <div className="flex items-center gap-1 pl-1 border-l border-stone-300">
+                      <span className="text-[10px] font-mono font-black uppercase px-1 text-stone-500 hidden sm:inline">
+                        LAYOUT:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCardPlacement('right')}
+                        className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          cardPlacement === 'right'
+                            ? 'bg-black text-white'
+                            : 'bg-white text-stone-700 hover:text-black'
+                        }`}
+                      >
+                        RIGHT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCardPlacement('bottom')}
+                        className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          cardPlacement === 'bottom'
+                            ? 'bg-black text-white'
+                            : 'bg-white text-stone-700 hover:text-black'
+                        }`}
+                      >
+                        BOTTOM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCardPlacement('left')}
+                        className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          cardPlacement === 'left'
+                            ? 'bg-black text-white'
+                            : 'bg-white text-stone-700 hover:text-black'
+                        }`}
+                      >
+                        LEFT
+                      </button>
+                    </div>
+                  )}
+
+                  {finalizeView === 'printer' && (
+                    <button
+                      type="button"
+                      onClick={startPrintFeedSequence}
+                      title="Replay printer feed animation"
+                      className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-800 text-[9px] font-mono font-bold flex items-center gap-1 cursor-pointer border border-stone-300"
+                    >
+                      <RotateCcw size={11} />
+                      <span className="hidden sm:inline">REPRINT</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Animated Document Printer Machine */}
-                <ReceiptPrinter.Root
-                  stage={printerStage}
-                  feedMotion="stepped"
-                  className="w-full max-w-2xl mx-auto"
-                >
-                  <ReceiptPrinter.Machine>
-                    <ReceiptPrinter.Header>
-                      <ReceiptPrinter.Status>
-                        {printerStage === 'processing'
-                          ? 'Preparing botanical keepsake…'
-                          : printerStage === 'printing'
-                          ? 'Printing keepsake document…'
-                          : 'Keepsake document ready!'}
-                      </ReceiptPrinter.Status>
-                      <span className="rounded bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
-                        CREATORKIT
-                      </span>
-                    </ReceiptPrinter.Header>
+                {/* VIEW 1: ANIMATED DOCUMENT PRINTER */}
+                {finalizeView === 'printer' && (
+                  <div className="w-full flex flex-col items-center">
+                    <ReceiptPrinter.Root
+                      stage={printerStage}
+                      feedMotion="stepped"
+                      className="w-full max-w-2xl mx-auto"
+                    >
+                      <ReceiptPrinter.Machine>
+                        <ReceiptPrinter.Header>
+                          <ReceiptPrinter.Status>
+                            {printerStage === 'processing'
+                              ? 'Preparing keepsake sheet…'
+                              : printerStage === 'printing'
+                              ? 'Printing keepsake document…'
+                              : 'Keepsake document ready!'}
+                          </ReceiptPrinter.Status>
+                          <span className="rounded bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
+                            CREATORKIT
+                          </span>
+                        </ReceiptPrinter.Header>
 
-                    <ReceiptPrinter.Screen>
-                      <div className="flex items-baseline justify-between font-mono text-[11px] font-bold uppercase tracking-wider">
-                        <span>TO: {note.to.trim() || 'BELOVED'}</span>
-                        <span>{printerStage === 'complete' ? 'READY' : 'PRINTING'}</span>
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[10px] text-zinc-400">
-                        FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BLOOMS · 1 BOTANICAL KEEPSAKE
-                      </p>
-                    </ReceiptPrinter.Screen>
-                  </ReceiptPrinter.Machine>
-
-                  {/* Output Tray with dynamic measured height */}
-                  <ReceiptPrinter.Output
-                    style={{
-                      height:
-                        printerStage === 'processing'
-                          ? 240
-                          : paperHeight
-                          ? paperHeight + 24
-                          : 580,
-                      transition: 'height 1850ms linear',
-                    }}
-                  >
-                    <div ref={paperRef}>
-                      <ReceiptPrinter.Paper
-                        variant="document"
-                        className="p-5 sm:p-7 border border-stone-200 shadow-2xl bg-white text-black"
-                      >
-                        {/* The Keepsake Document Sheet that fits 1 A4 canvas */}
-                        <div id="bouquet-document-sheet" className="w-full flex flex-col gap-4">
-                          <div className="flex items-center justify-between border-b-2 border-black pb-2 text-[10px] font-mono font-black uppercase tracking-wider">
-                            <span>BOTANICAL KEEPSAKE · CREATORKIT</span>
-                            <span className="text-stone-500">NO. BK-{seed}</span>
+                        <ReceiptPrinter.Screen>
+                          <div className="flex items-baseline justify-between font-mono text-[11px] font-bold uppercase tracking-wider">
+                            <span>TO: {note.to.trim() || 'BELOVED'}</span>
+                            <span>{printerStage === 'complete' ? 'READY' : 'PRINTING'}</span>
                           </div>
+                          <p className="mt-1 truncate font-mono text-[10px] text-zinc-400">
+                            FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BLOOMS · 1 BOTANICAL KEEPSAKE
+                          </p>
+                        </ReceiptPrinter.Screen>
+                      </ReceiptPrinter.Machine>
 
-                          {/* Layout Content */}
-                          {cardPlacement === 'right' && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
-                              <div className="w-full aspect-[4/5] flex items-center justify-center">
-                                <BouquetCanvas
-                                  greeneryLayers={arrangement.greeneryLayers}
-                                  flowerLayers={arrangement.flowerLayers}
-                                  showRibbon={true}
-                                  borderless={true}
-                                  className="w-full h-full"
-                                />
+                      <ReceiptPrinter.Output
+                        style={{
+                          height:
+                            printerStage === 'processing'
+                              ? 240
+                              : paperHeight
+                              ? paperHeight + 24
+                              : 580,
+                          transition: 'height 1850ms linear',
+                        }}
+                      >
+                        <div ref={paperRef}>
+                          <ReceiptPrinter.Paper
+                            variant="document"
+                            className="p-5 sm:p-7 border border-stone-200 shadow-2xl bg-white text-black"
+                          >
+                            <div id="bouquet-document-sheet" className="w-full flex flex-col gap-4">
+                              <div className="flex items-center justify-between border-b-2 border-black pb-2 text-[10px] font-mono font-black uppercase tracking-wider">
+                                <span>BOTANICAL KEEPSAKE · CREATORKIT</span>
+                                <span className="text-stone-500">NO. BK-{seed}</span>
                               </div>
-                              <div className="w-full flex items-center justify-center">
-                                <BouquetCard
-                                  note={{
-                                    to: note.to.trim() || 'Beloved',
-                                    message:
-                                      note.message.trim() ||
-                                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                    from: note.from.trim() || 'Secret Admirer',
-                                    closing: note.closing || 'Sincerely',
-                                  }}
-                                  cardFont={cardFont}
-                                  editable={false}
-                                  className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
-                                />
+
+                              {/* FORMAT: FLOWER ONLY (Centred Large Bouquet on Sheet) */}
+                              {giftFormat === 'flower' && (
+                                <div className="flex flex-col items-center justify-center py-4 gap-3">
+                                  <div className="w-full max-w-[360px] aspect-[4/5] flex items-center justify-center">
+                                    <BouquetCanvas
+                                      greeneryLayers={arrangement.greeneryLayers}
+                                      flowerLayers={arrangement.flowerLayers}
+                                      showRibbon={true}
+                                      borderless={true}
+                                      className="w-full h-full"
+                                    />
+                                  </div>
+                                  <div className="text-center font-mono">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-black">
+                                      FOR: {note.to.trim() || 'BELOVED'}
+                                    </div>
+                                    <div className="text-[9px] text-stone-500 uppercase mt-0.5">
+                                      FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BOTANICAL BLOOMS
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* FORMAT: CARD ONLY (Centred Elegant Note Card on Sheet) */}
+                              {giftFormat === 'card' && (
+                                <div className="flex flex-col items-center justify-center py-4 gap-3">
+                                  <div className="w-full max-w-[420px] flex items-center justify-center">
+                                    <BouquetCard
+                                      note={{
+                                        to: note.to.trim() || 'Beloved',
+                                        message:
+                                          note.message.trim() ||
+                                          'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                                        from: note.from.trim() || 'Secret Admirer',
+                                        closing: note.closing || 'Sincerely',
+                                      }}
+                                      cardFont={cardFont}
+                                      editable={false}
+                                      className="w-full border border-stone-300 shadow-sm"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* FORMAT: FLOWER WITH CARD */}
+                              {giftFormat === 'both' && (
+                                <>
+                                  {cardPlacement === 'right' && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
+                                      <div className="w-full aspect-[4/5] flex items-center justify-center">
+                                        <BouquetCanvas
+                                          greeneryLayers={arrangement.greeneryLayers}
+                                          flowerLayers={arrangement.flowerLayers}
+                                          showRibbon={true}
+                                          borderless={true}
+                                          className="w-full h-full"
+                                        />
+                                      </div>
+                                      <div className="w-full flex items-center justify-center">
+                                        <BouquetCard
+                                          note={{
+                                            to: note.to.trim() || 'Beloved',
+                                            message:
+                                              note.message.trim() ||
+                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                                            from: note.from.trim() || 'Secret Admirer',
+                                            closing: note.closing || 'Sincerely',
+                                          }}
+                                          cardFont={cardFont}
+                                          editable={false}
+                                          className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {cardPlacement === 'left' && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
+                                      <div className="w-full flex items-center justify-center">
+                                        <BouquetCard
+                                          note={{
+                                            to: note.to.trim() || 'Beloved',
+                                            message:
+                                              note.message.trim() ||
+                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                                            from: note.from.trim() || 'Secret Admirer',
+                                            closing: note.closing || 'Sincerely',
+                                          }}
+                                          cardFont={cardFont}
+                                          editable={false}
+                                          className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
+                                        />
+                                      </div>
+                                      <div className="w-full aspect-[4/5] flex items-center justify-center">
+                                        <BouquetCanvas
+                                          greeneryLayers={arrangement.greeneryLayers}
+                                          flowerLayers={arrangement.flowerLayers}
+                                          showRibbon={true}
+                                          borderless={true}
+                                          className="w-full h-full"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {cardPlacement === 'bottom' && (
+                                    <div className="flex flex-col items-center gap-4">
+                                      <div className="w-full max-w-[320px] aspect-[4/5] flex items-center justify-center">
+                                        <BouquetCanvas
+                                          greeneryLayers={arrangement.greeneryLayers}
+                                          flowerLayers={arrangement.flowerLayers}
+                                          showRibbon={true}
+                                          borderless={true}
+                                          className="w-full h-full"
+                                        />
+                                      </div>
+                                      <div className="w-full max-w-[420px] flex items-center justify-center">
+                                        <BouquetCard
+                                          note={{
+                                            to: note.to.trim() || 'Beloved',
+                                            message:
+                                              note.message.trim() ||
+                                              'I have so much to tell you, but only this much space on this card! Still, you must know...',
+                                            from: note.from.trim() || 'Secret Admirer',
+                                            closing: note.closing || 'Sincerely',
+                                          }}
+                                          cardFont={cardFont}
+                                          editable={false}
+                                          className="w-full border border-stone-300 shadow-sm"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              <div className="pt-3 border-t border-stone-200 flex items-center justify-between text-[9px] font-mono text-stone-500 uppercase tracking-widest">
+                                <span>
+                                  {giftFormat === 'card'
+                                    ? 'Handcrafted personal stationery'
+                                    : 'Hand-arranged organic botanicals'}
+                                </span>
+                                <span>Verified keepsake gift</span>
                               </div>
                             </div>
-                          )}
+                          </ReceiptPrinter.Paper>
+                        </div>
+                      </ReceiptPrinter.Output>
+                    </ReceiptPrinter.Root>
 
-                          {cardPlacement === 'left' && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
-                              <div className="w-full flex items-center justify-center">
-                                <BouquetCard
-                                  note={{
-                                    to: note.to.trim() || 'Beloved',
-                                    message:
-                                      note.message.trim() ||
-                                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                    from: note.from.trim() || 'Secret Admirer',
-                                    closing: note.closing || 'Sincerely',
-                                  }}
-                                  cardFont={cardFont}
-                                  editable={false}
-                                  className="w-full aspect-[4/5] border border-stone-300 shadow-sm"
-                                />
-                              </div>
-                              <div className="w-full aspect-[4/5] flex items-center justify-center">
-                                <BouquetCanvas
-                                  greeneryLayers={arrangement.greeneryLayers}
-                                  flowerLayers={arrangement.flowerLayers}
-                                  showRibbon={true}
-                                  borderless={true}
-                                  className="w-full h-full"
-                                />
-                              </div>
-                            </div>
+                    {printerStage === 'complete' && (
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-3 w-full max-w-xl pb-6">
+                        <button
+                          type="button"
+                          onClick={() => setFinalizeView('presentation')}
+                          className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
+                        >
+                          <LayoutTemplate size={14} />
+                          <span>CARD VIEW (AS IT IS)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleNativePrint}
+                          className="px-5 py-2.5 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                        >
+                          <Printer size={15} />
+                          <span>PRINT / SAVE AS PDF</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportPng}
+                          disabled={isExporting}
+                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                        >
+                          <Download size={15} />
+                          <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCopyLink}
+                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                        >
+                          {copied ? (
+                            <>
+                              <Check size={15} />
+                              <span>LINK COPIED!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Share2 size={15} />
+                              <span>SHARE LINK</span>
+                            </>
                           )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                          {cardPlacement === 'bottom' && (
-                            <div className="flex flex-col items-center gap-4">
-                              <div className="w-full max-w-[320px] aspect-[4/5] flex items-center justify-center">
-                                <BouquetCanvas
-                                  greeneryLayers={arrangement.greeneryLayers}
-                                  flowerLayers={arrangement.flowerLayers}
-                                  showRibbon={true}
-                                  borderless={true}
-                                  className="w-full h-full"
-                                />
-                              </div>
-                              <div className="w-full max-w-[420px] flex items-center justify-center">
-                                <BouquetCard
-                                  note={{
-                                    to: note.to.trim() || 'Beloved',
-                                    message:
-                                      note.message.trim() ||
-                                      'I have so much to tell you, but only this much space on this card! Still, you must know...',
-                                    from: note.from.trim() || 'Secret Admirer',
-                                    closing: note.closing || 'Sincerely',
-                                  }}
-                                  cardFont={cardFont}
-                                  editable={false}
-                                  className="w-full border border-stone-300 shadow-sm"
-                                />
-                              </div>
-                            </div>
-                          )}
+                {/* VIEW 2: DIGIBOUQUET CLEAN CARD PRESENTATION (AS IT IS RIGHT NOW) */}
+                {finalizeView === 'presentation' && (
+                  <div className="w-full flex flex-col items-center justify-center relative">
+                    <div className="absolute w-[340px] h-[340px] sm:w-[460px] sm:h-[460px] rounded-full bg-amber-100/40 blur-2xl pointer-events-none" />
 
-                          <div className="pt-3 border-t border-stone-200 flex items-center justify-between text-[9px] font-mono text-stone-500 uppercase tracking-widest">
-                            <span>Hand-arranged organic botanicals</span>
-                            <span>Verified keepsake gift</span>
+                    {/* FORMAT: FLOWER ONLY (Centred Majestic Bouquet) */}
+                    {giftFormat === 'flower' && (
+                      <div className="w-full flex flex-col items-center justify-center relative">
+                        <div
+                          id="bouquet-canvas-export"
+                          className="relative z-10 w-full max-w-[420px] aspect-[4/5] flex items-center justify-center pointer-events-none"
+                        >
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="mt-3 text-center font-mono z-20">
+                          <div className="text-sm font-bold uppercase tracking-wider text-black">
+                            FOR: {note.to.trim() || 'BELOVED'}
+                          </div>
+                          <div className="text-xs text-stone-500 uppercase mt-0.5">
+                            FROM: {note.from.trim() || 'SECRET ADMIRER'} · {selectedFlowers.length} BOTANICAL BLOOMS
                           </div>
                         </div>
-                      </ReceiptPrinter.Paper>
+                      </div>
+                    )}
+
+                    {/* FORMAT: CARD ONLY (Centred Personal Handwritten Note Card) */}
+                    {giftFormat === 'card' && (
+                      <div className="w-full flex flex-col items-center justify-center relative py-6">
+                        <div
+                          id="bouquet-canvas-export"
+                          className="relative z-10 w-full max-w-[460px] px-3"
+                        >
+                          <div
+                            style={{ fontFamily: selectedFontFamily }}
+                            className="w-full bg-white border-2 border-black p-6 sm:p-8 shadow-[4px_4px_0_#000]"
+                          >
+                            <div className="text-left text-base sm:text-lg mb-2 text-black">
+                              <span className="font-bold">Dear</span>{' '}
+                              <span className="font-normal">{note.to.trim() || 'Beloved'}</span>,
+                            </div>
+                            <p className="text-sm sm:text-base leading-relaxed font-normal my-2 text-black whitespace-pre-wrap break-words">
+                              {note.message.trim() ||
+                                'I have so much to tell you, but only this much space on this card! Still, you must know...'}
+                            </p>
+                            <div className="text-right text-base sm:text-lg mt-3 text-black">
+                              <span className="font-bold">{note.closing || 'Sincerely'},</span>
+                              <div className="font-normal">{note.from.trim() || 'Secret Admirer'}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FORMAT: FLOWER WITH CARD (Bouquet with Card nestled at lower stems) */}
+                    {giftFormat === 'both' && (
+                      <div className="w-full flex flex-col items-center justify-center relative">
+                        <div
+                          id="bouquet-canvas-export"
+                          className="relative z-10 w-full max-w-[400px] aspect-[4/5] flex items-center justify-center pointer-events-none"
+                        >
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="relative w-full max-w-[400px] -mt-14 sm:-mt-18 z-20 px-3">
+                          <div
+                            style={{ fontFamily: selectedFontFamily }}
+                            className="w-full bg-white border-2 border-black p-5 sm:p-7 shadow-[4px_4px_0_#000] rotate-[-1.5deg]"
+                          >
+                            <div className="text-left text-base sm:text-lg mb-2 text-black">
+                              <span className="font-bold">Dear</span>{' '}
+                              <span className="font-normal">{note.to.trim() || 'Beloved'}</span>,
+                            </div>
+                            <p className="text-sm sm:text-base leading-relaxed font-normal my-2 text-black whitespace-pre-wrap break-words">
+                              {note.message.trim() ||
+                                'I have so much to tell you, but only this much space on this card! Still, you must know...'}
+                            </p>
+                            <div className="text-right text-base sm:text-lg mt-3 text-black">
+                              <span className="font-bold">{note.closing || 'Sincerely'},</span>
+                              <div className="font-normal">{note.from.trim() || 'Secret Admirer'}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="mt-6 flex flex-wrap items-center justify-center gap-3 z-30 pb-4">
+                      {/* CHOICE 1: PRINT WITH PRINTER ANIMATION */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFinalizeView('printer');
+                          startPrintFeedSequence();
+                        }}
+                        className="px-6 py-2.5 bg-[#FFE500] hover:bg-[#FDD800] text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      >
+                        <Printer size={15} />
+                        <span>PRINT WITH PRINTER ANIMATION</span>
+                      </button>
+
+                      {/* CHOICE 2: DIRECT PRINT / PDF */}
+                      <button
+                        type="button"
+                        onClick={handleNativePrint}
+                        className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      >
+                        <Printer size={15} />
+                        <span>
+                          {giftFormat === 'flower'
+                            ? 'PRINT BOUQUET / PDF'
+                            : giftFormat === 'card'
+                            ? 'PRINT CARD / PDF'
+                            : 'DIRECT PRINT / PDF'}
+                        </span>
+                      </button>
+
+                      {/* SHARE LINK */}
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      >
+                        <Share2 size={13} />
+                        <span>
+                          {copied
+                            ? 'COPIED!'
+                            : giftFormat === 'flower'
+                            ? 'SHARE BOUQUET'
+                            : giftFormat === 'card'
+                            ? 'SHARE CARD'
+                            : 'SHARE GIFT'}
+                        </span>
+                      </button>
+
+                      {/* SAVE PNG */}
+                      <button
+                        type="button"
+                        onClick={handleExportPng}
+                        disabled={isExporting}
+                        className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      >
+                        <Download size={13} />
+                        <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
+                      </button>
                     </div>
-                  </ReceiptPrinter.Output>
-                </ReceiptPrinter.Root>
-
-                {/* Bright action buttons beneath printer */}
-                {printerStage === 'complete' && (
-                  <div className="mt-4 flex flex-wrap items-center justify-center gap-3 w-full max-w-xl pb-6">
-                    <button
-                      type="button"
-                      onClick={handleNativePrint}
-                      className="px-5 py-2.5 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
-                    >
-                      <Printer size={15} />
-                      <span>PRINT / SAVE AS PDF</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleExportPng}
-                      disabled={isExporting}
-                      className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
-                    >
-                      <Download size={15} />
-                      <span>{isExporting ? 'SAVING...' : 'SAVE PNG'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
-                    >
-                      {copied ? (
-                        <>
-                          <Check size={15} />
-                          <span>LINK COPIED!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Share2 size={15} />
-                          <span>SHARE LINK</span>
-                        </>
-                      )}
-                    </button>
                   </div>
                 )}
               </div>
@@ -1110,14 +1484,39 @@ export default function BouquetStudioPage() {
                               key={font.id}
                               type="button"
                               onClick={() => setCardFont(font.id)}
-                              className={`p-2 border-2 border-black text-left transition-all cursor-pointer ${
+                              className={`p-2.5 border-2 border-black text-left transition-all cursor-pointer flex flex-col justify-between min-h-[58px] ${
                                 isSelected
                                   ? 'bg-black text-white shadow-[2px_2px_0_#000]'
-                                  : 'bg-white hover:bg-stone-50 text-black'
+                                  : 'bg-white hover:bg-stone-50 text-black shadow-xs'
                               }`}
                             >
-                              <div className="text-xs sm:text-sm font-semibold truncate">
-                                {font.name}
+                              <div className="flex items-center justify-between w-full">
+                                <span
+                                  style={{ fontFamily: font.fontFamily }}
+                                  className={`font-semibold truncate ${
+                                    font.category === 'handwriting'
+                                      ? 'text-[15px] sm:text-base leading-tight'
+                                      : 'text-xs sm:text-[13px] leading-tight'
+                                  }`}
+                                >
+                                  {font.name}
+                                </span>
+                                <span
+                                  style={{ fontFamily: font.fontFamily }}
+                                  className={`text-xs font-bold opacity-75 ml-1 shrink-0 ${
+                                    isSelected ? 'text-stone-300' : 'text-stone-500'
+                                  }`}
+                                >
+                                  Aa
+                                </span>
+                              </div>
+                              <div
+                                style={{ fontFamily: font.fontFamily }}
+                                className={`text-[11px] truncate leading-tight mt-0.5 ${
+                                  isSelected ? 'text-stone-300' : 'text-stone-600'
+                                }`}
+                              >
+                                Beloved, with love
                               </div>
                             </button>
                           );
@@ -1177,44 +1576,164 @@ export default function BouquetStudioPage() {
                 {activeStep === 4 && (
                   <div className="flex flex-col gap-3">
                     <p className="font-mono text-xs text-stone-600">
-                      Your keepsake sheet is ready. Select layout and print or share.
+                      Your botanical keepsake is ready! Choose what to share or print and how to display it.
                     </p>
 
-                    {/* Layout Placement selector inside sidebar */}
+                    {/* Gift Format Choice: Flower & Card vs Flower Only vs Card Only */}
                     <div className="p-3 bg-stone-50 border-2 border-black flex flex-col gap-2 shadow-[2px_2px_0_#000]">
                       <span className="text-[10px] font-mono font-black uppercase text-stone-600">
-                        SHEET CARD PLACEMENT
+                        GIFT FORMAT (WHAT TO SHARE / PRINT)
                       </span>
                       <div className="grid grid-cols-3 gap-1">
                         <button
                           type="button"
-                          onClick={() => setCardPlacement('right')}
-                          className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
-                            cardPlacement === 'right' ? 'bg-black text-white' : 'bg-white text-black'
+                          onClick={() => {
+                            setGiftFormat('both');
+                            setShareUrl('');
+                          }}
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                            giftFormat === 'both'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          RIGHT
+                          <span className="text-xs">🌸</span>
+                          <span>BOTH</span>
+                          <span className="text-[8px] opacity-70">FLOWER & CARD</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCardPlacement('bottom')}
-                          className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
-                            cardPlacement === 'bottom' ? 'bg-black text-white' : 'bg-white text-black'
+                          onClick={() => {
+                            setGiftFormat('flower');
+                            setShareUrl('');
+                          }}
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                            giftFormat === 'flower'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          BOTTOM
+                          <span className="text-xs">🌷</span>
+                          <span>FLOWER ONLY</span>
+                          <span className="text-[8px] opacity-70">PURE BOUQUET</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCardPlacement('left')}
-                          className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
-                            cardPlacement === 'left' ? 'bg-black text-white' : 'bg-white text-black'
+                          onClick={() => {
+                            setGiftFormat('card');
+                            setShareUrl('');
+                          }}
+                          className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-0.5 transition-all ${
+                            giftFormat === 'card'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'bg-white text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          LEFT
+                          <span className="text-xs">💌</span>
+                          <span>CARD ONLY</span>
+                          <span className="text-[8px] opacity-70">LETTER ONLY</span>
                         </button>
                       </div>
                     </div>
+
+                    {/* Choice between As It Is vs Animated Printer */}
+                    <div className="p-3 bg-stone-50 border-2 border-black flex flex-col gap-2 shadow-[2px_2px_0_#000]">
+                      <span className="text-[10px] font-mono font-black uppercase text-stone-600">
+                        DISPLAY & PRINT VIEW
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setFinalizeView('presentation')}
+                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                            finalizeView === 'presentation'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'bg-white text-stone-800 hover:bg-stone-100'
+                          }`}
+                        >
+                          <LayoutTemplate size={12} />
+                          <span>CARD VIEW (AS IT IS)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFinalizeView('printer');
+                            startPrintFeedSequence();
+                          }}
+                          className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                            finalizeView === 'printer'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'bg-white text-stone-800 hover:bg-stone-100'
+                          }`}
+                        >
+                          <Printer size={12} />
+                          <span>PRINTER ANIMATION</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* If in printer view AND format is BOTH, show sheet card placement & replay */}
+                    {finalizeView === 'printer' && giftFormat === 'both' && (
+                      <div className="p-3 bg-stone-50 border-2 border-black flex flex-col gap-2 shadow-[2px_2px_0_#000]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono font-black uppercase text-stone-600">
+                            SHEET CARD PLACEMENT
+                          </span>
+                          <button
+                            type="button"
+                            onClick={startPrintFeedSequence}
+                            title="Replay printer feed animation"
+                            className="text-[9px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer"
+                          >
+                            <RotateCcw size={11} />
+                            <span>REPRINT</span>
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setCardPlacement('right')}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                              cardPlacement === 'right' ? 'bg-black text-white' : 'bg-white text-black'
+                            }`}
+                          >
+                            RIGHT
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCardPlacement('bottom')}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                              cardPlacement === 'bottom' ? 'bg-black text-white' : 'bg-white text-black'
+                            }`}
+                          >
+                            BOTTOM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCardPlacement('left')}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer ${
+                              cardPlacement === 'left' ? 'bg-black text-white' : 'bg-white text-black'
+                            }`}
+                          >
+                            LEFT
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {finalizeView === 'printer' && giftFormat !== 'both' && (
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={startPrintFeedSequence}
+                          title="Replay printer feed animation"
+                          className="text-[10px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw size={11} />
+                          <span>REPRINT ANIMATION</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Quick Edit Links */}
                     <div className="flex items-center justify-between text-[11px] font-mono pt-1">
@@ -1234,13 +1753,32 @@ export default function BouquetStudioPage() {
                       </button>
                     </div>
 
+                    {/* Primary Print with Printer Animation Action */}
                     <button
                       type="button"
-                      onClick={handleNativePrint}
+                      onClick={() => {
+                        setFinalizeView('printer');
+                        startPrintFeedSequence();
+                      }}
                       className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                     >
                       <Printer size={16} />
-                      <span>PRINT / SAVE AS PDF</span>
+                      <span>PRINT WITH PRINTER ANIMATION</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNativePrint}
+                      className="p-3 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                    >
+                      <Printer size={16} />
+                      <span>
+                        {giftFormat === 'flower'
+                          ? 'PRINT BOUQUET / PDF'
+                          : giftFormat === 'card'
+                          ? 'PRINT CARD / PDF'
+                          : 'DIRECT PRINT / SAVE AS PDF'}
+                      </span>
                     </button>
 
                     <button
@@ -1259,7 +1797,15 @@ export default function BouquetStudioPage() {
                       className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                     >
                       <Share2 size={16} />
-                      <span>{copied ? 'LINK COPIED!' : 'COPY SHARE LINK'}</span>
+                      <span>
+                        {copied
+                          ? 'LINK COPIED!'
+                          : giftFormat === 'flower'
+                          ? 'COPY BOUQUET LINK'
+                          : giftFormat === 'card'
+                          ? 'COPY CARD LINK'
+                          : 'COPY SHARE LINK'}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1290,11 +1836,18 @@ export default function BouquetStudioPage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={handleNativePrint}
+                    onClick={() => {
+                      if (finalizeView === 'presentation') {
+                        setFinalizeView('printer');
+                        startPrintFeedSequence();
+                      } else {
+                        handleNativePrint();
+                      }
+                    }}
                     className="px-6 py-2 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ml-auto flex items-center gap-1.5"
                   >
                     <Printer size={13} />
-                    <span>PRINT / PDF</span>
+                    <span>{finalizeView === 'presentation' ? 'PRINT ANIMATION ›' : 'PRINT / PDF'}</span>
                   </button>
                 )}
               </div>
@@ -1400,6 +1953,8 @@ export default function BouquetStudioPage() {
             </aside>
           </>
         )}
+
+
       </div>
     </div>
   );

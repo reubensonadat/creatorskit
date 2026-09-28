@@ -1,5 +1,5 @@
 // CreatorKit Production PWA Service Worker
-const CACHE_NAME = 'creatorkit-pwa-v3';
+const CACHE_NAME = 'creatorkit-pwa-v4';
 
 const STATIC_PRECACHE = [
   '/',
