@@ -17,16 +17,32 @@ export default function PwaInstallPrompt() {
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
-    // 1. Register Service Worker
+    // 1. Register Service Worker (production only).
+    // In dev the SW caches Turbopack HTML/chunks across rebuilds and serves
+    // stale build artifacts to the App Router, which crashes it with
+    // "Router action dispatched before initialization". Dev must stay clean.
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => {
-          console.log('CreatorKit ServiceWorker registered:', reg.scope);
-        })
-        .catch((err) => {
-          console.warn('CreatorKit ServiceWorker registration error:', err);
-        });
+      if (process.env.NODE_ENV !== 'production') {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => {
+            regs.forEach((r) => r.unregister());
+          })
+          .then(() => caches.keys())
+          .then((keys) => {
+            keys.forEach((k) => caches.delete(k));
+          })
+          .catch(() => { });
+      } else {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => {
+            console.log('CreatorKit ServiceWorker registered:', reg.scope);
+          })
+          .catch((err) => {
+            console.warn('CreatorKit ServiceWorker registration error:', err);
+          });
+      }
     }
 
     // 2. Check if already installed / running in standalone mode

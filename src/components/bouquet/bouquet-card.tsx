@@ -1,126 +1,325 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+
+export interface NoteFontOption {
+  id: string;
+  name: string;
+  shortName: string;
+  category: 'typewriter' | 'handwriting' | 'serif';
+  fontFamily: string;
+}
+
+export const NOTE_FONTS: NoteFontOption[] = [
+  {
+    id: 'space-mono',
+    name: 'Typewriter Mono',
+    shortName: 'Typewriter',
+    category: 'typewriter',
+    fontFamily: '"Space Mono", "Courier Prime", monospace',
+  },
+  {
+    id: 'caveat',
+    name: 'Cursive Script',
+    shortName: 'Cursive',
+    category: 'handwriting',
+    fontFamily: '"Caveat", cursive',
+  },
+  {
+    id: 'kalam',
+    name: 'Warm Ink Hand',
+    shortName: 'Warm Ink',
+    category: 'handwriting',
+    fontFamily: '"Kalam", cursive',
+  },
+  {
+    id: 'special-elite',
+    name: 'Vintage Press',
+    shortName: 'Vintage Press',
+    category: 'typewriter',
+    fontFamily: '"Special Elite", monospace',
+  },
+  {
+    id: 'indie-flower',
+    name: 'Playful Doodle',
+    shortName: 'Playful',
+    category: 'handwriting',
+    fontFamily: '"Indie Flower", cursive',
+  },
+  {
+    id: 'shadows',
+    name: 'Delicate Script',
+    shortName: 'Delicate',
+    category: 'handwriting',
+    fontFamily: '"Shadows Into Light", cursive',
+  },
+  {
+    id: 'playfair',
+    name: 'Editorial Serif',
+    shortName: 'Editorial',
+    category: 'serif',
+    fontFamily: '"Playfair Display", Georgia, serif',
+  },
+  {
+    id: 'eb-garamond',
+    name: 'Classic Literary',
+    shortName: 'Literary',
+    category: 'serif',
+    fontFamily: '"EB Garamond", Georgia, serif',
+  },
+];
 
 export interface BouquetCardProps {
   note: {
     to: string;
     message: string;
     from: string;
+    closing?: string;
   };
-  cardTemplateId?: string; // Kept for interface compatibility
-  isDecoding?: boolean;
-  onDecodeComplete?: () => void;
+  onNoteChange?: (note: {
+    to: string;
+    message: string;
+    from: string;
+    closing?: string;
+  }) => void;
+  cardFont?: string;
+  cardTemplateId?: string;
+  editable?: boolean;
+  isSelfWriting?: boolean;
+  onComplete?: () => void;
+  onClose?: () => void;
   onClick?: () => void;
   className?: string;
 }
 
-const GLYPHS = '✦✧❖★*•°~#%@&';
-
 export function BouquetCard({
   note,
-  isDecoding = false,
-  onDecodeComplete,
+  onNoteChange,
+  cardFont = 'space-mono',
+  editable = false,
+  isSelfWriting = false,
+  onComplete,
+  onClose,
   onClick,
   className = '',
 }: BouquetCardProps) {
-  const recipient = note.to.trim() || 'Someone Special';
-  const sender = note.from.trim() || 'A Friend';
+  const recipient = note.to.trim() || 'Beloved';
+  const sender = note.from.trim() || 'Secret Admirer';
+  const closing = note.closing?.trim() || 'Sincerely';
   const rawMessage =
     note.message.trim() ||
-    'Thinking of you and sending this freshly picked bouquet to brighten your day.';
+    'I have so much to tell you, but only this much space on this card! Still, you must know...';
 
-  // Decoding animation state
-  const [displayedMessage, setDisplayedMessage] = useState(
-    isDecoding ? '' : rawMessage
-  );
-  const [isFinished, setIsFinished] = useState(!isDecoding);
-  const animRef = useRef<NodeJS.Timeout | null>(null);
+  // Resolve active font family
+  const selectedFont = useMemo(() => {
+    const found = NOTE_FONTS.find((f) => f.id === cardFont);
+    return found?.fontFamily || '"Space Mono", monospace';
+  }, [cardFont]);
+
+  // Animation trigger state for playback
+  const [animTrigger, setAnimTrigger] = useState(isSelfWriting ? 1 : 0);
+  const [typedRecipient, setTypedRecipient] = useState(recipient);
+  const [typedBody, setTypedBody] = useState(rawMessage);
+  const [typedSender, setTypedSender] = useState(sender);
+  const [activeCursor, setActiveCursor] = useState<'to' | 'body' | 'from' | null>(null);
+  const [isFinished, setIsFinished] = useState(!isSelfWriting);
+
+  const handleReplay = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsFinished(false);
+    setAnimTrigger((prev) => prev + 1);
+  };
 
   useEffect(() => {
-    if (!isDecoding) {
-      setDisplayedMessage(rawMessage);
+    if (editable || animTrigger === 0) {
+      setTypedRecipient(recipient);
+      setTypedBody(rawMessage);
+      setTypedSender(sender);
+      setActiveCursor(null);
       setIsFinished(true);
       return;
     }
 
+    setTypedRecipient('');
+    setTypedBody('');
+    setTypedSender('');
+    setActiveCursor('to');
     setIsFinished(false);
-    let charIndex = 0;
-    const totalChars = rawMessage.length;
 
-    // Smooth character decoding effect
-    animRef.current = setInterval(() => {
-      charIndex += 2;
-      if (charIndex >= totalChars) {
-        setDisplayedMessage(rawMessage);
-        setIsFinished(true);
-        if (animRef.current) clearInterval(animRef.current);
-        if (onDecodeComplete) onDecodeComplete();
-      } else {
-        const decodedPart = rawMessage.slice(0, charIndex);
-        const randomGlyph = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-        setDisplayedMessage(decodedPart + randomGlyph);
+    let isCancelled = false;
+
+    const runTypewriter = async () => {
+      // 1. Recipient
+      const fullTo = recipient;
+      for (let i = 1; i <= fullTo.length; i++) {
+        if (isCancelled) return;
+        setTypedRecipient(fullTo.slice(0, i));
+        await new Promise((r) => setTimeout(r, 40 + Math.random() * 20));
       }
-    }, 28);
+
+      await new Promise((r) => setTimeout(r, 180));
+      if (isCancelled) return;
+      setActiveCursor('body');
+
+      // 2. Message body
+      const fullBody = rawMessage;
+      for (let i = 1; i <= fullBody.length; i++) {
+        if (isCancelled) return;
+        setTypedBody(fullBody.slice(0, i));
+        const char = fullBody[i - 1];
+        const delay =
+          char === '.' || char === '!' || char === '?'
+            ? 130
+            : char === ','
+            ? 70
+            : 18 + Math.random() * 15;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      await new Promise((r) => setTimeout(r, 220));
+      if (isCancelled) return;
+      setActiveCursor('from');
+
+      // 3. Sender
+      const fullFrom = sender;
+      for (let i = 1; i <= fullFrom.length; i++) {
+        if (isCancelled) return;
+        setTypedSender(fullFrom.slice(0, i));
+        await new Promise((r) => setTimeout(r, 35 + Math.random() * 20));
+      }
+
+      await new Promise((r) => setTimeout(r, 200));
+      if (isCancelled) return;
+      setActiveCursor(null);
+      setIsFinished(true);
+      if (onComplete) onComplete();
+    };
+
+    runTypewriter();
 
     return () => {
-      if (animRef.current) clearInterval(animRef.current);
+      isCancelled = true;
     };
-  }, [isDecoding, rawMessage]);
+  }, [animTrigger, recipient, rawMessage, sender, editable, onComplete]);
+
+  const isTypingActive = !editable && animTrigger > 0 && !isFinished;
+  const displayTo = isTypingActive ? typedRecipient : recipient;
+  const displayBody = isTypingActive ? typedBody : rawMessage;
+  const displayFrom = isTypingActive ? typedSender : sender;
 
   return (
-    <div
-      onClick={onClick}
-      className={`relative w-full max-w-[420px] aspect-[4/5] rounded-2xl p-7 sm:p-9 flex flex-col justify-between bg-[#FFFDF9] border border-rose-100 shadow-[0_10px_30px_-5px_rgba(244,114,182,0.15)] select-text transition-all duration-300 ${
-        onClick ? 'cursor-pointer hover:shadow-xl hover:-translate-y-1' : ''
-      } ${className}`}
-    >
-      {/* 4 Minimalist Corner Crop Brackets (matches authentic DigiBouquet letterhead) */}
-      <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-rose-400 rounded-tl-sm pointer-events-none" />
-      <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-rose-400 rounded-tr-sm pointer-events-none" />
-      <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-rose-400 rounded-bl-sm pointer-events-none" />
-      <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-rose-400 rounded-br-sm pointer-events-none" />
+    <>
+      {/* Direct Google Fonts stylesheet to ensure all 8 card fonts are loaded and immediate */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Courier+Prime:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Indie+Flower&family=Kalam:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Shadows+Into+Light&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Special+Elite&display=swap"
+      />
 
-      {/* 1. TOP-LEFT: RECIPIENT */}
-      <div className="text-left pt-1">
-        <p
-          className="text-rose-500 text-2xl sm:text-3xl font-medium tracking-wide"
-          style={{
-            fontFamily: '"Caveat", "Playfair Display", "Brush Script MT", cursive',
-          }}
-        >
-          To: {recipient}
-        </p>
-      </div>
+      <div
+        onClick={onClick}
+        className={`relative w-full max-w-[460px] aspect-[4/3.6] bg-white border-2 border-black p-7 sm:p-9 flex flex-col justify-between shadow-[4px_4px_0_#000] select-text transition-all ${
+          onClick ? 'cursor-pointer hover:-translate-y-0.5' : ''
+        } ${className}`}
+        style={{
+          fontFamily: selectedFont,
+        }}
+      >
 
-      {/* 2. CENTER: THE PERSONAL MESSAGE */}
-      <div className="my-auto py-4">
-        <p
-          className="text-stone-700 text-lg sm:text-xl leading-relaxed"
-          style={{
-            fontFamily: '"Caveat", "Playfair Display", "Brush Script MT", cursive',
-            letterSpacing: '0.01em',
-            minHeight: '4.5rem',
-          }}
-        >
-          {displayedMessage}
-          {isDecoding && !isFinished && (
-            <span className="inline-block w-2 h-4 bg-rose-400 ml-1 animate-pulse" />
+        {/* ── TOP: DEAR [RECIPIENT], ── */}
+        <div className="text-left flex items-baseline gap-1.5 text-lg sm:text-xl text-black">
+          <span className="font-bold">Dear</span>
+          {editable ? (
+            <input
+              type="text"
+              value={note.to}
+              onChange={(e) =>
+                onNoteChange?.({
+                  ...note,
+                  to: e.target.value,
+                })
+              }
+              placeholder="Beloved"
+              maxLength={36}
+              style={{ fontFamily: selectedFont }}
+              className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 font-normal text-black placeholder:text-stone-400 placeholder:font-normal min-w-[80px] max-w-[240px]"
+            />
+          ) : (
+            <span className="font-normal">
+              {displayTo}
+              {activeCursor === 'to' && (
+                <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
+              )}
+            </span>
           )}
-        </p>
-      </div>
+          <span className="font-bold">,</span>
+        </div>
 
-      {/* 3. BOTTOM-RIGHT: SENDER */}
-      <div className="text-right pb-1">
-        <p
-          className="text-rose-500 text-xl sm:text-2xl font-medium"
-          style={{
-            fontFamily: '"Caveat", "Playfair Display", "Brush Script MT", cursive',
-          }}
-        >
-          With love, {sender}
-        </p>
+        {/* ── CENTER: MESSAGE BODY ── */}
+        <div className="my-3 flex-1 flex flex-col justify-center">
+          {editable ? (
+            <div className="relative w-full h-full flex flex-col">
+              <textarea
+                value={note.message}
+                onChange={(e) =>
+                  onNoteChange?.({
+                    ...note,
+                    message: e.target.value,
+                  })
+                }
+                placeholder="I have so much to tell you, but only this much space on this card! Still, you must know..."
+                maxLength={500}
+                rows={5}
+                style={{ fontFamily: selectedFont }}
+                className="w-full flex-1 bg-transparent resize-none border-none outline-none text-base sm:text-lg leading-relaxed font-normal text-black placeholder:text-stone-400 placeholder:font-normal"
+              />
+              <div
+                style={{ fontFamily: 'monospace' }}
+                className="text-right text-[10px] text-stone-400 uppercase tracking-widest mt-1 select-none font-normal"
+              >
+                {note.message.length} / 500
+              </div>
+            </div>
+          ) : (
+            <p
+              className="text-base sm:text-lg leading-relaxed font-normal text-black whitespace-pre-wrap break-words"
+              style={{ fontFamily: selectedFont }}
+            >
+              {displayBody}
+              {activeCursor === 'body' && (
+                <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
+              )}
+            </p>
+          )}
+        </div>
+
+        {/* ── BOTTOM RIGHT: SINCERELY, [SENDER] ── */}
+        <div className="text-right flex flex-col items-end gap-0.5 text-base sm:text-lg text-black">
+          <span className="font-bold">{closing},</span>
+          {editable ? (
+            <input
+              type="text"
+              value={note.from}
+              onChange={(e) =>
+                onNoteChange?.({
+                  ...note,
+                  from: e.target.value,
+                })
+              }
+              placeholder="Secret Admirer"
+              maxLength={36}
+              style={{ fontFamily: selectedFont }}
+              className="bg-transparent border-b border-dashed border-stone-300 focus:border-black outline-none px-1 text-right font-normal text-black placeholder:text-stone-400 placeholder:font-normal min-w-[80px] max-w-[240px]"
+            />
+          ) : (
+            <span className="font-normal">
+              {displayFrom}
+              {activeCursor === 'from' && (
+                <span className="inline-block w-[2px] h-4 bg-black ml-0.5 animate-pulse align-middle" />
+              )}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

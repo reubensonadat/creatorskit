@@ -101,9 +101,18 @@ export async function createChallenge(url: string): Promise<ChallengeResult> {
     return data as ChallengeResult;
 }
 
+export interface GrabVariant {
+    id: string;
+    label: string;           // e.g. "1080p", "720p", "Audio only"
+    kind: 'video' | 'audio';
+    streamUrl: string;       // one-time ticketed URL
+    sizeBytes?: number;      // estimated size (HEAD probe at claim time)
+}
+
 export interface ClaimResult {
     mode: 'direct' | 'worker';
     streamUrl: string;
+    variants?: GrabVariant[]; // resolution / format options (direct links have 1)
     platform: Platform;
     expiresInSeconds: number;
 }
@@ -118,4 +127,29 @@ export async function claimDownload(url: string, challengeId: string): Promise<C
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new GrabError(data?.error ?? 'Could not unlock the download.', data?.code ?? 'unknown');
     return data as ClaimResult;
+}
+
+/** Preview endpoint — first 256KB of a direct media link (free, no ticket). */
+export function probeMedia(url: string): string {
+    return `${VIDEO_GRAB_ENDPOINT}?probe=1&u=${encodeURIComponent(url)}`;
+}
+
+/**
+ * Pre-ad format peek — asks the supervisor which resolutions are actually
+ * downloadable for this link (direct links answer instantly; platform links
+ * once the Phase-2 resolver is connected). Returns [] when unavailable.
+ */
+export async function fetchFormats(url: string): Promise<GrabVariant[]> {
+    try {
+        const res = await fetch(VIDEO_GRAB_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'formats', url }),
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data?.variants) ? (data.variants as GrabVariant[]) : [];
+    } catch {
+        return [];
+    }
 }

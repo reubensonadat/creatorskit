@@ -50,52 +50,53 @@ export interface BouquetPreset {
   name: string;
   tagline: string;
   type: 'big' | 'small';
-  greeneryId: string;
+  greeneryId?: string;
+  greeneryIds: string[];
   flowerIds: string[];
 }
 
 export const BOUQUET_PRESETS: BouquetPreset[] = [
-  // ── Big Flowers Presets (Pick 3 to 5 Statement Blooms) ──
+  // ── Big Flowers Presets (Pick 3 to 5 Statement Blooms · TWO Sets of Foliage) ──
+  {
+    id: 'tulip-trio',
+    name: 'Velvet Trio (Big)',
+    tagline: 'Ruby tulip, velvet rose & stargazer lily cradled by lush foliage & forest fern',
+    type: 'big',
+    greeneryIds: ['net-leafy', 'net-fern'],
+    flowerIds: ['net-tulip', 'net-rose', 'net-lily'],
+  },
   {
     id: 'grand-elegance',
     name: 'Grand Elegance (Big)',
-    tagline: 'Stately ruby tulips, stargazer lilies & royal orchids',
+    tagline: 'Stately ruby tulips, stargazer lilies & royal orchids with weeping willow',
     type: 'big',
-    greeneryId: 'fern-fan',
+    greeneryIds: ['net-willow', 'net-eucalyptus'],
     flowerIds: ['net-tulip', 'net-lily', 'net-orchid', 'net-lotus', 'net-peony'],
   },
   {
     id: 'pure-serenity',
     name: 'Pure Serenity (Big)',
-    tagline: 'Sacred lotus, stargazer lilies & classic camellias',
+    tagline: 'Sacred lotus, stargazer lilies & classic camellias framed by eucalyptus',
     type: 'big',
-    greeneryId: 'olive-spray',
+    greeneryIds: ['net-eucalyptus', 'net-leafy'],
     flowerIds: ['net-lotus', 'net-lily', 'net-orchid', 'net-camellia'],
-  },
-  {
-    id: 'tulip-trio',
-    name: 'Velvet Trio (Big)',
-    tagline: 'Ruby tulip, velvet rose & stargazer lily',
-    type: 'big',
-    greeneryId: 'fern-illustration',
-    flowerIds: ['net-tulip', 'net-rose', 'net-lily'],
   },
   {
     id: 'royal-meadow',
     name: 'Royal Meadow (Big)',
-    tagline: 'Velvet rose, imperial peony & meadow daisy',
+    tagline: 'Velvet rose, imperial peony & meadow daisy with rich garden greenery',
     type: 'big',
-    greeneryId: 'net-leafy',
+    greeneryIds: ['net-leafy', 'net-willow'],
     flowerIds: ['net-rose', 'net-orchid', 'net-peony', 'net-daisy'],
   },
 
-  // ── Small Flowers Presets (Pick 3 to 10 Petite Blooms) ──
+  // ── Small Flowers Presets (Pick 3 to 10 Petite Blooms · ONE Clean Backdrop) ──
   {
     id: 'sunset-radiance',
     name: 'Sunset Radiance (Small)',
     tagline: 'Warm golden sunflowers, coral daisies & blush peonies',
     type: 'small',
-    greeneryId: 'fern-fan',
+    greeneryIds: ['fern-fan'],
     flowerIds: ['sunflower-golden', 'peony-blush', 'african-daisy-coral', 'rose-pink', 'carnation-blush'],
   },
   {
@@ -103,7 +104,7 @@ export const BOUQUET_PRESETS: BouquetPreset[] = [
     name: 'Wildflower Meadow (Small)',
     tagline: 'Lush countryside daisies, sunflowers & ranunculus',
     type: 'small',
-    greeneryId: 'curled-frond',
+    greeneryIds: ['curled-frond'],
     flowerIds: ['daisy-cream', 'sunflower-golden', 'ranunculus-blush', 'rose-pink', 'carnation-blush', 'tulip-rose'],
   },
   {
@@ -111,7 +112,7 @@ export const BOUQUET_PRESETS: BouquetPreset[] = [
     name: 'Secret Garden (Small)',
     tagline: '7-bloom royal cottage garden bunch with every flower visible',
     type: 'small',
-    greeneryId: 'fern-illustration',
+    greeneryIds: ['fern-illustration'],
     flowerIds: ['peony-blush', 'rose-pink', 'sunflower-golden', 'camellia-pink', 'carnation-blush', 'lily-ivory', 'lotus-blush'],
   },
   {
@@ -119,10 +120,35 @@ export const BOUQUET_PRESETS: BouquetPreset[] = [
     name: 'Spring Cottage (Small)',
     tagline: 'Grand 9-bloom cottage garden arrangement',
     type: 'small',
-    greeneryId: 'fern-fan',
+    greeneryIds: ['fern-fan'],
     flowerIds: ['rose-pink', 'sunflower-golden', 'peony-blush', 'ranunculus-blush', 'carnation-blush', 'camellia-pink', 'african-daisy-coral', 'daisy-cream', 'tulip-rose'],
   },
 ];
+
+// ── Greenery Layout Configuration per Asset ──
+// Calibrated so each greenery appears as one single, balanced botanical backdrop
+// perfectly proportioned to the flowers without giant overwhelming foliage bushes.
+export interface GreeneryLayoutConfig {
+  scale: number;
+  yPercent: number;
+  rotationDeg?: number;
+}
+
+export const GREENERY_CONFIGS: Record<string, GreeneryLayoutConfig> = {
+  // Petite Greenery (For Small Flowers - delicate framing backdrop)
+  'fern-illustration': { scale: 1.15, yPercent: -2 },
+  'fern-fan': { scale: 1.16, yPercent: -3 },
+  'curled-frond': { scale: 1.16, yPercent: -3 },
+  'olive-spray': { scale: 1.12, yPercent: -2 },
+  'berry-branch': { scale: 1.12, yPercent: -2 },
+  'berry-spray': { scale: 1.12, yPercent: -2 },
+
+  // Grand Greenery (For Big Flowers - majestic, lush, and prominent)
+  'net-leafy': { scale: 1.50, yPercent: -4 },
+  'net-eucalyptus': { scale: 1.52, yPercent: -4 },
+  'net-willow': { scale: 1.52, yPercent: -5 },
+  'net-fern': { scale: 1.50, yPercent: -4 },
+};
 
 // Simple deterministic PRNG based on Mulberry32
 function mulberry32(a: number) {
@@ -171,191 +197,189 @@ export function generateBouquetArrangement(
   }
 
   // 2. GREENERY:
-  // For Big Flowers: User specified 2 or 3 greenery layers so greenery encapsulates the big blooms!
-  // For Small Flowers: 1 grand encapsulating garden cradle.
+  // For Big Flowers: TWO (2) sets of greenery (e.g. Lush Foliage + Forest Fern), fanning out harmoniously
+  // For Small Flowers: Exactly ONE (1) clean, delicate backdrop (e.g. Woodland Fern)
   const activeGreenery = selectedGreeneryIds
     .map(id => GREENERY.find(g => g.id === id))
     .filter((g): g is BotanicalItem => !!g);
 
-  const primaryGreenery = activeGreenery[0] || GREENERY.find(g => g.id === 'fern-fan') || GREENERY[0];
   const greeneryLayers: ArrangedElement[] = [];
 
   if (isBigCollection) {
-    // 2-3 Lush Greenery layers for Big Flowers
-    const wingLeft = activeGreenery[1] || GREENERY.find(g => g.id === 'fern-illustration') || primaryGreenery;
-    const wingRight = activeGreenery[2] || GREENERY.find(g => g.id === 'olive-spray') || primaryGreenery;
+    const primaryG = activeGreenery[0] || GREENERY.find(g => g.id === 'net-leafy') || GREENERY[0];
+    const secondaryG = activeGreenery[1] || primaryG;
+
+    const cfg1 = GREENERY_CONFIGS[primaryG.id] || { scale: 1.40, yPercent: -4 };
+    const cfg2 = GREENERY_CONFIGS[secondaryG.id] || { scale: 1.35, yPercent: 2 };
 
     greeneryLayers.push(
+      // Greenery Set 1: Upper Right branch
       {
-        id: `${primaryGreenery.id}-center`,
-        item: primaryGreenery,
-        xPercent: 0,
-        yPercent: -4,
-        rotationDeg: 0,
-        scale: 1.52,
+        id: `${primaryG.id}-set-1`,
+        item: primaryG,
+        xPercent: 12,
+        yPercent: cfg1.yPercent - 3,
+        rotationDeg: 14,
+        scale: cfg1.scale,
         zIndex: 1,
       },
+      // Greenery Set 2: Lower Left cradle branch
       {
-        id: `${wingLeft.id}-wing-left`,
-        item: wingLeft,
-        xPercent: -20,
-        yPercent: -2,
-        rotationDeg: -22,
-        scale: 1.35,
+        id: `${secondaryG.id}-set-2`,
+        item: secondaryG,
+        xPercent: -12,
+        yPercent: cfg2.yPercent + 4,
+        rotationDeg: -16,
+        scale: Math.round(cfg2.scale * 0.95 * 100) / 100,
         zIndex: 2,
-      },
-      {
-        id: `${wingRight.id}-wing-right`,
-        item: wingRight,
-        xPercent: 20,
-        yPercent: -2,
-        rotationDeg: 22,
-        scale: 1.35,
-        zIndex: 3,
       }
     );
   } else {
-    // 1 Grand foliage backdrop for Small Flowers
+    const primaryG = activeGreenery[0] || GREENERY.find(g => g.id === 'fern-illustration') || GREENERY[0];
+    const cfg = GREENERY_CONFIGS[primaryG.id] || { scale: 1.45, yPercent: -4 };
+
     greeneryLayers.push({
-      id: `${primaryGreenery.id}-main`,
-      item: primaryGreenery,
+      id: `${primaryG.id}-backdrop`,
+      item: primaryG,
       xPercent: 0,
-      yPercent: 0,
-      rotationDeg: 0,
-      scale: 1.38,
+      yPercent: cfg.yPercent,
+      rotationDeg: cfg.rotationDeg || 0,
+      scale: cfg.scale,
       zIndex: 1,
     });
-
-    if (activeGreenery.length > 1) {
-      greeneryLayers.push({
-        id: `${activeGreenery[1].id}-accent-left`,
-        item: activeGreenery[1],
-        xPercent: -12,
-        yPercent: -2,
-        rotationDeg: -15,
-        scale: 1.1,
-        zIndex: 2,
-      });
-    }
   }
 
-  // 3. FLOWER SLOTS: Unified florist bouquet dome nestled right in the greenery!
+  // 3. FLOWER SLOTS:
+  // Big Flowers: Maintained as the user requested (nice 2-column florist dome, spacious with elegant overlap)
+  // Small Flowers: Brought closer together into a tighter, snugger bouquet bunch (strictly <= 30% overlap)
   const flowerLayers: ArrangedElement[] = [];
   const fCount = activeFlowers.length;
 
-  // ── A. BIG FLOWERS SLOTS (Max 5 · Spacious, yet cohesive florist bunch) ──
+  // ── A. BIG FLOWERS SLOTS (Max 5 · 2-column clustered bouquet like digibouquet) ──
   const bigSlotLayouts: Record<number, Array<{ x: number; y: number; rot: number; z: number }>> = {
     3: [
-      { x: 0, y: -7, rot: 0, z: 10 },
-      { x: -9, y: 6, rot: -8, z: 12 },
-      { x: 9, y: 6, rot: 8, z: 12 },
+      { x: 0, y: -8, rot: 0, z: 10 },
+      { x: -10, y: 6, rot: -6, z: 12 },
+      { x: 10, y: 6, rot: 6, z: 12 },
     ],
     4: [
-      { x: 0, y: -9, rot: 0, z: 10 },
-      { x: -10, y: 0, rot: -8, z: 11 },
-      { x: 10, y: 0, rot: 8, z: 11 },
-      { x: 0, y: 9, rot: 0, z: 13 },
+      { x: -9, y: -8, rot: -5, z: 10 },
+      { x: 9, y: -8, rot: 5, z: 10 },
+      { x: -9, y: 7, rot: -5, z: 12 },
+      { x: 9, y: 7, rot: 5, z: 12 },
     ],
     5: [
-      { x: -8, y: -8, rot: -8, z: 10 },
-      { x: 8, y: -8, rot: 8, z: 10 },
-      { x: 0, y: 0, rot: 0, z: 14 },
-      { x: -9, y: 8, rot: -7, z: 12 },
-      { x: 9, y: 8, rot: 7, z: 12 },
+      { x: -9, y: -11, rot: -5, z: 10 },
+      { x: 9, y: -11, rot: 5, z: 10 },
+      { x: 0, y: 0, rot: 0, z: 12 },
+      { x: -9, y: 11, rot: -5, z: 13 },
+      { x: 9, y: 11, rot: 5, z: 13 },
     ],
   };
 
-  // ── B. SMALL FLOWERS SLOTS (Max 10 · Snug, cohesive florist bunch) ──
+  // ── B. SMALL FLOWERS SLOTS (Max 10 · Brought together much more, strictly <= 30% overlap) ──
   const smallSlotLayouts: Record<number, Array<{ x: number; y: number; rot: number; z: number }>> = {
     3: [
-      { x: 0, y: -6, rot: 0, z: 10 },
-      { x: -7, y: 5, rot: -7, z: 12 },
-      { x: 7, y: 5, rot: 7, z: 12 },
+      { x: 0, y: -5, rot: 0, z: 10 },
+      { x: -6, y: 4, rot: -5, z: 12 },
+      { x: 6, y: 4, rot: 5, z: 12 },
     ],
     4: [
-      { x: 0, y: -8, rot: 0, z: 10 },
-      { x: -8, y: 0, rot: -7, z: 11 },
-      { x: 8, y: 0, rot: 7, z: 11 },
-      { x: 0, y: 8, rot: 0, z: 13 },
+      { x: -5.5, y: -5.5, rot: -4, z: 10 },
+      { x: 5.5, y: -5.5, rot: 4, z: 10 },
+      { x: -5.5, y: 5.5, rot: -4, z: 12 },
+      { x: 5.5, y: 5.5, rot: 4, z: 12 },
     ],
     5: [
-      { x: -7, y: -7, rot: -7, z: 10 },
-      { x: 7, y: -7, rot: 7, z: 10 },
-      { x: 0, y: 1, rot: 0, z: 14 },
-      { x: -8, y: 8, rot: -6, z: 12 },
-      { x: 8, y: 8, rot: 6, z: 12 },
+      { x: -6, y: -6.5, rot: -4, z: 10 },
+      { x: 6, y: -6.5, rot: 4, z: 10 },
+      { x: 0, y: 0, rot: 0, z: 11 },
+      { x: -6, y: 6.5, rot: -4, z: 13 },
+      { x: 6, y: 6.5, rot: 4, z: 13 },
     ],
     6: [
-      { x: 0, y: -10, rot: 0, z: 10 },
-      { x: -8, y: -4, rot: -7, z: 11 },
-      { x: 8, y: -4, rot: 7, z: 11 },
-      { x: -8, y: 6, rot: -6, z: 12 },
-      { x: 8, y: 6, rot: 6, z: 12 },
-      { x: 0, y: 12, rot: 0, z: 14 },
+      { x: -6, y: -9, rot: -4, z: 10 },
+      { x: 6, y: -9, rot: 4, z: 10 },
+      { x: -7, y: 0, rot: -3, z: 11 },
+      { x: 7, y: 0, rot: 3, z: 11 },
+      { x: -6, y: 9, rot: -4, z: 13 },
+      { x: 6, y: 9, rot: 4, z: 13 },
     ],
     7: [
-      { x: 0, y: -11, rot: 0, z: 10 },
-      { x: -8, y: -5, rot: -7, z: 11 },
-      { x: 8, y: -5, rot: 7, z: 11 },
-      { x: 0, y: 1, rot: 0, z: 13 },
-      { x: -9, y: 8, rot: -6, z: 12 },
-      { x: 9, y: 8, rot: 6, z: 12 },
-      { x: 0, y: 14, rot: 0, z: 15 },
+      { x: 0, y: -9, rot: 0, z: 10 },
+      { x: -7, y: -4, rot: -4, z: 11 },
+      { x: 7, y: -4, rot: 4, z: 11 },
+      { x: 0, y: 1, rot: 0, z: 12 },
+      { x: -7, y: 6, rot: -4, z: 13 },
+      { x: 7, y: 6, rot: 4, z: 13 },
+      { x: 0, y: 11, rot: 0, z: 14 },
     ],
     8: [
-      { x: -6, y: -12, rot: -6, z: 10 },
-      { x: 6, y: -12, rot: 6, z: 10 },
-      { x: -11, y: -4, rot: -9, z: 11 },
-      { x: 0, y: -2, rot: 0, z: 13 },
-      { x: 11, y: -4, rot: 9, z: 11 },
-      { x: -8, y: 7, rot: -6, z: 12 },
-      { x: 8, y: 7, rot: 6, z: 12 },
-      { x: 0, y: 14, rot: 0, z: 15 },
+      { x: -6, y: -9, rot: -4, z: 10 },
+      { x: 6, y: -9, rot: 4, z: 10 },
+      { x: -8, y: -3, rot: -5, z: 11 },
+      { x: 0, y: -3, rot: 0, z: 11 },
+      { x: 8, y: -3, rot: 5, z: 11 },
+      { x: -6, y: 5, rot: -4, z: 12 },
+      { x: 6, y: 5, rot: 4, z: 12 },
+      { x: 0, y: 11, rot: 0, z: 14 },
     ],
     9: [
-      { x: 0, y: -13, rot: 0, z: 10 },
-      { x: -8, y: -7, rot: -6, z: 10 },
-      { x: 8, y: -7, rot: 6, z: 10 },
-      { x: -12, y: 0, rot: -9, z: 11 },
-      { x: 0, y: 0, rot: 0, z: 13 },
-      { x: 12, y: 0, rot: 9, z: 11 },
-      { x: -8, y: 8, rot: -6, z: 12 },
-      { x: 8, y: 8, rot: 6, z: 12 },
-      { x: 0, y: 15, rot: 0, z: 15 },
+      { x: -6.5, y: -9, rot: -4, z: 10 },
+      { x: 0, y: -10, rot: 0, z: 10 },
+      { x: 6.5, y: -9, rot: 4, z: 10 },
+      { x: -7.5, y: -1, rot: -5, z: 11 },
+      { x: 0, y: 0, rot: 0, z: 12 },
+      { x: 7.5, y: -1, rot: 5, z: 11 },
+      { x: -6.5, y: 8, rot: -4, z: 13 },
+      { x: 0, y: 9, rot: 0, z: 14 },
+      { x: 6.5, y: 8, rot: 4, z: 13 },
     ],
     10: [
-      { x: -6, y: -14, rot: -6, z: 10 },
-      { x: 6, y: -14, rot: 6, z: 10 },
-      { x: -11, y: -7, rot: -9, z: 11 },
-      { x: 0, y: -6, rot: 0, z: 11 },
-      { x: 11, y: -7, rot: 9, z: 11 },
-      { x: -10, y: 1, rot: -7, z: 12 },
-      { x: 10, y: 1, rot: 7, z: 12 },
-      { x: -7, y: 9, rot: -6, z: 13 },
-      { x: 0, y: 10, rot: 0, z: 14 },
-      { x: 7, y: 9, rot: 6, z: 13 },
+      { x: -4.5, y: -11, rot: -3, z: 10 },
+      { x: 4.5, y: -11, rot: 3, z: 10 },
+      { x: -8, y: -5, rot: -5, z: 11 },
+      { x: 0, y: -5.5, rot: 0, z: 11 },
+      { x: 8, y: -5, rot: 5, z: 11 },
+      { x: -7.5, y: 2, rot: -4, z: 12 },
+      { x: 7.5, y: 2, rot: 4, z: 12 },
+      { x: -5.5, y: 8, rot: -3, z: 13 },
+      { x: 0, y: 9, rot: 0, z: 14 },
+      { x: 5.5, y: 8, rot: 3, z: 13 },
     ],
   };
 
   const activeSlotTable = isBigCollection ? bigSlotLayouts : smallSlotLayouts;
   const currentSlots = activeSlotTable[fCount] || activeSlotTable[Math.min(maxAllowed, Math.max(3, fCount))];
 
-  activeFlowers.forEach((item, idx) => {
-    const slot = currentSlots[idx] || {
-      x: (rand() * 12 - 6),
-      y: (rand() * 12 - 6),
-      rot: (rand() * 8 - 4),
-      z: 10 + idx,
+  // Shuffle slot assignments using the PRNG so clicking SHUFFLE physically swaps bloom locations!
+  const slotIndices = activeFlowers.map((_, i) => i);
+  for (let i = slotIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const temp = slotIndices[i];
+    slotIndices[i] = slotIndices[j];
+    slotIndices[j] = temp;
+  }
+
+  activeFlowers.forEach((item, originalIdx) => {
+    const assignedSlotIdx = slotIndices[originalIdx];
+    const slot = currentSlots[assignedSlotIdx] || {
+      x: rand() * 12 - 6,
+      y: rand() * 12 - 6,
+      rot: rand() * 8 - 4,
+      z: 10 + originalIdx,
     };
 
-    const jiggleX = (rand() * 0.4 - 0.2);
-    const jiggleY = (rand() * 0.4 - 0.2);
-    const jiggleRot = (rand() * 2 - 1);
+    // Noticeable physical variation on shuffle
+    const jiggleX = rand() * 3.0 - 1.5;
+    const jiggleY = rand() * 3.0 - 1.5;
+    const jiggleRot = rand() * 14 - 7;
+    const jiggleScale = rand() * 0.08 - 0.04;
 
-    const visualScale = FLOWER_VISUAL_SCALES[item.id] ?? 1.0;
+    const visualScale = (FLOWER_VISUAL_SCALES[item.id] ?? 1.0) + jiggleScale;
 
     flowerLayers.push({
-      id: `${item.id}-${idx}`,
+      id: `${item.id}-${originalIdx}`,
       item,
       xPercent: Math.round((slot.x + jiggleX) * 10) / 10,
       yPercent: Math.round((slot.y + jiggleY) * 10) / 10,

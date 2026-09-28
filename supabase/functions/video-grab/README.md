@@ -1,4 +1,4 @@
-# Video Grabber — Supervisor Edge Function
+ # Video Grabber — Supervisor Edge Function
 
 Ad-gated media downloads for CreatorKit. This function is the **supervisor**:
 it enforces the ad-wait, mints one-time tickets, applies daily quotas, and
@@ -10,10 +10,15 @@ streams direct media files. It never stores video files.
 Browser (/video-grabber)
   1. paste URL → metadata preview (noembed, client-side)
   2. AD GATE → POST { action:"challenge" }  → wait N seconds (ads shown)
+  2b. POST { action:"formats" } → free pre-ad peek: which resolutions are
+      downloadable (direct links answered locally; platform URLs proxied to
+      VIDEO_WORKER_URL/formats once the Phase-2 resolver is connected)
   3. POST { action:"claim" } → ticket minted (quota counted)
        direct link  → streamUrl points back at this function (Range proxy)
        platform URL → VIDEO_WORKER_URL/resolve (Phase 2: yt-dlp + POT provider)
   4. GET ?tq=TICKET&u=URL → bytes streamed to the user's device
+  5. GET ?probe=1&u=URL → free first-256KB slice (lets the page paint
+     the opening frame of a direct video — no ticket, no quota)
 ```
 
 Tables (see `supabase/migrations/20260928000000_video_grabber.sql`):
@@ -50,7 +55,12 @@ and auth happens via the ad-challenge + ticket flow.
 - **Phase 2 muscle**: deploy a yt-dlp resolver (e.g. a Docker container on
   Cloudflare Containers, or any small VPS) and register it with:
   `supabase secrets set VIDEO_WORKER_URL=https://your-resolver.example`
-  It must expose `POST /resolve` → `{ "streamUrl": "https://..." }`.
+  It must expose `POST /resolve` → `{ "streamUrl": "https://..." }` and
+  `POST /formats` → `{ "variants": [...] }` (powers the resolution sheet).
+  For the resolution selector, it may also return `variants`:
+  `{ "streamUrl": "...", "variants": [ { "id": "1080p", "label": "1080p · MP4",
+     "kind": "video", "streamUrl": "..." },
+     { "id": "audio", "label": "Audio only · MP3", "kind": "audio", "streamUrl": "..." } ] }`.
   Arm it with grqz's `bgutil-ytdlp-pot-provider` for YouTube PO tokens.
 
 ## Security

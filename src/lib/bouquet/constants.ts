@@ -3,6 +3,7 @@ export interface BotanicalItem {
   name: string;
   category: 'flower' | 'greenery' | 'card' | 'overlay';
   flowerSize?: 'big' | 'small';
+  greenerySize?: 'big' | 'small';
   src: string;
   meaning: string;
   color: string;
@@ -35,16 +36,19 @@ export const FLOWERS: BotanicalItem[] = [
 ];
 
 export const GREENERY: BotanicalItem[] = [
-  { id: 'fern-illustration', name: 'Woodland Fern', category: 'greenery', src: '/assets/bouquet/greenery/fern-illustration.webp', meaning: 'Eternal youth & sincerity', color: '#22C55E' },
-  { id: 'fern-fan', name: 'Fan Fern', category: 'greenery', src: '/assets/bouquet/greenery/fern-fan.webp', meaning: 'Protection & fascination', color: '#15803D' },
-  { id: 'net-leafy', name: 'Lush Foliage', category: 'greenery', src: '/assets/bouquet/greenery/net-leafy.webp', meaning: 'Fullness & vibrant life', color: '#16A34A' },
-  { id: 'curled-frond', name: 'Curled Frond', category: 'greenery', src: '/assets/bouquet/greenery/curled-frond.webp', meaning: 'New beginnings & grace', color: '#16A34A' },
-  { id: 'olive-spray', name: 'Olive Spray', category: 'greenery', src: '/assets/bouquet/greenery/olive-spray.webp', meaning: 'Peace, wisdom & friendship', color: '#65A30D' },
-  { id: 'net-eucalyptus', name: 'Silver Eucalyptus', category: 'greenery', src: '/assets/bouquet/greenery/net-eucalyptus.webp', meaning: 'Healing & protection', color: '#10B981' },
-  { id: 'net-willow', name: 'Weeping Willow', category: 'greenery', src: '/assets/bouquet/greenery/net-willow.webp', meaning: 'Graceful flow & balance', color: '#059669' },
-  { id: 'berry-branch', name: 'Berry Branch', category: 'greenery', src: '/assets/bouquet/greenery/berry-branch.webp', meaning: 'Celebration & abundance', color: '#E11D48' },
-  { id: 'berry-spray', name: 'Berry Spray', category: 'greenery', src: '/assets/bouquet/greenery/berry-spray.webp', meaning: 'Sweet memories', color: '#DC2626' },
-  { id: 'net-fern', name: 'Forest Fern', category: 'greenery', src: '/assets/bouquet/greenery/net-fern.webp', meaning: 'Calm composure', color: '#047857' },
+  // ─── 6 PETITE GREENERY (For Small Flowers · Delicate backdrop) ───
+  { id: 'fern-illustration', name: 'Woodland Fern', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/fern-illustration.webp', meaning: 'Eternal youth & sincerity', color: '#22C55E' },
+  { id: 'fern-fan', name: 'Fan Fern', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/fern-fan.webp', meaning: 'Protection & fascination', color: '#15803D' },
+  { id: 'curled-frond', name: 'Curled Frond', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/curled-frond.webp', meaning: 'New beginnings & grace', color: '#16A34A' },
+  { id: 'olive-spray', name: 'Olive Spray', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/olive-spray.webp', meaning: 'Peace, wisdom & friendship', color: '#65A30D' },
+  { id: 'berry-branch', name: 'Berry Branch', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/berry-branch.webp', meaning: 'Celebration & abundance', color: '#E11D48' },
+  { id: 'berry-spray', name: 'Berry Spray', category: 'greenery', greenerySize: 'small', src: '/assets/bouquet/greenery/berry-spray.webp', meaning: 'Sweet memories', color: '#DC2626' },
+
+  // ─── 4 GRAND GREENERY (For Big Flowers · Full botanical background) ───
+  { id: 'net-leafy', name: 'Lush Foliage', category: 'greenery', greenerySize: 'big', src: '/assets/bouquet/greenery/net-leafy.webp', meaning: 'Fullness & vibrant life', color: '#16A34A' },
+  { id: 'net-eucalyptus', name: 'Silver Eucalyptus', category: 'greenery', greenerySize: 'big', src: '/assets/bouquet/greenery/net-eucalyptus.webp', meaning: 'Healing & protection', color: '#10B981' },
+  { id: 'net-willow', name: 'Weeping Willow', category: 'greenery', greenerySize: 'big', src: '/assets/bouquet/greenery/net-willow.webp', meaning: 'Graceful flow & balance', color: '#059669' },
+  { id: 'net-fern', name: 'Forest Fern', category: 'greenery', greenerySize: 'big', src: '/assets/bouquet/greenery/net-fern.webp', meaning: 'Calm composure', color: '#047857' },
 ];
 
 export const CARD_TEMPLATES = [

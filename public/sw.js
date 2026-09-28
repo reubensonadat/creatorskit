@@ -1,5 +1,5 @@
 // CreatorKit Production PWA Service Worker
-const CACHE_NAME = 'creatorkit-pwa-v2';
+const CACHE_NAME = 'creatorkit-pwa-v3';
 
 const STATIC_PRECACHE = [
   '/',
@@ -42,6 +42,15 @@ self.addEventListener('fetch', (event) => {
 
   // Ignore chrome-extension and non-GET requests
   if (request.method !== 'GET' || url.protocol.startsWith('chrome-extension')) {
+    return;
+  }
+
+  // Cross-origin requests (except web fonts) go straight to the network.
+  // The SW must never intercept streamed downloads (e.g. Supabase edge
+  // functions serving ad-gated media) — respondWith() cannot handle a
+  // failed passthrough and the page would see a fake CORS/network error.
+  const isFontHost = url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com');
+  if (url.origin !== self.location.origin && !isFontHost) {
     return;
   }
 

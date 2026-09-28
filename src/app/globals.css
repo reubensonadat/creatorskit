@@ -268,6 +268,20 @@
   }
 }
 
+@keyframes vg-sheet-up {
+  0% {
+    transform: translate(-50%, 100%);
+  }
+
+  100% {
+    transform: translate(-50%, 0);
+  }
+}
+
+.vg-sheet {
+  animation: vg-sheet-up 0.22s ease-out both;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -666,7 +680,7 @@
     align-items: start;
   }
 
-  .matchcut-workspace-grid > *:first-child {
+  .matchcut-workspace-grid>*:first-child {
     position: -webkit-sticky;
     position: sticky;
     top: 16px;
