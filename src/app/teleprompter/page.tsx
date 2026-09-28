@@ -780,8 +780,10 @@ Control your speed, adjust your font size, and download your voice recording in 
     if (wordSpans && wordSpans.length > 0) {
       const clamped = Math.max(0, Math.min(wordIdx, wordSpans.length - 1));
       const targetSpan = wordSpans[clamped] as HTMLElement;
-      // On mobile, position active reading line comfortably at 45% screen height
-      const targetRatio = isMobile ? 0.45 : (eyelinePercent / 100);
+      // On mobile, anchor the active reading line at one-third screen height —
+      // phones have less vertical real estate, so the line sits higher and the
+      // reader keeps more upcoming script visible below it.
+      const targetRatio = isMobile ? 0.33 : (eyelinePercent / 100);
       const targetY = targetSpan.offsetTop - readerRef.current.clientHeight * targetRatio;
       targetScrollYRef.current = Math.max(0, targetY);
     }
@@ -1261,7 +1263,7 @@ Control your speed, adjust your font size, and download your voice recording in 
             const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
             const ceilIdx = Math.min(floorIdx + 1, wordSpans.length - 1);
             const frac = virtualWordFloatRef.current - floorIdx;
-            const targetRatio = isMobile ? 0.45 : eyelinePercent / 100;
+            const targetRatio = isMobile ? 0.33 : eyelinePercent / 100;
             const anchorY = (readerRef.current?.clientHeight || 0) * targetRatio;
             const y0 = Math.max(0, (wordSpans[floorIdx] as HTMLElement).offsetTop - anchorY);
             const y1 = Math.max(0, (wordSpans[ceilIdx] as HTMLElement).offsetTop - anchorY);
