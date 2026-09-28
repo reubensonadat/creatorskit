@@ -125,6 +125,22 @@ class SoundEngine {
     return this.currentPresetId;
   }
 
+  public pause() {
+    if (this.ctx && this.ctx.state === 'running') {
+      try {
+        this.ctx.suspend().catch(() => {});
+      } catch {}
+    }
+  }
+
+  public resume() {
+    if (this.ctx && this.ctx.state === 'suspended' && this.currentPresetId && !this.isMuted) {
+      try {
+        this.ctx.resume().catch(() => {});
+      } catch {}
+    }
+  }
+
   public stop() {
     if (this.currentLoopTimer) {
       clearInterval(this.currentLoopTimer);
@@ -139,6 +155,11 @@ class SoundEngine {
     });
     this.currentActiveNodes = [];
     this.currentPresetId = null;
+    if (this.ctx && this.ctx.state === 'running') {
+      try {
+        this.ctx.suspend().catch(() => {});
+      } catch {}
+    }
   }
 
   public play(presetId: string): boolean {
@@ -655,3 +676,25 @@ class SoundEngine {
 
 // Global Singleton Instance
 export const soundEngine = new SoundEngine();
+
+// Global Lifecycle & Background Safeguard:
+// If the user minimizes the browser, switches tabs, or locks their phone screen,
+// automatically pause the soundscape synthesizer. Resume smoothly upon returning.
+// Completely stop and tear down on pagehide / beforeunload.
+if (typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      soundEngine.pause();
+    } else if (document.visibilityState === 'visible') {
+      soundEngine.resume();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    soundEngine.stop();
+  });
+
+  window.addEventListener('beforeunload', () => {
+    soundEngine.stop();
+  });
+}

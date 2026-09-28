@@ -1465,9 +1465,9 @@ export default function BouquetStudioPage() {
                           type="button"
                           onClick={handleExportPng}
                           disabled={isExporting}
-                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                          className="min-w-[195px] px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 shrink-0"
                         >
-                          <Download size={15} />
+                          <Download size={15} className="shrink-0" />
                           <span>{isExporting ? 'SAVING...' : `SAVE PNG (${exportBg.toUpperCase()})`}</span>
                         </button>
                         <button
@@ -1699,9 +1699,9 @@ export default function BouquetStudioPage() {
                         type="button"
                         onClick={handleExportPng}
                         disabled={isExporting}
-                        className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                        className="min-w-[195px] px-5 py-2.5 bg-white hover:bg-stone-50 text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 shrink-0"
                       >
-                        <Download size={13} />
+                        <Download size={13} className="shrink-0" />
                         <span>{isExporting ? 'SAVING...' : `SAVE PNG (${exportBg.toUpperCase()})`}</span>
                       </button>
                     </div>
@@ -2486,9 +2486,9 @@ export default function BouquetStudioPage() {
                       type="button"
                       onClick={handleExportPng}
                       disabled={isExporting}
-                      className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      className="w-full min-h-[46px] p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
                     >
-                      <Download size={16} />
+                      <Download size={16} className="shrink-0" />
                       <span>{isExporting ? 'SAVING...' : `DOWNLOAD PNG (${exportBg.toUpperCase()})`}</span>
                     </button>
 

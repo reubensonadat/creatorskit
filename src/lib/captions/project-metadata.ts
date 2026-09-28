@@ -17,7 +17,7 @@ import { saveAudioBlobToCache, getAudioBlobFromCache, clearAudioCache } from './
 
 export interface CreatorKitProjectMetadata {
     version: '1.0';
-    generator: 'creatorkit-studio';
+    generator: 'creatorkit-studio' | 'creatorkit-teleprompter';
     script: string;
     createdAt: number;
     title?: string;
@@ -94,7 +94,7 @@ export async function extractMetadataFromMediaBlob(
         const jsonString = text.substring(startIndex + CK_MAGIC_START.trim().length, endIndex).trim();
         const parsed = JSON.parse(jsonString);
 
-        if (parsed && parsed.generator === 'creatorkit-studio') {
+        if (parsed && (parsed.generator === 'creatorkit-studio' || parsed.generator === 'creatorkit-teleprompter')) {
             return parsed as CreatorKitProjectMetadata;
         }
 

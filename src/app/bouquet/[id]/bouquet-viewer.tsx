@@ -171,6 +171,35 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
     };
   }, [soundPresetId]);
 
+  // Lifecycle & Background Audio Teardown:
+  // If the user switches tabs, locks the screen, or leaves the bouquet viewer,
+  // pause or stop the sound engine immediately so the audio never plays forever in the background.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        soundEngine.pause();
+      } else if (document.visibilityState === 'visible' && !isMuted && isPlayingSound) {
+        soundEngine.resume();
+      }
+    };
+
+    const handlePageLeave = () => {
+      soundEngine.stop();
+      setIsPlayingSound(false);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide', handlePageLeave);
+    window.addEventListener('beforeunload', handlePageLeave);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide', handlePageLeave);
+      window.removeEventListener('beforeunload', handlePageLeave);
+      soundEngine.stop();
+    };
+  }, [isMuted, isPlayingSound]);
+
   const handleToggleSound = () => {
     if (!isPlayingSound) {
       soundEngine.play(soundPresetId || 'music-box');
@@ -960,10 +989,10 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                 type="button"
                 onClick={handleExportPng}
                 disabled={isExporting}
-                className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center justify-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
+                className="flex-1 sm:flex-initial min-w-[72px] sm:min-w-[88px] px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center justify-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
                 title={`Download PNG with ${exportBg} background`}
               >
-                <Download size={10} className="sm:w-[11px] sm:h-[11px]" />
+                <Download size={10} className="sm:w-[11px] sm:h-[11px] shrink-0" />
                 <span>{isExporting ? 'SAVING...' : 'SAVE'}</span>
               </button>
 

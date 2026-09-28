@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { 
   RefreshCw, 
   ChevronLeft, 
-  Image,
+  Image as ImageIcon,
   Download,
   FolderDown
 } from "lucide-react";
@@ -298,7 +298,7 @@ export default function CompressorPage() {
                 boxShadow: "4px 4px 0 #000000",
               }}
             >
-              <Image size={32} style={{ color: "#000" }} />
+              <ImageIcon size={32} style={{ color: "#000" }} />
             </div>
             <h3 style={{ fontSize: "1.25rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
               Drag your files here

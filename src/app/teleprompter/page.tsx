@@ -326,7 +326,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   // Playback & Speed Controls
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(2.2);
-  const [fontSize, setFontSize] = useState(42);
+  const [fontSize, setFontSize] = useState(32);
   const [lineHeight, setLineHeight] = useState(1.6);
   const [letterSpacing, setLetterSpacing] = useState(0);
   const [textPaddingHorizontal, setTextPaddingHorizontal] = useState(20);
@@ -405,7 +405,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   // 1. Web Speech AI Auto-Scroll State
   const [speechFollowEnabled, setSpeechFollowEnabled] = useState(true);
-  const [speechStatus, setSpeechStatus] = useState<'idle' | 'listening' | 'speaking' | 'paused' | 'unsupported'>('idle');
+  const [speechStatus, setSpeechStatus] = useState<'idle' | 'listening' | 'speaking' | 'paused' | 'blocked' | 'unsupported'>('idle');
   const [activeWordIndex, setActiveWordIndex] = useState<number>(-1);
   const [lastHeardWord, setLastHeardWord] = useState<string>('');
   const [speechDamping, setSpeechDamping] = useState<number>(0.07);
@@ -566,7 +566,12 @@ Control your speed, adjust your font size, and download your voice recording in 
       if (savedSpeed) setSpeed(parseFloat(savedSpeed) || 2.2);
 
       const savedFontSize = localStorage.getItem('creatorKit_teleprompter_fontSize');
-      if (savedFontSize) setFontSize(parseInt(savedFontSize, 10) || 42);
+      if (savedFontSize) {
+        const parsed = parseInt(savedFontSize, 10);
+        setFontSize(parsed === 42 ? 32 : (parsed || 32));
+      } else {
+        setFontSize(32);
+      }
 
       const savedLineHeight = localStorage.getItem('creatorKit_teleprompter_lineHeight');
       if (savedLineHeight) setLineHeight(parseFloat(savedLineHeight) || 1.6);
@@ -793,6 +798,15 @@ Control your speed, adjust your font size, and download your voice recording in 
     gen: 0,
   });
 
+  // Mobile resilience: last session activity (watchdog fuel), current recognition
+  // locale (language-not-supported fallback), screen WakeLock + its visibility
+  // re-acquire listener, and the silent-death watchdog interval.
+  const speechActivityRef = useRef<number>(0);
+  const speechLangRef = useRef<string>('en-US');
+  const wakeLockRef = useRef<any>(null);
+  const wakeLockListenerRef = useRef<(() => void) | null>(null);
+  const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const releaseAllAudioAndMic = useCallback(() => {
     // Invalidate any scheduled restarts from the session being stopped
     recognitionRestartRef.current.gen++;
@@ -801,6 +815,18 @@ Control your speed, adjust your font size, and download your voice recording in 
       recognitionRestartRef.current.timer = null;
     }
     recognitionRestartRef.current.attempt = 0;
+    if (watchdogTimerRef.current) {
+      clearInterval(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
+    if (wakeLockListenerRef.current) {
+      try { window.removeEventListener('visibilitychange', wakeLockListenerRef.current); } catch { }
+      wakeLockListenerRef.current = null;
+    }
+    if (wakeLockRef.current) {
+      try { wakeLockRef.current.release().catch(() => { }); } catch { }
+      wakeLockRef.current = null;
+    }
 
     // 1. Abort and release SpeechRecognition instance immediately
     if (speechRecognitionRef.current) {
@@ -882,7 +908,12 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     // (Re)initialize the accent-aware matching engine with the persisted cadence.
     if (!voiceEngineRef.current || typeof voiceEngineRef.current.processAlternatives !== 'function') {
-      voiceEngineRef.current = createVoiceMatchEngine({ initialWpm: learnedWpmRef.current });
+      voiceEngineRef.current = createVoiceMatchEngine({
+        initialWpm: learnedWpmRef.current,
+        confidenceThreshold: 0.50,
+        baseLookahead: 8,
+        maxLookahead: 30,
+      });
     } else {
       voiceEngineRef.current.reset(Math.max(0, activeWordIndexRef.current), learnedWpmRef.current);
     }
@@ -894,22 +925,29 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     try {
       const recognition = new SpeechRecognitionClass();
-      // On mobile (Android & iOS), continuous: true causes the browser engine to silently
-      // drop transcripts or stall after 5-10s. Using continuous: false with rapid onend restart
-      // provides unbroken, instant speech recognition on Android (Samsung Galaxy) & iOS.
-      recognition.continuous = !isMobileDevice;
+      // continuous: true everywhere. The old mobile strategy (continuous: false +
+      // ~30ms restart hammer) churned sessions so fast that Google's Android speech
+      // endpoint throttled the tab (network errors → silent death). Long-lived
+      // sessions + backed-off restarts are what desktop always used — and desktop
+      // works perfectly. iOS Safari ends sessions on its own; the onend restart
+      // path covers it.
+      recognition.continuous = true;
       recognition.interimResults = true;
-      // On mobile, 1 alternative delivers the lowest latency and highest reliability
-      recognition.maxAlternatives = isMobileDevice ? 1 : 5;
-      recognition.lang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
+      // Multi-hypothesis ASR feeds the accent-aware matcher; iOS serves 1 reliably.
+      recognition.maxAlternatives = isIOS ? 1 : 5;
+      // Locale risk: navigator.language can be a locale the speech backend refuses
+      // (language-not-supported → fatal loop on Android). Only trust English locales.
+      const navLang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
+      speechLangRef.current = /^en(-[A-Z]{2})?$/i.test(navLang) ? navLang : 'en-US';
+      recognition.lang = speechLangRef.current;
 
       // Schedule a single backed-off restart; stale generations no-op.
+      // Fast 20ms baseline delay so voice pick-up is immediate on pauses/interims.
       const scheduleRestart = (baseDelay: number) => {
         const restart = recognitionRestartRef.current;
         if (restart.timer) clearTimeout(restart.timer);
         const gen = restart.gen;
-        // On mobile (Android / Samsung Galaxy, iOS), keep restart lightning-fast (30-40ms) without heavy backoff so speech is never dropped
-        const delay = isMobileDevice ? (isIOS ? 40 : 30) : Math.min(2500, baseDelay * Math.pow(1.5, Math.min(restart.attempt, 3)));
+        const delay = Math.min(1000, Math.max(20, baseDelay) * Math.pow(1.3, Math.min(restart.attempt, 4)));
         restart.attempt++;
         restart.timer = setTimeout(() => {
           restart.timer = null;
@@ -923,11 +961,13 @@ Control your speed, adjust your font size, and download your voice recording in 
 
       recognition.onstart = () => {
         setSpeechStatus('listening');
+        speechActivityRef.current = Date.now(); // watchdog fuel
         recognitionRestartRef.current.attempt = 0; // healthy start resets backoff
       };
 
       recognition.onresult = (event: any) => {
         setSpeechStatus('speaking');
+        speechActivityRef.current = Date.now(); // watchdog fuel
         recognitionRestartRef.current.attempt = 0; // live transcripts reset backoff
 
         if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
@@ -991,9 +1031,9 @@ Control your speed, adjust your font size, and download your voice recording in 
           lastMatchIndexRef.current = phraseMatch.matchIndex;
           isSpeakingCadenceActiveRef.current = true;
 
-          // 4+ words = verified distinctive anchor (safe to catch up if speaker jumped ahead)
-          // < 4 words = localized reading (strictly leashed to max +3 words)
-          const maxAdvance = phraseMatch.matchedWords >= 4 ? 25 : 3;
+          // 3+ words = verified distinctive anchor (safe to catch up if speaker jumped ahead)
+          // < 3 words = localized reading (leashed to max +4 words)
+          const maxAdvance = phraseMatch.matchedWords >= 3 ? 25 : 4;
           const cappedTarget = Math.min(targetWordFloatRef.current + maxAdvance, phraseMatch.matchIndex);
           targetWordFloatRef.current = Math.max(targetWordFloatRef.current, cappedTarget);
 
@@ -1002,18 +1042,31 @@ Control your speed, adjust your font size, and download your voice recording in 
       };
 
       recognition.onerror = (err: any) => {
-        // Permission failures or service blockage
+        // Permission failures or service blockage: tear the whole session down
+        // (so onend can't queue a restart loop) and tell the user explicitly.
         if (
           err.error === 'not-allowed' ||
           err.error === 'service-not-allowed'
         ) {
           console.warn('SpeechRecognition permission denied:', err.error);
-          setSpeechStatus('unsupported');
+          releaseAllAudioAndMic();
+          setSpeechStatus('blocked');
+          return;
+        }
+        if (err.error === 'language-not-supported') {
+          // navigator.language was refused by the backend — fall back to en-US once.
+          if (speechLangRef.current !== 'en-US') {
+            speechLangRef.current = 'en-US';
+            try { recognition.lang = 'en-US'; } catch { }
+            scheduleRestart(isMobileDevice ? 20 : 50);
+          } else {
+            setSpeechStatus('unsupported');
+          }
           return;
         }
         if (err.error === 'no-speech') {
-          // Normal pause between words on mobile — restart immediately
-          scheduleRestart(isMobileDevice ? 30 : 150);
+          // Normal pause between words — 20ms quick restart so voice pickup is immediate
+          scheduleRestart(isMobileDevice ? 20 : 40);
           return;
         }
         if (err.error === 'audio-capture') {
@@ -1023,22 +1076,22 @@ Control your speed, adjust your font size, and download your voice recording in 
             micStreamRef.current = null;
           }
           audioMeterActiveRef.current = false;
-          scheduleRestart(isMobileDevice ? 40 : 150);
+          scheduleRestart(isMobileDevice ? 50 : 100);
           return;
         }
         if (err.error === 'network') {
-          scheduleRestart(isMobileDevice ? 150 : 350);
+          scheduleRestart(isMobileDevice ? 200 : 300);
           return;
         }
         if (err.error !== 'aborted') {
           console.warn('SpeechRecognition notice:', err.error);
-          scheduleRestart(isMobileDevice ? 40 : 200);
+          scheduleRestart(isMobileDevice ? 50 : 100);
         }
       };
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          scheduleRestart(isMobileDevice ? 30 : 100);
+          scheduleRestart(isMobileDevice ? 20 : 40);
         } else {
           setSpeechStatus('idle');
         }
@@ -1050,10 +1103,57 @@ Control your speed, adjust your font size, and download your voice recording in 
         console.warn('Recognition start already active:', e);
       }
       speechRecognitionRef.current = recognition;
+
+      // Silent-death watchdog: some Android builds let the session die WITHOUT
+      // firing onend (throttled tab, OEM battery killers). No onstart/onresult
+      // for 12s while follow is active → force-recycle (abort triggers the
+      // backed-off onend restart path; the direct start() is belt-and-braces).
+      speechActivityRef.current = Date.now();
+      if (!watchdogTimerRef.current) {
+        watchdogTimerRef.current = setInterval(() => {
+          if (!(speechFollowRef.current && isPlayingRef.current)) return;
+          if (Date.now() - speechActivityRef.current < 12000) return;
+          speechActivityRef.current = Date.now(); // don't re-fire every 4s
+          try { recognition.abort(); } catch { }
+          try { recognition.start(); } catch { }
+        }, 4000);
+      }
+
+      // Screen WakeLock: Android suspends microphone capture the moment the
+      // screen dims — hold the screen awake for the whole take, and re-acquire
+      // on visibility return (WakeLock auto-releases when the tab hides).
+      if (isMobileDevice) {
+        const wakeLockApi = (navigator as any).wakeLock;
+        if (wakeLockApi && typeof wakeLockApi.request === 'function') {
+          wakeLockApi
+            .request('screen')
+            .then((lock: any) => {
+              if (!(speechFollowRef.current && isPlayingRef.current)) {
+                try { lock.release().catch(() => { }); } catch { }
+                return;
+              }
+              wakeLockRef.current = lock;
+              if (!wakeLockListenerRef.current) {
+                wakeLockListenerRef.current = () => {
+                  if (document.visibilityState !== 'visible') return;
+                  if (!(speechFollowRef.current && isPlayingRef.current)) return;
+                  if (wakeLockRef.current) return;
+                  try {
+                    wakeLockApi.request('screen')
+                      .then((l: any) => { wakeLockRef.current = l; })
+                      .catch(() => { });
+                  } catch { }
+                };
+                window.addEventListener('visibilitychange', wakeLockListenerRef.current);
+              }
+            })
+            .catch(() => { /* WakeLock unavailable — recognition still runs */ });
+        }
+      }
     } catch (err) {
       console.warn('Failed to start SpeechRecognition:', err);
     }
-  }, [autoPauseThresholdMs, cleanWordsList, stopSpeechRecognition, updateTargetScrollForWord]);
+  }, [autoPauseThresholdMs, cleanWordsList, releaseAllAudioAndMic, stopSpeechRecognition, updateTargetScrollForWord]);
 
   useEffect(() => {
     if (speechFollowEnabled && isPlaying) {
@@ -1124,21 +1224,21 @@ Control your speed, adjust your font size, and download your voice recording in 
           // Never let background micQuiet freeze mobile speech scrolling.
           const micQuiet =
             !isMobile && audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
-          // Smooth speed ceiling: max ~200 px/s ensures organic, eye-pleasing motion
-          const maxStep = (200 * Math.min(delta, 50)) / 1000;
+          // Dynamic speed ceiling: max ~500 px/s ensures organic, immediate catch-up without lag
+          const maxStep = (500 * Math.min(delta, 50)) / 1000;
 
           // 1. Dual-Track follower: Exquisite continuous word interpolation
           if (!micQuiet && isSpeakingCadenceActiveRef.current) {
             const cruise = learnedWpmRef.current / 60; // words/sec at natural speaking cadence
             const gap = targetWordFloatRef.current - virtualWordFloatRef.current;
             if (gap > 0) {
-              // Smooth, progressive velocity ramp (critical-damped cubic curve)
-              const catchUp = Math.min(gap * 1.8, cruise * 1.4);
+              // Smooth, responsive velocity ramp to eliminate hesitation
+              const catchUp = Math.min(gap * 2.8, Math.max(cruise * 2.2, 5.0));
               const advance = Math.min((cruise + catchUp) * (delta / 1000), gap);
               virtualWordFloatRef.current += advance;
             } else {
               // Smooth micro-advance while vocalizing so word transitions never freeze
-              const microAdvance = Math.min(cruise * 0.3 * (delta / 1000), 0.04);
+              const microAdvance = Math.min(cruise * 0.35 * (delta / 1000), 0.05);
               virtualWordFloatRef.current = Math.min(virtualWordFloatRef.current + microAdvance, targetWordFloatRef.current + 0.6);
             }
 
@@ -1166,8 +1266,8 @@ Control your speed, adjust your font size, and download your voice recording in 
 
             const diff = targetScrollYRef.current - currentScroll;
             if (Math.abs(diff) > 0.25) {
-              // Organic exponential decay for liquid-smooth scroll motion
-              let decay = 1 - Math.exp(-7.2 * (Math.min(delta, 50) / 1000));
+              // Natural exponential decay for instant, liquid-smooth scroll motion
+              let decay = 1 - Math.exp(-9.0 * (Math.min(delta, 50) / 1000));
               let appliedDiff = diff;
 
               // Backward scroll dampening
@@ -1993,7 +2093,11 @@ Control your speed, adjust your font size, and download your voice recording in 
                     ? `AI: "${lastHeardWord || 'SPEAKING'}"`
                     : speechStatus === 'listening'
                       ? 'AI LISTENING'
-                      : 'PAUSED'
+                      : speechStatus === 'blocked'
+                        ? 'MIC BLOCKED — ALLOW MIC'
+                        : speechStatus === 'unsupported'
+                          ? 'UNSUPPORTED'
+                          : 'PAUSED'
                   : `TIMED SCROLL (${speed.toFixed(1)}x)`}
               </span>
             </button>
@@ -2152,7 +2256,11 @@ Control your speed, adjust your font size, and download your voice recording in 
                     ? `AI: "${lastHeardWord || 'SPEAKING'}"`
                     : speechStatus === 'listening'
                       ? 'AI LISTENING'
-                      : 'PAUSED'
+                      : speechStatus === 'blocked'
+                        ? 'MIC BLOCKED — ALLOW MIC'
+                        : speechStatus === 'unsupported'
+                          ? 'UNSUPPORTED'
+                          : 'PAUSED'
                   : 'TIMED SCROLL'}
               </span>
             </button>
