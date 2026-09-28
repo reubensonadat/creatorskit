@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "postbuild": "node scripts/strip-ort-wasm.mjs",
     "pages:build": "npx @cloudflare/next-on-pages && node scripts/strip-ort-wasm.mjs",
     "start": "next start",
     "lint": "eslint ."

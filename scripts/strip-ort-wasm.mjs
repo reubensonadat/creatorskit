@@ -14,8 +14,8 @@
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const ROOT = '.vercel/output/static';
-const found = [];
+const DIRS_TO_SCAN = ['.vercel/output/static', '.next/static', '.vercel/output'];
+const found = new Set();
 
 async function walk(dir) {
     let entries;
@@ -29,14 +29,16 @@ async function walk(dir) {
         if (entry.isDirectory()) {
             await walk(p);
         } else if (/^ort-wasm.*\.wasm$/i.test(entry.name)) {
-            found.push(p);
+            found.add(p);
         }
     }
 }
 
-await walk(ROOT);
+for (const dir of DIRS_TO_SCAN) {
+    await walk(dir);
+}
 
-if (found.length === 0) {
+if (found.size === 0) {
     console.log('strip-ort-wasm: no bundled ort wasm found — nothing to do.');
     process.exit(0);
 }
@@ -46,4 +48,4 @@ for (const file of found) {
     await unlink(file);
     console.log(`strip-ort-wasm: removed ${file} (${(s.size / 1048576).toFixed(1)} MiB)`);
 }
-console.log(`strip-ort-wasm: done — ${found.length} file(s) removed, CDN serves them at runtime.`);
+console.log(`strip-ort-wasm: done — ${found.size} file(s) removed, CDN serves them at runtime.`);
