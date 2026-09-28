@@ -851,141 +851,147 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
           )}
         </main>
 
-        {/* ── FLOATING BOTTOM CONTROLS DOCK (ONE SINGLE ROW ON BOTH MOBILE & DESKTOP) ── */}
-        <footer className="fixed bottom-2.5 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-[98vw] sm:max-w-fit px-1 sm:px-2 pointer-events-auto flex justify-center">
-          <div className="bg-white/95 backdrop-blur-md border-2 border-black rounded-lg p-1 sm:p-1.5 shadow-[3px_3px_0_#000] flex items-center justify-center gap-1 sm:gap-2 flex-nowrap shrink-0">
-            {/* 1. View Mode: Display vs Sheet */}
-            <div className="inline-flex border border-black bg-stone-100 rounded p-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveView('display')}
-                className={`px-1.5 sm:px-2.5 py-1 font-mono text-[9px] sm:text-[11px] font-black uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
-                  activeView === 'display'
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-                title="Display view"
-              >
-                <Layout size={10} className="sm:w-[11px] sm:h-[11px]" />
-                <span>DISPLAY</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView('sheet')}
-                className={`px-1.5 sm:px-2.5 py-1 font-mono text-[9px] sm:text-[11px] font-black uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
-                  activeView === 'sheet'
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-                title="Printable keepsake sheet view"
-              >
-                <FileText size={10} className="sm:w-[11px] sm:h-[11px]" />
-                <span>SHEET</span>
-              </button>
-            </div>
+        {/* ── FLOATING BOTTOM CONTROLS DOCK (2 STACKED ROWS ON MOBILE, 1 ROW ON DESKTOP) ── */}
+        <footer className="fixed bottom-2.5 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-[96vw] sm:max-w-fit px-1 sm:px-2 pointer-events-auto flex justify-center">
+          <div className="bg-white/95 backdrop-blur-md border-2 border-black rounded-lg p-1.5 sm:p-2 shadow-[3px_3px_0_#000] flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Row 1 on mobile / Left group on desktop: Toggles & Audio */}
+            <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto">
+              {/* 1. View Mode: Display vs Sheet */}
+              <div className="inline-flex border border-black bg-stone-100 rounded p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('display')}
+                  className={`px-2 sm:px-2.5 py-1 font-mono text-[9px] sm:text-[11px] font-black uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
+                    activeView === 'display'
+                      ? 'bg-black text-white shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                  title="Display view"
+                >
+                  <Layout size={10} className="sm:w-[11px] sm:h-[11px]" />
+                  <span>DISPLAY</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('sheet')}
+                  className={`px-2 sm:px-2.5 py-1 font-mono text-[9px] sm:text-[11px] font-black uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
+                    activeView === 'sheet'
+                      ? 'bg-black text-white shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                  title="Printable keepsake sheet view"
+                >
+                  <FileText size={10} className="sm:w-[11px] sm:h-[11px]" />
+                  <span>SHEET</span>
+                </button>
+              </div>
 
-            {/* 2. PNG Background: White vs Clear */}
-            <div className="inline-flex border border-black bg-stone-100 rounded p-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setExportBg('white')}
-                title="Solid White PNG Background"
-                className={`px-1 sm:px-2 py-1 text-[9px] sm:text-[11px] font-mono font-black uppercase rounded transition-colors cursor-pointer ${
-                  exportBg === 'white'
-                    ? 'bg-white text-black shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-              >
-                WHITE
-              </button>
-              <button
-                type="button"
-                onClick={() => setExportBg('clear')}
-                title="Clear Transparent PNG Background"
-                className={`px-1 sm:px-2 py-1 text-[9px] sm:text-[11px] font-mono font-black uppercase rounded transition-colors cursor-pointer ${
-                  exportBg === 'clear'
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-              >
-                CLEAR
-              </button>
-            </div>
+              {/* 2. PNG Background: White vs Clear */}
+              <div className="inline-flex border border-black bg-stone-100 rounded p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExportBg('white')}
+                  title="Solid White PNG Background"
+                  className={`px-1.5 sm:px-2 py-1 text-[9px] sm:text-[11px] font-mono font-black uppercase rounded transition-colors cursor-pointer ${
+                    exportBg === 'white'
+                      ? 'bg-white text-black shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                >
+                  WHITE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExportBg('clear')}
+                  title="Clear Transparent PNG Background"
+                  className={`px-1.5 sm:px-2 py-1 text-[9px] sm:text-[11px] font-mono font-black uppercase rounded transition-colors cursor-pointer ${
+                    exportBg === 'clear'
+                      ? 'bg-black text-white shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                >
+                  CLEAR
+                </button>
+              </div>
 
-            {/* 3. Sound / Music Toggle Button */}
-            {soundPresetId && soundPresetId !== 'none' && (
-              <button
-                type="button"
-                onClick={handleToggleSound}
-                className={`p-1 sm:p-1.5 border border-black rounded font-mono text-xs cursor-pointer shadow-[1px_1px_0_#000] transition-colors shrink-0 ${
-                  isMuted || !isPlayingSound
-                    ? 'bg-stone-100 text-stone-400 hover:text-black'
-                    : 'bg-black text-white'
-                }`}
-                title={
-                  isMuted || !isPlayingSound
-                    ? `Play audio (${activeSoundPreset?.name || 'Ambience'})`
-                    : `Mute audio (${activeSoundPreset?.name || 'Ambience'})`
-                }
-              >
-                {isMuted || !isPlayingSound ? (
-                  <VolumeX size={11} className="sm:w-[13px] sm:h-[13px]" />
-                ) : (
-                  <Volume2 size={11} className="sm:w-[13px] sm:h-[13px]" />
-                )}
-              </button>
-            )}
+              {/* 3. Sound / Music Toggle Button */}
+              {soundPresetId && soundPresetId !== 'none' && (
+                <button
+                  type="button"
+                  onClick={handleToggleSound}
+                  className={`p-1 sm:p-1.5 border border-black rounded font-mono text-xs cursor-pointer shadow-[1px_1px_0_#000] transition-colors shrink-0 ${
+                    isMuted || !isPlayingSound
+                      ? 'bg-stone-100 text-stone-400 hover:text-black'
+                      : 'bg-black text-white'
+                  }`}
+                  title={
+                    isMuted || !isPlayingSound
+                      ? `Play audio (${activeSoundPreset?.name || 'Ambience'})`
+                      : `Mute audio (${activeSoundPreset?.name || 'Ambience'})`
+                  }
+                >
+                  {isMuted || !isPlayingSound ? (
+                    <VolumeX size={11} className="sm:w-[13px] sm:h-[13px]" />
+                  ) : (
+                    <Volume2 size={11} className="sm:w-[13px] sm:h-[13px]" />
+                  )}
+                </button>
+              )}
+            </div>
 
             {/* Divider visible on sm+ */}
             <div className="hidden sm:block w-[1px] h-4 bg-stone-300 shrink-0" />
 
-            {/* 4. Desktop-only PRINT (Mobile users use SAVE PNG) */}
-            <button
-              type="button"
-              onClick={handleNativePrint}
-              className="hidden sm:flex px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[10px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
-              title="Print or Save as PDF"
-            >
-              <Printer size={11} />
-              <span>PRINT</span>
-            </button>
+            {/* Row 2 on mobile / Right group on desktop: Action Buttons */}
+            <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto">
+              {/* 4. Desktop-only PRINT */}
+              <button
+                type="button"
+                onClick={handleNativePrint}
+                className="hidden sm:flex px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[10px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
+                title="Print or Save as PDF"
+              >
+                <Printer size={11} />
+                <span>PRINT</span>
+              </button>
 
-            {/* 5. SAVE PNG */}
-            <button
-              type="button"
-              onClick={handleExportPng}
-              disabled={isExporting}
-              className="px-1.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
-              title={`Download PNG with ${exportBg} background`}
-            >
-              <Download size={10} className="sm:w-[11px] sm:h-[11px]" />
-              <span>{isExporting ? 'SAVING...' : 'SAVE'}</span>
-            </button>
+              {/* 5. SAVE PNG */}
+              <button
+                type="button"
+                onClick={handleExportPng}
+                disabled={isExporting}
+                className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center justify-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
+                title={`Download PNG with ${exportBg} background`}
+              >
+                <Download size={10} className="sm:w-[11px] sm:h-[11px]" />
+                <span>{isExporting ? 'SAVING...' : 'SAVE'}</span>
+              </button>
 
-            {/* 6. SHARE */}
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="px-1.5 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
-              title="Copy share link"
-            >
-              {copied ? (
-                <Check size={10} className="sm:w-[11px] sm:h-[11px]" />
-              ) : (
-                <Share2 size={10} className="sm:w-[11px] sm:h-[11px]" />
-              )}
-              <span>{copied ? 'COPIED' : 'SHARE'}</span>
-            </button>
+              {/* 6. SHARE */}
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="flex-1 sm:flex-initial min-w-[62px] px-2 sm:px-3 py-1 bg-white hover:bg-stone-50 text-black border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer flex items-center justify-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
+                title="Copy share link"
+              >
+                {copied ? (
+                  <Check size={10} className="sm:w-[11px] sm:h-[11px] text-green-600" />
+                ) : (
+                  <Share2 size={10} className="sm:w-[11px] sm:h-[11px]" />
+                )}
+                <span>{copied ? 'COPIED' : 'SHARE'}</span>
+              </button>
 
-            {/* 7. REPLY */}
-            <Link
-              href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
-              className="px-2 sm:px-3 py-1 bg-black hover:bg-neutral-800 text-white border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] flex items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5 transition-colors whitespace-nowrap"
-              title={`Reply to ${note.from}`}
-            >
-              <MessageCircle size={10} className="sm:w-[11px] sm:h-[11px]" />
-              <span>REPLY</span>
-            </Link>
+              {/* 7. REPLY */}
+              <Link
+                href={`/bouquet?replyTo=${encodeURIComponent(note.from)}`}
+                className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 bg-black hover:bg-neutral-800 text-white border border-black rounded font-mono text-[9px] sm:text-[11px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] flex items-center justify-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5 transition-colors whitespace-nowrap"
+                title={`Reply to ${note.from}`}
+              >
+                <MessageCircle size={10} className="sm:w-[11px] sm:h-[11px]" />
+                <span>REPLY</span>
+              </Link>
+            </div>
           </div>
         </footer>
       </div>

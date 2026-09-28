@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# python worker virtualenv
+video-worker/.venv/
+__pycache__/
+*.pyc
+
 
 # typescript
 *.tsbuildinfo

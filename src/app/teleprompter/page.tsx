@@ -793,7 +793,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     gen: 0,
   });
 
-  const stopSpeechRecognition = useCallback(() => {
+  const releaseAllAudioAndMic = useCallback(() => {
     // Invalidate any scheduled restarts from the session being stopped
     recognitionRestartRef.current.gen++;
     if (recognitionRestartRef.current.timer) {
@@ -801,17 +801,47 @@ Control your speed, adjust your font size, and download your voice recording in 
       recognitionRestartRef.current.timer = null;
     }
     recognitionRestartRef.current.attempt = 0;
+
+    // 1. Abort and release SpeechRecognition instance immediately
     if (speechRecognitionRef.current) {
       try {
         speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onresult = null;
         speechRecognitionRef.current.abort();
       } catch { }
       speechRecognitionRef.current = null;
     }
-    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    if (pauseTimerRef.current) {
+      clearTimeout(pauseTimerRef.current);
+      pauseTimerRef.current = null;
+    }
     setSpeechStatus('idle');
+
+    // 2. Stop and release all microphone tracks so Android/iOS releases exclusive hardware control
+    if (micStreamRef.current) {
+      try {
+        micStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
+      } catch { }
+      micStreamRef.current = null;
+    }
+
+    // 3. Suspend Web Audio Context so mobile OS (Android/Samsung Galaxy) completely exits in-call/telephony mode
+    if (audioContextRef.current && audioContextRef.current.state === 'running') {
+      try {
+        audioContextRef.current.suspend().catch(() => {});
+      } catch { }
+    }
+    audioMeterActiveRef.current = false;
+    setAudioMeterActive(false);
   }, []);
+
+  const stopSpeechRecognition = useCallback(() => {
+    releaseAllAudioAndMic();
+  }, [releaseAllAudioAndMic]);
 
   const startSpeechRecognition = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -830,20 +860,24 @@ Control your speed, adjust your font size, and download your voice recording in 
       typeof navigator !== 'undefined' &&
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    const isAndroid =
+      typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
     const isMobileDevice =
       typeof window !== 'undefined' &&
-      (window.innerWidth < 1024 || 'ontouchstart' in window);
+      (window.innerWidth < 1024 || 'ontouchstart' in window || isAndroid || isIOS);
 
-    // Mobile OS audio conflict mitigation: Release Web Audio mic capture so
-    // mobile OS gives 100% exclusive microphone access to SpeechRecognition
-    if (isMobileDevice) {
+    // Mobile OS audio conflict mitigation: Release Web Audio mic capture completely
+    // so mobile OS gives 100% exclusive microphone access to SpeechRecognition
+    if (isMobileDevice || micStreamRef.current) {
       if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
         micStreamRef.current = null;
       }
       if (audioContextRef.current && audioContextRef.current.state === 'running') {
         audioContextRef.current.suspend().catch(() => { });
       }
+      audioMeterActiveRef.current = false;
+      setAudioMeterActive(false);
     }
 
     // (Re)initialize the accent-aware matching engine with the persisted cadence.
@@ -860,11 +894,13 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     try {
       const recognition = new SpeechRecognitionClass();
-      // iOS WebKit does not support continuous: true reliably; non-continuous + rapid onend restart avoids silent crash
-      recognition.continuous = !isIOS;
+      // On mobile (Android & iOS), continuous: true causes the browser engine to silently
+      // drop transcripts or stall after 5-10s. Using continuous: false with rapid onend restart
+      // provides unbroken, instant speech recognition on Android (Samsung Galaxy) & iOS.
+      recognition.continuous = !isMobileDevice;
       recognition.interimResults = true;
-      // iOS WebKit throws on maxAlternatives > 1 in older versions
-      recognition.maxAlternatives = isIOS ? 1 : 5;
+      // On mobile, 1 alternative delivers the lowest latency and highest reliability
+      recognition.maxAlternatives = isMobileDevice ? 1 : 5;
       recognition.lang = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : 'en-US';
 
       // Schedule a single backed-off restart; stale generations no-op.
@@ -872,8 +908,8 @@ Control your speed, adjust your font size, and download your voice recording in 
         const restart = recognitionRestartRef.current;
         if (restart.timer) clearTimeout(restart.timer);
         const gen = restart.gen;
-        // On mobile/iOS, keep restart instant (50-80ms) without heavy backoff so speech is never dropped
-        const delay = isMobileDevice ? (isIOS ? 50 : 80) : Math.min(2500, baseDelay * Math.pow(1.5, Math.min(restart.attempt, 3)));
+        // On mobile (Android / Samsung Galaxy, iOS), keep restart lightning-fast (30-40ms) without heavy backoff so speech is never dropped
+        const delay = isMobileDevice ? (isIOS ? 40 : 30) : Math.min(2500, baseDelay * Math.pow(1.5, Math.min(restart.attempt, 3)));
         restart.attempt++;
         restart.timer = setTimeout(() => {
           restart.timer = null;
@@ -975,29 +1011,34 @@ Control your speed, adjust your font size, and download your voice recording in 
           setSpeechStatus('unsupported');
           return;
         }
+        if (err.error === 'no-speech') {
+          // Normal pause between words on mobile — restart immediately
+          scheduleRestart(isMobileDevice ? 30 : 150);
+          return;
+        }
         if (err.error === 'audio-capture') {
           // Mobile audio conflict recovery: release competing mic streams and retry
-          if (isMobileDevice) {
-            if (micStreamRef.current) {
-              try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
-              micStreamRef.current = null;
-            }
+          if (micStreamRef.current) {
+            try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+            micStreamRef.current = null;
           }
-          scheduleRestart(150);
+          audioMeterActiveRef.current = false;
+          scheduleRestart(isMobileDevice ? 40 : 150);
           return;
         }
         if (err.error === 'network') {
-          scheduleRestart(350);
+          scheduleRestart(isMobileDevice ? 150 : 350);
           return;
         }
-        if (err.error !== 'aborted' && err.error !== 'no-speech') {
-          console.warn('SpeechRecognition error:', err.error);
+        if (err.error !== 'aborted') {
+          console.warn('SpeechRecognition notice:', err.error);
+          scheduleRestart(isMobileDevice ? 40 : 200);
         }
       };
 
       recognition.onend = () => {
         if (speechFollowRef.current && isPlayingRef.current) {
-          scheduleRestart(isIOS ? 50 : 100);
+          scheduleRestart(isMobileDevice ? 30 : 100);
         } else {
           setSpeechStatus('idle');
         }
@@ -1025,6 +1066,43 @@ Control your speed, adjust your font size, and download your voice recording in 
     };
   }, [speechFollowEnabled, isPlaying, startSpeechRecognition, stopSpeechRecognition]);
 
+  // ── LIFECYCLE & BACKGROUND MIC TEARDOWN ──
+  // When leaving the tab, switching apps, locking the phone, or navigating away:
+  // Immediately kill speech recognition and all microphone tracks so mobile OS
+  // (Android / Samsung Galaxy, iOS) NEVER gets stuck in IN_CALL / telephony mode.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setIsPlaying(false);
+        isPlayingRef.current = false;
+        releaseAllAudioAndMic();
+      }
+    };
+
+    const handlePageLeave = () => {
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+      releaseAllAudioAndMic();
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => {
+          t.stop();
+          t.enabled = false;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageLeave);
+    window.addEventListener('beforeunload', handlePageLeave);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageLeave);
+      window.removeEventListener('beforeunload', handlePageLeave);
+      releaseAllAudioAndMic();
+    };
+  }, [releaseAllAudioAndMic, cameraStream]);
+
   // ─────────────────────────────────────────────────────────────
   // 2. 60FPS EXQUISITE SMOOTH EASING ANIMATION LOOP
   // ─────────────────────────────────────────────────────────────
@@ -1042,10 +1120,10 @@ Control your speed, adjust your font size, and download your voice recording in 
         if (speechFollowRef.current && isPlayingRef.current) {
           const currentScroll = el.scrollTop;
           const now = Date.now();
-          // Mic-gated pause: freeze the word-clock when the room has been
-          // quiet for ~700ms (only enforced while the live audio meter runs).
+          // On mobile, or when audio meter is inactive, cadence is guided purely by speech recognition matches.
+          // Never let background micQuiet freeze mobile speech scrolling.
           const micQuiet =
-            audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
+            !isMobile && audioMeterActiveRef.current && now - lastLoudMicTimestampRef.current > 700;
           // Smooth speed ceiling: max ~200 px/s ensures organic, eye-pleasing motion
           const maxStep = (200 * Math.min(delta, 50)) / 1000;
 
@@ -1166,10 +1244,12 @@ Control your speed, adjust your font size, and download your voice recording in 
     try {
       const isMobileDevice =
         typeof window !== 'undefined' &&
-        (window.innerWidth < 1024 || 'ontouchstart' in window);
+        (window.innerWidth < 1024 || 'ontouchstart' in window || /android|iphone|ipad|ipod/i.test(navigator.userAgent));
 
-      // On mobile, do not open a competing getUserMedia audio stream while speech recognition is active
-      if (isMobileDevice && speechFollowRef.current && isPlayingRef.current) {
+      // On mobile devices (Samsung Galaxy, iPhone, etc.), do NOT start the Web Audio analyser.
+      // Mobile operating systems require 100% exclusive microphone access for SpeechRecognition
+      // to function accurately without audio hardware contention or lockups.
+      if (isMobileDevice) {
         return;
       }
 
@@ -1350,7 +1430,13 @@ Control your speed, adjust your font size, and download your voice recording in 
   }, [selectedAudioDeviceId, selectedCameraId]);
 
   useEffect(() => {
-    startAudioAnalysis(selectedAudioDeviceId);
+    const isMobileDevice =
+      typeof window !== 'undefined' &&
+      (window.innerWidth < 1024 || 'ontouchstart' in window || /android|iphone|ipad|ipod/i.test(navigator.userAgent));
+
+    if (!isMobileDevice) {
+      startAudioAnalysis(selectedAudioDeviceId);
+    }
 
     const unlockAudio = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
@@ -2071,47 +2157,49 @@ Control your speed, adjust your font size, and download your voice recording in 
               </span>
             </button>
 
-            {/* 2. Decibel & Waveform Box (Separated Desktop Style Box) */}
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                background: '#ffffff',
-                padding: '3px 8px',
-                border: '1.5px solid #000',
-                borderRadius: 4,
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                boxShadow: '1.5px 1.5px 0 #000',
-                flexShrink: 0,
-              }}
-            >
-              {/* Dynamic Live Color VU Canvas */}
-              <canvas
-                ref={mobileHudWaveformCanvasRef}
-                width={80}
-                height={28}
+            {/* 2. Decibel & Waveform Box (Desktop only — mobile frees mic 100% for AI voice) */}
+            {!isMobile && (
+              <div
                 style={{
-                  width: 44,
-                  height: 14,
-                  background: '#000000',
-                  borderRadius: 2,
-                  display: 'block',
-                }}
-              />
-              <span
-                style={{
-                  fontSize: '0.64rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#ffffff',
+                  padding: '3px 8px',
+                  border: '1.5px solid #000',
+                  borderRadius: 4,
                   fontFamily: 'monospace',
                   fontWeight: 900,
-                  color: rmsDecibels >= -12 ? '#dc2626' : rmsDecibels >= -45 ? '#16a34a' : '#d97706',
-                  whiteSpace: 'nowrap',
+                  boxShadow: '1.5px 1.5px 0 #000',
+                  flexShrink: 0,
                 }}
               >
-                {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
-              </span>
-            </div>
+                {/* Dynamic Live Color VU Canvas */}
+                <canvas
+                  ref={mobileHudWaveformCanvasRef}
+                  width={80}
+                  height={28}
+                  style={{
+                    width: 44,
+                    height: 14,
+                    background: '#000000',
+                    borderRadius: 2,
+                    display: 'block',
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: '0.64rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    color: rmsDecibels >= -12 ? '#dc2626' : rmsDecibels >= -45 ? '#16a34a' : '#d97706',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {isClipping ? 'CLIP!' : `${rmsDecibels}dB`}
+                </span>
+              </div>
+            )}
           </div>
 
 

@@ -990,30 +990,30 @@ export default function BouquetStudioPage() {
               </button>
             </div>
 
-            {/* Desktop Category Toggle */}
+            {/* Category Toggle (Mobile & Desktop) */}
             {activeStep <= 2 && (
-              <div className="hidden sm:flex items-center bg-white border-2 border-black p-0.5 shadow-[2px_2px_0_#000]">
+              <div className="flex items-center bg-white border border-black sm:border-2 p-0.5 shadow-[1.5px_1.5px_0_#000] sm:shadow-[2px_2px_0_#000]">
                 <button
                   type="button"
                   onClick={() => handleCategoryChange('small')}
-                  className={`px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
                     flowerCategory === 'small'
                       ? 'bg-black text-white'
                       : 'text-stone-600 hover:text-black'
                   }`}
                 >
-                  PETITE (1)
+                  PETITE
                 </button>
                 <button
                   type="button"
                   onClick={() => handleCategoryChange('big')}
-                  className={`px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
                     flowerCategory === 'big'
                       ? 'bg-black text-white'
                       : 'text-stone-600 hover:text-black'
                   }`}
                 >
-                  GRAND (2)
+                  GRAND
                 </button>
               </div>
             )}
@@ -1103,7 +1103,7 @@ export default function BouquetStudioPage() {
 
             {/* ── Step 4: Animated Document Printer Machine (or Card View) ── */}
             {activeStep === 4 && (
-              <div className="relative z-10 w-full h-full max-h-[86vh] overflow-y-auto flex flex-col items-center justify-start p-2 sm:p-4 select-text">
+              <div className="relative z-10 w-full h-full max-h-[86vh] overflow-y-auto flex flex-col items-center justify-start p-2 sm:p-4 pb-32 md:pb-12 select-text">
                 {/* Mode & Choice Switcher Bar: Hidden on mobile to prevent duplicate controls */}
                 <div className="mb-3 hidden md:flex flex-wrap items-center justify-center gap-2 bg-white border-2 border-black p-1.5 shadow-[2px_2px_0_#000] shrink-0 z-20">
                   {/* Format Selector: Flower & Card | Flower Only | Card Only */}
@@ -1473,16 +1473,16 @@ export default function BouquetStudioPage() {
                         <button
                           type="button"
                           onClick={handleCopyLink}
-                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[145px] shrink-0"
                         >
                           {copied ? (
                             <>
-                              <Check size={15} />
+                              <Check size={15} className="text-green-600 shrink-0" />
                               <span>LINK COPIED!</span>
                             </>
                           ) : (
                             <>
-                              <Share2 size={15} />
+                              <Share2 size={15} className="shrink-0" />
                               <span>SHARE LINK</span>
                             </>
                           )}
@@ -1651,18 +1651,25 @@ export default function BouquetStudioPage() {
                       <button
                         type="button"
                         onClick={handleCopyLink}
-                        className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                        className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[155px] shrink-0"
                       >
-                        <Share2 size={13} />
-                        <span>
-                          {copied
-                            ? 'COPIED!'
-                            : giftFormat === 'flower'
-                            ? 'SHARE BOUQUET'
-                            : giftFormat === 'card'
-                            ? 'SHARE CARD'
-                            : 'SHARE GIFT'}
-                        </span>
+                        {copied ? (
+                          <>
+                            <Check size={13} className="text-green-400 shrink-0" />
+                            <span>COPIED!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Share2 size={13} className="shrink-0" />
+                            <span>
+                              {giftFormat === 'flower'
+                                ? 'SHARE BOUQUET'
+                                : giftFormat === 'card'
+                                ? 'SHARE CARD'
+                                : 'SHARE GIFT'}
+                            </span>
+                          </>
+                        )}
                       </button>
 
                       {/* PNG Background Toggle & Save Button */}
@@ -1776,11 +1783,42 @@ export default function BouquetStudioPage() {
                 {/* ── STEP 1: GREENERY PICKER ── */}
                 {activeStep === 1 && (
                   <div className="flex flex-col gap-3">
-                    <p className="text-[11px] text-stone-600 font-mono">
-                      {flowerCategory === 'small'
-                        ? 'Pick 1 botanical backdrop for petite flowers.'
-                        : 'Pick 2 foliage sets (Upper Right + Lower Cradle) for big flowers.'}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 border-b border-stone-200 pb-2.5">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-mono font-black uppercase text-black">
+                          {flowerCategory === 'small' ? 'Petite Foliage (1 Backdrop)' : 'Grand Foliage (2 Sets)'}
+                        </span>
+                        <span className="text-[10px] text-stone-500 font-mono">
+                          {flowerCategory === 'small'
+                            ? 'Delicate single layer for cottage blooms'
+                            : 'Upper-right + lower cradle for large blooms'}
+                        </span>
+                      </div>
+                      <div className="inline-flex items-center bg-stone-100 border border-black p-0.5 shadow-[1px_1px_0_#000] shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleCategoryChange('small')}
+                          className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                            flowerCategory === 'small'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'text-stone-600 hover:text-black'
+                          }`}
+                        >
+                          PETITE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCategoryChange('big')}
+                          className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                            flowerCategory === 'big'
+                              ? 'bg-black text-white shadow-xs'
+                              : 'text-stone-600 hover:text-black'
+                          }`}
+                        >
+                          GRAND
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {visibleGreeneries.map((item) => {
@@ -1829,19 +1867,50 @@ export default function BouquetStudioPage() {
                 {/* ── STEP 2: BLOOMS PICKER ── */}
                 {activeStep === 2 && (
                   <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-stone-600 font-mono">
-                        {flowerCategory === 'big'
-                          ? 'Pick 2 to 3 statement blooms for a balanced, majestic bouquet.'
-                          : 'Pick 3 to 10 petite blooms for a snug cottage garden bunch.'}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleRandomMix}
-                        className="px-2 py-0.5 bg-white hover:bg-stone-100 border border-black font-mono text-[10px] font-black uppercase shadow-[1px_1px_0_#000] cursor-pointer"
-                      >
-                        RANDOM MIX
-                      </button>
+                    <div className="flex items-center justify-between gap-2 border-b border-stone-200 pb-2.5">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-mono font-black uppercase text-black">
+                          {flowerCategory === 'big' ? 'Grand Statement Blooms' : 'Petite Cottage Blooms'}
+                        </span>
+                        <span className="text-[10px] text-stone-500 font-mono">
+                          {flowerCategory === 'big'
+                            ? 'Pick 2 to 3 statement blooms'
+                            : 'Pick 3 to 10 snug garden blooms'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="inline-flex items-center bg-stone-100 border border-black p-0.5 shadow-[1px_1px_0_#000]">
+                          <button
+                            type="button"
+                            onClick={() => handleCategoryChange('small')}
+                            className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                              flowerCategory === 'small'
+                                ? 'bg-black text-white shadow-xs'
+                                : 'text-stone-600 hover:text-black'
+                            }`}
+                          >
+                            PETITE
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCategoryChange('big')}
+                            className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                              flowerCategory === 'big'
+                                ? 'bg-black text-white shadow-xs'
+                                : 'text-stone-600 hover:text-black'
+                            }`}
+                          >
+                            GRAND
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRandomMix}
+                          className="px-2 py-0.5 bg-white hover:bg-stone-100 border border-black font-mono text-[9px] font-black uppercase shadow-[1px_1px_0_#000] cursor-pointer"
+                        >
+                          RANDOM
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -2426,18 +2495,25 @@ export default function BouquetStudioPage() {
                     <button
                       type="button"
                       onClick={handleCopyLink}
-                      className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                      className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-h-[46px]"
                     >
-                      <Share2 size={16} />
-                      <span>
-                        {copied
-                          ? 'LINK COPIED!'
-                          : giftFormat === 'flower'
-                          ? 'COPY BOUQUET LINK'
-                          : giftFormat === 'card'
-                          ? 'COPY CARD LINK'
-                          : 'COPY SHARE LINK'}
-                      </span>
+                      {copied ? (
+                        <>
+                          <Check size={16} className="text-green-600 shrink-0" />
+                          <span>LINK COPIED!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 size={16} className="shrink-0" />
+                          <span>
+                            {giftFormat === 'flower'
+                              ? 'COPY BOUQUET LINK'
+                              : giftFormat === 'card'
+                              ? 'COPY CARD LINK'
+                              : 'COPY SHARE LINK'}
+                          </span>
+                        </>
+                      )}
                     </button>
 
                     {shareUrl && (

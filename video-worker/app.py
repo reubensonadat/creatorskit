@@ -30,6 +30,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -94,6 +95,29 @@ FFMPEG_ARGS = _ffmpeg_args()
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+# YouTube bot-walls datacenter IPs (Render/AWS). Two counters:
+#  1. the bgutil PO-token provider (Node, 127.0.0.1:4416 — see Dockerfile);
+#  2. a cookies.txt mounted as a Render SECRET FILE at /etc/secrets/cookies.txt
+#     (exported from a logged-in browser; absent locally → args stay empty).
+COOKIES_PATH = os.environ.get('COOKIES_PATH', '/etc/secrets/cookies.txt')
+
+
+def _cookie_args() -> list[str]:
+    try:
+        return ['--cookies', COOKIES_PATH] if Path(COOKIES_PATH).is_file() else []
+    except OSError:
+        return []
+
+
+def _pot_status() -> str:
+    """Is the bgutil PO-token provider (127.0.0.1:4416) answering?"""
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:4416/ping', timeout=0.8) as r:
+            return 'up' if r.status == 200 else f'http_{r.status}'
+    except Exception:
+        return 'down'
+
+
 def _require_token(x_worker_token: Optional[str]) -> None:
     if WORKER_TOKEN and x_worker_token != WORKER_TOKEN:
         raise HTTPException(status_code=401, detail='bad worker token')
@@ -121,7 +145,8 @@ def _run_ytdlp(args: list[str], timeout: int) -> None:
 def _probe_meta(url: str) -> dict:
     try:
         proc = subprocess.run(
-            [YTDLP, '--no-playlist', '--no-check-formats', '--no-warnings', '--skip-download', '-J', url],
+            [YTDLP, '--no-playlist', '--no-check-formats', '--no-warnings', '--skip-download',
+             *_cookie_args(), '-J', url],
             capture_output=True, text=True, timeout=60,
         )
     except subprocess.TimeoutExpired:
@@ -221,7 +246,7 @@ def _run_resolve_job(jid: str, url: str, variant_id: str, base: str) -> None:
             _run_ytdlp(
                 [
                     '--no-playlist', '--no-warnings', '--no-progress',
-                    *args, *FFMPEG_ARGS,
+                    *_cookie_args(), *args, *FFMPEG_ARGS,
                     '-o', str(job['dir'] / '%(title).80s.%(ext)s'), url,
                 ],
                 timeout=RESOLVE_TIMEOUT,
@@ -271,6 +296,8 @@ def health() -> dict:
         'ok': True,
         'service': 'creatorkit-video-worker',
         'ytdlp': ytdlp_version.__version__,
+        'pot': _pot_status(),
+        'cookies': bool(_cookie_args()),
         'jobs': len(_JOBS),
     }
 
