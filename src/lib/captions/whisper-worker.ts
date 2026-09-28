@@ -10,6 +10,16 @@ import { pipeline, env } from '@huggingface/transformers';
 // Disallow local models so it fetches onnx weights directly from HuggingFace CDN & caches locally
 env.allowLocalModels = false;
 
+// Cloudflare Pages rejects any single file over 25 MiB, and onnxruntime-web's
+// compat binary (ort-wasm-simd-threaded.asyncify.wasm, 25.6 MiB) ships inside
+// the bundle by default. Point ORT at the jsDelivr mirror of the EXACT
+// installed version instead — every ort-wasm binary is fetched from the CDN
+// at runtime, and scripts/strip-ort-wasm.mjs removes the bundled copies after
+// the build so Cloudflare accepts the deploy.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(env.backends.onnx as any).wasm.wasmPaths =
+    'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0-dev.20260416-b7804b056c/dist/';
+
 // Pipeline singleton to prevent re-instantiating model on subsequent runs
 class WhisperPipelineSingleton {
     static task = 'automatic-speech-recognition' as const;
