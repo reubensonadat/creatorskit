@@ -925,13 +925,16 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     try {
       const recognition = new SpeechRecognitionClass();
-      // continuous: true everywhere. The old mobile strategy (continuous: false +
-      // ~30ms restart hammer) churned sessions so fast that Google's Android speech
-      // endpoint throttled the tab (network errors → silent death). Long-lived
-      // sessions + backed-off restarts are what desktop always used — and desktop
-      // works perfectly. iOS Safari ends sessions on its own; the onend restart
-      // path covers it.
-      recognition.continuous = true;
+      // Mobile keeps continuous: false — Android's engine goes DEAF inside a
+      // continuous session after 5-10s (drops transcripts without ending), so
+      // short utterance sessions + onend restarts are the reliable model there.
+      // Desktop uses continuous: true (proven rock solid). What killed mobile
+      // before was never this model — it was the 30ms restart cadence, which
+      // stacked into dozens of start() calls/sec until Google's speech endpoint
+      // throttled the tab into silent death. The delays below (~250ms mobile
+      // base, backing off only on crash-streaks) keep the same utterance-cycle
+      // model without ever tripping throttling.
+      recognition.continuous = !isMobileDevice;
       recognition.interimResults = true;
       // Multi-hypothesis ASR feeds the accent-aware matcher; iOS serves 1 reliably.
       recognition.maxAlternatives = isIOS ? 1 : 5;
