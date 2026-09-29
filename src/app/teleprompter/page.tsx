@@ -41,6 +41,7 @@ import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 import {
   embedMetadataIntoMediaBlob,
   saveHandoffSession,
+  clearHandoffSession,
 } from '@/lib/captions/project-metadata';
 import {
   cleanWordForMatch,
@@ -509,6 +510,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const bgVideoPreviewRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -846,8 +848,11 @@ Control your speed, adjust your font size, and download your voice recording in 
     }
     setSpeechStatus('idle');
 
-    // 2. Stop and release all microphone tracks so Android/iOS releases exclusive hardware control
-    if (micStreamRef.current) {
+    // 2. Stop and release audio meter mic tracks (unless currently recording a voice take)
+    const isVoiceTakeRecording =
+      mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording';
+
+    if (!isVoiceTakeRecording && micStreamRef.current) {
       try {
         micStreamRef.current.getTracks().forEach((track) => {
           track.stop();
@@ -855,6 +860,16 @@ Control your speed, adjust your font size, and download your voice recording in 
         });
       } catch { }
       micStreamRef.current = null;
+    }
+
+    if (!isVoiceTakeRecording && recordingStreamRef.current) {
+      try {
+        recordingStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
+      } catch { }
+      recordingStreamRef.current = null;
     }
 
     // 3. Suspend Web Audio Context so mobile OS (Android/Samsung Galaxy) completely exits in-call/telephony mode
@@ -896,7 +911,10 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     // Mobile OS audio conflict mitigation: Release Web Audio mic capture completely
     // so mobile OS gives 100% exclusive microphone access to SpeechRecognition
-    if (isMobileDevice || micStreamRef.current) {
+    const isRecordingActive =
+      mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording';
+
+    if (!isRecordingActive && (isMobileDevice || micStreamRef.current)) {
       if (micStreamRef.current) {
         try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
         micStreamRef.current = null;
@@ -1205,6 +1223,37 @@ Control your speed, adjust your font size, and download your voice recording in 
       window.removeEventListener('pagehide', handlePageLeave);
       window.removeEventListener('beforeunload', handlePageLeave);
       releaseAllAudioAndMic();
+      if (recordingStreamRef.current) {
+        try {
+          recordingStreamRef.current.getTracks().forEach((track) => {
+            track.stop();
+            track.enabled = false;
+          });
+        } catch { }
+        recordingStreamRef.current = null;
+      }
+      if (micStreamRef.current) {
+        try {
+          micStreamRef.current.getTracks().forEach((track) => {
+            track.stop();
+            track.enabled = false;
+          });
+        } catch { }
+        micStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try { audioContextRef.current.close().catch(() => {}); } catch { }
+        audioContextRef.current = null;
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.onend = null;
+          speechRecognitionRef.current.onerror = null;
+          speechRecognitionRef.current.onresult = null;
+          speechRecognitionRef.current.abort();
+        } catch { }
+        speechRecognitionRef.current = null;
+      }
     };
   }, [releaseAllAudioAndMic, cameraStream]);
 
@@ -1613,11 +1662,50 @@ Control your speed, adjust your font size, and download your voice recording in 
   // ─────────────────────────────────────────────────────────────
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  // End-of-take prompt: the buried download dock made takes easy to lose
+  // (refresh = gone forever). Ask DOWNLOAD / DISCARD the moment recording stops.
+  const [showTakePrompt, setShowTakePrompt] = useState(false);
   const [handoffSuccessNotice, setHandoffSuccessNotice] = useState<boolean>(false);
 
   const handleOneClickCaptions = async () => {
     if (!recordedBlob) return;
     try {
+      // 1. Immediately turn off all microphone, recording streams and speech recognition
+      if (recordingStreamRef.current) {
+        try {
+          recordingStreamRef.current.getTracks().forEach((track) => {
+            track.stop();
+            track.enabled = false;
+          });
+        } catch { }
+        recordingStreamRef.current = null;
+      }
+      if (micStreamRef.current) {
+        try {
+          micStreamRef.current.getTracks().forEach((track) => {
+            track.stop();
+            track.enabled = false;
+          });
+        } catch { }
+        micStreamRef.current = null;
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.onend = null;
+          speechRecognitionRef.current.onerror = null;
+          speechRecognitionRef.current.onresult = null;
+          speechRecognitionRef.current.abort();
+        } catch { }
+        speechRecognitionRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try { audioContextRef.current.close().catch(() => {}); } catch { }
+        audioContextRef.current = null;
+      }
+      stopAudioAnalysis();
+      stopVoiceRecording();
+      stopSpeechRecognition();
+
       await saveHandoffSession({
         script: script,
         mediaBlob: recordedBlob,
@@ -1628,32 +1716,108 @@ Control your speed, adjust your font size, and download your voice recording in 
       router.push('/auto-captions?from=teleprompter&auto=true');
     } catch (err) {
       console.warn('1-Click handoff fallback:', err);
+      if (recordingStreamRef.current) {
+        try { recordingStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch {}
+        recordingStreamRef.current = null;
+      }
+      if (micStreamRef.current) {
+        try { micStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch {}
+        micStreamRef.current = null;
+      }
+      stopAudioAnalysis();
+      stopVoiceRecording();
+      stopSpeechRecognition();
       localStorage.setItem('creatorkit_teleprompter_script', script);
       router.push('/auto-captions?from=teleprompter&auto=true');
     }
   };
 
-  const startVoiceRecording = () => {
-    if (!micStreamRef.current) {
-      startAudioAnalysis(selectedAudioDeviceId);
-    }
-    const stream = micStreamRef.current;
-    if (!stream) return;
-
-    audioChunksRef.current = [];
-    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/mp4';
-
+  const startVoiceRecording = async () => {
     try {
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      // Clear previous take so stale buttons don't persist
+      setRecordedAudioUrl(null);
+      setRecordedBlob(null);
+      setHandoffSuccessNotice(false);
+      setShowTakePrompt(false);
+
+      let stream = recordingStreamRef.current;
+      const isStreamActive = stream && stream.active && stream.getAudioTracks().some((t) => t.readyState === 'live');
+
+      if (!isStreamActive) {
+        const audioConstraints: MediaTrackConstraints = {
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true,
+          ...(selectedAudioDeviceId ? { deviceId: { exact: selectedAudioDeviceId } } : {}),
+        };
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: false,
+          });
+        } catch (mediaErr) {
+          console.warn('Strict mic constraints failed, attempting basic audio request:', mediaErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+        }
+        recordingStreamRef.current = stream;
+
+        const isMobileDevice =
+          typeof window !== 'undefined' &&
+          (window.innerWidth < 1024 || 'ontouchstart' in window || /android|iphone|ipad|ipod/i.test(navigator.userAgent));
+        if (!isMobileDevice && !micStreamRef.current) {
+          micStreamRef.current = stream;
+        }
+        if (!isMobileDevice && !audioContextRef.current) {
+          startAudioAnalysis(selectedAudioDeviceId).catch((err) => console.warn('VU meter analysis start warning:', err));
+        }
+      }
+
+      if (!stream) {
+        console.error('Cannot record: Microphone stream unavailable.');
+        alert('Could not access microphone. Please allow microphone permissions in your browser.');
+        return;
+      }
+
+      if (typeof MediaRecorder === 'undefined') {
+        alert('MediaRecorder is not supported in this browser environment.');
+        return;
+      }
+
+      audioChunksRef.current = [];
+
+      // Universal audio mime-type detection (Chrome, Firefox, Safari iOS & Android)
+      const mimeCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg;codecs=opus',
+      ];
+      let mime = '';
+      for (const cand of mimeCandidates) {
+        if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(cand)) {
+          mime = cand;
+          break;
+        }
+      }
+
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const effectiveMime = mime || recorder.mimeType || 'audio/webm';
+
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
       };
+
       recorder.onstop = async () => {
-        const rawBlob = new Blob(audioChunksRef.current, { type: mime });
-        
-        // ✨ THE MAGIC TRICK: Embed script and metadata directly into media blob
+        const rawBlob = new Blob(audioChunksRef.current, { type: effectiveMime });
+
+        // Embed script and metadata directly into media blob
         let finalBlob: Blob = rawBlob;
         try {
           finalBlob = await embedMetadataIntoMediaBlob(rawBlob, {
@@ -1671,38 +1835,91 @@ Control your speed, adjust your font size, and download your voice recording in 
         setRecordedBlob(finalBlob);
         const url = URL.createObjectURL(finalBlob);
         setRecordedAudioUrl(url);
+        setShowTakePrompt(true);
         setIsRecording(false);
-        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
 
-        // Pre-cache handoff session into IndexedDB for instantaneous 1-Click transfer
+        const ext = effectiveMime.includes('mp4') ? 'mp4' : effectiveMime.includes('aac') ? 'aac' : 'webm';
         saveHandoffSession({
           script: script,
           mediaBlob: finalBlob,
-          fileName: `teleprompter_take_${Date.now()}.${mime.includes('mp4') ? 'mp4' : 'webm'}`,
+          fileName: `teleprompter_take_${Date.now()}.${ext}`,
           title: 'Teleprompter Studio Take',
           wpm: Math.round(speed * 125),
         }).catch((e) => console.warn('Pre-save handoff error:', e));
 
+        // AUTO-DOWNLOAD the take the instant recording ends: recordings live
+        // only in this tab, and the buried dock made them too easy to lose on
+        // refresh. The take prompt stays on screen as the manual fallback.
+        try {
+          const dlUrl = URL.createObjectURL(finalBlob);
+          const dlA = document.createElement('a');
+          dlA.href = dlUrl;
+          dlA.download = `creatorkit-take-${Date.now()}.${ext}`;
+          document.body.appendChild(dlA);
+          dlA.click();
+          dlA.remove();
+          setTimeout(() => URL.revokeObjectURL(dlUrl), 30000);
+        } catch (dlErr) {
+          console.warn('Auto-download failed (use the take prompt):', dlErr);
+        }
+
         setHandoffSuccessNotice(true);
       };
+
+      recorder.onerror = (recErr) => {
+        console.error('MediaRecorder error occurred:', recErr);
+        setIsRecording(false);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+      };
+
       recorder.start(250);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       setRecordingSeconds(0);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = setInterval(() => {
         setRecordingSeconds((s) => s + 1);
       }, 1000);
-    } catch (err) {
-      console.warn('Voice recording start failed:', err);
+    } catch (err: any) {
+      console.error('Voice recording start failed:', err);
+      alert(err?.message ? `Microphone access error: ${err.message}` : 'Microphone access denied. Please grant microphone permissions.');
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
     }
   };
 
   const stopVoiceRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingStreamRef.current) {
+        try {
+          recordingStreamRef.current.getTracks().forEach((t) => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
+        recordingStreamRef.current = null;
+      }
+    } catch (err) {
+      console.warn('Error stopping MediaRecorder:', err);
     }
     setIsRecording(false);
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
   };
 
   // Keyboard Shortcuts
@@ -2501,75 +2718,6 @@ Control your speed, adjust your font size, and download your voice recording in 
 
 
 
-          {/* ── 1-CLICK CAPTIONS FLOATING NOTIFICATION BANNER ── */}
-          {handoffSuccessNotice && recordedBlob && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 100,
-                background: '#FFE500',
-                color: '#000',
-                border: '2px solid #000',
-                borderRadius: 8,
-                boxShadow: '4px 4px 0 #000',
-                padding: '10px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                maxWidth: '92vw',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Sparkles size={16} strokeWidth={2.5} />
-                <span style={{ fontFamily: 'monospace', fontSize: '0.74rem', fontWeight: 900 }}>
-                  TAKE SAVED · SCRIPT EMBEDDED
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={handleOneClickCaptions}
-                  style={{
-                    background: '#000',
-                    color: '#FFE500',
-                    border: '1.5px solid #000',
-                    borderRadius: 4,
-                    padding: '6px 12px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.72rem',
-                    fontWeight: 900,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    boxShadow: '1px 1px 0 #000',
-                  }}
-                >
-                  <Wand2 size={13} />
-                  <span>1-CLICK AUTO-CAPTIONS →</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHandoffSuccessNotice(false)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  title="Dismiss notification"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* ── Transport Controls: Mobile Floating Pill + Bottom Sheet + Desktop Studio Dock ── */}
           <>
             {/* ── MOBILE: Bottom Floating Control Pill ── */}
@@ -2625,8 +2773,39 @@ Control your speed, adjust your font size, and download your voice recording in 
                 {isPlaying ? <Pause size={20} strokeWidth={3} /> : <Play size={20} strokeWidth={3} />}
               </button>
 
+              {/* Quick Record Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isRecording) {
+                    stopVoiceRecording();
+                  } else {
+                    startVoiceRecording();
+                  }
+                }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  border: '1.5px solid #000',
+                  background: isRecording ? '#ef4444' : 'rgba(255, 255, 255, 0.12)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: isRecording ? '0 0 12px rgba(239,68,68,0.7)' : 'none',
+                  flexShrink: 0,
+                  marginLeft: 4,
+                  marginRight: 2,
+                }}
+                title={isRecording ? 'Stop Recording' : 'Record Audio Take'}
+              >
+                <Mic size={16} className={isRecording ? 'animate-pulse' : ''} />
+              </button>
+
               {/* Speed indicator */}
-              <div style={{ padding: '0 10px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', color: '#fff', whiteSpace: 'nowrap' }}>
+              <div style={{ padding: '0 8px', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.76rem', color: '#fff', whiteSpace: 'nowrap' }}>
                 {speed.toFixed(1)}x
               </div>
 
@@ -2756,6 +2935,103 @@ Control your speed, adjust your font size, and download your voice recording in 
                       </button>
                     </div>
                   </div>
+
+                  {/* End-of-take prompt: downloads live only in this tab — save it now */}
+                  {showTakePrompt && recordedAudioUrl && (
+                    <div
+                      style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 80,
+                        background: 'rgba(0,0,0,0.55)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                      }}
+                      onClick={() => setShowTakePrompt(false)}
+                    >
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2.5px solid #000',
+                          boxShadow: '4px 4px 0 #000',
+                          padding: 20,
+                          maxWidth: 430,
+                          width: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
+                          TAKE RECORDED — SAVE IT BEFORE IT'S LOST
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
+                          The recording lives only in this browser tab. Download it now, discard it, or keep
+                          it in the studio for the 1-click captions handoff.
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <a
+                            href={recordedAudioUrl}
+                            download={`creatorkit-take-${Date.now()}.webm`}
+                            onClick={() => setShowTakePrompt(false)}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#FFE500',
+                              color: '#000',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            ⬇ DOWNLOAD TAKE
+                          </a>
+                          <button
+                            onClick={() => {
+                              URL.revokeObjectURL(recordedAudioUrl);
+                              setRecordedAudioUrl(null);
+                              setRecordedBlob(null);
+                              setHandoffSuccessNotice(false);
+                              setShowTakePrompt(false);
+                              // Also drop the pre-saved handoff so a discarded
+                              // take can never resurrect inside Auto Captions.
+                              clearHandoffSession().catch(() => {});
+                            }}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#fff',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ✕ DISCARD
+                          </button>
+                          <button
+                            onClick={() => setShowTakePrompt(false)}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#f4f4f5',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            KEEP IN STUDIO
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Recorded Audio Download / Preview Player (If available) */}
                   {recordedAudioUrl && (
@@ -2906,12 +3182,17 @@ Control your speed, adjust your font size, and download your voice recording in 
               transform: 'translateX(-50%)',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              flexWrap: 'nowrap',
+              whiteSpace: 'nowrap',
+              height: 58,
+              minHeight: 58,
+              maxHeight: 58,
+              gap: 8,
               zIndex: 35,
-              background: 'rgba(255, 255, 255, 0.95)',
+              background: 'rgba(255, 255, 255, 0.96)',
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
-              padding: '5px 12px 5px 6px',
+              padding: '6px 14px 6px 8px',
               border: '2.5px solid #000000',
               borderRadius: 50,
               boxShadow: '0 10px 35px rgba(0,0,0,0.5)',
@@ -2958,6 +3239,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
               title="Reset Scroll to Top (R / Home)"
             >
@@ -2971,72 +3253,81 @@ Control your speed, adjust your font size, and download your voice recording in 
                 else startVoiceRecording();
               }}
               style={{
-                padding: '6px 12px',
+                height: 36,
+                minHeight: 36,
+                maxHeight: 36,
+                minWidth: 68,
+                padding: '0 10px',
                 fontSize: '0.72rem',
-                borderRadius: 20,
+                borderRadius: 18,
                 border: '1.5px solid #000',
                 background: isRecording ? '#ef4444' : '#ffffff',
                 color: isRecording ? '#ffffff' : '#000000',
                 fontFamily: 'monospace',
                 fontWeight: 900,
                 cursor: 'pointer',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 5,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 boxShadow: isRecording ? '0 0 10px rgba(239,68,68,0.5)' : 'none',
               }}
               title="Record High-Quality Voice Track"
             >
-              <Mic size={14} />
-              <span>{isRecording ? `REC (${formatTime(recordingSeconds)})` : 'REC'}</span>
+              <Mic size={14} className={isRecording ? 'animate-pulse' : ''} />
+              <span>{isRecording ? formatTime(recordingSeconds) : 'REC'}</span>
             </button>
 
-            {/* Recorded Audio Download & 1-Click Captions (If Available) */}
-            {recordedAudioUrl && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            {/* Recorded Audio Download & Captions (Compact, Never Balloons Dock) */}
+            {recordedAudioUrl && !isRecording && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
                 <button
                   type="button"
                   onClick={handleOneClickCaptions}
                   style={{
-                    padding: '5px 10px',
+                    height: 36,
+                    padding: '0 10px',
                     background: '#FFE500',
                     color: '#000',
                     border: '1.5px solid #000',
-                    borderRadius: 20,
+                    borderRadius: 18,
                     fontFamily: 'monospace',
                     fontWeight: 900,
                     fontSize: '0.68rem',
                     cursor: 'pointer',
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 4,
+                    gap: 5,
                     boxShadow: '1px 1px 0 #000',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
                   }}
-                  title="1-Click: Generate Studio Captions from this Take"
+                  title="Open Take in 1-Click Auto-Captions"
                 >
                   <Wand2 size={13} strokeWidth={2.5} />
-                  <span>1-CLICK CAPTIONS</span>
+                  <span>Captions</span>
                 </button>
                 <a
                   href={recordedAudioUrl}
                   download={`creatorkit-take-${Date.now()}.webm`}
                   style={{
-                    padding: '5px 10px',
+                    width: 36,
+                    height: 36,
                     background: '#fff',
                     color: '#000',
                     border: '1.5px solid #000',
-                    borderRadius: 20,
-                    fontFamily: 'monospace',
-                    fontWeight: 900,
-                    fontSize: '0.68rem',
-                    textDecoration: 'none',
-                    display: 'flex',
+                    borderRadius: '50%',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 4,
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    textDecoration: 'none',
                   }}
-                  title="Download Take with Embedded Script Metadata"
+                  title="Download Take Audio"
                 >
-                  <Download size={13} /> TAKE
+                  <Download size={13} />
                 </a>
               </div>
             )}

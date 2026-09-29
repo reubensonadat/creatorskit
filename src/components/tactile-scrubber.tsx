@@ -22,6 +22,7 @@ export interface TactileScrubberProps {
   height?: number;
   fillColor?: string;
   showSteppers?: boolean;
+  showValueBadge?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -41,6 +42,7 @@ export function TactileScrubber({
   height = 15,
   fillColor = '#FFE500',
   showSteppers = true,
+  showValueBadge = true,
   className,
   style,
 }: TactileScrubberProps) {
@@ -327,7 +329,7 @@ export function TactileScrubber({
             </button>
           )}
 
-          {!label && (
+          {!label && showValueBadge && (
             <span
               style={{
                 fontSize: '0.66rem',

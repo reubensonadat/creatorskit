@@ -558,25 +558,25 @@ export function CassettePlayer({
                     <Screw className="right-[2.53%] bottom-[4%]" />
 
                     {/* ─── White Vinyl Sticker Label ─── */}
-                    <div className="absolute top-[9.5%] right-[8.5%] bottom-[24%] left-[8.5%] z-1 overflow-clip rounded-[9px] border-4 border-transparent bg-white text-zinc-900 shadow-[inset_0_0_12px_rgba(92,74,49,0.12)] [container-type:inline-size] [overflow-clip-margin:border-box] max-[560px]:rounded-md">
+                    <div className="absolute top-[9.5%] right-[8.5%] bottom-[24%] left-[8.5%] z-1 overflow-clip rounded-[9px] border-4 border-transparent bg-white text-zinc-900 shadow-[inset_0_0_12px_rgba(92,74,49,0.12)] [container-type:inline-size] [overflow-clip-margin:border-box] max-[560px]:top-[7.5%] max-[560px]:bottom-[22%] max-[560px]:right-[6.5%] max-[560px]:left-[6.5%] max-[560px]:rounded-md">
                         {/* Title Centered */}
-                        <div className="relative z-2 mx-4 mt-4 max-[560px]:mt-3 flex flex-col items-center justify-center text-center">
+                        <div className="relative z-2 mx-4 mt-4 max-[560px]:mx-2.5 max-[560px]:mt-1.5 flex flex-col items-center justify-center text-center">
                             {archiveLabel ? (
-                                <span className="relative z-2 font-bold font-mono text-[clamp(8px,2.5cqw,11px)] text-zinc-600 uppercase leading-none tracking-[0.12em] mb-1">
+                                <span className="relative z-2 font-bold font-mono text-[clamp(8px,2.5cqw,11px)] text-zinc-600 uppercase leading-none tracking-[0.12em] mb-1 max-[560px]:mb-0.5">
                                     {archiveLabel}
                                 </span>
                             ) : null}
-                            <span className="relative z-2 block max-w-full truncate font-sans font-extrabold text-[clamp(13px,4.8cqw,22px)] leading-tight tracking-[-0.04em] text-zinc-950 text-center">
+                            <span className="relative z-2 block max-w-full truncate font-sans font-extrabold text-[clamp(13px,4.8cqw,22px)] max-[560px]:text-[clamp(11px,3.8cqw,14px)] leading-tight tracking-[-0.04em] text-zinc-950 text-center">
                                 {trackTitle}
                             </span>
                         </div>
 
                         {/* ─── Center Window with Stripes & Spools ─── */}
-                        <div className="relative mt-4 h-[34%] max-[560px]:mt-3 max-[560px]:h-[28%]">
+                        <div className="relative mt-4 h-[34%] max-[560px]:mt-1 max-[560px]:h-[24%]">
                             {/* 3 Color Stripes: CreatorKit Yellow / Black / CreatorKit Yellow */}
                             <div
                                 aria-hidden="true"
-                                className="absolute -inset-x-1 top-1/2 grid h-[58%] -translate-y-1/2 grid-rows-3 gap-y-1"
+                                className="absolute -inset-x-1 top-1/2 grid h-[58%] -translate-y-1/2 grid-rows-3 gap-y-1 max-[560px]:gap-y-0.5"
                             >
                                 <span className="bg-[#FFE500]" />
                                 <span className="bg-[#18181b]" />
@@ -584,7 +584,7 @@ export function CassettePlayer({
                             </div>
 
                             {/* Center Clear Acrylic Oval Window */}
-                            <div className="absolute inset-y-0 inset-x-[17.5%] z-3 overflow-hidden rounded-full bg-[#1b1a18] bg-[linear-gradient(rgba(255,255,255,0.13),transparent_45%)] shadow-[0_0_0_4px_rgba(0,0,0,0.1),inset_0_3px_8px_rgba(0,0,0,0.58)] [--reel-window-color:#1b1a18] [container-type:size]">
+                            <div className="absolute inset-y-0 inset-x-[17.5%] z-3 overflow-hidden rounded-full bg-[#1b1a18] bg-[linear-gradient(rgba(255,255,255,0.13),transparent_45%)] shadow-[0_0_0_4px_rgba(0,0,0,0.1),inset_0_3px_8px_rgba(0,0,0,0.58)] max-[560px]:shadow-[0_0_0_2px_rgba(0,0,0,0.1),inset_0_2px_4px_rgba(0,0,0,0.58)] [--reel-window-color:#1b1a18] [container-type:size]">
                                 <div
                                     aria-hidden="true"
                                     className="pointer-events-none absolute inset-0 opacity-25 mix-blend-multiply"
@@ -613,7 +613,7 @@ export function CassettePlayer({
                         </div>
 
                         {/* ─── Tactile Scrubber & Timers ─── */}
-                        <div className="absolute right-4 bottom-3.5 left-4 z-5 grid gap-y-1">
+                        <div className="absolute right-4 bottom-3.5 left-4 z-5 grid gap-y-1.5 max-[560px]:right-2.5 max-[560px]:left-2.5 max-[560px]:bottom-2 max-[560px]:gap-y-1.5">
                             <TactileScrubber
                                 value={currentTime}
                                 min={0}
@@ -623,10 +623,11 @@ export function CassettePlayer({
                                 height={10}
                                 fillColor="#FFE500"
                                 showSteppers={false}
+                                showValueBadge={false}
                                 onChange={(val) => seek(val)}
                             />
 
-                            <div className="relative z-2 flex items-baseline justify-between font-normal font-sans text-[11px] leading-none tabular-nums text-zinc-600">
+                            <div className="relative z-2 flex items-baseline justify-between font-normal font-sans text-[11px] max-[560px]:text-[10px] leading-none tabular-nums text-zinc-600 max-[560px]:mt-1">
                                 <span>{formatTime(currentTime)}</span>
                                 <span>{formatTime(effectiveDuration)}</span>
                             </div>

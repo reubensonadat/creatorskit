@@ -28,9 +28,14 @@ export const CAPTIONS_WORKER_BASE =
 
 /** Worker hard cap is 100MB — stay just under to avoid a 413 after a long upload. */
 const MAX_UPLOAD_BYTES = 99 * 1024 * 1024;
-const POLL_INTERVAL_MS = 3000;
-const POLL_DEADLINE_MS = 20 * 60 * 1000; // ~52 min audio cap → ~20 min server time
-const MAX_CONSECUTIVE_POLL_ERRORS = 5;
+const POLL_INTERVAL_MS = 2500;
+const POLL_DEADLINE_MS = 15 * 60 * 1000; // 15 minutes: allows free Render server wake up, queueing, and longer voice notes
+/** When the free-tier container reboots mid-poll, Render's proxy answers
+ * with errors that carry no CORS header (the browser reports them as fetch
+ * TypeErrors / "CORS policy" failures). The box comes back in ~15-60s —
+ * far longer than a naive retry-count budget — so ride out contact loss
+ * for this long before re-uploading on a fresh ticket. */
+const CONTACT_GRACE_MS = 45 * 1000;
 
 export type WorkerTranscribeCode =
     | 'too_large'
@@ -38,6 +43,9 @@ export type WorkerTranscribeCode =
     | 'auth'
     | 'edge_offline'
     | 'timeout'
+    | 'upload_lost'   // network died mid-upload (container rebooting) — retried once
+    | 'job_lost'      // worker restarted mid-transcription (job id 404s) — retried once
+    | 'lost_contact'  // polls failed past CONTACT_GRACE_MS — retried once
     | 'failed';
 
 export class WorkerTranscribeError extends Error {
@@ -128,37 +136,27 @@ export interface WorkerTranscribeOptions {
 }
 
 /**
- * Full server pipeline: ticket → upload → poll → cues.
- * Returns the SAME shape as WhisperClient.transcribe so the page treats
- * both engines identically.
- */
-export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise<TranscriptionResult> {
-    const startedAt = performance.now();
-    const { file, audioData, durationSeconds, onProgress } = opts;
-
-    // ── pick the upload payload ─────────────────────────────────────────
-    let payload: Blob;
-    let filename: string;
-    if (audioData && audioData.length > 0) {
-        onProgress?.({ stage: 'loading_model', message: 'Preparing audio for upload…', percent: 10 });
-        payload = encodeWav16kMono(audioData);
-        filename = 'audio-16k.wav';
-    } else {
-        if (file.size > MAX_UPLOAD_BYTES) {
-            throw new WorkerTranscribeError(
-                'File is too large for server transcription (max ~100MB). Try the Local engine or trim the clip.',
-                'too_large'
-            );
-        }
-        payload = file;
-        filename = (file as File).name || 'audio';
-    }
+ * One full server pass: ticket → upload → poll → cues.
+ * Throws retryable codes (upload_lost / job_lost / lost_contact) when the
+ * failure is the free-tier container rebooting — the caller re-runs the
+ * whole pass once instead of dropping the user to the browser engine. */
+async function runServerAttempt(args: {
+    payload: Blob;
+    filename: string;
+    durationSeconds?: number;
+    onProgress?: (progress: WhisperProgress) => void;
+    attempt: number;
+    totalAttempts: number;
+    startedAt: number;
+}): Promise<TranscriptionResult> {
+    const { payload, filename, durationSeconds, onProgress, attempt, totalAttempts, startedAt } = args;
+    const attemptLabel = totalAttempts > 1 ? ` (Attempt ${attempt})` : '';
 
     // ── ticket + upload ─────────────────────────────────────────────────
-    onProgress?.({ stage: 'loading_model', message: 'Connecting to CreatorKit Server…', percent: 15 });
+    onProgress?.({ stage: 'loading_model', message: 'Connecting to CreatorKit Server…' + attemptLabel, percent: 15 });
     const ticket = await requestUploadTicket();
 
-    onProgress?.({ stage: 'loading_model', message: 'Uploading audio to the server…', percent: 25 });
+    onProgress?.({ stage: 'loading_model', message: 'Uploading audio to the server…' + attemptLabel, percent: 25 });
     const form = new FormData();
     form.append('file', payload, filename);
 
@@ -169,7 +167,9 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
             body: form,
         });
     } catch {
-        throw new WorkerTranscribeError('Upload failed — the server may be waking up. Try again.', 'failed');
+        // Network died mid-upload: the free container reboots take ~15-60s.
+        // Retryable — the caller re-uploads on a fresh ticket.
+        throw new WorkerTranscribeError('Connection lost while uploading — the server may be restarting.', 'upload_lost');
     }
 
     const start = await startRes.json().catch(() => ({}));
@@ -192,11 +192,15 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
     // believably instead of freezing for minutes.
     const expectedServerSeconds = Math.max(8, ((durationSeconds ?? payload.size / 32000) / 2.2) + 8);
     const pollStartedAt = performance.now();
-    let consecutiveErrors = 0;
+    let contactLostAt: number | null = null;
 
-    onProgress?.({ stage: 'transcribing', message: start.queuedAhead ? 'Waiting for a free server slot…' : 'Transcribing on the server…', percent: 40 });
+    onProgress?.({
+        stage: 'transcribing',
+        message: (start.queuedAhead ? 'Waiting for a free server slot…' : 'Transcribing on the server…') + attemptLabel,
+        percent: 40,
+    });
 
-    for (; ;) {
+    for (;;) {
         await sleep(POLL_INTERVAL_MS);
 
         let job: any;
@@ -205,23 +209,33 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
                 `${CAPTIONS_WORKER_BASE}/transcribe/job/${encodeURIComponent(start.jobId)}?t=${encodeURIComponent(start.token)}`
             );
             if (pollRes.status === 404) {
-                // We already HOLD a jobId, so the job existed. A 404 this early
-                // means the worker restarted mid-transcription (jobs live in
-                // memory; deploys swap the container). Render's proxy errors
-                // during the swap arrive as opaque CORS/fetch failures — the
-                // consecutiveErrors branch below covers those.
+                // We already HOLD a jobId, so the job existed. A 404 means
+                // the worker restarted mid-transcription (jobs live in
+                // memory; Render's free tier recycles the container every
+                // few hours). Retryable: re-upload on a fresh ticket.
                 throw new WorkerTranscribeError(
-                    'The server restarted mid-transcription (jobs do not survive deploys). Try again.',
-                    'failed'
+                    'The server restarted mid-transcription. Re-uploading automatically…',
+                    'job_lost'
                 );
             }
             job = await pollRes.json();
-            consecutiveErrors = 0;
+            contactLostAt = null;
         } catch (err) {
             if (err instanceof WorkerTranscribeError) throw err;
-            consecutiveErrors++;
-            if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
-                throw new WorkerTranscribeError('Lost contact with the server while transcribing.', 'failed');
+            // Proxy-level failures (container rebooting) have no CORS
+            // headers and surface as TypeError: Failed to fetch. The box
+            // reboots in ~15-60s — far longer than a naive retry-count
+            // budget. Ride it out for up to CONTACT_GRACE_MS instead.
+            if (contactLostAt === null) {
+                contactLostAt = performance.now();
+                onProgress?.({
+                    stage: 'transcribing',
+                    message: 'Lost contact with the server — waiting for it to come back…',
+                    percent: 55,
+                });
+            }
+            if (performance.now() - contactLostAt > CONTACT_GRACE_MS) {
+                throw new WorkerTranscribeError('Lost contact with the server while transcribing.', 'lost_contact');
             }
             continue;
         }
@@ -231,11 +245,11 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
             const fraction = Math.min(1, elapsed / expectedServerSeconds);
             onProgress?.({
                 stage: 'transcribing',
-                message: job.queuedAhead ? 'Waiting for a free server slot…' : 'Transcribing on the server…',
+                message: (job.queuedAhead ? 'Waiting for a free server slot…' : 'Transcribing on the server…') + attemptLabel,
                 percent: 40 + Math.round(55 * fraction),
             });
             if (performance.now() - pollStartedAt > POLL_DEADLINE_MS) {
-                throw new WorkerTranscribeError('Server transcription is taking unusually long. Try a shorter clip.', 'timeout');
+                throw new WorkerTranscribeError('Server transcription timed out. Switching to local offline engine.', 'timeout');
             }
             continue;
         }
@@ -264,4 +278,70 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
 
         throw new WorkerTranscribeError('Unexpected server response.', 'failed');
     }
+}
+
+/**
+ * Full server pipeline: ticket → upload → poll → cues.
+ * Returns the SAME shape as WhisperClient.transcribe so the page treats
+ * both engines identically.
+ */
+export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise<TranscriptionResult> {
+    const startedAt = performance.now();
+    const { file, audioData, durationSeconds, onProgress } = opts;
+
+    // ── pick the upload payload (once — retries reuse the same bytes) ──
+    let payload: Blob;
+    let filename: string;
+    if (audioData && audioData.length > 0) {
+        onProgress?.({ stage: 'loading_model', message: 'Preparing audio for upload…', percent: 10 });
+        payload = encodeWav16kMono(audioData);
+        filename = 'audio-16k.wav';
+    } else {
+        if (file.size > MAX_UPLOAD_BYTES) {
+            throw new WorkerTranscribeError(
+                'File is too large for server transcription (max ~100MB). Try the Local engine or trim the clip.',
+                'too_large'
+            );
+        }
+        payload = file;
+        filename = (file as File).name || 'audio';
+    }
+
+    // Render's free tier recycles the container every few hours and any
+    // in-flight job dies with it (uploads drop, polls hit a rebooting
+    // proxy, then the fresh container 404s the old job id). The box comes
+    // back within ~15-60s, so ONE automatic re-upload almost always
+    // rescues the take instead of dropping the user to the (much worse)
+    // browser fallback engine.
+    const MAX_ATTEMPTS = 2;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            return await runServerAttempt({
+                payload,
+                filename,
+                durationSeconds,
+                onProgress,
+                attempt,
+                totalAttempts: MAX_ATTEMPTS,
+                startedAt,
+            });
+        } catch (err) {
+            const retryable =
+                err instanceof WorkerTranscribeError &&
+                (err.code === 'job_lost' || err.code === 'lost_contact' || err.code === 'upload_lost');
+            if (!retryable || attempt >= MAX_ATTEMPTS) throw err;
+            const why =
+                err.code === 'upload_lost'
+                    ? 'connection dropped during upload'
+                    : err.code === 'job_lost'
+                        ? 'the server restarted'
+                        : 'lost contact with the server';
+            onProgress?.({
+                stage: 'loading_model',
+                message: `Server hiccup — ${why}. Automatically retrying (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`,
+                percent: 15,
+            });
+        }
+    }
+    throw new WorkerTranscribeError('Unexpected retry-loop exit.', 'failed'); // unreachable
 }
