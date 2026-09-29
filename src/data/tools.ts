@@ -116,7 +116,11 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Paste any video or audio link, watch one short ad, and save the file straight to your device',
     isFlagship: true,
     category: 'utility',
-    badge: 'POWERFUL',
+    // YouTube currently bot-walls our server IP → grabber paused (see
+    // docs/VIDEO_GRABBER_HANDOFF.md §8). Keep it visible but labeled so
+    // visitors don't think the tool is broken; restore 'POWERFUL' when
+    // the VPS/residential route ships.
+    badge: 'IN DEVELOPMENT',
   },
 ];
 

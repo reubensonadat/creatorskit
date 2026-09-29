@@ -1,5 +1,7 @@
-# CreatorKit Video Worker — Phase-2 resolver muscle.
-# Runs anywhere Docker runs: Hugging Face Space (free), a VPS, or a laptop.
+# CreatorKit Workers — the all-in-one Docker service.
+# Render Root Directory = workers/ (one service, route-module isolation).
+# Runs anywhere Docker runs: Render free tier (the DECISION — see
+# docs/AUDIO_TRANSCRIPTION_PLAN.md), a VPS, or a laptop.
 FROM python:3.12-slim
 
 # ffmpeg merges YouTube's split video+audio streams (and encodes MP3s).
@@ -20,7 +22,8 @@ RUN curl -fsSL https://nodejs.org/dist/v22.17.0/node-v22.17.0-linux-x64.tar.xz \
 
 WORKDIR /app
 
-# Python side: the API + yt-dlp + the POT plugin (plugin half)
+# Python side: the API + yt-dlp + the POT plugin (plugin half) + the
+# captions stack (faster-whisper decodes audio via its bundled PyAV).
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -42,7 +45,20 @@ RUN ( (git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provid
      && echo "POT_BUILD_OK") \
  || echo "POT_BUILD_FAILED - start.sh retries at boot (see /health pot_log)"
 
+# Auto-captions model — BAKED at build (Render's disk is ephemeral, so a
+# runtime download would repeat on EVERY boot). Whisper base.en int8 is
+# ~78MB → fits the 512MB plan with room to run. Same marker pattern as the
+# pot build: a failed download must not kill the deploy; engine.py then
+# downloads at first use (dir is chowned to uid 1000 for exactly that)
+# and /health captions.baked tells us which path we're on.
+ENV WHISPER_MODELS_DIR=/models/captions
+RUN ( (mkdir -p /models/captions \
+      && python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8', download_root='/models/captions'); print('CAPTIONS_MODEL_BAKED')") \
+     || echo "CAPTIONS_BAKE_FAILED - engine.py downloads at first use" ) \
+ && (chown -R 1000:1000 /models 2>/dev/null || true)
+
 COPY app.py start.sh ./
+COPY captions ./captions/
 RUN chmod +x start.sh \
  && useradd -m -u 1000 user \
  && mkdir -p /tmp/grab \

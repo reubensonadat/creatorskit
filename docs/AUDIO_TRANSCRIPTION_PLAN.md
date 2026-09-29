@@ -28,7 +28,8 @@
 ## Phase 1 (recommended): /transcribe on the existing Render worker
 
 Stack: `faster-whisper` (pip, prebuilt CPU wheels, CTranslate2 int8) inside
-`video-worker/app.py`.
+the worker as its own isolated module: `workers/captions/` (engine.py +
+routes.py) — see IMPLEMENTED below.
 
 - **Bake at build time**: Dockerfile downloads `base.en` int8 from HuggingFace
   during `docker build` (same trick as the pot server — no per-boot download).
@@ -129,3 +130,57 @@ consumes exactly that; two always-on services starve mid-month. So:
 - Next.js route-splitting means it ships ONLY to visitors of /space-planner —
   it adds nothing to any other tool's bundle. Growing it into the
   architecture/building platform costs nothing elsewhere. Keep it.
+
+## IMPLEMENTED (2026-09-29, later the same day) — worker side DONE
+
+The repo folder `video-worker/` is now **`workers/`** — Render's Root
+Directory must be changed to match (exact steps: workers/README.md
+Option B "Migrating the EXISTING service").
+
+- `workers/captions/engine.py` — lazy `WhisperModel('base.en', int8)`,
+  `download_root=/models/captions` (baked at build; marker
+  `CAPTIONS_MODEL_BAKED` in the Render build log; runtime-download
+  fallback if the bake failed — the dir is chowned to uid 1000 for that).
+  One lock serializes load+inference; idle unload after 600s
+  (`WHISPER_IDLE_UNLOAD`); 30s fail-fast cooldown after a failed load so
+  queued jobs don't hammer a dead Hugging Face; `.en` models skip language
+  auto-detect (saves seconds); if word timestamps come back empty, segment-
+  level pseudo-words keep the presets' cue generation alive.
+- `workers/captions/routes.py` — instant-job pattern with its OWN store +
+  sweeper (zero shared state with the video routes): `POST
+  /transcribe/ticket` (X-Worker-Token → one-time 10-min browser upload
+  grant, so the real token never reaches client code), `POST /transcribe`
+  (multipart, streamed to disk in 1MB chunks — never held in RAM, 100MB
+  cap ≈ 52 min of 16k mono, fast-429 backpressure at 3 unfinished jobs,
+  client filename sanitized to a bare extension), `GET
+  /transcribe/job/{id}?t=` → `{status, text, language, duration, words[]}`.
+- `workers/app.py` — CORS now allows POST (browser uploads direct);
+  imports the captions package inside a try/except (a module bug can't
+  break the video routes); `/health` gains the `captions` block:
+  `{loaded, model, baked, load_s, load_cooling_down, last_used_ago_s,
+  last_error, dir}`.
+- `workers/requirements.txt` — + `faster-whisper`, + `python-multipart`.
+- Verified locally: `py_compile` on every file, `sh -n` on the Docker RUN
+  mirror (scratch/capbake.sh) + start.sh, and a real import-boot test
+  (routes registered, CAPTIONS_OK true, /health shape correct).
+
+**Deploy checklist**: Root Directory → `workers` → Manual Deploy →
+build log must print `CAPTIONS_MODEL_BAKED` → `/health` shows
+`captions.baked: true`. Curl smoke test (token = your WORKER_TOKEN):
+
+```bat
+curl -s -X POST https://video-worker-xwv9.onrender.com/transcribe/ticket -H "X-Worker-Token: <token>"
+curl -s -X POST "https://video-worker-xwv9.onrender.com/transcribe?ticket=<ticket>" -F "file=@clip.wav"
+curl -s "https://video-worker-xwv9.onrender.com/transcribe/job/<jobId>?t=<jobToken>"
+```
+
+NEXT (frontend session): captions UI server-fallback wiring — edge
+function mints the ticket, browser uploads the extracted 16k mono audio
+(audio-processor already makes it), polls, feeds `words` into the existing
+`groupWordsIntoSingleLineCues` + overlay presets unchanged. Browser
+whisper stays first choice on desktop; mobile / weak devices go straight
+to the server.
+
+Local-dev note: `workers/.venv` still carries its old absolute path in
+`activate` (harmless — call `workers\.venv\Scripts\python.exe` directly, or
+recreate the venv if `activate` complains).

@@ -19,8 +19,9 @@ Browser (creatorskit.pages.dev)
 - Edge function: `https://lnfzixiwmdxoqoueadkq.supabase.co/functions/v1/video-grab`
   Actions: `challenge` → `claim` → `formats` (plain JSON POST bodies, no auth
   headers; JWT verify off). Source: `supabase/functions/video-grab/index.ts`.
-- Worker: FastAPI, source `video-worker/app.py`, Dockerfile `video-worker/Dockerfile`,
-  boot script `video-worker/start.sh`. Protected by `X-Worker-Token` header
+- Worker: FastAPI, source `workers/app.py`, Dockerfile `workers/Dockerfile`,
+  boot script `workers/start.sh` (folder renamed from `video-worker/` on
+  2026-09-29 — see §9). Protected by `X-Worker-Token` header
   (the token lives in Supabase secrets + Render env; we do NOT have it in chat).
 - Deploy path: push to GitHub main → Render **Manual Deploy** (auto-deploy has
   repeatedly NOT fired — always remind the user to deploy manually).
@@ -55,7 +56,7 @@ failed; see §5).
 
 Sitting in the local working tree, **py_compile OK, NOT yet pushed/deployed**:
 
-1. `video-worker/app.py`
+1. `workers/app.py` (was video-worker/app.py)
    - `_cookie_args()` (line ~112): working copy at `/tmp/grab/cookies.txt` is
      re-copied from the Secret File on EVERY call (no mtime gate — a poisoned
      rotation can never outlive a re-paste).
@@ -63,7 +64,7 @@ Sitting in the local working tree, **py_compile OK, NOT yet pushed/deployed**:
      timeout)` (line ~146): on a playability wall, retries via
      `youtube:player_client=tv` then `web_embedded`. `_probe_meta()` uses the
      same ladder. Resolve call site passes `url` separately now.
-2. `video-worker/Dockerfile` pot-build step now prints `POT_BUILD_OK` /
+2. `workers/Dockerfile` pot-build step now prints `POT_BUILD_OK` /
    `POT_BUILD_FAILED` and busts the cached layer, so the next deploy SHOWS the
    tsc errors that `|| true` used to swallow. That output is the root cause of
    `pot:"down"` — capture it from the Render build log.
@@ -186,3 +187,31 @@ Standing guidance from here:
 - Rotate the spare account's session when this saga ends (§7).
 - Test URL + cmd quirks unchanged (§6). curl `/health` for ALL diagnosis —
   the edge hides worker errors.
+
+## 9. UPDATE 2026-09-29 ~14:30Z — folder restructured: video-worker/ → workers/ (all-in-one backend)
+
+The worker is no longer video-only: it is now the app's ONE free backend
+service (750 instance-hours/month = one always-on box), so the folder was
+renamed `video-worker/` → **`workers/`** and each function lives as its own
+isolated sub-package (own routes, job store, model slot):
+
+- `workers/app.py` — FastAPI shell + /health + the VIDEO routes (unchanged
+  behavior; CORS now also allows POST for audio uploads).
+- `workers/captions/` — NEW auto-captions module (Whisper base.en int8):
+  `engine.py` (lazy load, one-inference-at-a-time, 600s idle unload,
+  30s fail-fast cooldown after a failed load) + `routes.py` (POST
+  /transcribe + one-time upload tickets + job polling). Full details:
+  docs/AUDIO_TRANSCRIPTION_PLAN.md → "IMPLEMENTED".
+- Dockerfile now ALSO bakes the Whisper model at build
+  (`CAPTIONS_MODEL_BAKED` marker — same marker pattern as the pot build;
+  check it in the Render build log after deploying).
+
+**REQUIRED ONE-TIME RENDER CHANGE**: Settings → Root Directory
+`video-worker` → `workers`, then Manual Deploy. Same URL, same secrets,
+same cron ping — the rename is safe because every path inside the Docker
+build is container-relative (/app, /pot, /models), never repo-relative.
+Exact steps + fallback plan: workers/README.md Option B.
+
+Home screen: the Video Grabber tile stays but its badge is now
+"IN DEVELOPMENT" (src/data/tools.ts) so paused ≠ broken in visitors' eyes;
+restore "POWERFUL" when the VPS/residential route ships.

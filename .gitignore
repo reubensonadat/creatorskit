@@ -37,7 +37,7 @@ yarn-error.log*
 .vercel
 
 # python worker virtualenv
-video-worker/.venv/
+workers/.venv/
 __pycache__/
 *.pyc
 

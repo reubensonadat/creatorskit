@@ -55,14 +55,34 @@ GRAB_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title='CreatorKit Video Worker', docs_url=None, redoc_url=None, openapi_url=None)
 
 # The browser itself polls /job and fetches /file after a "pending" handoff
-# (slow jobs outlive the edge function's time budget) — so these two routes
-# must be readable cross-origin. The per-job token is the credential.
+# (slow jobs outlive the edge function's time budget) — so those routes
+# must be readable cross-origin, and the captions module now needs the
+# browser to POST audio directly too (one-time tickets are the credential
+# there). Per-job tokens remain the real credentials everywhere.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
-    allow_methods=['GET'],
+    allow_methods=['GET', 'POST'],
     allow_headers=['*'],
 )
+
+# ── Auto-captions module (workers/captions/) ──────────────────────────────
+# Route-isolated on purpose: each function lives in its own subpackage with
+# its own routes + job store. A missing wheel / bad model / bug in captions
+# must NEVER take the video routes down — hence the try/except and the
+# /health 'captions' flag instead of a hard import.
+try:
+    from captions import routes as _captions_routes
+    from captions.engine import status as _captions_status
+
+    app.include_router(_captions_routes.router)
+    CAPTIONS_OK = True
+    CAPTIONS_ERROR = ''
+except Exception as _exc:  # noqa: BLE001 — optional module boundary
+    _captions_routes = None
+    _captions_status = None
+    CAPTIONS_OK = False
+    CAPTIONS_ERROR = str(_exc)[:300]
 
 # job record: {status, token, expires, dir?, path?, name?, size?, mime?, kind?,
 #              variant_id?, label?, error?}
@@ -389,6 +409,10 @@ def health() -> dict:
         'uptime_s': int(time.time() - _BOOT_AT),
         'last_error': last_error,
         'ua': USER_AGENT,
+        'captions': _captions_status() if _captions_status else {
+            'loaded': False,
+            'error': CAPTIONS_ERROR or 'module not loaded',
+        },
     }
 
 

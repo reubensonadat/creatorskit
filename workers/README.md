@@ -1,20 +1,49 @@
-# Video Worker — the Phase-2 muscle
+# Workers — the app's $0 backend (one Docker service)
 
-This service runs **yt-dlp** (armed with the [bgutil PO-token
-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) so YouTube
-doesn't block its datacenter IP). The supervisor Edge Function
-(`supabase/functions/video-grab`) calls it when someone pastes a platform
-link (YouTube/TikTok/…):
+This folder is the **Root Directory Render deploys**. Free tier = 750
+instance-hours/month = exactly ONE always-on box, so every server-side
+function lives here as its OWN sub-package with isolated routes, job
+stores and models:
+
+```
+workers/
+├─ Dockerfile        # bakes every module's models at build (disk is ephemeral)
+├─ start.sh          # PO-token supervisor + uvicorn entrypoint
+├─ app.py            # FastAPI shell + /health + the VIDEO routes
+└─ captions/         # AUTO-CAPTIONS module (Whisper base.en int8)
+   ├─ engine.py      # the only file that touches faster-whisper
+   └─ routes.py      # POST /transcribe (+ one-time tickets) + job polling
+```
+
+**Video module** — yt-dlp (armed with the [bgutil PO-token
+provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)) driven
+by the `supabase/functions/video-grab` Edge Function:
 
 | Route | What it does |
 |---|---|
 | `POST /formats` | free peek — which resolutions are downloadable (powers the bottom sheet) |
 | `POST /resolve` | fetch + merge the chosen variant → one-time `/file/<id>` URL |
 | `GET /file/<id>?t=` | the bytes (Range supported; files auto-delete after 15 min) |
-| `GET /health` | keep-alive ping target (open, no token) |
 
-All protected routes need the `X-Worker-Token` header (the `WORKER_TOKEN`
-secret). Nothing here stores anything long-term — files vanish after 15 min.
+**Captions module** — details in `docs/AUDIO_TRANSCRIPTION_PLAN.md`:
+
+| Route | What it does |
+|---|---|
+| `POST /transcribe/ticket` | X-Worker-Token → one-time browser upload grant (real token never reaches client code) |
+| `POST /transcribe` | multipart audio + ticket (or X-Worker-Token) → `{jobId, token}` instantly |
+| `GET /transcribe/job/<id>?t=` | `{status, text, language, duration, words[]}` |
+
+`GET /health` (open, no token) is the keep-alive ping + diagnostics
+window: pot status, last yt-dlp error, and the `captions` block (model
+loaded? baked at build? last error?).
+
+**Isolation contract**: a module crash (missing wheel, bad model) only
+fails its own routes — app.py imports each package in a try/except and
+reports it via `/health` instead of taking the service down.
+
+Protected routes need the `X-Worker-Token` header (the `WORKER_TOKEN`
+secret) or a one-time ticket (captions uploads). Nothing stores anything
+long-term — files vanish after their TTL.
 
 > Hugging Face note: HF moved Docker Spaces behind a paid PRO plan, so we
 > deploy on **Render (free, 24/7)** or **your own computer (free, zero
@@ -29,7 +58,7 @@ proving the whole grandma flow.
 
 1. Install the Python deps (Python 3.11+ needed — you have it):
    ```bat
-   cd video-worker
+   cd workers
    python -m pip install -r requirements.txt
    ```
    (ffmpeg isn't installed on Windows by default — the app auto-uses a
@@ -64,13 +93,22 @@ proving the whole grandma flow.
    for free services).
 3. Dashboard → **New +** → **Web Service** → connect the repo.
 4. Settings that matter — **in this order**:
-   - **Root Directory: `video-worker` — type this FIRST.** Before you do,
+   - **Root Directory: `workers` — type this FIRST.** Before you do,
      Render scans the repo root, guesses "Python 3", and shows a start
      command like `gunicorn …` — ignore all of that. The moment the root
      directory is set, Render re-scans, finds the **Dockerfile**, switches
      Language to Docker, and hides the build/start commands (the Dockerfile
-     installs ffmpeg + the PO-token provider for you — native Python mode
-     would skip both).
+     installs ffmpeg + the PO-token provider + bakes the Whisper model for
+     you — native Python mode would skip all of it).
+   - **Migrating the EXISTING service** (folder was renamed `video-worker/`
+     → `workers/`): dashboard → your service → **Settings** → **Build &
+     Deploy** → **Root Directory** → change to `workers` → save →
+     **Manual Deploy → Deploy latest commit**. Nothing else changes: same
+     URL (video-worker-xwv9.onrender.com), same `WORKER_TOKEN` env var,
+     same Secret Files, same cron-job.org ping. If the field refuses to
+     edit on an older service: create a NEW Web Service pointed at
+     `workers/`, re-add `WORKER_TOKEN` + the cookies secret file, and
+     delete the old service after the new one goes green.
    - The Compute list **pre-selects a $7/month plan** — that's a default,
      not a requirement. Click **Free · $0/month · 0.1 CPU · 512 MB** in the
      list before deploying. No card is ever asked for Free.
