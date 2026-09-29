@@ -28,22 +28,29 @@ CREATE INDEX IF NOT EXISTS idx_receipts_id ON receipts(id);
 ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access so clients can view their documents via short link
+DROP POLICY IF EXISTS "Public read access for documents" ON receipts;
 CREATE POLICY "Public read access for documents"
   ON receipts FOR SELECT
   USING (true);
 
 -- Allow public insert so creators can save documents and get short links
+DROP POLICY IF EXISTS "Public insert access for documents" ON receipts;
 CREATE POLICY "Public insert access for documents"
   ON receipts FOR INSERT
+  WITH CHECK (true);
+
+-- Allow public update so creators can update documents
+DROP POLICY IF EXISTS "Public update access for documents" ON receipts;
+CREATE POLICY "Public update access for documents"
+  ON receipts FOR UPDATE
+  USING (true)
   WITH CHECK (true);
 
 -- =========================================================================
 -- CREATORKIT: DIGITAL BOUQUETS & BOTANICAL KEEPSAKES SCHEMA
 -- =========================================================================
 
-DROP TABLE IF EXISTS digital_bouquets CASCADE;
-
-CREATE TABLE digital_bouquets (
+CREATE TABLE IF NOT EXISTS digital_bouquets (
   id TEXT PRIMARY KEY,                       -- Clean 6-character short code e.g. "k8w2ab"
   scene_type TEXT DEFAULT 'botanical-2d',    -- Scene render style e.g. 'botanical-2d', 'artisan-kraft'
   season TEXT DEFAULT 'spring',              -- Season palette tag
@@ -68,13 +75,20 @@ CREATE INDEX IF NOT EXISTS idx_digital_bouquets_id ON digital_bouquets(id);
 ALTER TABLE digital_bouquets ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access so recipients can view their gift via short link
+DROP POLICY IF EXISTS "Public read access for bouquets" ON digital_bouquets;
 CREATE POLICY "Public read access for bouquets"
   ON digital_bouquets FOR SELECT
   USING (true);
 
 -- Allow public insert so creators can save bouquets and get short links
+DROP POLICY IF EXISTS "Public insert access for bouquets" ON digital_bouquets;
 CREATE POLICY "Public insert access for bouquets"
   ON digital_bouquets FOR INSERT
   WITH CHECK (true);
 
-
+-- Allow public update so creators can update/upsert bouquets and views can be incremented
+DROP POLICY IF EXISTS "Public update access for bouquets" ON digital_bouquets;
+CREATE POLICY "Public update access for bouquets"
+  ON digital_bouquets FOR UPDATE
+  USING (true)
+  WITH CHECK (true);

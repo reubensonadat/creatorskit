@@ -1,5 +1,5 @@
 // CreatorKit Production PWA Service Worker
-const CACHE_NAME = 'creatorkit-pwa-v4';
+const CACHE_NAME = 'creatorkit-pwa-v5';
 
 const STATIC_PRECACHE = [
   '/',
@@ -54,6 +54,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Offline / failure fallback — respondWith must ALWAYS receive a real
+  // Response. Returning undefined (a cache miss inside a catch) makes the
+  // page load die with "Failed to convert value to 'Response'".
+  const offlineResponse = () =>
+    new Response('CreatorKit is offline. Please reconnect to internet.', {
+      status: 504,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+
   // Handle Static Assets (images, fonts, scripts) with Cache-First / SWR
   if (
     url.pathname.match(/\.(png|jpg|jpeg|svg|webp|gif|ico|woff|woff2|ttf|css|js)$/) ||
@@ -65,12 +74,12 @@ self.addEventListener('fetch', (event) => {
         const fetchPromise = fetch(request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
-            });
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put(request, responseClone))
+              .catch(() => { /* quota errors must not surface as SW failures */ });
           }
           return networkResponse;
-        }).catch(() => cachedResponse);
+        }).catch(() => cachedResponse || offlineResponse());
 
         return cachedResponse || fetchPromise;
       })
@@ -85,27 +94,29 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, clone);
-            });
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put(request, clone))
+              .catch(() => { /* quota errors must not surface as SW failures */ });
           }
           return response;
         })
         .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          const rootCached = await caches.match('/');
-          if (rootCached) return rootCached;
-          return new Response('CreatorKit is offline. Please reconnect to internet.', {
-            headers: { 'Content-Type': 'text/plain' },
-          });
+          try {
+            const cached = await caches.match(request);
+            if (cached) return cached;
+            const rootCached = await caches.match('/');
+            if (rootCached) return rootCached;
+          } catch { /* cache read failure — fall through */ }
+          return offlineResponse();
         })
     );
     return;
   }
 
-  // Default fetch
+  // Default fetch — always resolve to a real Response
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    fetch(request)
+      .catch(() => caches.match(request))
+      .then((response) => response || offlineResponse())
   );
 });

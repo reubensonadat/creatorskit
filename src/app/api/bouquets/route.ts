@@ -1,6 +1,7 @@
 export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
 
 export interface StoredBouquetItem {
   id: string;
@@ -30,7 +31,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing bouquet id' }, { status: 400 });
   }
 
-  const bouquet = memoryBouquets.get(id);
+  let bouquet = memoryBouquets.get(id);
+
+  if (!bouquet) {
+    try {
+      const { data, error } = await supabase
+        .from('digital_bouquets')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (!error && data) {
+        bouquet = data as StoredBouquetItem;
+        memoryBouquets.set(id, bouquet);
+      }
+    } catch {
+      // Ignore network errors
+    }
+  }
 
   if (!bouquet) {
     return NextResponse.json({ error: 'Bouquet not found' }, { status: 404 });
@@ -69,6 +86,13 @@ export async function POST(request: NextRequest) {
     };
 
     memoryBouquets.set(id, bouquet);
+
+    // Also persist to Supabase if not already saved
+    try {
+      await supabase.from('digital_bouquets').insert([bouquet]);
+    } catch {
+      // Non-blocking
+    }
 
     return NextResponse.json({ success: true, id, data: bouquet });
   } catch (err: any) {

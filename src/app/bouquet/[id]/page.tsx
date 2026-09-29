@@ -80,7 +80,34 @@ export default async function BouquetPage({ params, searchParams }: Props) {
     const format = bouquet?.gift_format || (typeof sp.format === 'string' ? sp.format : undefined) || bouquet?.metadata?.giftFormat || 'both';
     const soundPreset = bouquet?.sound_preset || (typeof sp.sound === 'string' ? sp.sound : undefined) || bouquet?.metadata?.soundPreset || 'music-box';
 
-    const initialBouquet: StoredBouquet = bouquet || {
+    const flowersFromSp = typeof sp.fl === 'string' && sp.fl ? sp.fl.split(',').filter(Boolean) : undefined;
+    const greeneryFromSp = typeof sp.gr === 'string' && sp.gr ? sp.gr.split(',').filter(Boolean) : undefined;
+    const seedFromSp = typeof sp.seed === 'string' && sp.seed ? parseInt(sp.seed, 10) : undefined;
+    const fontFromSp = typeof sp.font === 'string' && sp.font ? sp.font : undefined;
+    const placementFromSp = typeof sp.cp === 'string' && sp.cp ? sp.cp : undefined;
+    const greetingFromSp = typeof sp.grt === 'string' && sp.grt ? sp.grt : undefined;
+    const closingFromSp = typeof sp.cls === 'string' && sp.cls ? sp.cls : undefined;
+
+    const initialBouquet: StoredBouquet = bouquet ? {
+        ...bouquet,
+        sender_name: bouquet.sender_name || sender,
+        recipient_name: bouquet.recipient_name || recipient,
+        message: bouquet.message || message,
+        gift_format: bouquet.gift_format || format,
+        sound_preset: bouquet.sound_preset || soundPreset,
+        metadata: {
+            ...bouquet.metadata,
+            flowers: bouquet.metadata?.flowers?.length ? bouquet.metadata.flowers : flowersFromSp,
+            greenery: bouquet.metadata?.greenery?.length ? bouquet.metadata.greenery : greeneryFromSp,
+            cardFont: bouquet.metadata?.cardFont || fontFromSp || 'space-mono',
+            cardPlacement: bouquet.metadata?.cardPlacement || placementFromSp || 'right',
+            greeting: bouquet.metadata?.greeting || greetingFromSp || 'Dear',
+            closing: bouquet.metadata?.closing || closingFromSp || 'Sincerely,',
+            seed: bouquet.metadata?.seed || seedFromSp || 1042,
+            giftFormat: bouquet.metadata?.giftFormat || format,
+            soundPreset: bouquet.metadata?.soundPreset || soundPreset,
+        }
+    } : {
         id,
         scene_type: 'botanical-2d',
         season: 'spring',
@@ -93,10 +120,14 @@ export default async function BouquetPage({ params, searchParams }: Props) {
         sound_preset: soundPreset,
         audio_enabled: Boolean(soundPreset),
         metadata: {
-            flowers: ['rose-pink', 'sunflower-golden', 'peony-blush', 'tulip-rose', 'lily-ivory'],
-            greenery: ['fern-illustration', 'olive-spray'],
+            flowers: flowersFromSp || ['rose-pink', 'sunflower-golden', 'peony-blush', 'tulip-rose', 'lily-ivory'],
+            greenery: greeneryFromSp || ['fern-illustration', 'olive-spray'],
+            cardFont: fontFromSp || 'space-mono',
+            cardPlacement: placementFromSp || 'right',
+            greeting: greetingFromSp || 'Dear',
+            closing: closingFromSp || 'Sincerely,',
             cardTemplateId: 'classic-cream',
-            seed: 1042,
+            seed: seedFromSp || 1042,
             giftFormat: format,
             soundPreset,
         },

@@ -199,6 +199,7 @@ export interface StoredBouquet {
  * Save a Digital Bouquet to Supabase, Next.js local storage/API fallback, and return the clean 6-char short code.
  */
 export async function saveBouquetToDatabase(data: {
+  id?: string;
   sceneType?: BouquetSceneType;
   season?: string;
   paletteId?: string;
@@ -212,8 +213,8 @@ export async function saveBouquetToDatabase(data: {
   customColors?: any;
   metadata?: any;
 }): Promise<string> {
-  // Generate clean 6-character alphanumeric short code (e.g. "k8w2ab")
-  const shortId = Math.random().toString(36).substring(2, 8);
+  // Use client-generated ID or create clean 6-character alphanumeric short code
+  const shortId = data.id || Math.random().toString(36).substring(2, 8);
 
   const payload: StoredBouquet = {
     id: shortId,
@@ -257,27 +258,39 @@ export async function saveBouquetToDatabase(data: {
 
   // 3. Save to Supabase
   try {
-    const { error } = await supabase.from('digital_bouquets').insert([
-      {
-        id: shortId,
-        scene_type: payload.scene_type,
-        season: payload.season,
-        palette_id: payload.palette_id,
-        target_url: payload.target_url,
-        sender_name: payload.sender_name || null,
-        recipient_name: payload.recipient_name || null,
-        message: payload.message || null,
-        gift_format: payload.gift_format || 'both',
-        sound_preset: payload.sound_preset || null,
-        audio_enabled: payload.audio_enabled ?? false,
-        custom_colors: payload.custom_colors || null,
-        metadata: payload.metadata || null,
-        view_count: 0,
-      },
-    ]);
+    const dbRecord = {
+      id: shortId,
+      scene_type: payload.scene_type,
+      season: payload.season,
+      palette_id: payload.palette_id,
+      target_url: payload.target_url,
+      sender_name: payload.sender_name || null,
+      recipient_name: payload.recipient_name || null,
+      message: payload.message || null,
+      gift_format: payload.gift_format || 'both',
+      sound_preset: payload.sound_preset || null,
+      audio_enabled: payload.audio_enabled ?? false,
+      custom_colors: payload.custom_colors || null,
+      metadata: payload.metadata || null,
+      view_count: 0,
+    };
 
-    if (error) {
-      console.warn('Supabase bouquet insert note (using fallback):', error.message);
+    // Primary save: insert new record (succeeds 100% with fresh client shortId)
+    const { error: insertError } = await supabase.from('digital_bouquets').insert([dbRecord]);
+
+    if (insertError) {
+      // If shortId already exists, update the existing record
+      if (insertError.code === '23505' || insertError.message?.includes('duplicate')) {
+        const { error: updateError } = await supabase
+          .from('digital_bouquets')
+          .update(dbRecord)
+          .eq('id', shortId);
+        if (updateError) {
+          console.warn('Supabase bouquet update note:', updateError.message);
+        }
+      } else {
+        console.warn('Supabase bouquet insert note (using fallback):', insertError.message);
+      }
     }
   } catch (err) {
     console.warn('Failed to save bouquet to Supabase (using fallback):', err);

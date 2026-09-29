@@ -383,32 +383,45 @@ export default function BouquetStudioPage() {
     }
   };
 
-  // Save to DB and generate short link
-  const handleGenerateShareLink = async (): Promise<string> => {
-    if (shareUrl) return shareUrl;
-
-    const shortId = Math.random().toString(36).substring(2, 8);
+  // Build the complete shareable URL with all creation parameters
+  const buildCreationShareUrl = (customId?: string): { url: string; shortId: string; payload: any } => {
+    const shortId = customId || Math.random().toString(36).substring(2, 8);
     const params = new URLSearchParams();
+    if (note.to.trim()) params.set('to', note.to.trim());
+    if (note.from.trim()) params.set('from', note.from.trim());
+    if (note.message.trim()) params.set('msg', note.message.trim());
+    if (selectedFlowers.length) params.set('fl', selectedFlowers.join(','));
+    if (selectedGreenery.length) params.set('gr', selectedGreenery.join(','));
+    if (cardFont) params.set('font', cardFont);
+    if (seed) params.set('seed', String(seed));
+    if (cardPlacement) params.set('cp', cardPlacement);
+    if (note.greeting) params.set('grt', note.greeting);
+    if (note.closing) params.set('cls', note.closing);
     if (giftFormat !== 'both') params.set('format', giftFormat);
     if (selectedSoundPreset && selectedSoundPreset !== 'none') params.set('sound', selectedSoundPreset);
-    const queryStr = params.toString() ? `?${params.toString()}` : '';
-    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${queryStr}`;
-    setShareUrl(url);
 
-    // Save in background
-    saveBouquetToDatabase({
-      sceneType: 'botanical-2d',
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = `${origin}/bouquet/${shortId}${queryStr}`;
+
+    const sender = note.from.trim() || 'Secret Admirer';
+    const recipient = note.to.trim() || 'Beloved';
+    const msg =
+      note.message.trim() ||
+      'I have so much to tell you, but only this much space on this card! Still, you must know...';
+
+    const payload = {
+      id: shortId,
+      scene_type: 'botanical-2d',
       season: 'spring',
-      paletteId: 'minimalist-letterhead',
-      targetUrl: typeof window !== 'undefined' ? window.location.origin : '',
-      senderName: note.from.trim() || 'Secret Admirer',
-      recipientName: note.to.trim() || 'Beloved',
-      message:
-        note.message.trim() ||
-        'I have so much to tell you, but only this much space on this card! Still, you must know...',
-      giftFormat,
-      soundPreset: selectedSoundPreset,
-      audioEnabled: selectedSoundPreset !== 'none',
+      palette_id: 'minimalist-letterhead',
+      target_url: origin,
+      sender_name: sender,
+      recipient_name: recipient,
+      message: msg,
+      gift_format: giftFormat,
+      sound_preset: selectedSoundPreset,
+      audio_enabled: selectedSoundPreset !== 'none',
       metadata: {
         flowers: selectedFlowers,
         greenery: selectedGreenery,
@@ -420,28 +433,54 @@ export default function BouquetStudioPage() {
         closing: note.closing || 'Sincerely,',
         soundPreset: selectedSoundPreset,
       },
-    }).catch((e) => console.warn('Background save note:', e));
+      view_count: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    return { url, shortId, payload };
+  };
+
+  // Save to DB and generate short link
+  const handleGenerateShareLink = async (): Promise<string> => {
+    const { url, shortId, payload } = buildCreationShareUrl();
+    setShareUrl(url);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
+      } catch {}
+
+      fetch('/api/bouquets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+
+      saveBouquetToDatabase({
+        id: shortId,
+        sceneType: 'botanical-2d',
+        season: 'spring',
+        paletteId: 'minimalist-letterhead',
+        targetUrl: window.location.origin,
+        senderName: payload.sender_name,
+        recipientName: payload.recipient_name,
+        message: payload.message,
+        giftFormat,
+        soundPreset: selectedSoundPreset,
+        audioEnabled: selectedSoundPreset !== 'none',
+        metadata: payload.metadata,
+      }).catch((e) => console.warn('Background save note:', e));
+    }
 
     return url;
   };
 
   const handleCopyLink = async () => {
-    let url = shareUrl;
-    let shortId = '';
+    // Generate fresh URL with all latest choices
+    const { url, shortId, payload } = buildCreationShareUrl();
+    setShareUrl(url);
 
-    if (!url) {
-      shortId = Math.random().toString(36).substring(2, 8);
-      const params = new URLSearchParams();
-      if (giftFormat !== 'both') params.set('format', giftFormat);
-      if (selectedSoundPreset && selectedSoundPreset !== 'none') params.set('sound', selectedSoundPreset);
-      const queryStr = params.toString() ? `?${params.toString()}` : '';
-      url = `${typeof window !== 'undefined' ? window.location.origin : ''}/bouquet/${shortId}${queryStr}`;
-      setShareUrl(url);
-    } else {
-      shortId = url.split('/bouquet/')[1]?.split('?')[0] || '';
-    }
-
-    // 1. Immediately copy to clipboard within synchronous user click gesture
+    // 1. Immediately copy to clipboard within synchronous user click gesture (0ms lag)
     if (typeof window !== 'undefined') {
       try {
         await navigator.clipboard.writeText(url);
@@ -464,41 +503,12 @@ export default function BouquetStudioPage() {
     }
 
     // 2. Synchronous local cache for instant zero-latency loading
-    const payload = {
-      id: shortId,
-      scene_type: 'botanical-2d',
-      season: 'spring',
-      palette_id: 'minimalist-letterhead',
-      target_url: typeof window !== 'undefined' ? window.location.origin : '',
-      sender_name: note.from.trim() || 'Secret Admirer',
-      recipient_name: note.to.trim() || 'Beloved',
-      message:
-        note.message.trim() ||
-        'I have so much to tell you, but only this much space on this card! Still, you must know...',
-      gift_format: giftFormat,
-      sound_preset: selectedSoundPreset,
-      audio_enabled: selectedSoundPreset !== 'none',
-      metadata: {
-        flowers: selectedFlowers,
-        greenery: selectedGreenery,
-        seed,
-        cardFont,
-        cardPlacement,
-        giftFormat,
-        greeting: note.greeting || 'Dear',
-        closing: note.closing || 'Sincerely,',
-        soundPreset: selectedSoundPreset,
-      },
-      view_count: 0,
-      created_at: new Date().toISOString(),
-    };
-
     if (shortId && typeof window !== 'undefined') {
       try {
         localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
       } catch {}
 
-      // 3. Asynchronous non-blocking save to API fallback & Supabase
+      // 3. Asynchronous non-blocking save to API fallback & Supabase with EXACT same shortId
       fetch('/api/bouquets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -506,6 +516,7 @@ export default function BouquetStudioPage() {
       }).catch(() => {});
 
       saveBouquetToDatabase({
+        id: shortId,
         sceneType: 'botanical-2d',
         season: 'spring',
         paletteId: 'minimalist-letterhead',
@@ -517,7 +528,7 @@ export default function BouquetStudioPage() {
         soundPreset: selectedSoundPreset,
         audioEnabled: selectedSoundPreset !== 'none',
         metadata: payload.metadata,
-      }).catch(() => {});
+      }).catch((err) => console.warn('Supabase save error:', err));
     }
   };
 
@@ -960,70 +971,13 @@ export default function BouquetStudioPage() {
             })}
           </div>
 
-          {/* Right: Mobile View/Edit Toggle + Desktop Category / Shuffle / Panel Toggle */}
+          {/* Right: Desktop Controls Toggle */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* On Mobile: Segmented Tab for View (Stage) vs Edit (Controls) */}
-            <div className="md:hidden flex items-center bg-stone-100 border-2 border-black rounded p-0.5 shadow-[1.5px_1.5px_0_#000]">
-              <button
-                type="button"
-                onClick={() => setMobileStudioTab('stage')}
-                className={`px-2 py-0.5 font-mono text-[10px] font-black uppercase rounded transition-all cursor-pointer flex items-center gap-1 ${
-                  mobileStudioTab === 'stage'
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-              >
-                <Eye size={10} />
-                <span>VIEW</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileStudioTab('sidebar')}
-                className={`px-2 py-0.5 font-mono text-[10px] font-black uppercase rounded transition-all cursor-pointer flex items-center gap-1 ${
-                  mobileStudioTab === 'sidebar'
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black'
-                }`}
-              >
-                <SlidersHorizontal size={10} />
-                <span>EDIT</span>
-              </button>
-            </div>
-
-            {/* Category Toggle (Mobile & Desktop) */}
-            {activeStep <= 2 && (
-              <div className="flex items-center bg-white border border-black sm:border-2 p-0.5 shadow-[1.5px_1.5px_0_#000] sm:shadow-[2px_2px_0_#000]">
-                <button
-                  type="button"
-                  onClick={() => handleCategoryChange('small')}
-                  className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    flowerCategory === 'small'
-                      ? 'bg-black text-white'
-                      : 'text-stone-600 hover:text-black'
-                  }`}
-                >
-                  PETITE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCategoryChange('big')}
-                  className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    flowerCategory === 'big'
-                      ? 'bg-black text-white'
-                      : 'text-stone-600 hover:text-black'
-                  }`}
-                >
-                  GRAND
-                </button>
-              </div>
-            )}
-
-            {/* Desktop Shuffle */}
             {activeStep <= 2 && (
               <button
                 type="button"
                 onClick={handleAutoShuffle}
-                className="hidden sm:flex px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 border-2 border-black rounded-none font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 items-center gap-1.5"
+                className="hidden sm:flex px-2.5 sm:px-3 py-1 bg-white hover:bg-stone-50 border-2 border-black rounded-none font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] cursor-pointer active:translate-x-0.5 active:translate-y-0.5 items-center gap-1.5"
                 title="Physically shuffle floral arrangement"
               >
                 <Shuffle size={13} />
@@ -1710,17 +1664,7 @@ export default function BouquetStudioPage() {
               </div>
             )}
 
-            {/* Mobile floating button to switch from Stage to Controls */}
-            <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
-              <button
-                type="button"
-                onClick={() => setMobileStudioTab('sidebar')}
-                className="px-4 py-2 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[2px_2px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
-              >
-                <SlidersHorizontal size={13} />
-                <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
-              </button>
-            </div>
+
           </main>
 
           {/* ── DEDICATED EDITING SIDEBAR (RIGHT ON DESKTOP, FULL SCREEN TAB ON MOBILE) ── */}
@@ -1779,7 +1723,7 @@ export default function BouquetStudioPage() {
               </div>
 
               {/* Sidebar Scrollable Controls */}
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 select-text flex flex-col gap-4">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-28 md:pb-4 select-text flex flex-col gap-4">
                 {/* ── STEP 1: GREENERY PICKER ── */}
                 {activeStep === 1 && (
                   <div className="flex flex-col gap-3">
@@ -2138,7 +2082,7 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('both');
                             setShareUrl('');
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'both'
@@ -2155,7 +2099,7 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('flower');
                             setShareUrl('');
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'flower'
@@ -2172,7 +2116,7 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setGiftFormat('card');
                             setShareUrl('');
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           className={`p-2 text-[9px] font-mono font-black uppercase border border-black cursor-pointer flex flex-col items-center gap-1 transition-all whitespace-nowrap ${
                             giftFormat === 'card'
@@ -2197,7 +2141,7 @@ export default function BouquetStudioPage() {
                           type="button"
                           onClick={() => {
                             setFinalizeView('presentation');
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
                             finalizeView === 'presentation'
@@ -2213,7 +2157,7 @@ export default function BouquetStudioPage() {
                           onClick={() => {
                             setFinalizeView('printer');
                             startPrintFeedSequence();
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           className={`p-2 text-[10px] font-mono font-black uppercase border border-black cursor-pointer flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
                             finalizeView === 'printer'
@@ -2238,7 +2182,7 @@ export default function BouquetStudioPage() {
                             type="button"
                             onClick={() => {
                               startPrintFeedSequence();
-                              setMobileStudioTab('stage');
+                              // keep in sidebar
                             }}
                             title="Replay printer feed animation"
                             className="text-[9px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer whitespace-nowrap"
@@ -2252,7 +2196,7 @@ export default function BouquetStudioPage() {
                             type="button"
                             onClick={() => {
                               setCardPlacement('right');
-                              setMobileStudioTab('stage');
+                              // keep in sidebar
                             }}
                             className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'right' ? 'bg-black text-white' : 'bg-white text-black'
@@ -2264,7 +2208,7 @@ export default function BouquetStudioPage() {
                             type="button"
                             onClick={() => {
                               setCardPlacement('bottom');
-                              setMobileStudioTab('stage');
+                              // keep in sidebar
                             }}
                             className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'bottom' ? 'bg-black text-white' : 'bg-white text-black'
@@ -2276,7 +2220,7 @@ export default function BouquetStudioPage() {
                             type="button"
                             onClick={() => {
                               setCardPlacement('left');
-                              setMobileStudioTab('stage');
+                              // keep in sidebar
                             }}
                             className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
                               cardPlacement === 'left' ? 'bg-black text-white' : 'bg-white text-black'
@@ -2294,7 +2238,7 @@ export default function BouquetStudioPage() {
                           type="button"
                           onClick={() => {
                             startPrintFeedSequence();
-                            setMobileStudioTab('stage');
+                            // keep in sidebar
                           }}
                           title="Replay printer feed animation"
                           className="text-[10px] font-mono font-bold text-stone-700 hover:text-black flex items-center gap-1 cursor-pointer whitespace-nowrap"
@@ -2459,7 +2403,7 @@ export default function BouquetStudioPage() {
                       onClick={() => {
                         setFinalizeView('printer');
                         startPrintFeedSequence();
-                        setMobileStudioTab('stage');
+                        // keep in sidebar
                       }}
                       className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 whitespace-nowrap"
                     >
@@ -2577,6 +2521,29 @@ export default function BouquetStudioPage() {
                 )}
               </div>
             </aside>
+          )}
+        </div>
+
+        {/* ── MOBILE PERSISTENT FLOATING NAVIGATION TOGGLE (EDIT CHOICES <-> VIEW CREATION) ── */}
+        <div className="md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
+          {mobileStudioTab === 'stage' ? (
+            <button
+              type="button"
+              onClick={() => setMobileStudioTab('sidebar')}
+              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
+            >
+              <SlidersHorizontal size={14} />
+              <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMobileStudioTab('stage')}
+              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
+            >
+              <Eye size={14} />
+              <span>VIEW CREATION</span>
+            </button>
           )}
         </div>
 

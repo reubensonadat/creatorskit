@@ -100,11 +100,25 @@ FFMPEG_ARGS = _ffmpeg_args()
 #  2. a cookies.txt mounted as a Render SECRET FILE at /etc/secrets/cookies.txt
 #     (exported from a logged-in browser; absent locally → args stay empty).
 COOKIES_PATH = os.environ.get('COOKIES_PATH', '/etc/secrets/cookies.txt')
+# yt-dlp WRITES rotated cookies back to the file it reads (--cookies loads AND
+# saves the jar — YouTube rotates session tokens mid-session). Render mounts
+# Secret Files read-only, so handing yt-dlp the secret path directly dies with
+# "OSError: [Errno 30] Read-only file system". Fix: keep a WRITABLE working
+# copy under /tmp, re-synced whenever the secret file is newer (re-pasting the
+# secret in Render = fresh cookies picked up on the next request).
+_COOKIES_WORK = Path(tempfile.gettempdir()) / 'grab' / 'cookies.txt'
 
 
 def _cookie_args() -> list[str]:
     try:
-        return ['--cookies', COOKIES_PATH] if Path(COOKIES_PATH).is_file() else []
+        src = Path(COOKIES_PATH)
+        if not src.is_file():
+            return []
+        work = _COOKIES_WORK
+        work.parent.mkdir(parents=True, exist_ok=True)
+        if not work.is_file() or work.stat().st_mtime < src.stat().st_mtime:
+            shutil.copyfile(src, work)
+        return ['--cookies', str(work)]
     except OSError:
         return []
 

@@ -34,10 +34,39 @@ interface BouquetViewerProps {
 }
 
 export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
-  // Extract parameters from initialBouquet and its metadata
+  const [bouquet, setBouquet] = useState<StoredBouquet>(initialBouquet);
+
+  // Hydrate from instant client localStorage if creator opens their own link immediately
+  useEffect(() => {
+    if (typeof window !== 'undefined' && initialBouquet.id) {
+      try {
+        const cached = localStorage.getItem(`ck_bouquet_${initialBouquet.id}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.id === initialBouquet.id || parsed.sender_name || parsed.message)) {
+            setBouquet((prev) => ({
+              ...prev,
+              ...parsed,
+              sender_name: parsed.sender_name || prev.sender_name,
+              recipient_name: parsed.recipient_name || prev.recipient_name,
+              message: parsed.message || prev.message,
+              metadata: {
+                ...prev.metadata,
+                ...parsed.metadata,
+                flowers: parsed.metadata?.flowers?.length ? parsed.metadata.flowers : prev.metadata?.flowers,
+                greenery: parsed.metadata?.greenery?.length ? parsed.metadata.greenery : prev.metadata?.greenery,
+              },
+            }));
+          }
+        }
+      } catch {}
+    }
+  }, [initialBouquet.id]);
+
+  // Extract parameters from bouquet and its metadata
   const flowers = useMemo(() => {
     return (
-      initialBouquet.metadata?.flowers || [
+      bouquet.metadata?.flowers || [
         'rose-pink',
         'sunflower-golden',
         'peony-blush',
@@ -45,55 +74,55 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
         'lily-ivory',
       ]
     );
-  }, [initialBouquet.metadata?.flowers]);
+  }, [bouquet.metadata?.flowers]);
 
   const greenery = useMemo(() => {
-    return initialBouquet.metadata?.greenery || ['fern-illustration', 'olive-spray'];
-  }, [initialBouquet.metadata?.greenery]);
+    return bouquet.metadata?.greenery || ['fern-illustration', 'olive-spray'];
+  }, [bouquet.metadata?.greenery]);
 
   const seed = useMemo(() => {
-    return initialBouquet.metadata?.seed || 1042;
-  }, [initialBouquet.metadata?.seed]);
+    return bouquet.metadata?.seed || 1042;
+  }, [bouquet.metadata?.seed]);
 
   const cardTemplateId = useMemo(() => {
-    return initialBouquet.metadata?.cardTemplateId || 'classic-cream';
-  }, [initialBouquet.metadata?.cardTemplateId]);
+    return bouquet.metadata?.cardTemplateId || 'classic-cream';
+  }, [bouquet.metadata?.cardTemplateId]);
 
   const cardFont = useMemo(() => {
-    return normalizeFontId(initialBouquet.metadata?.cardFont || 'caveat');
-  }, [initialBouquet.metadata?.cardFont]);
+    return normalizeFontId(bouquet.metadata?.cardFont || 'caveat');
+  }, [bouquet.metadata?.cardFont]);
 
   const cardPlacement = useMemo(() => {
-    return (initialBouquet.metadata?.cardPlacement as 'right' | 'left' | 'bottom') || 'right';
-  }, [initialBouquet.metadata?.cardPlacement]);
+    return (bouquet.metadata?.cardPlacement as 'right' | 'left' | 'bottom') || 'right';
+  }, [bouquet.metadata?.cardPlacement]);
 
   const giftFormat = useMemo(() => {
-    return (initialBouquet.gift_format as 'both' | 'flower' | 'card') || 'both';
-  }, [initialBouquet.gift_format]);
+    return (bouquet.gift_format as 'both' | 'flower' | 'card') || 'both';
+  }, [bouquet.gift_format]);
 
   const greeting = useMemo(() => {
-    return initialBouquet.metadata?.greeting || 'Dear';
-  }, [initialBouquet.metadata?.greeting]);
+    return bouquet.metadata?.greeting || 'Dear';
+  }, [bouquet.metadata?.greeting]);
 
   const closing = useMemo(() => {
-    return initialBouquet.metadata?.closing || 'Sincerely,';
-  }, [initialBouquet.metadata?.closing]);
+    return bouquet.metadata?.closing || 'Sincerely,';
+  }, [bouquet.metadata?.closing]);
 
   const note = useMemo(
     () => ({
       greeting,
-      to: initialBouquet.recipient_name || 'Beloved',
+      to: bouquet.recipient_name || 'Beloved',
       message:
-        initialBouquet.message ||
+        bouquet.message ||
         'Thinking of you and sending this freshly picked bouquet to brighten your day.',
-      from: initialBouquet.sender_name || 'Secret Admirer',
+      from: bouquet.sender_name || 'Secret Admirer',
       closing,
     }),
     [
       greeting,
-      initialBouquet.recipient_name,
-      initialBouquet.message,
-      initialBouquet.sender_name,
+      bouquet.recipient_name,
+      bouquet.message,
+      bouquet.sender_name,
       closing,
     ]
   );
@@ -101,11 +130,11 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
   // Sound preset
   const soundPresetId = useMemo(() => {
     return (
-      initialBouquet.sound_preset ||
-      initialBouquet.metadata?.soundPreset ||
+      bouquet.sound_preset ||
+      bouquet.metadata?.soundPreset ||
       'music-box'
     );
-  }, [initialBouquet.sound_preset, initialBouquet.metadata?.soundPreset]);
+  }, [bouquet.sound_preset, bouquet.metadata?.soundPreset]);
 
   const activeSoundPreset = useMemo(() => {
     return SOUND_PRESETS.find((p) => p.id === soundPresetId);
