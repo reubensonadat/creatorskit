@@ -71,6 +71,14 @@ _JOBS_LOCK = threading.Lock()
 # One download at a time: free tiers have ~2 vCPUs and this keeps merges smooth.
 _YTDLP_LOCK = threading.Lock()
 
+# Diagnostics surfaced via the OPEN /health route: the Edge Function collapses
+# worker errors to "worker_502" (it discards our JSON body), so /health is the
+# only window into WHICH wall YouTube served and WHY the pot provider died.
+_BOOT_AT = time.time()
+POT_LOG = Path(os.environ.get('POT_LOG', '/tmp/pot.log'))
+_LAST_YTDLP_ERROR: dict[str, str] = {}
+_LAST_ERR_LOCK = threading.Lock()
+
 MIME_BY_EXT = {
     'mp4': 'video/mp4', 'webm': 'video/webm', 'mkv': 'video/x-matroska',
     'mp3': 'audio/mpeg', 'm4a': 'audio/mp4', 'ogg': 'audio/ogg', 'opus': 'audio/opus',
@@ -159,6 +167,25 @@ def _tail_of(proc: 'subprocess.CompletedProcess[str]') -> str:
     return ' | '.join((proc.stderr or proc.stdout or '').strip().splitlines()[-3:])[:400]
 
 
+def _record_ytdlp_error(tail: str) -> None:
+    with _LAST_ERR_LOCK:
+        _LAST_YTDLP_ERROR.clear()
+        _LAST_YTDLP_ERROR.update({
+            'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'detail': tail[:400],
+        })
+
+
+def _pot_log_tail(lines: int = 25) -> str:
+    """Last lines of the PO-token provider's log (written by start.sh's
+    supervisor) — tells us WHY it crashed/restarted."""
+    try:
+        text = POT_LOG.read_text(errors='replace').strip()
+        return '\n'.join(text.splitlines()[-lines:])[:1500]
+    except OSError:
+        return ''
+
+
 def _is_playability_wall(msg: str) -> bool:
     low = msg.lower()
     return any(h in low for h in _PLAYABILITY_HINTS)
@@ -180,6 +207,7 @@ def _run_ytdlp(args: list[str], url: str, timeout: int) -> None:
         last = _tail_of(proc) or last
         if not _is_playability_wall(last):
             break  # hard error (gone/private/unsupported) — a new client won't help
+    _record_ytdlp_error(last)
     raise HTTPException(status_code=502, detail=last)
 
 
@@ -202,6 +230,7 @@ def _probe_meta(url: str) -> dict:
         last = _tail_of(proc) or last
         if not _is_playability_wall(last):
             break
+    _record_ytdlp_error(last)
     raise HTTPException(status_code=502, detail=last)
 
 
@@ -338,13 +367,18 @@ class ResolveBody(BaseModel):
 @app.get('/health')
 def health() -> dict:
     """Open on purpose: cron-job.org pings this so free hosts never sleep."""
+    with _LAST_ERR_LOCK:
+        last_error = dict(_LAST_YTDLP_ERROR) or None
     return {
         'ok': True,
         'service': 'creatorkit-video-worker',
         'ytdlp': ytdlp_version.__version__,
         'pot': _pot_status(),
+        'pot_log': _pot_log_tail(),
         'cookies': bool(_cookie_args()),
         'jobs': len(_JOBS),
+        'uptime_s': int(time.time() - _BOOT_AT),
+        'last_error': last_error,
     }
 
 
