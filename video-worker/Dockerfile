@@ -16,19 +16,27 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Node side of the PO-token provider (the server the plugin calls on
-# 127.0.0.1:4416). Best-effort: if it ever fails to build, the image
-# still works — yt-dlp just faces moodier YouTube checks. The OK/FAILED
-# markers make the outcome visible in build logs (|| true alone hid it).
+# 127.0.0.1:4416). Retries the flaky network steps, but DON'T trust this
+# alone: Render's registry cache can resurrect a FAILED layer as "good"
+# (the || echo makes the step exit 0, so the broken state gets cached and
+# no marker ever prints again). start.sh re-verifies at boot and rebuilds
+# in the background if build/main.js is missing — output lands in
+# /tmp/pot.log, which /health exposes as pot_log.
 RUN (git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot \
- && cd /pot && npm install --no-audit --no-fund && npx tsc \
+ || (rm -rf /pot && sleep 3 \
+     && git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot)) \
+ && cd /pot \
+ && (npm install --no-audit --no-fund || npm install --no-audit --no-fund) \
+ && npx tsc \
  && echo "POT_BUILD_OK") \
- || echo "POT_BUILD_FAILED - see compiler errors above"
+ || echo "POT_BUILD_FAILED - start.sh retries at boot (see /health pot_log)"
 
 COPY app.py start.sh ./
 RUN chmod +x start.sh \
  && useradd -m -u 1000 user \
  && mkdir -p /tmp/grab \
- && chown -R user:user /app /pot /tmp/grab
+ && chown -R user:user /app /tmp/grab \
+ && (chown -R user:user /pot 2>/dev/null || true)
 
 # Hugging Face Spaces expect a non-root user on port 7860.
 USER user
