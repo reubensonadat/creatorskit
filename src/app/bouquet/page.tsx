@@ -109,6 +109,7 @@ export default function BouquetStudioPage() {
   const [shareUrl, setShareUrl] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isSavingLink, setIsSavingLink] = useState(false);
 
   // Gift format choice: 'both' (Flower & Card), 'flower' (Flower Only), 'card' (Card Only)
   const [giftFormat, setGiftFormat] = useState<GiftFormat>('both');
@@ -383,45 +384,26 @@ export default function BouquetStudioPage() {
     }
   };
 
-  // Build the complete shareable URL with all creation parameters
-  const buildCreationShareUrl = (customId?: string): { url: string; shortId: string; payload: any } => {
-    const shortId = customId || Math.random().toString(36).substring(2, 8);
-    const params = new URLSearchParams();
-    if (note.to.trim()) params.set('to', note.to.trim());
-    if (note.from.trim()) params.set('from', note.from.trim());
-    if (note.message.trim()) params.set('msg', note.message.trim());
-    if (selectedFlowers.length) params.set('fl', selectedFlowers.join(','));
-    if (selectedGreenery.length) params.set('gr', selectedGreenery.join(','));
-    if (cardFont) params.set('font', cardFont);
-    if (seed) params.set('seed', String(seed));
-    if (cardPlacement) params.set('cp', cardPlacement);
-    if (note.greeting) params.set('grt', note.greeting);
-    if (note.closing) params.set('cls', note.closing);
-    if (giftFormat !== 'both') params.set('format', giftFormat);
-    if (selectedSoundPreset && selectedSoundPreset !== 'none') params.set('sound', selectedSoundPreset);
-
-    const queryStr = params.toString() ? `?${params.toString()}` : '';
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const url = `${origin}/bouquet/${shortId}${queryStr}`;
-
+  // Save creation directly to Supabase and obtain verified 6-digit short link
+  const saveAndBuildShareLink = async (): Promise<string> => {
     const sender = note.from.trim() || 'Secret Admirer';
     const recipient = note.to.trim() || 'Beloved';
     const msg =
       note.message.trim() ||
       'I have so much to tell you, but only this much space on this card! Still, you must know...';
 
-    const payload = {
-      id: shortId,
-      scene_type: 'botanical-2d',
+    // 1. Save directly into Supabase database
+    const shortId = await saveBouquetToDatabase({
+      sceneType: 'botanical-2d',
       season: 'spring',
-      palette_id: 'minimalist-letterhead',
-      target_url: origin,
-      sender_name: sender,
-      recipient_name: recipient,
+      paletteId: 'minimalist-letterhead',
+      targetUrl: typeof window !== 'undefined' ? window.location.origin : '',
+      senderName: sender,
+      recipientName: recipient,
       message: msg,
-      gift_format: giftFormat,
-      sound_preset: selectedSoundPreset,
-      audio_enabled: selectedSoundPreset !== 'none',
+      giftFormat,
+      soundPreset: selectedSoundPreset,
+      audioEnabled: selectedSoundPreset !== 'none',
       metadata: {
         flowers: selectedFlowers,
         greenery: selectedGreenery,
@@ -433,61 +415,39 @@ export default function BouquetStudioPage() {
         closing: note.closing || 'Sincerely,',
         soundPreset: selectedSoundPreset,
       },
-      view_count: 0,
-      created_at: new Date().toISOString(),
-    };
+    });
 
-    return { url, shortId, payload };
+    // 2. Link is derived directly from the Supabase record ID
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const cleanUrl = `${origin}/bouquet/${shortId}`;
+    setShareUrl(cleanUrl);
+
+    return cleanUrl;
   };
 
-  // Save to DB and generate short link
   const handleGenerateShareLink = async (): Promise<string> => {
-    const { url, shortId, payload } = buildCreationShareUrl();
-    setShareUrl(url);
-
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
-      } catch {}
-
-      fetch('/api/bouquets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(() => {});
-
-      saveBouquetToDatabase({
-        id: shortId,
-        sceneType: 'botanical-2d',
-        season: 'spring',
-        paletteId: 'minimalist-letterhead',
-        targetUrl: window.location.origin,
-        senderName: payload.sender_name,
-        recipientName: payload.recipient_name,
-        message: payload.message,
-        giftFormat,
-        soundPreset: selectedSoundPreset,
-        audioEnabled: selectedSoundPreset !== 'none',
-        metadata: payload.metadata,
-      }).catch((e) => console.warn('Background save note:', e));
+    if (shareUrl) return shareUrl;
+    setIsSavingLink(true);
+    try {
+      return await saveAndBuildShareLink();
+    } finally {
+      setIsSavingLink(false);
     }
-
-    return url;
   };
 
   const handleCopyLink = async () => {
-    // Generate fresh URL with all latest choices
-    const { url, shortId, payload } = buildCreationShareUrl();
-    setShareUrl(url);
+    setIsSavingLink(true);
+    try {
+      // Save directly to Supabase and get the clean 6-character short code link
+      const url = await saveAndBuildShareLink();
 
-    // 1. Immediately copy to clipboard within synchronous user click gesture (0ms lag)
-    if (typeof window !== 'undefined') {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
+      // Copy verified Supabase link to clipboard
+      if (typeof window !== 'undefined') {
         try {
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        } catch {
           const ta = document.createElement('textarea');
           ta.value = url;
           document.body.appendChild(ta);
@@ -495,40 +455,13 @@ export default function BouquetStudioPage() {
           document.execCommand('copy');
           document.body.removeChild(ta);
           setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        } catch {
-          // ignore
+          setTimeout(() => setCopied(false), 2500);
         }
       }
-    }
-
-    // 2. Synchronous local cache for instant zero-latency loading
-    if (shortId && typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`ck_bouquet_${shortId}`, JSON.stringify(payload));
-      } catch {}
-
-      // 3. Asynchronous non-blocking save to API fallback & Supabase with EXACT same shortId
-      fetch('/api/bouquets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(() => {});
-
-      saveBouquetToDatabase({
-        id: shortId,
-        sceneType: 'botanical-2d',
-        season: 'spring',
-        paletteId: 'minimalist-letterhead',
-        targetUrl: window.location.origin,
-        senderName: payload.sender_name,
-        recipientName: payload.recipient_name,
-        message: payload.message,
-        giftFormat,
-        soundPreset: selectedSoundPreset,
-        audioEnabled: selectedSoundPreset !== 'none',
-        metadata: payload.metadata,
-      }).catch((err) => console.warn('Supabase save error:', err));
+    } catch (err) {
+      console.error('Failed to save to Supabase:', err);
+    } finally {
+      setIsSavingLink(false);
     }
   };
 
@@ -1427,9 +1360,12 @@ export default function BouquetStudioPage() {
                         <button
                           type="button"
                           onClick={handleCopyLink}
-                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[145px] shrink-0"
+                          disabled={isSavingLink}
+                          className="px-5 py-2.5 bg-white hover:bg-stone-50 text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[145px] shrink-0 disabled:opacity-50"
                         >
-                          {copied ? (
+                          {isSavingLink ? (
+                            <span>SAVING TO CLOUD...</span>
+                          ) : copied ? (
                             <>
                               <Check size={15} className="text-green-600 shrink-0" />
                               <span>LINK COPIED!</span>
@@ -1605,9 +1541,12 @@ export default function BouquetStudioPage() {
                       <button
                         type="button"
                         onClick={handleCopyLink}
-                        className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[155px] shrink-0"
+                        disabled={isSavingLink}
+                        className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-w-[155px] shrink-0 disabled:opacity-50"
                       >
-                        {copied ? (
+                        {isSavingLink ? (
+                          <span>SAVING...</span>
+                        ) : copied ? (
                           <>
                             <Check size={13} className="text-green-400 shrink-0" />
                             <span>COPIED!</span>
@@ -2439,9 +2378,12 @@ export default function BouquetStudioPage() {
                     <button
                       type="button"
                       onClick={handleCopyLink}
-                      className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-h-[46px]"
+                      disabled={isSavingLink}
+                      className="p-3 bg-white text-black hover:bg-stone-50 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 min-h-[46px] disabled:opacity-50"
                     >
-                      {copied ? (
+                      {isSavingLink ? (
+                        <span>SAVING TO CLOUD...</span>
+                      ) : copied ? (
                         <>
                           <Check size={16} className="text-green-600 shrink-0" />
                           <span>LINK COPIED!</span>

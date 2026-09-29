@@ -104,8 +104,10 @@ COOKIES_PATH = os.environ.get('COOKIES_PATH', '/etc/secrets/cookies.txt')
 # saves the jar — YouTube rotates session tokens mid-session). Render mounts
 # Secret Files read-only, so handing yt-dlp the secret path directly dies with
 # "OSError: [Errno 30] Read-only file system". Fix: keep a WRITABLE working
-# copy under /tmp, re-synced whenever the secret file is newer (re-pasting the
-# secret in Render = fresh cookies picked up on the next request).
+# copy under /tmp and RE-COPY from the secret on EVERY call — a rotation that
+# YouTube rejected would otherwise poison the jar with stale tokens whose
+# mtime is always newer than the secret's, out-living every retry and every
+# re-paste until a full container restart.
 _COOKIES_WORK = Path(tempfile.gettempdir()) / 'grab' / 'cookies.txt'
 
 
@@ -116,8 +118,7 @@ def _cookie_args() -> list[str]:
             return []
         work = _COOKIES_WORK
         work.parent.mkdir(parents=True, exist_ok=True)
-        if not work.is_file() or work.stat().st_mtime < src.stat().st_mtime:
-            shutil.copyfile(src, work)
+        shutil.copyfile(src, work)
         return ['--cookies', str(work)]
     except OSError:
         return []

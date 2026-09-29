@@ -14,6 +14,9 @@ import {
     createContext,
     type ReactNode,
     useContext,
+    useEffect,
+    useRef,
+    useState,
 } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +42,10 @@ export type ReceiptPrinterScreenProps = ComponentPropsWithoutRef<'div'>;
 export type ReceiptPrinterOutputProps = ComponentPropsWithoutRef<'div'>;
 export type ReceiptPrinterPaperProps = ComponentPropsWithoutRef<'article'> & {
     variant?: 'receipt' | 'document';
+    /** Canonical desktop design width for document variant (defaults to 820px). */
+    designWidth?: number;
+    /** Scale down document to fit container width cleanly on mobile (defaults to true). */
+    scaleToFit?: boolean;
 };
 
 export type ReceiptPrinterStatusProps = Omit<
@@ -322,20 +329,77 @@ function ReceiptPrinterPaper({
     className,
     style,
     variant = 'receipt',
+    designWidth = 820,
+    scaleToFit = true,
     ...props
 }: ReceiptPrinterPaperProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [scale, setScale] = useState(1);
+    const [contentHeight, setContentHeight] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (variant !== 'document' || !scaleToFit) {
+            setScale(1);
+            return;
+        }
+        const measure = () => {
+            if (!containerRef.current || !contentRef.current) return;
+            const cw = containerRef.current.clientWidth;
+            if (cw > 0 && cw < designWidth) {
+                setScale(cw / designWidth);
+            } else {
+                setScale(1);
+            }
+            setContentHeight(contentRef.current.scrollHeight);
+        };
+        measure();
+        const obs = new ResizeObserver(measure);
+        if (containerRef.current) obs.observe(containerRef.current);
+        if (contentRef.current) obs.observe(contentRef.current);
+        window.addEventListener('resize', measure);
+        return () => {
+            obs.disconnect();
+            window.removeEventListener('resize', measure);
+        };
+    }, [variant, designWidth, scaleToFit]);
+
     if (variant === 'document') {
+        const isScaled = scaleToFit && scale < 1;
+
         return (
-            <article
-                className={cn(
-                    'relative z-10 w-full bg-white text-zinc-950 shadow-2xl',
-                    className,
-                )}
-                style={style}
-                {...props}
+            <div
+                ref={containerRef}
+                className={cn('relative w-full', !scaleToFit && 'overflow-x-auto')}
+                style={{
+                    height: isScaled && contentHeight ? Math.ceil(contentHeight * scale) : undefined,
+                    overflowY: isScaled ? 'hidden' : undefined,
+                    overflowX: !scaleToFit ? 'auto' : isScaled ? 'hidden' : undefined,
+                }}
             >
-                {children}
-            </article>
+                <div
+                    ref={contentRef}
+                    style={{
+                        width: designWidth,
+                        minWidth: designWidth,
+                        maxWidth: designWidth,
+                        transform: isScaled ? `scale(${scale})` : undefined,
+                        transformOrigin: 'top left',
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    <article
+                        className={cn(
+                            'relative z-10 w-full bg-white text-zinc-950 shadow-2xl',
+                            className,
+                        )}
+                        style={style}
+                        {...props}
+                    >
+                        {children}
+                    </article>
+                </div>
+            </div>
         );
     }
 
