@@ -534,6 +534,34 @@ async function handleStream(req: Request): Promise<Response> {
   return new Response(upstream.body, { status: upstream.status === 206 ? 206 : 200, headers: out });
 }
 
+// ── captions-ticket: one-time browser upload grant for server transcription ──
+// The browser uploads audio DIRECTLY to the worker (this function's body
+// limits and bandwidth must not carry 50MB audio), but the worker token
+// stays server-side — so we mint single-use 10-minute tickets instead.
+// Abuse ceiling: a ticket alone grants nothing; the worker's own
+// backpressure (3 unfinished jobs) + 100MB cap do the rate limiting.
+async function handleCaptionsTicket(): Promise<Response> {
+  if (!WORKER_URL || !WORKER_TOKEN) {
+    return json({ error: 'Server transcription is not configured.', code: 'worker_offline' }, 503);
+  }
+  try {
+    const res = await fetch(`${WORKER_URL}/transcribe/ticket`, {
+      method: 'POST',
+      headers: { 'X-Worker-Token': WORKER_TOKEN },
+    });
+    if (!res.ok) {
+      return json({ error: 'Ticket service unavailable.', code: 'ticket_failed' }, 502);
+    }
+    const data = await res.json();
+    if (!data?.ticket) {
+      return json({ error: 'Ticket service misconfigured.', code: 'ticket_failed' }, 502);
+    }
+    return json({ ticket: data.ticket, expiresIn: data.expiresIn ?? 600 });
+  } catch {
+    return json({ error: 'Ticket service unreachable.', code: 'ticket_failed' }, 502);
+  }
+}
+
 // ── router ─────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -547,6 +575,7 @@ Deno.serve(async (req) => {
       if (body?.action === 'challenge') return await handleChallenge(req, body);
       if (body?.action === 'claim') return await handleClaim(req, body);
       if (body?.action === 'formats') return await handleFormats(req, body);
+      if (body?.action === 'captions-ticket') return await handleCaptionsTicket();
       return json({ error: 'Unknown action. Use "challenge" or "claim".', code: 'action' }, 400);
     }
 

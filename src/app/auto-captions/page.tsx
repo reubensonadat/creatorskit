@@ -48,6 +48,16 @@ import {
     type CloudTranscriptionProvider,
 } from '@/lib/captions/whisper-cloud';
 import {
+    transcribeOnWorker,
+    prefersServerTranscription,
+    WorkerTranscribeError,
+} from '@/lib/captions/worker-transcribe';
+
+/** Which transcription engine the captions page runs:
+ *  local (browser Whisper, hybrid server rescue) · server (our free Render
+ *  worker) · groq/openai (user's own API key). */
+type EngineChoice = CloudTranscriptionProvider | 'local' | 'server';
+import {
     type CaptionVideoMode,
     type CaptionPillBackground,
     type VideoAspectRatio,
@@ -238,8 +248,8 @@ export default function CaptionsPage() {
     const [wordPop, setWordPop] = useState<boolean>(false);
     const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
-    // 🚀 BYOK (Bring Your Own Key) Engine Settings
-    const [transcriptionEngine, setTranscriptionEngine] = useState<CloudTranscriptionProvider | 'local'>('local');
+    // 🚀 BYOK (Bring Your Own Key) Engine Settings + our free server engine
+    const [transcriptionEngine, setTranscriptionEngine] = useState<EngineChoice>('local');
     const [groqKey, setGroqKey] = useState<string>('');
     const [openaiKey, setOpenaiKey] = useState<string>('');
     const [byokModalOpen, setByokModalOpen] = useState<boolean>(false);
@@ -304,7 +314,7 @@ export default function CaptionsPage() {
         };
     }, []);
 
-    const handleFile = async (selectedFile: File, engineOverride?: CloudTranscriptionProvider | 'local') => {
+    const handleFile = async (selectedFile: File, engineOverride?: EngineChoice) => {
         const activeEngine = engineOverride || transcriptionEngine;
 
         // Reject empty/unreadable files up front with a clear message
@@ -381,40 +391,96 @@ export default function CaptionsPage() {
                     effectiveScript,
                     (prog) => setProgress(prog)
                 );
-            } else {
-                // Step 1: Decode audio locally
+            } else if (activeEngine === 'server') {
+                // Explicit server engine: straight to our free Render worker
+                // (one-time ticket minted by the edge function — the real
+                // worker token never enters client code). No local decode
+                // needed at all, so this works on any device.
                 setProgress({
-                    stage: 'decoding',
-                    message: 'Analyzing audio...',
-                    percent: 5,
+                    stage: 'loading_model',
+                    message: 'Connecting to CreatorKit Server...',
+                    percent: 15,
                 });
+                result = await transcribeOnWorker({
+                    file: selectedFile,
+                    onProgress: (prog) => setProgress(prog),
+                });
+            } else {
+                // LOCAL = smart hybrid. Weak devices (phones / low RAM — the
+                // S21 freeze lesson) go SERVER first for cool, non-freezing
+                // transcriptions; desktops keep the instant offline browser
+                // engine first. Either side rescues the other on failure.
+                let browserPcm: Float32Array | null = null;
 
-                const { audioData, duration: decodedDuration } = await processAudioForWhisper(selectedFile, () => {
+                const runBrowserEngine = async (): Promise<TranscriptionResult> => {
+                    // Step 1: Decode audio locally
                     setProgress({
                         stage: 'decoding',
                         message: 'Analyzing audio...',
-                        percent: 15,
+                        percent: 5,
                     });
-                });
-                setAudioDuration(decodedDuration);
 
-                // Step 2: Transcribe audio with in-browser Web Worker Whisper
-                setProgress({
-                    stage: 'loading_model',
-                    message: 'Generating captions...',
-                    percent: 20,
-                });
+                    const { audioData, duration: decodedDuration } = await processAudioForWhisper(selectedFile, () => {
+                        setProgress({
+                            stage: 'decoding',
+                            message: 'Analyzing audio...',
+                            percent: 15,
+                        });
+                    });
+                    browserPcm = audioData;
+                    setAudioDuration(decodedDuration);
 
-                if (!whisperClientRef.current) {
-                    whisperClientRef.current = new WhisperClient();
-                }
+                    // Step 2: Transcribe audio with in-browser Web Worker Whisper
+                    setProgress({
+                        stage: 'loading_model',
+                        message: 'Generating captions...',
+                        percent: 20,
+                    });
 
-                result = await whisperClientRef.current.transcribe(
-                    audioData,
-                    (prog) => {
-                        setProgress(prog);
+                    if (!whisperClientRef.current) {
+                        whisperClientRef.current = new WhisperClient();
                     }
-                );
+
+                    return whisperClientRef.current.transcribe(audioData, (prog) => {
+                        setProgress(prog);
+                    });
+                };
+
+                if (prefersServerTranscription()) {
+                    try {
+                        result = await transcribeOnWorker({
+                            file: selectedFile,
+                            onProgress: (prog) => setProgress(prog),
+                        });
+                    } catch (serverErr) {
+                        // too_large / edge_offline have no sensible browser
+                        // rescue (oversized or undecodable + offline) —
+                        // surface them. Everything else (busy, hiccup)
+                        // falls back to the browser engine.
+                        if (
+                            serverErr instanceof WorkerTranscribeError &&
+                            (serverErr.code === 'too_large' || serverErr.code === 'edge_offline')
+                        ) {
+                            throw serverErr;
+                        }
+                        result = await runBrowserEngine();
+                    }
+                } else {
+                    try {
+                        result = await runBrowserEngine();
+                    } catch {
+                        // Server rescue: when the browser decoded the audio
+                        // we upload a tiny 16k WAV re-encoded from that PCM;
+                        // when it couldn't decode AT ALL (MKV / AC-3 — the
+                        // old dead end) we send the raw file and the
+                        // worker's PyAV decodes server-side instead.
+                        result = await transcribeOnWorker({
+                            file: selectedFile,
+                            audioData: browserPcm,
+                            onProgress: (prog) => setProgress(prog),
+                        });
+                    }
+                }
             }
 
             // If we have an aligned teleprompter script, align the generated cues for crystal-clear spelling and punctuation
@@ -1145,6 +1211,14 @@ export default function CaptionsPage() {
                     </button>
                     <button
                         type="button"
+                        style={brutChip(transcriptionEngine === 'server')}
+                        onClick={() => setTranscriptionEngine('server')}
+                        title="Transcribe on CreatorKit's free server — works on any device, handles files the browser can't decode"
+                    >
+                        Server · Free
+                    </button>
+                    <button
+                        type="button"
                         style={brutChip(transcriptionEngine === 'groq')}
                         onClick={() => {
                             setTranscriptionEngine('groq');
@@ -1420,7 +1494,10 @@ export default function CaptionsPage() {
                             <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'local')}>
                                 Retry locally
                             </button>
-                            <button type="button" className="brutalist-button brutalist-button-primary" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'groq')}>
+                            <button type="button" className="brutalist-button brutalist-button-primary" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'server')}>
+                                Retry on Server (free)
+                            </button>
+                            <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'groq')}>
                                 Retry with Groq
                             </button>
                             <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'openai')}>
