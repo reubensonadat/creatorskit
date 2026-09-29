@@ -1143,6 +1143,37 @@ export default function CaptionsPage() {
         });
     };
 
+    // One stone, two birds: rebuild word-level timings for EVERY cue.
+    // Cues whose text was typed or edited by hand (the local model can get
+    // the text but not real timestamps) get char-weighted word timings
+    // inside their slot, and degenerate cue durations get room to actually
+    // be spoken — so the drag timeline, preview and export stay in sync.
+    const handleSyncCueTimings = () => {
+        setCues((prev) => {
+            const next = prev.map((c) => {
+                const textWords = c.text.trim().split(/\s+/).filter(Boolean);
+                if (textWords.length === 0) return c;
+                const minSpan = Math.max(0.4, textWords.length * 0.28);
+                const end = c.end - c.start < minSpan ? parseFloat((c.start + minSpan).toFixed(2)) : c.end;
+                const span = Math.max(0.05, end - c.start);
+                const totalChars = textWords.reduce((s, w) => s + w.length, 0) || 1;
+                let t = c.start;
+                const words = textWords.map((w) => {
+                    const ws = parseFloat(t.toFixed(3));
+                    t = Math.min(end, t + Math.max(0.06, (w.length / totalChars) * span));
+                    return { word: w, start: ws, end: parseFloat(t.toFixed(3)) };
+                });
+                return { ...c, end, words };
+            });
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try {
+                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
+            } catch { }
+            return next;
+        });
+    };
+
     const handleExecuteFindReplace = () => {
         if (!findQuery.trim()) return;
         setCues((prev) => {
@@ -2413,10 +2444,27 @@ export default function CaptionsPage() {
                                         const ticks: number[] = [];
                                         for (let t = 0; t <= trackDur; t += tickStep) ticks.push(parseFloat(t.toFixed(1)));
                                         const basePx = Math.max(480, Math.ceil(trackDur * 24));
-                                        // Widen the track so even the longest cue's full text fits
+                                        // Full-text cards, CapCut-style lanes: each cue is a separate
+                                        // card sized to show its entire text; a card that would overlap
+                                        // the previous one gets its own lane (row) so no two cues ever
+                                        // look like they appear at the same time.
+                                        const CARD_GAP = 6;
                                         const textPx = (t: string) => t.trim().length * 6 + 16;
-                                        const neededPx = cues.reduce((mx, c) => Math.max(mx, Math.ceil((c.start / trackDur) * basePx + textPx(c.text))), 0);
-                                        const innerWidth = `max(100%, ${Math.max(basePx, neededPx)}px)`;
+                                        const laneEnds: number[] = [];
+                                        const laneOf = cues.map((c) => {
+                                            const leftPx = (c.start / trackDur) * basePx;
+                                            const wPx = Math.max((Math.max(0.05, c.end - c.start) / trackDur) * basePx, textPx(c.text));
+                                            let lane = laneEnds.findIndex((end) => leftPx >= end + CARD_GAP);
+                                            if (lane === -1) {
+                                                lane = laneEnds.length;
+                                                laneEnds.push(0);
+                                            }
+                                            laneEnds[lane] = leftPx + wPx;
+                                            return lane;
+                                        });
+                                        const laneCount = Math.max(1, laneEnds.length);
+                                        const trackH = laneCount * 37 + 16;
+                                        const innerWidth = `max(100%, ${Math.max(basePx, ...laneEnds, 0) + 8}px)`;
                                         const seekTo = (t: number) => {
                                             const clamped = Math.min(Math.max(0, t), trackDur);
                                             setOverlayCurrentTime(clamped);
@@ -2426,7 +2474,28 @@ export default function CaptionsPage() {
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                                 <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', justifyContent: 'space-between', letterSpacing: '0.02em' }}>
                                                     <span>CUE TIMELINE — DRAG TO RETIME · SCROLL → FOR MORE</span>
-                                                    <span>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        <span>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSyncCueTimings}
+                                                            title="Rebuild word-level timings for every cue — fixes manually typed or edited text so the karaoke reveal matches the timeline"
+                                                            style={{
+                                                                padding: '1px 6px',
+                                                                border: '1.5px solid #000',
+                                                                background: '#FFE500',
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 900,
+                                                                fontSize: '0.56rem',
+                                                                color: '#000',
+                                                                borderRadius: 3,
+                                                                cursor: 'pointer',
+                                                                textTransform: 'uppercase',
+                                                            }}
+                                                        >
+                                                            SYNC TIMINGS
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <div
                                                     ref={cueTrackScrollRef}
@@ -2446,7 +2515,7 @@ export default function CaptionsPage() {
                                                             position: 'relative',
                                                             width: innerWidth,
                                                             minWidth: '100%',
-                                                            height: 50,
+                                                            height: trackH,
                                                             cursor: 'pointer',
                                                             userSelect: 'none',
                                                         }}
@@ -2472,7 +2541,7 @@ export default function CaptionsPage() {
                                                                     title={`#${i + 1}  ${c.start.toFixed(2)}s → ${c.end.toFixed(2)}s — ${c.text}`}
                                                                     style={{
                                                                         position: 'absolute',
-                                                                        top: 4,
+                                                                        top: 4 + laneOf[i] * 37,
                                                                         height: 32,
                                                                         left: `${leftPct}%`,
                                                                         width: `${widthPct}%`,

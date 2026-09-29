@@ -184,6 +184,46 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         uppercase: true,
         emojiMode: false,
     },
+    {
+        // Kinetic variation 4: hot-pink active word on Poppins with the
+        // hardest bounce in the family — pure neon shortform energy.
+        id: 'neon-burst',
+        name: 'Neon Burst',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'poppins',
+        fontSize: 62,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#EC4899',
+        springPhysics: true,
+        bounceIntensity: 1.35,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Kinetic variation 5: Roboto Black + violet active word — a
+        // cooler, techy pop that still reads huge on any background.
+        id: 'viral-violet',
+        name: 'Viral Violet',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'roboto-black',
+        fontSize: 62,
+        letterSpacing: -0.5,
+        yPositionPercent: 71,
+        pillBackground: 'dark',
+        highlighterColor: '#A78BFA',
+        springPhysics: true,
+        bounceIntensity: 1.2,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
 ];
 
 const EMOJI_DICTIONARY: Record<string, string> = {
