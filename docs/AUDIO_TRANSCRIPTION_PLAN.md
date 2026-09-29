@@ -53,19 +53,55 @@ Why faster-whisper and not whisper.cpp: pure pip install (no compile step in
 Docker on Render), same int8 sizes, CPU speed within ~20% — and one fewer
 build thing to break (see: the pot saga).
 
-## Phase 2 (free upgrade path, ALSO $0): Hugging Face Space as the big engine
+## DECISION (2026-09-29): Render-only. HF is the model LIBRARY, not the runtime
 
-HF Spaces free tier = **2 vCPU + 16 GB RAM** (noisy neighbors, sleeps after
-48h idle — first request re-wakes it in ~30–60s).
+User explored Hugging Face and found its runtime story (Docker Spaces /
+persistent hardware) drifting behind paid/PRO tiers — trust confirmed low.
+Model *downloads* from the HF hub remain free and stable, and that is ALL we
+use HF for: the Dockerfile pulls weights at build time, exactly like the pot
+server pulls its repo. No HF account, quota, wake-up, or pricing change can
+break a running feature.
 
-- A tiny Space (Gradio/FastAPI) running `faster-whisper small.en` int8
-  (or even multilingual `small`) — better accents/quality than base.en,
-  impossible on Render's 512MB.
-- The Render worker proxies to it (browser only ever knows the worker URL +
-  token): try Space → if asleep/slow, use local base.en. Zero new accounts
-  for end users; the Space stays private-ish behind the worker.
-- HF is also where the model weights already live — "create a new repository"
-  on HF is literally one `git push` of a 3-file Space.
+| | HF Space (runtime) | Render worker (chosen) |
+|---|---|---|
+| RAM | up to 16 GB free CPU | 512 MB hard ceiling |
+| Trust | terms shifted before; Docker/persistence moving paid; PRO-gates | we control it; already deployed, monitored, token-protected |
+| Sleep | sleeps after 48h idle; ~1 min re-wake | kept awake 24/7 by cron-job.org pings |
+| Hours cost | separate quota | the same 750 h/month we already spend |
+| Failure domain | another account + endpoint to babysit | one place, `/health` diagnostics |
+| Best model | small.en / multilingual | base.en int8 (good, = current browser model) |
+
+If quality later demands `small.en`, the upgrade is infrastructure-free:
+swap the baked model on the worker for `tiny.en`+VAD chunking, or revisit a
+VPS (the grabber handoff §8 endgame) — not an HF dependency.
+
+## One service or several? (fault isolation on $0)
+
+Render free = **750 instance-hours/month TOTAL**. One always-on service
+consumes exactly that; two always-on services starve mid-month. So:
+
+- **One Docker service, strictly separated route-modules** is the $0 answer:
+  `/transcribe`, `/matte`, `/formats`/`/resolve` each get their own lock,
+  job queue, model slot, and per-job error state. A failure in one route
+  returns that job's error — it does not touch the others (the existing
+  job pattern already behaves this way).
+- The ONE shared-fate risk on 512MB is memory: therefore **at most one AI
+  model resident at a time** (LRU unload after ~10 min idle). Transcription
+  and matting never hold models simultaneously.
+- If a service must be split later (real VPS), each route-module lifts out
+  as its own container unchanged — the separation is in the code, so the
+  migration is a copy, not a rewrite.
+
+## Build order (user priority: auto-captions FIRST, everything after)
+
+1. `/transcribe` on the worker + base.en baked at build + captions UI
+   server-fallback wiring. ← THE next task
+2. Caption preset expansion (more artistic overlays/textures; applies to
+   match-cut + text-highlighter too) — user explicitly wants this after
+   captions are solid.
+3. `/matte` (rembg u2netp) for text-behind / background-replace.
+4. ffmpeg offload for slicer/trimmer/match-cut exports; non-YouTube
+   whitelist for the paused grabber.
 
 ## Same worker, other $0 services that fit the app's vision ("good enough" tools)
 
@@ -93,11 +129,3 @@ HF Spaces free tier = **2 vCPU + 16 GB RAM** (noisy neighbors, sleeps after
 - Next.js route-splitting means it ships ONLY to visitors of /space-planner —
   it adds nothing to any other tool's bundle. Growing it into the
   architecture/building platform costs nothing elsewhere. Keep it.
-
-## Build-order proposal
-
-1. Worker `/transcribe` + base.en int8 baked + captions fallback wiring. ← next session
-2. Worker `/matte` (u2netp) + text-behind/background-replace "server mode".
-3. Caption preset expansion (more artistic overlays/textures — applies to
-   match-cut + text-highlighter too).
-4. HF Space small.en upgrade + proxy.
