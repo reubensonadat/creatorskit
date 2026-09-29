@@ -107,4 +107,5 @@ print('  OK drag origin normalized')
 
 out = src.replace('\n', '\r\n') if is_crlf else src
 io.open(PATH, 'w', encoding='utf-8', newline='').write(out)
+
 print('page.tsx written')
