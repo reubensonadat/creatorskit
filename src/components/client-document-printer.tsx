@@ -42,6 +42,7 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
     const [isSavingImage, setIsSavingImage] = useState(false);
     const [isMobileDevice, setIsMobileDevice] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
+    const [fitMode, setFitMode] = useState<'fit' | 'full'>('fit');
     const paperRef = useRef<HTMLDivElement>(null);
     const captureRef = useRef<HTMLDivElement>(null);
     const [paperHeight, setPaperHeight] = useState<number | null>(null);
@@ -111,9 +112,69 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
     // QR encodes this document's own link — scan any printed copy to reopen it
     const qrUrl = typeof window !== 'undefined' ? window.location.href : undefined;
 
+    const printCss = isThermal
+        ? `
+      @page {
+        size: auto;
+        margin: 4mm auto;
+      }
+      @media print {
+        body * { visibility: hidden; }
+        .receipt-print-area, .receipt-print-area * { visibility: visible; }
+        .receipt-print-area {
+          display: block !important;
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          margin: 0 auto !important;
+          background: #fff;
+        }
+        .screen-only { display: none !important; }
+      }
+    `
+        : `
+      @page {
+        size: A4 portrait;
+        margin: 8mm 10mm;
+      }
+      @media print {
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body * { visibility: hidden; }
+        .receipt-print-area, .receipt-print-area * { visibility: visible; }
+        .receipt-print-area {
+          display: block !important;
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+        }
+        .document-print-full {
+          display: block !important;
+          width: 100% !important;
+          max-width: 820px !important;
+          min-width: 760px !important;
+          margin: 0 auto !important;
+          background: #ffffff !important;
+        }
+        .screen-only { display: none !important; }
+      }
+    `;
+
     return (
         <div style={{ minHeight: '100vh', background: '#09090b', padding: '24px 16px 48px', display: 'flex' }}>
-            <style>{PRINT_CSS}</style>
+            <style>{printCss}</style>
 
             {/* ─── ON-SCREEN: ANIMATED PRINTER — every document feeds out of the machine ─── */}
             <div className="screen-only" style={{ margin: 'auto', width: '100%', maxWidth: isThermal ? 420 : 900, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
@@ -173,7 +234,10 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                         {/* paperRef wraps the WHOLE paper (padding + tear edge
                             included) so the tray height never clips the bottom. */}
                         <div ref={paperRef}>
-                            <ReceiptPrinter.Paper variant={isThermal ? 'receipt' : 'document'}>
+                            <ReceiptPrinter.Paper
+                                variant={isThermal ? 'receipt' : 'document'}
+                                scaleToFit={fitMode === 'fit'}
+                            >
                                 <div ref={captureRef}>
                                     <SharedDocumentView data={data} qrUrl={qrUrl} showBranding={data.br !== 0} />
                                 </div>
@@ -181,6 +245,52 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                         </div>
                     </ReceiptPrinter.Output>
                 </ReceiptPrinter.Root>
+
+                {/* Mobile View Mode Switcher for Full-Sheet Documents */}
+                {!isThermal && stage === 'complete' && isMobileDevice && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, margin: '2px 0 2px' }}>
+                        <button
+                            onClick={() => setFitMode('fit')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                padding: '4px 10px',
+                                fontSize: '0.68rem',
+                                fontFamily: 'monospace',
+                                fontWeight: fitMode === 'fit' ? 900 : 600,
+                                textTransform: 'uppercase',
+                                background: fitMode === 'fit' ? '#FFE500' : '#18181b',
+                                color: fitMode === 'fit' ? '#000' : '#a1a1aa',
+                                border: fitMode === 'fit' ? '1.5px solid #000' : '1px solid #3f3f46',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Fit Sheet
+                        </button>
+                        <button
+                            onClick={() => setFitMode('full')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                padding: '4px 10px',
+                                fontSize: '0.68rem',
+                                fontFamily: 'monospace',
+                                fontWeight: fitMode === 'full' ? 900 : 600,
+                                textTransform: 'uppercase',
+                                background: fitMode === 'full' ? '#FFE500' : '#18181b',
+                                color: fitMode === 'full' ? '#000' : '#a1a1aa',
+                                border: fitMode === 'full' ? '1.5px solid #000' : '1px solid #3f3f46',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            100% Actual Size
+                        </button>
+                    </div>
+                )}
 
                 {stage === 'complete' && (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, width: '100%', maxWidth: 440 }}>
@@ -249,7 +359,7 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                         <SharedDocumentView data={data} qrUrl={qrUrl} showBranding={data.br !== 0} />
                     </div>
                 ) : (
-                    <div style={{ width: '100%', background: '#ffffff', color: '#09090b' }}>
+                    <div className="document-print-full" style={{ width: '100%', maxWidth: 820, margin: '0 auto', background: '#ffffff', color: '#09090b' }}>
                         <SharedDocumentView data={data} qrUrl={qrUrl} showBranding={data.br !== 0} />
                     </div>
                 )}

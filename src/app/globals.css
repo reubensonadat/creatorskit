@@ -1130,3 +1130,41 @@ label,
     overscroll-behavior: none;
   }
 }
+
+/* =========================================================================
+   UNIVERSAL DOCUMENT PRINTING STANDARDS
+   Guarantees all printables (Invoices, Agreements, Letterheads, Keepsakes)
+   render at standard desktop / A4 dimensions on all devices without mobile clipping.
+   ========================================================================= */
+@page {
+  size: auto;
+  margin: 8mm 10mm;
+}
+
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Universal print sheet containers */
+  .document-print-full,
+  .document-print-sheet,
+  #bouquet-print-document {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 820px !important;
+    min-width: 760px !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+  }
+
+  /* Universal thermal receipt centering */
+  #receipt-capture-root {
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}

@@ -101,7 +101,9 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11px',
         lineHeight: 1.6,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -419,7 +421,9 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
         padding: 'clamp(28px, 4vw, 48px)',
         fontSize: '11px',
         lineHeight: 1.65,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -708,7 +712,9 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
         padding: 'clamp(28px, 4vw, 48px)',
         fontSize: '11px',
         lineHeight: 1.65,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >

@@ -107,7 +107,9 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11px',
         lineHeight: 1.6,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -178,7 +180,7 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
       </div>
 
       {/* Bill To & Payment Channel 2-Column Info */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24, background: '#fafafa', border: '1px solid #e5e7eb', padding: '14px 18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24, background: '#fafafa', border: '1px solid #e5e7eb', padding: '14px 18px', boxSizing: 'border-box' }}>
         <div>
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', marginBottom: 4 }}>
             BILLED TO:
@@ -245,7 +247,7 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
           <tbody>
             {data.items.map((i) => (
               <tr key={i.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={{ padding: '9px 10px', color: '#1f2937', fontWeight: 500 }}>
+                <td style={{ padding: '9px 10px', color: '#1f2937', fontWeight: 500, wordBreak: 'break-word' }}>
                   {i.description}
                 </td>
                 <td style={{ padding: '9px', textAlign: 'center', fontWeight: 600 }}>
@@ -379,7 +381,9 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11px',
         lineHeight: 1.5,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -574,7 +578,9 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11px',
         lineHeight: 1.6,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -732,7 +738,9 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11px',
         lineHeight: 1.5,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >

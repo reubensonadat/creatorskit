@@ -77,7 +77,9 @@ export function CreativePitchLetterhead({ data, showBranding = true }: Letterhea
         padding: 'clamp(28px, 4vw, 44px)',
         fontSize: '11.5px',
         lineHeight: 1.7,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >
@@ -218,7 +220,9 @@ export function ExecutiveProposalLetterhead({ data, showBranding = true }: Lette
         padding: 'clamp(28px, 4vw, 48px)',
         fontSize: '11px',
         lineHeight: 1.65,
+        width: '100%',
         maxWidth: 820,
+        boxSizing: 'border-box',
         margin: '0 auto',
       }}
     >

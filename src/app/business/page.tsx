@@ -902,8 +902,19 @@ function BusinessSuiteContent() {
           /* Mobile: live document first, builder controls below it */
           .ck-preview-col { order: -1; }
         }
+        @page {
+          size: ${activeTab === 'receipt' ? 'auto' : 'A4 portrait'};
+          margin: ${activeTab === 'receipt' ? '4mm auto' : '8mm 10mm'};
+        }
         @media print {
           .ck-noprint { display: none !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body * { visibility: hidden; }
           #printable-document, #printable-document * { 
             visibility: visible; 
@@ -913,9 +924,12 @@ function BusinessSuiteContent() {
           #printable-document {
             position: absolute !important;
             left: 0 !important;
+            right: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
+            width: ${activeTab === 'receipt' ? '355px' : '100%'} !important;
+            max-width: ${activeTab === 'receipt' ? '355px' : '820px'} !important;
+            min-width: ${activeTab === 'receipt' ? '355px' : '760px'} !important;
+            margin: 0 auto !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
@@ -2577,6 +2591,7 @@ function BusinessSuiteContent() {
                     width: '100%',
                     margin: '0 auto',
                     minHeight: 700,
+                    overflowX: 'auto',
                     padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
                     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
                   }
