@@ -22,6 +22,8 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -75,6 +77,52 @@ def _consume_ticket(ticket: str) -> bool:
     with _TICKETS_LOCK:
         expires = _TICKETS.pop(ticket, None)   # one-time: gone either way
     return expires is not None and expires >= time.time()
+
+
+def _find_ffmpeg() -> str | None:
+    """ffmpeg path: system PATH first, then the pip-bundled imageio-ffmpeg
+    binary (same fallback order as the video pipeline in app.py — the
+    Render image has no system ffmpeg, but imageio-ffmpeg ships one)."""
+    found = shutil.which('ffmpeg')
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _normalize_audio(path: Path) -> Path:
+    """Re-encode anything that isn't plain WAV into 16kHz mono PCM WAV.
+
+    faster-whisper decodes via PyAV, which chokes on several browser
+    outputs — MediaRecorder WebM/Opus chief among them (PyAV dies with
+    AVERROR_INVALIDDATA, "[Errno 1094995529] Invalid data found when
+    processing input", on files every desktop player accepts). System
+    ffmpeg eats every container PyAV rejects, so run it as a pre-pass.
+    Best effort by design: no ffmpeg, or ffmpeg fails → hand back the
+    original path unchanged, i.e. exactly the pre-fix behavior."""
+    if path.suffix.lower() == '.wav':
+        return path          # browser path already uploads 16k mono PCM
+    ffmpeg = _find_ffmpeg()
+    if not ffmpeg:
+        return path
+    out = path.with_name(path.name + '.norm.wav')
+    try:
+        proc = subprocess.run(
+            [ffmpeg, '-y', '-hide_banner', '-loglevel', 'error',
+             '-i', str(path), '-vn', '-ac', '1', '-ar', '16000',
+             '-c:a', 'pcm_s16le', '-f', 'wav', str(out)],
+            capture_output=True, text=True, timeout=600,
+        )
+    except Exception:
+        out.unlink(missing_ok=True)
+        return path
+    if proc.returncode == 0 and out.is_file() and out.stat().st_size > 44:
+        return out
+    out.unlink(missing_ok=True)
+    return path
 
 
 @router.post('/transcribe/ticket')
@@ -170,9 +218,10 @@ def _run_job(job_id: str) -> None:
     job = _JOBS.get(job_id)
     if job is None:   # sweeper won the race — only possible past the 1h TTL
         return
+    source_path = Path(job['path'])
     try:
         with _RUN_LOCK:
-            result = engine.transcribe(job['path'])
+            result = engine.transcribe(str(_normalize_audio(source_path)))
         with _JOBS_LOCK:
             job.update({
                 'status': 'ready',
@@ -187,8 +236,10 @@ def _run_job(job_id: str) -> None:
                 'expires': time.time() + 600,
             })
     finally:
-        # the audio bytes are worthless after transcription — free the disk now
-        Path(job['path']).unlink(missing_ok=True)
+        # the audio bytes are worthless after transcription — free the disk
+        # now (the normalized copy too, when ffmpeg made one)
+        source_path.unlink(missing_ok=True)
+        source_path.with_name(source_path.name + '.norm.wav').unlink(missing_ok=True)
 
 
 @router.get('/transcribe/job/{job_id}')

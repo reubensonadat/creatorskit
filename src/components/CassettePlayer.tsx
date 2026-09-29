@@ -560,7 +560,7 @@ export function CassettePlayer({
                     {/* ─── White Vinyl Sticker Label ─── */}
                     <div className="absolute top-[9.5%] right-[8.5%] bottom-[24%] left-[8.5%] z-1 overflow-clip rounded-[9px] border-4 border-transparent bg-white text-zinc-900 shadow-[inset_0_0_12px_rgba(92,74,49,0.12)] [container-type:inline-size] [overflow-clip-margin:border-box] max-[560px]:rounded-md">
                         {/* Title Centered */}
-                        <div className="relative z-2 mx-4 mt-4 flex flex-col items-center justify-center text-center">
+                        <div className="relative z-2 mx-4 mt-4 max-[560px]:mt-3 flex flex-col items-center justify-center text-center">
                             {archiveLabel ? (
                                 <span className="relative z-2 font-bold font-mono text-[clamp(8px,2.5cqw,11px)] text-zinc-600 uppercase leading-none tracking-[0.12em] mb-1">
                                     {archiveLabel}
@@ -572,7 +572,7 @@ export function CassettePlayer({
                         </div>
 
                         {/* ─── Center Window with Stripes & Spools ─── */}
-                        <div className="relative mt-4 h-[34%] max-[560px]:h-[31%]">
+                        <div className="relative mt-4 h-[34%] max-[560px]:mt-3 max-[560px]:h-[28%]">
                             {/* 3 Color Stripes: CreatorKit Yellow / Black / CreatorKit Yellow */}
                             <div
                                 aria-hidden="true"
