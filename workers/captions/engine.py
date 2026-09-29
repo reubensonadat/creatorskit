@@ -9,8 +9,15 @@ disk — see docs/AUDIO_TRANSCRIPTION_PLAN.md):
 - Lazy load: the first /transcribe pays ~2-4s; until then zero RAM used.
 - One inference at a time: the lock serializes BOTH load and transcribe —
   a 1-vCPU box gains nothing from parallel runs and RAM would double.
-- Idle unload: a daemon drops the model after 600s without a request so a
-  quiet container doesn't sit on ~180MB it isn't using.
+- Speed knobs for the 1-vCPU reality: beam_size=1 (greedy — beam 5 costs
+  ~5x decoder work for near-identical captions), condition_on_previous_text
+  off (no context re-feed every window: faster on long audio and it kills
+  whisper's repetition loops), cpu_threads=1 (CTranslate2 defaults to 4,
+  which thrashes on one shared core; os.cpu_count() in the container can't
+  be trusted — it reports the HOST's cores).
+- Idle unload: a daemon drops the model after 30min without a request so a
+  quiet container doesn't sit on ~180MB it isn't using (kept warm longer
+  than the old 10min — the reload cost outweighs the RAM on this box).
 - Baked-at-build preferred (Dockerfile prints CAPTIONS_MODEL_BAKED); if
   the bake failed, WhisperModel() downloads to MODELS_DIR on first use —
   the dir is chowned to the runtime user (uid 1000) for exactly that.
@@ -29,7 +36,8 @@ MODEL_ID = os.environ.get('WHISPER_MODEL', 'base.en')
 MODELS_DIR = os.environ.get(
     'WHISPER_MODELS_DIR', str(Path(tempfile.gettempdir()) / 'whisper-models')
 )
-IDLE_UNLOAD_SECONDS = int(os.environ.get('WHISPER_IDLE_UNLOAD', '600'))
+IDLE_UNLOAD_SECONDS = int(os.environ.get('WHISPER_IDLE_UNLOAD', '1800'))
+CPU_THREADS = int(os.environ.get('WHISPER_CPU_THREADS', '1'))
 
 _model = None            # the WhisperModel once loaded
 _model_lock = threading.Lock()
@@ -60,6 +68,7 @@ def _load():
         from faster_whisper import WhisperModel   # lazy: wheel may be absent in dev
         model = WhisperModel(
             MODEL_ID, device='cpu', compute_type='int8', download_root=MODELS_DIR,
+            cpu_threads=CPU_THREADS,
         )
         _load_s = round(time.time() - started, 1)
         _load_failed_at = 0.0
@@ -93,7 +102,15 @@ def transcribe(path) -> dict:
             # .en models are English-only — passing language='en' skips the
             # (unreliable on .en) auto-detect pass and saves seconds. Non-.en
             # models (WHISPER_MODEL override) keep auto-detection.
-            kwargs: dict = {'word_timestamps': True, 'vad_filter': True}
+            # Speed: beam_size=1 (greedy decode) + no previous-text
+            # conditioning — together roughly 2-3x faster than the library
+            # defaults on this box, with caption-grade quality unchanged.
+            kwargs: dict = {
+                'word_timestamps': True,
+                'vad_filter': True,
+                'beam_size': 1,
+                'condition_on_previous_text': False,
+            }
             if MODEL_ID.endswith('.en'):
                 kwargs['language'] = 'en'
             segments, info = _model.transcribe(str(path), **kwargs)

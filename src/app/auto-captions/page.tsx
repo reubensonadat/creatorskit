@@ -49,13 +49,13 @@ import {
 } from '@/lib/captions/whisper-cloud';
 import {
     transcribeOnWorker,
-    prefersServerTranscription,
     WorkerTranscribeError,
 } from '@/lib/captions/worker-transcribe';
 
 /** Which transcription engine the captions page runs:
- *  local (browser Whisper, hybrid server rescue) · server (our free Render
- *  worker) · groq/openai (user's own API key). */
+ *  server (our free Render worker — the DEFAULT, with a silent browser
+ *  fallback) · local (browser Whisper, server rescue) · groq/openai (the
+ *  user's own API key). */
 type EngineChoice = CloudTranscriptionProvider | 'local' | 'server';
 import {
     type CaptionVideoMode,
@@ -249,7 +249,7 @@ export default function CaptionsPage() {
     const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
     // 🚀 BYOK (Bring Your Own Key) Engine Settings + our free server engine
-    const [transcriptionEngine, setTranscriptionEngine] = useState<EngineChoice>('local');
+    const [transcriptionEngine, setTranscriptionEngine] = useState<EngineChoice>('server');
     const [groqKey, setGroqKey] = useState<string>('');
     const [openaiKey, setOpenaiKey] = useState<string>('');
     const [byokModalOpen, setByokModalOpen] = useState<boolean>(false);
@@ -392,24 +392,91 @@ export default function CaptionsPage() {
                     (prog) => setProgress(prog)
                 );
             } else if (activeEngine === 'server') {
-                // Explicit server engine: straight to our free Render worker
-                // (one-time ticket minted by the edge function — the real
-                // worker token never enters client code). No local decode
-                // needed at all, so this works on any device.
+                // SERVER (the DEFAULT): free Render worker first (one-time
+                // ticket minted by the edge function — the real worker token
+                // never enters client code). The browser engine is a silent
+                // bodyguard: only when BOTH paths fail does the user see an
+                // error with retry options.
+                //
+                // Decode locally first when the browser can: it's quick, it
+                // primes the fallback, and it lets us upload a tiny 16k WAV
+                // instead of the raw file (smaller upload, server skips its
+                // ffmpeg step). If this browser can't decode the codec at
+                // all, send the raw file — the worker's ffmpeg normalizes
+                // it server-side.
+                setProgress({
+                    stage: 'decoding',
+                    message: 'Analyzing audio...',
+                    percent: 5,
+                });
+
+                let browserPcm: Float32Array | null = null;
+                let decodedDuration: number | undefined;
+                try {
+                    const decoded = await processAudioForWhisper(selectedFile, () => {
+                        setProgress({
+                            stage: 'decoding',
+                            message: 'Analyzing audio...',
+                            percent: 15,
+                        });
+                    });
+                    browserPcm = decoded.audioData;
+                    decodedDuration = decoded.duration;
+                    setAudioDuration(decoded.duration);
+                } catch {
+                    // Undecodable in this browser (MKV / AC-3 …) — raw upload it is.
+                }
+
                 setProgress({
                     stage: 'loading_model',
-                    message: 'Connecting to CreatorKit Server...',
-                    percent: 15,
+                    message: 'Generating captions on the free server...',
+                    percent: 20,
                 });
-                result = await transcribeOnWorker({
-                    file: selectedFile,
-                    onProgress: (prog) => setProgress(prog),
-                });
+
+                try {
+                    result = await transcribeOnWorker({
+                        file: selectedFile,
+                        audioData: browserPcm,
+                        durationSeconds: decodedDuration,
+                        onProgress: (prog) => setProgress(prog),
+                    });
+                } catch (serverErr) {
+                    // These two have no sensible browser rescue (file too
+                    // big for anyone / edge function unreachable) — surface
+                    // them straight away.
+                    if (
+                        serverErr instanceof WorkerTranscribeError &&
+                        (serverErr.code === 'too_large' || serverErr.code === 'edge_offline')
+                    ) {
+                        throw serverErr;
+                    }
+                    // Anything else (busy, cold start, network hiccup):
+                    // quietly finish in the browser on the audio we already
+                    // decoded — no restart, no alarm. No decoded audio →
+                    // nothing to fall back to, so the server error is the
+                    // story the user needs to see.
+                    if (!browserPcm) {
+                        throw serverErr;
+                    }
+                    setProgress({
+                        stage: 'loading_model',
+                        message: 'Server busy — finishing in your browser instead...',
+                        percent: 20,
+                    });
+                    if (!whisperClientRef.current) {
+                        whisperClientRef.current = new WhisperClient();
+                    }
+                    result = await whisperClientRef.current.transcribe(browserPcm, (prog) => {
+                        setProgress(prog);
+                    });
+                }
             } else {
-                // LOCAL = smart hybrid. Weak devices (phones / low RAM — the
-                // S21 freeze lesson) go SERVER first for cool, non-freezing
-                // transcriptions; desktops keep the instant offline browser
-                // engine first. Either side rescues the other on failure.
+                // LOCAL: fully-offline browser Whisper first. The free
+                // server engine rescues only when the browser can't
+                // (undecodable codec, OOM on a weak device). When the
+                // failed local run got as far as decoding, that PCM
+                // upgrades the rescue to a tiny WAV upload; otherwise the
+                // raw file goes up and the worker's ffmpeg decodes it.
                 let browserPcm: Float32Array | null = null;
 
                 const runBrowserEngine = async (): Promise<TranscriptionResult> => {
@@ -446,40 +513,15 @@ export default function CaptionsPage() {
                     });
                 };
 
-                if (prefersServerTranscription()) {
-                    try {
-                        result = await transcribeOnWorker({
-                            file: selectedFile,
-                            onProgress: (prog) => setProgress(prog),
-                        });
-                    } catch (serverErr) {
-                        // too_large / edge_offline have no sensible browser
-                        // rescue (oversized or undecodable + offline) —
-                        // surface them. Everything else (busy, hiccup)
-                        // falls back to the browser engine.
-                        if (
-                            serverErr instanceof WorkerTranscribeError &&
-                            (serverErr.code === 'too_large' || serverErr.code === 'edge_offline')
-                        ) {
-                            throw serverErr;
-                        }
-                        result = await runBrowserEngine();
-                    }
-                } else {
-                    try {
-                        result = await runBrowserEngine();
-                    } catch {
-                        // Server rescue: when the browser decoded the audio
-                        // we upload a tiny 16k WAV re-encoded from that PCM;
-                        // when it couldn't decode AT ALL (MKV / AC-3 — the
-                        // old dead end) we send the raw file and the
-                        // worker's PyAV decodes server-side instead.
-                        result = await transcribeOnWorker({
-                            file: selectedFile,
-                            audioData: browserPcm,
-                            onProgress: (prog) => setProgress(prog),
-                        });
-                    }
+                try {
+                    result = await runBrowserEngine();
+                } catch {
+                    // Server rescue — same silent-recovery deal, mirrored.
+                    result = await transcribeOnWorker({
+                        file: selectedFile,
+                        audioData: browserPcm,
+                        onProgress: (prog) => setProgress(prog),
+                    });
                 }
             }
 
@@ -1141,7 +1183,7 @@ export default function CaptionsPage() {
                         Whisper Auto Captions
                     </span>
                     <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#666', fontFamily: 'monospace' }}>
-                        OFFLINE BROWSER AI · SRT/VTT EXPORT · 1080P OVERLAY RENDER
+                        FREE SERVER + BROWSER AI · SRT/VTT EXPORT · 1080P OVERLAY RENDER
                     </span>
                 </div>
 
@@ -1159,7 +1201,7 @@ export default function CaptionsPage() {
                         Auto Captions
                     </h1>
                     <p style={{ fontSize: '0.85rem', color: '#555', maxWidth: 720, lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
-                        Free speech-to-text — offline Whisper in your browser, or your own Groq / OpenAI key.
+                        Free speech-to-text — our fast free server by default (offline browser mode included), or your own Groq / OpenAI key.
                     </p>
                 </div>
             </div>
@@ -1204,18 +1246,19 @@ export default function CaptionsPage() {
                     <span style={BRUT_LABEL}>Engine</span>
                     <button
                         type="button"
-                        style={brutChip(transcriptionEngine === 'local')}
-                        onClick={() => setTranscriptionEngine('local')}
+                        style={brutChip(transcriptionEngine === 'server')}
+                        onClick={() => setTranscriptionEngine('server')}
+                        title="Transcribe on CreatorKit's free server — works on any device, handles files the browser can't decode. Falls back to your browser automatically if the server is busy."
                     >
-                        Local · Offline
+                        Server · Free ★
                     </button>
                     <button
                         type="button"
-                        style={brutChip(transcriptionEngine === 'server')}
-                        onClick={() => setTranscriptionEngine('server')}
-                        title="Transcribe on CreatorKit's free server — works on any device, handles files the browser can't decode"
+                        style={brutChip(transcriptionEngine === 'local')}
+                        onClick={() => setTranscriptionEngine('local')}
+                        title="Fully offline — Whisper runs in your browser. The free server rescues files this browser can't decode."
                     >
-                        Server · Free
+                        Local · Offline
                     </button>
                     <button
                         type="button"
