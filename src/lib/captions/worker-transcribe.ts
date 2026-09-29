@@ -205,7 +205,15 @@ export async function transcribeOnWorker(opts: WorkerTranscribeOptions): Promise
                 `${CAPTIONS_WORKER_BASE}/transcribe/job/${encodeURIComponent(start.jobId)}?t=${encodeURIComponent(start.token)}`
             );
             if (pollRes.status === 404) {
-                throw new WorkerTranscribeError('The transcription job expired. Try again.', 'timeout');
+                // We already HOLD a jobId, so the job existed. A 404 this early
+                // means the worker restarted mid-transcription (jobs live in
+                // memory; deploys swap the container). Render's proxy errors
+                // during the swap arrive as opaque CORS/fetch failures — the
+                // consecutiveErrors branch below covers those.
+                throw new WorkerTranscribeError(
+                    'The server restarted mid-transcription (jobs do not survive deploys). Try again.',
+                    'failed'
+                );
             }
             job = await pollRes.json();
             consecutiveErrors = 0;
