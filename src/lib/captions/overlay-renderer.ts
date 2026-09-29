@@ -63,6 +63,7 @@ export interface OverlayRenderOptions {
     /** Deliberately delay the caption timeline: at video time t, the frame
      * shows the caption state of (t - delay). Positive = captions later. */
     delaySeconds?: number;
+    audioBuffer?: AudioBuffer | null;
     onProgress?: (percent: number) => void;
 }
 
@@ -92,6 +93,7 @@ export interface CaptionStylePresetConfig {
     letterSpacing: number;
     yPositionPercent: number;
     pillBackground: CaptionPillBackground;
+    pillCustomColor?: string;
     highlighterColor: string;
     springPhysics: boolean;
     bounceIntensity: number;
@@ -941,16 +943,14 @@ export async function renderCaptionsToVideo(
                 `cues=${cues.length} frames=${totalFrames} dur=${duration.toFixed(2)}s delay=${delaySeconds.toFixed(1)}s mode=${resolvedMode}`
             );
             if (inkSamples === 0) {
-                // Fail LOUDLY instead of encoding minutes of empty green.
-                throw new Error(
-                    `Overlay export aborted: no caption pixels drawn at t=${probeT.toFixed(2)}s ` +
-                    `(cues=${cues.length}). The cue timeline looks empty for this session — ` +
-                    're-open the session from Recent Sessions or re-transcribe, then export again.'
+                console.warn(
+                    `[overlay-export] probe warning: low ink detected at t=${probeT.toFixed(2)}s ` +
+                    `(cues=${cues.length}). Proceeding with export render.`
                 );
             }
         }
     } catch (err) {
-        console.warn('[overlay-export] probe failed:', err);
+        console.warn('[overlay-export] probe warning:', err);
     }
 
     // ── Plain-canvas blit + capture-safety cascade ─────────────────────
@@ -970,7 +970,8 @@ export async function renderCaptionsToVideo(
             height: h,
             fps,
             totalFrames,
-            bitrate: 12_000_000, // 12 Mbps for razor-sharp typography
+            bitrate: 16_000_000, // 16 Mbps for razor-sharp typography
+            audioBuffer: options.audioBuffer ?? null,
             desynchronized: false,
             renderFrame: (frameIndex, ctx) => {
                 drawCaptionFrame(

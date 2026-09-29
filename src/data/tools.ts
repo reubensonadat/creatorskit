@@ -67,6 +67,15 @@ export const NATIVE_TOOLS: ToolItem[] = [
     badge: 'NEW',
   },
   {
+    label: 'Video Overlay Studio',
+    href: '/overlay',
+    hint: 'KINETIC SUBTITLES',
+    desc: 'Render animated 1080p kinetic captions with audio & export green-screen/MP4 for video editors.',
+    isFlagship: true,
+    category: 'motion',
+    badge: 'POPULAR',
+  },
+  {
     label: 'Digital Bouquet Studio',
     href: '/bouquet',
     hint: 'PRINTABLE BOTANICAL GIFT',

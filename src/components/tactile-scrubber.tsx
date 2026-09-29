@@ -108,6 +108,8 @@ export function TactileScrubber({
     ? formatValue(value)
     : step && step >= 1
     ? `${Math.round(value)}`
+    : typeof value === 'number'
+    ? value.toFixed(2)
     : `${value}`;
 
   const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));

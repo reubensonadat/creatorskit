@@ -827,10 +827,12 @@
     display: none !important;
   }
 
-  /* === TRANSPORT BAR: stack on mobile === */
+  /* === TRANSPORT BAR: keep on a single line on mobile === */
   .tool-transport-bar {
-    flex-direction: column !important;
-    gap: 8px !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
     padding: 6px 8px !important;
   }
 

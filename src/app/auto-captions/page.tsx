@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { CassettePlayer } from '@/components/CassettePlayer';
 import { processAudioForWhisper } from '@/lib/captions/audio-processor';
 import {
@@ -22,6 +23,8 @@ import {
     clearAudioCache,
 } from '@/lib/captions/audio-cache';
 import {
+    Undo2,
+    Redo2,
     Upload,
     Download,
     Copy,
@@ -69,8 +72,10 @@ import {
     ensureOverlayFontReady,
     POPULAR_OVERLAY_FONTS,
 } from '@/lib/captions/overlay-renderer';
+import { downloadBlob } from '@/lib/canvas-video-exporter';
 import { alignScriptWithAudioCues } from '@/lib/captions/script-aligner';
 import { TactileScrubber } from '@/components/tactile-scrubber';
+import { OverlayStudio } from '@/components/OverlayStudio';
 
 const DEFAULT_OVERLAY_FONTS = [
     { id: 'montserrat', name: 'Montserrat', family: '"Montserrat", sans-serif' },
@@ -240,7 +245,7 @@ function BrutProgress({ percent, label, statusText }: { percent: number; label?:
     );
 }
 
-export default function CaptionsPage() {
+export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette' | 'overlay' } = {}) {
     const [file, setFile] = useState<File | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     // True when a restored session has cues but its audio blob could not be
@@ -327,7 +332,25 @@ export default function CaptionsPage() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     // Left Studio Deck Mode: 'cassette' | 'overlay'
-    const [activeStudioDeck, setActiveStudioDeck] = useState<'cassette' | 'overlay'>('cassette');
+    const [activeStudioDeck, setActiveStudioDeck] = useState<'cassette' | 'overlay'>(initialDeck || 'cassette');
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            if (window.location.pathname.startsWith('/overlay')) {
+                setActiveStudioDeck('overlay');
+            }
+        }
+    }, []);
+
+    const handleSwitchDeck = (deck: 'cassette' | 'overlay') => {
+        setActiveStudioDeck(deck);
+        if (typeof window !== 'undefined') {
+            const targetPath = deck === 'overlay' ? '/overlay' : '/auto-captions';
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        }
+    };
 
     // Video Overlay Studio Configuration (3 Modes: Teleprompter Highlight, Kinetic Pop, Minimal)
     const [videoMode, setVideoMode] = useState<CaptionVideoMode>('kinetic-pop');
@@ -347,8 +370,74 @@ export default function CaptionsPage() {
     const cueDragRef = useRef<{ index: number; startX: number; origStart: number; width: number; dur: number; len: number; newStart: number; movedPx: number } | null>(null);
     const cueTrackRef = useRef<HTMLDivElement | null>(null);
     const cueTrackScrollRef = useRef<HTMLDivElement | null>(null);
+    const [overlayPlaybackRate, setOverlayPlaybackRate] = useState<number>(1);
     const [isRenderingVideo, setIsRenderingVideo] = useState(false);
     const [videoRenderProgress, setVideoRenderProgress] = useState(0);
+
+    // Cue timeline undo/redo history stacks
+    const [pastCues, setPastCues] = useState<SubtitleCue[][]>([]);
+    const [futureCues, setFutureCues] = useState<SubtitleCue[][]>([]);
+
+    const handleUndoCue = useCallback(() => {
+        setPastCues((past) => {
+            if (past.length === 0) return past;
+            const previous = past[past.length - 1];
+            const newPast = past.slice(0, -1);
+
+            setCues((current) => {
+                setFutureCues((future) => [current, ...future.slice(0, 40)]);
+                const vtt = generateVtt(previous);
+                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(previous)); } catch { }
+                return previous;
+            });
+
+            return newPast;
+        });
+    }, []);
+
+    const handleRedoCue = useCallback(() => {
+        setFutureCues((future) => {
+            if (future.length === 0) return future;
+            const next = future[0];
+            const newFuture = future.slice(1);
+
+            setCues((current) => {
+                setPastCues((past) => [...past.slice(-40), current]);
+                const vtt = generateVtt(next);
+                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
+                return next;
+            });
+
+            return newFuture;
+        });
+    }, []);
+
+    // Global keyboard shortcuts for Undo / Redo
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) {
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    handleRedoCue();
+                } else {
+                    e.preventDefault();
+                    handleUndoCue();
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                handleRedoCue();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleUndoCue, handleRedoCue]);
 
     // ✨ Visual Kinetic Typography & Physics Controls
     const [springPhysics, setSpringPhysics] = useState<boolean>(true);
@@ -1119,6 +1208,9 @@ export default function CaptionsPage() {
             if (!cue) return prev;
             const len = Math.max(0.05, cue.end - cue.start);
             const newStart = Math.max(0, parseFloat(newStartSeconds.toFixed(2)));
+            if (Math.abs(newStart - cue.start) < 0.01) return prev;
+            setPastCues((past) => [...past.slice(-40), prev]);
+            setFutureCues([]);
             const appliedShift = newStart - cue.start;
             const moved: SubtitleCue = {
                 ...cue,
@@ -1150,6 +1242,8 @@ export default function CaptionsPage() {
     // be spoken — so the drag timeline, preview and export stay in sync.
     const handleSyncCueTimings = () => {
         setCues((prev) => {
+            setPastCues((past) => [...past.slice(-40), prev]);
+            setFutureCues([]);
             const next = prev.map((c) => {
                 const textWords = c.text.trim().split(/\s+/).filter(Boolean);
                 if (textWords.length === 0) return c;
@@ -1231,11 +1325,10 @@ export default function CaptionsPage() {
                 createdAt: Date.now(),
                 title: file.name,
             });
-            const url = URL.createObjectURL(blobWithMeta);
             const nameParts = file.name.split('.');
             const ext = nameParts.pop() || 'webm';
             const base = nameParts.join('.');
-            downloadFile(url, `${base}_with_metadata.${ext}`, blobWithMeta.type);
+            downloadBlob(blobWithMeta, `${base}_with_metadata.${ext}`);
         } catch (err) {
             console.error('Failed to embed metadata on download:', err);
         }
@@ -1528,6 +1621,15 @@ export default function CaptionsPage() {
         }
     }, [overlayCurrentTime, audioDuration, cues]);
 
+    // Apply playback rate to the overlay audio (pitch-preserved) whenever
+    // it changes or a fresh audio element mounts.
+    useEffect(() => {
+        const audio = overlayAudioRef.current;
+        if (!audio) return;
+        audio.preservesPitch = true;
+        audio.playbackRate = overlayPlaybackRate;
+    }, [overlayPlaybackRate, audioUrl, overlayPlaying]);
+
     const toggleOverlayPlayback = () => {
         const audio = overlayAudioRef.current;
         if (!audio) return;
@@ -1564,6 +1666,19 @@ export default function CaptionsPage() {
 
         try {
             const effectiveDur = audioDuration || (cues.length > 0 ? cues[cues.length - 1].end : 5);
+            let audioBuffer: AudioBuffer | null = null;
+            try {
+                const audioBlob = file || (await getAudioBlobFromCache(STORAGE_KEYS.AUDIO_KEY));
+                if (audioBlob) {
+                    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                    const arrayBuf = await audioBlob.arrayBuffer();
+                    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+                    await audioCtx.close();
+                }
+            } catch (aErr) {
+                console.warn('Audio mux decode skipped:', aErr);
+            }
+
             const videoBlob = await renderCaptionsToVideo({
                 cues,
                 duration: effectiveDur,
@@ -1572,6 +1687,7 @@ export default function CaptionsPage() {
                 aspectRatio: overlayAspectRatio,
                 delaySeconds: overlayDelay,
                 background: bg,
+                audioBuffer,
                 typography: {
                     fontFamily: captionFont,
                     fontSize: captionFontSize,
@@ -1590,12 +1706,9 @@ export default function CaptionsPage() {
                 onProgress: (percent) => setVideoRenderProgress(percent),
             });
 
-            const url = URL.createObjectURL(videoBlob);
             const baseName = file?.name?.replace(/\.[^/.]+$/, '') || 'captions';
-            // Same MP4 pipeline as match cut / text highlighter. Transparent
-            // requests are flattened onto green (H.264 has no alpha channel).
             const ext = videoBlob.type.includes('mp4') ? 'mp4' : 'webm';
-            downloadFile(url, `${baseName}_overlay_${videoMode}_${overlayAspectRatio.replace(':', 'x')}.${ext}`, videoBlob.type);
+            downloadBlob(videoBlob, `${baseName}_overlay_${videoMode}_${overlayAspectRatio.replace(':', 'x')}.${ext}`);
         } catch (err) {
             console.error('Error rendering overlay video:', err);
         } finally {
@@ -1640,22 +1753,42 @@ export default function CaptionsPage() {
                     </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
-                    <h1
-                        style={{
-                            fontSize: '1.85rem',
-                            fontWeight: 900,
-                            letterSpacing: '-0.03em',
-                            color: '#000',
-                            textTransform: 'uppercase',
-                            margin: 0,
-                        }}
-                    >
-                        Auto Captions
-                    </h1>
-                    <p style={{ fontSize: '0.85rem', color: '#555', maxWidth: 720, lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
-                        Free speech-to-text — our fast free server by default (offline browser mode included), or your own Groq / OpenAI key.
-                    </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                        <h1
+                            style={{
+                                fontSize: '1.85rem',
+                                fontWeight: 900,
+                                letterSpacing: '-0.03em',
+                                color: '#000',
+                                textTransform: 'uppercase',
+                                margin: 0,
+                            }}
+                        >
+                            Auto Captions
+                        </h1>
+                        <p style={{ fontSize: '0.85rem', color: '#555', maxWidth: 640, lineHeight: 1.5, fontWeight: 500, margin: 0 }}>
+                            Free speech-to-text — our fast free server by default (offline browser mode included), or your own Groq / OpenAI key.
+                        </p>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ ...brutChip(true), cursor: 'default' }}>
+                            Captions & Transcript
+                        </span>
+                        <Link
+                            href="/overlay"
+                            style={{
+                                ...brutChip(false),
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                            }}
+                        >
+                            Overlay Studio →
+                        </Link>
+                    </div>
                 </div>
             </div>
 
@@ -2378,28 +2511,37 @@ export default function CaptionsPage() {
                                         className="tool-transport-bar"
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px',
+                                            padding: '6px 10px',
                                             border: '2px solid #000',
                                             background: '#f4f4f5',
                                             borderRadius: 4,
                                             display: 'flex',
-                                            flexWrap: 'wrap',
+                                            flexDirection: 'row',
+                                            flexWrap: 'nowrap',
                                             alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: 10,
+                                            gap: 8,
+                                            boxSizing: 'border-box',
                                         }}
                                     >
                                         <button
                                             type="button"
                                             onClick={toggleOverlayPlayback}
                                             className="brutalist-button"
-                                            style={{ padding: '6px 10px' }}
+                                            style={{
+                                                padding: '5px 8px',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0,
+                                                minWidth: 32,
+                                                height: 28,
+                                            }}
                                             aria-label={overlayPlaying ? 'Pause' : 'Play'}
                                         >
                                             {overlayPlaying ? <Pause size={14} /> : <Play size={14} />}
                                         </button>
 
-                                        <div style={{ flex: 1, minWidth: 120 }}>
+                                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                                             <TactileScrubber
                                                 value={overlayCurrentTime}
                                                 min={0}
@@ -2408,6 +2550,7 @@ export default function CaptionsPage() {
                                                 stepDelta={0.5}
                                                 height={14}
                                                 showSteppers={false}
+                                                formatValue={(t) => t.toFixed(2)}
                                                 onChange={(t) => {
                                                     setOverlayCurrentTime(t);
                                                     if (overlayAudioRef.current) {
@@ -2424,21 +2567,57 @@ export default function CaptionsPage() {
                                                 fontWeight: 900,
                                                 color: '#000',
                                                 background: '#FFE500',
-                                                padding: '1px 5px',
+                                                padding: '2px 6px',
                                                 border: '1.5px solid #000',
                                                 borderRadius: 3,
-                                                minWidth: 52,
+                                                flexShrink: 0,
                                                 textAlign: 'center',
                                                 fontVariantNumeric: 'tabular-nums',
+                                                whiteSpace: 'nowrap',
                                             }}
                                         >
-                                            {overlayCurrentTime.toFixed(1)}s
+                                            {overlayCurrentTime.toFixed(2)}s
                                         </span>
                                     </div>
 
+                                    {/* Playback speed — slow the audio to pinpoint exact moments while retiming */}
+                                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>SPEED</span>
+                                        {[0.5, 0.75, 1, 1.5, 2].map((r) => (
+                                            <button
+                                                key={r}
+                                                type="button"
+                                                onClick={() => setOverlayPlaybackRate(r)}
+                                                title="Slow playback to pinpoint exact cue moments — captions follow automatically"
+                                                style={{
+                                                    padding: '2px 7px',
+                                                    border: '1.5px solid #000',
+                                                    background: overlayPlaybackRate === r ? '#000' : '#fff',
+                                                    color: overlayPlaybackRate === r ? '#FFE500' : '#000',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    fontSize: '0.62rem',
+                                                    cursor: 'pointer',
+                                                    borderRadius: 3,
+                                                }}
+                                            >
+                                                {r}×
+                                            </button>
+                                        ))}
+                                    </div>
+
+
                                     {/* Per-cue timeline strip — scroll sideways, drag blocks to retime, gaps = silence */}
                                     {cues.length > 0 && (() => {
-                                        const trackDur = Math.max(1, audioDuration || cues[cues.length - 1].end);
+                                        // Normalized cue geometry: clamp negative starts, repair NaN/degenerate
+                                        // timestamps — guarantees EVERY cue renders a visible, draggable card.
+                                        const norm = cues.map((c) => {
+                                            const st = Number.isFinite(c.start) ? Math.max(0, c.start) : 0;
+                                            const en = Number.isFinite(c.end) && c.end > st ? c.end : st + 2;
+                                            return { st, en, text: c.text };
+                                        });
+                                        // Track must span every cue end (audio metadata can be shorter).
+                                        const trackDur = Math.max(1, audioDuration || 0, norm.reduce((m, n) => Math.max(m, n.en), 0));
                                         const activeIdx = cues.findIndex((c) => overlayCurrentTime >= c.start && overlayCurrentTime <= c.end);
                                         const tickStep = trackDur > 120 ? 30 : trackDur > 40 ? 10 : 5;
                                         const ticks: number[] = [];
@@ -2450,18 +2629,23 @@ export default function CaptionsPage() {
                                         // look like they appear at the same time.
                                         const CARD_GAP = 6;
                                         const textPx = (t: string) => t.trim().length * 6 + 16;
+                                        // Pack lanes in TIME order (dragging a cue earlier must not interleave
+                                        // lanes) and key results back to the original cue index.
                                         const laneEnds: number[] = [];
-                                        const laneOf = cues.map((c) => {
-                                            const leftPx = (c.start / trackDur) * basePx;
-                                            const wPx = Math.max((Math.max(0.05, c.end - c.start) / trackDur) * basePx, textPx(c.text));
-                                            let lane = laneEnds.findIndex((end) => leftPx >= end + CARD_GAP);
-                                            if (lane === -1) {
-                                                lane = laneEnds.length;
-                                                laneEnds.push(0);
-                                            }
-                                            laneEnds[lane] = leftPx + wPx;
-                                            return lane;
-                                        });
+                                        const laneOf: number[] = new Array(cues.length).fill(0);
+                                        cues.map((_, k) => k)
+                                            .sort((a, b) => (norm[a].st - norm[b].st) || (a - b))
+                                            .forEach((k) => {
+                                                const leftPx = (norm[k].st / trackDur) * basePx;
+                                                const wPx = Math.max(((norm[k].en - norm[k].st) / trackDur) * basePx, textPx(norm[k].text));
+                                                let lane = laneEnds.findIndex((end) => leftPx >= end + CARD_GAP);
+                                                if (lane === -1) {
+                                                    lane = laneEnds.length;
+                                                    laneEnds.push(0);
+                                                }
+                                                laneEnds[lane] = leftPx + wPx;
+                                                laneOf[k] = lane;
+                                            });
                                         const laneCount = Math.max(1, laneEnds.length);
                                         const trackH = laneCount * 37 + 16;
                                         const innerWidth = `max(100%, ${Math.max(basePx, ...laneEnds, 0) + 8}px)`;
@@ -2472,10 +2656,82 @@ export default function CaptionsPage() {
                                         };
                                         return (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', justifyContent: 'space-between', letterSpacing: '0.02em' }}>
-                                                    <span>CUE TIMELINE — DRAG TO RETIME · SCROLL → FOR MORE</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                        <span>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
+                                                <div
+                                                    style={{
+                                                        fontSize: '0.56rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        color: '#000',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        flexWrap: 'wrap',
+                                                        gap: '4px 8px',
+                                                        letterSpacing: '0.02em',
+                                                    }}
+                                                >
+                                                    {/* On desktop: left side of 1 line. On mobile: line 1 */}
+                                                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, flexShrink: 1 }}>
+                                                        <span>CUE TIMELINE — DRAG TO RETIME · SCROLL → FOR MORE</span>
+                                                    </div>
+
+                                                    {/* On desktop: right side of 1 line. On mobile: line 2 */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, marginLeft: 'auto' }}>
+                                                        <span style={{ whiteSpace: 'nowrap' }}>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
+
+                                                        {/* Small icon-only Undo button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleUndoCue}
+                                                            disabled={pastCues.length === 0}
+                                                            title="Undo (Ctrl+Z)"
+                                                            aria-label="Undo cue re-time"
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                width: 20,
+                                                                height: 20,
+                                                                padding: 0,
+                                                                border: '1.5px solid #000',
+                                                                background: pastCues.length > 0 ? '#fff' : '#f4f4f5',
+                                                                color: pastCues.length > 0 ? '#000' : '#a1a1aa',
+                                                                borderRadius: 3,
+                                                                cursor: pastCues.length > 0 ? 'pointer' : 'not-allowed',
+                                                                boxShadow: pastCues.length > 0 ? '1px 1px 0 #000' : 'none',
+                                                                opacity: pastCues.length > 0 ? 1 : 0.45,
+                                                            }}
+                                                        >
+                                                            <Undo2 size={11} strokeWidth={2.6} />
+                                                        </button>
+
+                                                        {/* Small icon-only Redo button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleRedoCue}
+                                                            disabled={futureCues.length === 0}
+                                                            title="Redo (Ctrl+Y)"
+                                                            aria-label="Redo cue re-time"
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                width: 20,
+                                                                height: 20,
+                                                                padding: 0,
+                                                                border: '1.5px solid #000',
+                                                                background: futureCues.length > 0 ? '#fff' : '#f4f4f5',
+                                                                color: futureCues.length > 0 ? '#000' : '#a1a1aa',
+                                                                borderRadius: 3,
+                                                                cursor: futureCues.length > 0 ? 'pointer' : 'not-allowed',
+                                                                boxShadow: futureCues.length > 0 ? '1px 1px 0 #000' : 'none',
+                                                                opacity: futureCues.length > 0 ? 1 : 0.45,
+                                                            }}
+                                                        >
+                                                            <Redo2 size={11} strokeWidth={2.6} />
+                                                        </button>
+
+                                                        {/* Sync timings button */}
                                                         <button
                                                             type="button"
                                                             onClick={handleSyncCueTimings}
@@ -2491,6 +2747,8 @@ export default function CaptionsPage() {
                                                                 borderRadius: 3,
                                                                 cursor: 'pointer',
                                                                 textTransform: 'uppercase',
+                                                                whiteSpace: 'nowrap',
+                                                                boxShadow: '1px 1px 0 #000',
                                                             }}
                                                         >
                                                             SYNC TIMINGS
@@ -2531,9 +2789,10 @@ export default function CaptionsPage() {
                                                             </div>
                                                         ))}
                                                         {cues.map((c, i) => {
-                                                            const len = Math.max(0.05, c.end - c.start);
-                                                            const posStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : c.start;
-                                                            const leftPct = Math.min(99, (posStart / trackDur) * 100);
+                                                            const len = Math.max(0.05, norm[i].en - norm[i].st);
+                                                            const rawStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : norm[i].st;
+                                                            const posStart = Number.isFinite(rawStart) ? Math.max(0, Math.min(trackDur - 0.05, rawStart)) : 0;
+                                                            const leftPct = Math.min(99.2, (posStart / trackDur) * 100);
                                                             const widthPct = Math.max(0.8, (len / trackDur) * 100);
                                                             return (
                                                                 <div
@@ -2570,7 +2829,7 @@ export default function CaptionsPage() {
                                                                         cueDragRef.current = {
                                                                             index: i,
                                                                             startX: e.clientX,
-                                                                            origStart: c.start,
+                                                                            origStart: norm[i].st,
                                                                             width: cueTrackRef.current?.getBoundingClientRect().width ?? 1,
                                                                             dur: trackDur,
                                                                             len,
@@ -3009,14 +3268,14 @@ export default function CaptionsPage() {
                                     <button
                                         type="button"
                                         style={brutChip(activeStudioDeck === 'cassette')}
-                                        onClick={() => setActiveStudioDeck('cassette')}
+                                        onClick={() => handleSwitchDeck('cassette')}
                                     >
                                         Player
                                     </button>
                                     <button
                                         type="button"
                                         style={brutChip(activeStudioDeck === 'overlay')}
-                                        onClick={() => setActiveStudioDeck('overlay')}
+                                        onClick={() => handleSwitchDeck('overlay')}
                                     >
                                         Overlay studio
                                     </button>

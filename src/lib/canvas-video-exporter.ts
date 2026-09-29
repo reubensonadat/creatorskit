@@ -385,47 +385,66 @@ async function exportViaMediaRecorderFallback(
     const canvas = document.createElement('canvas');
     canvas.width = width - (width % 2);
     canvas.height = height - (height % 2);
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Could not acquire 2D context for export canvas.');
-    if (renderFrameAsync) await renderFrameAsync(0, ctx);
-    else renderFrame!(0, ctx);
+    canvas.style.position = 'fixed';
+    canvas.style.left = '-9999px';
+    canvas.style.top = '-9999px';
+    canvas.style.opacity = '0';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '-9999';
+    document.body.appendChild(canvas);
 
-    const stream = canvas.captureStream(0);
-    const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    try {
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (!ctx) throw new Error('Could not acquire 2D context for export canvas.');
+        if (renderFrameAsync) await renderFrameAsync(0, ctx);
+        else renderFrame!(0, ctx);
 
-    const recorder = new MediaRecorder(stream, {
-        mimeType: selectedMime,
-        videoBitsPerSecond: bitrate,
-    });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-    };
-    const recordPromise = new Promise<Blob>((resolve, reject) => {
-        recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || selectedMime }));
-        recorder.onerror = (err) => reject(err);
-    });
-    recorder.start(250);
+        const stream = canvas.captureStream(0);
+        const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
 
-    for (let i = 0; i < totalFrames; i++) {
-        if (signal?.aborted) break;
-        if (renderFrameAsync) await renderFrameAsync(i, ctx);
-        else renderFrame!(i, ctx);
-        videoTrack.requestFrame();
-        progress.emit((i + 1) / totalFrames);
-        await sleep(1000 / fps);
+        const recorder = new MediaRecorder(stream, {
+            mimeType: selectedMime,
+            videoBitsPerSecond: bitrate,
+        });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e: BlobEvent) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+        const recordPromise = new Promise<Blob>((resolve, reject) => {
+            recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || selectedMime }));
+            recorder.onerror = (err) => reject(err);
+        });
+        recorder.start(250);
+
+        for (let i = 0; i < totalFrames; i++) {
+            if (signal?.aborted) break;
+            if (renderFrameAsync) await renderFrameAsync(i, ctx);
+            else renderFrame!(i, ctx);
+            if (typeof videoTrack.requestFrame === 'function') {
+                videoTrack.requestFrame();
+            }
+            progress.emit((i + 1) / totalFrames);
+            await sleep(1000 / fps);
+        }
+
+        await sleep(150);
+        try {
+            if (recorder.state === 'recording') recorder.requestData();
+        } catch { }
+        if (recorder.state !== 'inactive') recorder.stop();
+        const blob = await recordPromise;
+
+        return {
+            blob,
+            mimeType: selectedMime,
+            audioIncluded: false,
+            usedFallback: true,
+        };
+    } finally {
+        if (canvas.parentNode) {
+            canvas.parentNode.removeChild(canvas);
+        }
     }
-
-    await sleep(150);
-    if (recorder.state !== 'inactive') recorder.stop();
-    const blob = await recordPromise;
-
-    return {
-        blob,
-        mimeType: selectedMime,
-        audioIncluded: false,
-        usedFallback: true,
-    };
 }
 
 /** Triggers a browser download for a blob. */

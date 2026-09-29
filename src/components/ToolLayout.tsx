@@ -49,6 +49,7 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: Re
   "/teleprompter": MonitorPlay,
   "/captions": AudioLines,
   "/auto-captions": AudioLines,
+  "/overlay": Video,
   "/text-behind": Layers,
   "/text-highlighter": Highlighter,
   "/thumbnail-lab": Images,
