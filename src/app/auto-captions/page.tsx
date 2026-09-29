@@ -118,7 +118,44 @@ const STORAGE_KEYS = {
     ELAPSED: 'creatorkit_autoCaptions_elapsed',
     DURATION: 'creatorkit_autoCaptions_duration',
     AUDIO_KEY: 'current_caption_audio',
+    SESSIONS_INDEX: 'creatorkit_autoCaptions_sessions',
 };
+
+/* ── Session history: every finished transcription is archived (audio blob
+ * in IndexedDB under `session:<id>`, cues + metadata in localStorage) so new
+ * work never deletes old work, and any past session can be reopened later. */
+interface SessionIndexEntry {
+    id: string;
+    name: string;
+    createdAt: number;
+    duration: number;
+    cueCount: number;
+}
+
+const SESSIONS_INDEX_LIMIT = 12;
+
+function loadSessionsIndex(): SessionIndexEntry[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.SESSIONS_INDEX);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((s) => s && s.id && s.name) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveSessionsIndex(list: SessionIndexEntry[]) {
+    try {
+        localStorage.setItem(STORAGE_KEYS.SESSIONS_INDEX, JSON.stringify(list.slice(0, SESSIONS_INDEX_LIMIT)));
+    } catch {
+        /* storage full — keep whatever already fits */
+    }
+}
+
+function sessionMetaKey(id: string) {
+    return `creatorkit_autoCaptions_session_meta_${id}`;
+}
 
 /* ── Brutalist UI kit (matches app design system: brutalist-card / brutalist-button) ── */
 const BRUT_LABEL: React.CSSProperties = {
@@ -210,6 +247,9 @@ export default function CaptionsPage() {
     // recovered from IndexedDB (quota / private mode / cleared storage) — the
     // workspace stays fully usable, but the player needs a loud heads-up.
     const [sessionAudioMissing, setSessionAudioMissing] = useState(false);
+    // Recent-session history: loaded from localStorage on mount, refreshed
+    // after each finished transcription. Opening one restores its audio too.
+    const [sessionsIndex, setSessionsIndex] = useState<SessionIndexEntry[]>([]);
     const [vttUrl, setVttUrl] = useState<string | null>(null);
     const [cues, setCues] = useState<SubtitleCue[]>([]);
     const [fullText, setFullText] = useState<string>('');
@@ -332,6 +372,46 @@ export default function CaptionsPage() {
         title?: string;
         wpm?: number;
     } | null>(null);
+    const [showHandoffReplacePrompt, setShowHandoffReplacePrompt] = useState<boolean>(false);
+
+    const handleConfirmHandoffReplace = async () => {
+        if (!pendingHandoff || !pendingHandoff.mediaBlob) return;
+
+        try {
+            localStorage.removeItem(STORAGE_KEYS.CUES);
+            localStorage.removeItem(STORAGE_KEYS.FULL_TEXT);
+            localStorage.removeItem(STORAGE_KEYS.FILE_NAME);
+            localStorage.removeItem(STORAGE_KEYS.ELAPSED);
+            localStorage.removeItem(STORAGE_KEYS.DURATION);
+            await clearAudioCache(STORAGE_KEYS.AUDIO_KEY);
+        } catch (e) {
+            console.warn('Error clearing old session:', e);
+        }
+
+        if (audioUrlRef.current && audioUrlRef.current.startsWith('blob:')) {
+            URL.revokeObjectURL(audioUrlRef.current);
+        }
+        if (vttUrlRef.current && vttUrlRef.current.startsWith('blob:')) {
+            URL.revokeObjectURL(vttUrlRef.current);
+        }
+
+        const transferredFile = new File(
+            [pendingHandoff.mediaBlob],
+            pendingHandoff.fileName || 'teleprompter_take.webm',
+            { type: pendingHandoff.mediaBlob.type || 'audio/webm' }
+        );
+
+        await clearHandoffSession();
+        setPendingHandoff(null);
+        setShowHandoffReplacePrompt(false);
+        handleFile(transferredFile);
+    };
+
+    const handleCancelHandoffReplace = async () => {
+        await clearHandoffSession();
+        setPendingHandoff(null);
+        setShowHandoffReplacePrompt(false);
+    };
 
     // ✍️ Manual Subtitle Cue Editing & Search
     const [showFindReplace, setShowFindReplace] = useState<boolean>(false);
@@ -660,6 +740,33 @@ export default function CaptionsPage() {
                     localStorage.setItem(STORAGE_KEYS.DURATION, dur.toString());
                 }
                 await saveAudioBlobToCache(STORAGE_KEYS.AUDIO_KEY, selectedFile);
+
+                // Archive into session history — new work never deletes old
+                // sessions; re-transcribing the same file replaces its entry.
+                const sessionDuration = finalCues.length > 0 ? finalCues[finalCues.length - 1].end : 0;
+                const sessionId = `s_${Date.now()}`;
+                await saveAudioBlobToCache(`session:${sessionId}`, selectedFile);
+                localStorage.setItem(
+                    sessionMetaKey(sessionId),
+                    JSON.stringify({
+                        cues: finalCues,
+                        fullText: result.fullText,
+                        elapsed: result.elapsedSeconds,
+                        duration: sessionDuration,
+                    })
+                );
+                const prevIndex = loadSessionsIndex();
+                for (const old of prevIndex) {
+                    if (old.name === selectedFile.name) {
+                        localStorage.removeItem(sessionMetaKey(old.id));
+                        clearAudioCache(`session:${old.id}`).catch(() => {});
+                    }
+                }
+                saveSessionsIndex([
+                    { id: sessionId, name: selectedFile.name, createdAt: Date.now(), duration: sessionDuration, cueCount: finalCues.length },
+                    ...prevIndex.filter((s) => s.name !== selectedFile.name),
+                ]);
+                setSessionsIndex(loadSessionsIndex());
             } catch (cacheErr) {
                 console.warn('Session caching warning:', cacheErr);
             }
@@ -689,6 +796,9 @@ export default function CaptionsPage() {
             try {
                 if (typeof window === 'undefined') return;
 
+                // Load the saved-session history (queue of past work)
+                setSessionsIndex(loadSessionsIndex());
+
                 // Load stored BYOK keys
                 const storedGroq = getStoredApiKey('groq');
                 if (storedGroq) setGroqKey(storedGroq);
@@ -697,25 +807,34 @@ export default function CaptionsPage() {
 
                 // Check for 1-Click Handoff from Teleprompter
                 const handoff = await getHandoffSession();
+                const hasExistingSession = !!(
+                    localStorage.getItem(STORAGE_KEYS.CUES) ||
+                    localStorage.getItem(STORAGE_KEYS.FILE_NAME)
+                );
+                const urlParams = new URLSearchParams(window.location.search);
+                const fromTeleprompter =
+                    urlParams.get('from') === 'teleprompter' || urlParams.get('auto') === 'true';
+
                 if (handoff && isMounted) {
                     setPendingHandoff(handoff);
                     if (handoff.script) {
                         setTeleprompterScript(handoff.script);
                     }
-                    // NEVER silently re-transcribe over finished work: if cues from a
-                    // completed run are already stored, a refresh must RESTORE that
-                    // session instead of going back to the server to redo everything.
-                    // The handoff card still appears so a NEW take can be started
-                    // deliberately.
-                    const hasFinishedSession = !!localStorage.getItem(STORAGE_KEYS.CUES);
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob && !hasFinishedSession) {
-                        const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
-                            type: handoff.mediaBlob.type || 'audio/webm',
-                        });
-                        await clearHandoffSession();
-                        handleFile(transferredFile);
-                        return;
+
+                    if (handoff.mediaBlob) {
+                        if (hasExistingSession && fromTeleprompter) {
+                            // User came from teleprompter with a new take, but already has a saved captions project.
+                            // Prompt: "Do you want to cancel or remove what is already inside Auto Captions and start a new one?"
+                            setShowHandoffReplacePrompt(true);
+                        } else if (!hasExistingSession && urlParams.get('auto') === 'true') {
+                            const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
+                                type: handoff.mediaBlob.type || 'audio/webm',
+                            });
+                            await clearHandoffSession();
+                            setPendingHandoff(null);
+                            handleFile(transferredFile);
+                            return;
+                        }
                     }
                 }
 
@@ -1088,6 +1207,73 @@ export default function CaptionsPage() {
         setOverlayCurrentTime(0);
         setIsProcessing(false);
         setProgress({ stage: 'idle', message: 'Ready for audio', percent: 0 });
+    };
+
+    // ── Session history ─────────────────────────────────────────
+    // Open a past session: restore its cues, text AND its archived audio
+    // blob — then keep the legacy single-slot keys in sync so a refresh
+    // restores this exact session too.
+    const openSession = async (id: string) => {
+        const entry = sessionsIndex.find((s) => s.id === id);
+        if (!entry) return;
+        try {
+            const metaRaw = localStorage.getItem(sessionMetaKey(id));
+            if (!metaRaw) return;
+            const meta = JSON.parse(metaRaw) as { cues: SubtitleCue[]; fullText: string; elapsed: string; duration: number };
+            const parsedCues = ensureSingleLineCues(meta.cues || []);
+            const blob = await getAudioBlobFromCache(`session:${id}`);
+
+            if (vttUrl) URL.revokeObjectURL(vttUrl);
+            if (audioUrl && audioUrl.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
+
+            // Legacy single-slot sync — refresh continuity keeps working.
+            localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(parsedCues));
+            localStorage.setItem(STORAGE_KEYS.FULL_TEXT, meta.fullText || '');
+            localStorage.setItem(STORAGE_KEYS.FILE_NAME, entry.name);
+            if (meta.elapsed) localStorage.setItem(STORAGE_KEYS.ELAPSED, String(meta.elapsed));
+            if (meta.duration) localStorage.setItem(STORAGE_KEYS.DURATION, String(meta.duration));
+
+            setCues(parsedCues);
+            setFullText(meta.fullText || '');
+            setElapsed(meta.elapsed ? String(meta.elapsed) : '');
+            setAudioDuration(meta.duration || entry.duration || 0);
+
+            if (blob) {
+                const restoredFile = new File([blob], entry.name, { type: blob.type || 'audio/webm' });
+                await saveAudioBlobToCache(STORAGE_KEYS.AUDIO_KEY, restoredFile);
+                setFile(restoredFile);
+                setAudioUrl(URL.createObjectURL(blob));
+                setSessionAudioMissing(false);
+            } else {
+                await clearAudioCache(STORAGE_KEYS.AUDIO_KEY);
+                setFile(new File([], entry.name, { type: 'audio/webm' }));
+                setAudioUrl(null);
+                setSessionAudioMissing(true);
+            }
+
+            const vttContent = generateVtt(parsedCues);
+            setVttUrl(URL.createObjectURL(new Blob([vttContent], { type: 'text/vtt' })));
+
+            setProgress({
+                stage: 'complete',
+                message: blob ? `Session restored — ${entry.name}` : `Session restored — audio missing (${entry.name})`,
+                percent: 100,
+            });
+        } catch (err) {
+            console.warn('Could not open saved session:', err);
+        }
+    };
+
+    const deleteSession = async (id: string) => {
+        const next = sessionsIndex.filter((s) => s.id !== id);
+        setSessionsIndex(next);
+        saveSessionsIndex(next);
+        try {
+            localStorage.removeItem(sessionMetaKey(id));
+            await clearAudioCache(`session:${id}`);
+        } catch (err) {
+            console.warn('Could not delete saved session:', err);
+        }
     };
 
     const lastScrubberUpdateRef = useRef<number>(0);
@@ -1527,6 +1713,73 @@ export default function CaptionsPage() {
                 </div>
             )}
 
+            {/* Teleprompter Handoff: Replace Existing Captions Modal */}
+            {showHandoffReplacePrompt && pendingHandoff && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0, 0, 0, 0.65)',
+                        zIndex: 10000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                        backdropFilter: 'blur(2px)',
+                    }}
+                >
+                    <div
+                        className="brutalist-card"
+                        style={{
+                            maxWidth: 480,
+                            width: '100%',
+                            padding: 24,
+                            background: '#ffffff',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 14,
+                            boxShadow: '6px 6px 0 #000',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: '1.4rem' }}>⚠️</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.04em' }}>
+                                REPLACE EXISTING CAPTIONS PROJECT?
+                            </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.78rem', fontFamily: 'monospace', color: '#222', lineHeight: 1.55 }}>
+                            You already have saved captions inside Auto Captions{file?.name ? ` ("${file.name}")` : ''}.
+                            Do you want to cancel or remove what is already inside Auto Captions and start a new one for your teleprompter take?
+                        </p>
+                        <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#555', background: '#f4f4f5', padding: '10px 12px', border: '1.5px solid #000' }}>
+                            📁 New Teleprompter Take: <strong>{pendingHandoff.fileName || 'teleprompter_take.webm'}</strong>
+                            {pendingHandoff.mediaBlob && (
+                                <span> · {(pendingHandoff.mediaBlob.size / (1024 * 1024)).toFixed(1)} MB</span>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 6 }}>
+                            <button
+                                type="button"
+                                className="brutalist-button"
+                                style={{ fontSize: '0.72rem', padding: '8px 14px' }}
+                                onClick={handleCancelHandoffReplace}
+                            >
+                                Cancel · Keep Existing
+                            </button>
+                            <button
+                                type="button"
+                                className="brutalist-button brutalist-button-primary"
+                                style={{ fontSize: '0.72rem', padding: '8px 16px', background: '#FFE500' }}
+                                onClick={handleConfirmHandoffReplace}
+                            >
+                                Yes, Replace & Start New
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* BYOK modal */}
             {byokModalOpen && (
                 <div
@@ -1752,6 +2005,51 @@ export default function CaptionsPage() {
                         <Upload size={15} />
                         Choose file
                     </span>
+                </div>
+            )}
+
+            {/* Recent sessions — past transcriptions, never auto-deleted */}
+            {!file && !isProcessing && sessionsIndex.length > 0 && (
+                <div className="brutalist-card" style={{ padding: 16, margin: '16px 0' }}>
+                    <div style={{ ...BRUT_LABEL, marginBottom: 10 }}>▦ Recent Sessions</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {sessionsIndex.map((s) => (
+                            <div
+                                key={s.id}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    flexWrap: 'wrap',
+                                    border: '2px solid #000',
+                                    borderRadius: 4,
+                                    padding: '8px 10px',
+                                    background: '#fff',
+                                }}
+                            >
+                                <div style={{ flex: 1, minWidth: 180 }}>
+                                    <div style={{ fontSize: '0.8rem', fontWeight: 900, wordBreak: 'break-all' }}>{s.name}</div>
+                                    <div style={{ fontSize: '0.68rem', fontFamily: 'monospace', color: '#666' }}>
+                                        {new Date(s.createdAt).toLocaleString()} · {Math.round(s.duration)}s · {s.cueCount} cues
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => openSession(s.id)}
+                                    className="brutalist-button brutalist-button-primary"
+                                    style={{ padding: '6px 12px', fontSize: '0.68rem' }}
+                                >
+                                    Open
+                                </button>
+                                <button
+                                    onClick={() => deleteSession(s.id)}
+                                    className="brutalist-button"
+                                    style={{ padding: '6px 12px', fontSize: '0.68rem' }}
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
