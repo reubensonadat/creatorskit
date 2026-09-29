@@ -60,6 +60,9 @@ export interface OverlayRenderOptions {
     background: VideoBackgroundMode;
     typography?: OverlayTypographyOptions;
     fps?: number;
+    /** Deliberately delay the caption timeline: at video time t, the frame
+     * shows the caption state of (t - delay). Positive = captions later. */
+    delaySeconds?: number;
     onProgress?: (percent: number) => void;
 }
 
@@ -830,6 +833,7 @@ export async function renderCaptionsToVideo(
         background,
         typography = {},
         fps = 30,
+        delaySeconds = 0,
         onProgress,
     } = options;
 
@@ -850,6 +854,48 @@ export async function renderCaptionsToVideo(
 
     const totalFrames = Math.max(1, Math.ceil(duration * fps));
 
+    // ── Diagnostic probe ────────────────────────────────────────────────
+    // Prove the renderer actually inks pixels with THESE args before we
+    // encode anything. If a regression ever blanks the canvas, the console
+    // says so immediately instead of shipping a mysterious empty mp4.
+    try {
+        const probeCanvas = document.createElement('canvas');
+        probeCanvas.width = width;
+        probeCanvas.height = height;
+        const probeCtx = probeCanvas.getContext('2d', { alpha: false });
+        if (probeCtx) {
+            const firstCue = cues.find((c) => c.text && c.text.trim());
+            const probeT = firstCue ? (firstCue.start + firstCue.end) / 2 : 0;
+            drawCaptionFrame(
+                probeCtx, width, height, probeT, cues,
+                resolvedMode, effectiveBackground, highlighterColor, typography
+            );
+            const data = probeCtx.getImageData(0, 0, width, height).data;
+            let inkSamples = 0; // pixels that differ from the green key
+            for (let i = 0; i < data.length; i += 40) {
+                if (data[i] + (255 - data[i + 1]) + data[i + 2] > 60) inkSamples++;
+            }
+            console.info(
+                `[overlay-export] probe t=${probeT.toFixed(2)}s inkSamples=${inkSamples} ` +
+                `cues=${cues.length} frames=${totalFrames} dur=${duration.toFixed(2)}s delay=${delaySeconds.toFixed(1)}s mode=${resolvedMode}`
+            );
+        }
+    } catch (err) {
+        console.warn('[overlay-export] probe failed:', err);
+    }
+
+    // ── Plain-canvas blit ───────────────────────────────────────────────
+    // Draw each frame into a normal (non-desynchronized) scratch canvas,
+    // then blit into the exporter's context. Some GPU drivers rasterize
+    // low-latency 'desynchronized' contexts unreliably on detached
+    // canvases; drawImage from a regular canvas forces a synchronous
+    // blit into the backing store the encoder captures.
+    const scratch = document.createElement('canvas');
+    scratch.width = width;
+    scratch.height = height;
+    const scratchCtx = scratch.getContext('2d', { alpha: false });
+    if (!scratchCtx) throw new Error('Could not create overlay scratch canvas.');
+
     const result = await exportCanvasVideoToMp4({
         width,
         height,
@@ -858,20 +904,26 @@ export async function renderCaptionsToVideo(
         bitrate: 12_000_000, // 12 Mbps for razor-sharp typography
         renderFrame: (frameIndex, ctx) => {
             drawCaptionFrame(
-                ctx,
+                scratchCtx,
                 width,
                 height,
-                frameIndex / fps,
+                (frameIndex / fps) - delaySeconds,
                 cues,
                 resolvedMode,
                 effectiveBackground,
                 highlighterColor,
                 typography
             );
+            ctx.drawImage(scratch, 0, 0);
         },
         // Exporter reports 0..1; the UI progress bar expects 0..100.
         onProgress: (p) => onProgress?.(Math.min(100, Math.round(p * 100))),
     });
+
+    console.info(
+        `[overlay-export] done: ${(result.blob.size / 1048576).toFixed(2)}MB ` +
+        `mime=${result.mimeType} fallback=${result.usedFallback} frames=${totalFrames}`
+    );
 
     return result.blob;
 }

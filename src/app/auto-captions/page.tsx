@@ -341,6 +341,7 @@ export default function CaptionsPage() {
     const [overlayColor, setOverlayColor] = useState<string>('#FFE500');
     const [overlayAspectRatio, setOverlayAspectRatio] = useState<VideoAspectRatio>('9:16');
     const [overlayBackground, setOverlayBackground] = useState<VideoBackgroundMode>('transparent');
+    const [overlayDelay, setOverlayDelay] = useState<number>(0);
     const [isRenderingVideo, setIsRenderingVideo] = useState(false);
     const [videoRenderProgress, setVideoRenderProgress] = useState(0);
 
@@ -1316,7 +1317,7 @@ export default function CaptionsPage() {
             ctx,
             width,
             height,
-            time,
+            time - overlayDelay,
             cues,
             videoMode,
             overlayBackground,
@@ -1340,6 +1341,7 @@ export default function CaptionsPage() {
     }, [
         cues,
         videoMode,
+        overlayDelay,
         captionFont,
         captionFontSize,
         captionLetterSpacing,
@@ -1443,6 +1445,7 @@ export default function CaptionsPage() {
                 videoMode,
                 highlighterColor: overlayColor,
                 aspectRatio: overlayAspectRatio,
+                delaySeconds: overlayDelay,
                 background: bg,
                 typography: {
                     fontFamily: captionFont,
@@ -2519,6 +2522,22 @@ export default function CaptionsPage() {
                                                 step={1}
                                                 formatValue={(v) => `${v}%`}
                                                 onChange={setCaptionYPosition}
+                                            />
+                                            <TactileScrubber
+                                                label="Timing delay"
+                                                value={overlayDelay}
+                                                min={-5}
+                                                max={10}
+                                                step={0.1}
+                                                formatValue={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s`}
+                                                onChange={setOverlayDelay}
+                                                presets={[
+                                                    { label: '0s', value: 0 },
+                                                    { label: '+0.5s', value: 0.5 },
+                                                    { label: '+1s', value: 1 },
+                                                    { label: '+5s', value: 5 },
+                                                    { label: '+10s', value: 10 },
+                                                ]}
                                             />
                                         </div>
                                     </div>
