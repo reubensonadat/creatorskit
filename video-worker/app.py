@@ -108,6 +108,15 @@ FFMPEG_ARGS = _ffmpeg_args()
 #  2. a cookies.txt mounted as a Render SECRET FILE at /etc/secrets/cookies.txt
 #     (exported from a logged-in browser; absent locally → args stay empty).
 COOKIES_PATH = os.environ.get('COOKIES_PATH', '/etc/secrets/cookies.txt')
+# Move B (yt-dlp FAQ): cookies must be fresh (<30 min) AND travel with the
+# SAME User-Agent as the browser that exported them — a mismatch flags the
+# session. Default = this project's donor browser (Chrome on Windows 11,
+# version read from the machine that exports the cookies).
+USER_AGENT = os.environ.get(
+    'YTDLP_USER_AGENT',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/154.0.8037.58 Safari/537.36',
+)
 # yt-dlp WRITES rotated cookies back to the file it reads (--cookies loads AND
 # saves the jar — YouTube rotates session tokens mid-session). Render mounts
 # Secret Files read-only, so handing yt-dlp the secret path directly dies with
@@ -127,7 +136,7 @@ def _cookie_args() -> list[str]:
         work = _COOKIES_WORK
         work.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, work)
-        return ['--cookies', str(work)]
+        return ['--cookies', str(work), '--user-agent', USER_AGENT]
     except OSError:
         return []
 
@@ -379,6 +388,7 @@ def health() -> dict:
         'jobs': len(_JOBS),
         'uptime_s': int(time.time() - _BOOT_AT),
         'last_error': last_error,
+        'ua': USER_AGENT,
     }
 
 
