@@ -2412,7 +2412,11 @@ export default function CaptionsPage() {
                                         const tickStep = trackDur > 120 ? 30 : trackDur > 40 ? 10 : 5;
                                         const ticks: number[] = [];
                                         for (let t = 0; t <= trackDur; t += tickStep) ticks.push(parseFloat(t.toFixed(1)));
-                                        const innerWidth = `max(100%, ${Math.max(480, Math.ceil(trackDur * 24))}px)`;
+                                        const basePx = Math.max(480, Math.ceil(trackDur * 24));
+                                        // Widen the track so even the longest cue's full text fits
+                                        const textPx = (t: string) => t.trim().length * 6 + 16;
+                                        const neededPx = cues.reduce((mx, c) => Math.max(mx, Math.ceil((c.start / trackDur) * basePx + textPx(c.text))), 0);
+                                        const innerWidth = `max(100%, ${Math.max(basePx, neededPx)}px)`;
                                         const seekTo = (t: number) => {
                                             const clamped = Math.min(Math.max(0, t), trackDur);
                                             setOverlayCurrentTime(clamped);
@@ -2472,7 +2476,7 @@ export default function CaptionsPage() {
                                                                         height: 32,
                                                                         left: `${leftPct}%`,
                                                                         width: `${widthPct}%`,
-                                                                        minWidth: 14,
+                                                                        minWidth: Math.max(14, Math.ceil(c.text.trim().length * 6 + 16)),
                                                                         background: cueDragView && cueDragView.index === i ? '#FFE500' : i === activeIdx ? '#FFF3B0' : '#FFFFFF',
                                                                         border: i === activeIdx ? '2px solid #000' : '1.5px solid rgba(0,0,0,0.6)',
                                                                         borderRadius: 3,
