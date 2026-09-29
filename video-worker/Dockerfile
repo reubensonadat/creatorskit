@@ -17,9 +17,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Node side of the PO-token provider (the server the plugin calls on
 # 127.0.0.1:4416). Best-effort: if it ever fails to build, the image
-# still works — yt-dlp just faces moodier YouTube checks.
-RUN git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot \
- && cd /pot && npm install --no-audit --no-fund && npx tsc || true
+# still works — yt-dlp just faces moodier YouTube checks. The OK/FAILED
+# markers make the outcome visible in build logs (|| true alone hid it).
+RUN (git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot \
+ && cd /pot && npm install --no-audit --no-fund && npx tsc \
+ && echo "POT_BUILD_OK") \
+ || echo "POT_BUILD_FAILED - see compiler errors above"
 
 COPY app.py start.sh ./
 RUN chmod +x start.sh \

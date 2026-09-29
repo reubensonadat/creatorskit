@@ -143,36 +143,66 @@ def _safe_name(raw: str, fallback: str = 'video') -> str:
     return name[:80] or fallback
 
 
-def _run_ytdlp(args: list[str], timeout: int) -> None:
-    """Run yt-dlp synchronously; raise HTTPException(502) with the useful tail on failure."""
-    try:
-        proc = subprocess.run(
-            [YTDLP, *args],
-            capture_output=True, text=True, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail='yt-dlp timed out on this video')
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or '').strip().splitlines()[-3:]
-        raise HTTPException(status_code=502, detail=' | '.join(tail)[:400] or 'yt-dlp failed')
+# YouTube playability walls ("The page needs to be reloaded", "Sign in to
+# confirm you're not a bot") are per-client: replaying the SAME request
+# through a DIFFERENT innertube client often clears them. Auth already
+# passes via cookies — these are the last-mile interstitials.
+_CLIENT_FALLBACKS = [
+    [],  # yt-dlp's default client first
+    ['--extractor-args', 'youtube:player_client=tv'],
+    ['--extractor-args', 'youtube:player_client=web_embedded'],
+]
+_PLAYABILITY_HINTS = ('needs to be reloaded', 'sign in to confirm', 'not a bot')
+
+
+def _tail_of(proc: 'subprocess.CompletedProcess[str]') -> str:
+    return ' | '.join((proc.stderr or proc.stdout or '').strip().splitlines()[-3:])[:400]
+
+
+def _is_playability_wall(msg: str) -> bool:
+    low = msg.lower()
+    return any(h in low for h in _PLAYABILITY_HINTS)
+
+
+def _run_ytdlp(args: list[str], url: str, timeout: int) -> None:
+    """Run yt-dlp; on a playability wall, retry through alternate clients."""
+    last = 'yt-dlp failed'
+    for client_args in _CLIENT_FALLBACKS:
+        try:
+            proc = subprocess.run(
+                [YTDLP, *args, *client_args, url],
+                capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail='yt-dlp timed out on this video')
+        if proc.returncode == 0:
+            return
+        last = _tail_of(proc) or last
+        if not _is_playability_wall(last):
+            break  # hard error (gone/private/unsupported) — a new client won't help
+    raise HTTPException(status_code=502, detail=last)
 
 
 def _probe_meta(url: str) -> dict:
-    try:
-        proc = subprocess.run(
-            [YTDLP, '--no-playlist', '--no-check-formats', '--no-warnings', '--skip-download',
-             *_cookie_args(), '-J', url],
-            capture_output=True, text=True, timeout=60,
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail='yt-dlp timed out reading metadata')
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or '').strip().splitlines()[-3:]
-        raise HTTPException(status_code=502, detail=' | '.join(tail)[:400] or 'yt-dlp failed')
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail='could not read video metadata')
+    last = 'yt-dlp failed'
+    for client_args in _CLIENT_FALLBACKS:
+        try:
+            proc = subprocess.run(
+                [YTDLP, '--no-playlist', '--no-check-formats', '--no-warnings', '--skip-download',
+                 *_cookie_args(), *client_args, '-J', url],
+                capture_output=True, text=True, timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail='yt-dlp timed out reading metadata')
+        if proc.returncode == 0:
+            try:
+                return json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=502, detail='could not read video metadata')
+        last = _tail_of(proc) or last
+        if not _is_playability_wall(last):
+            break
+    raise HTTPException(status_code=502, detail=last)
 
 
 def _variant_list(info: dict) -> list[dict]:
@@ -262,8 +292,9 @@ def _run_resolve_job(jid: str, url: str, variant_id: str, base: str) -> None:
                 [
                     '--no-playlist', '--no-warnings', '--no-progress',
                     *_cookie_args(), *args, *FFMPEG_ARGS,
-                    '-o', str(job['dir'] / '%(title).80s.%(ext)s'), url,
+                    '-o', str(job['dir'] / '%(title).80s.%(ext)s'),
                 ],
+                url,
                 timeout=RESOLVE_TIMEOUT,
             )
 
