@@ -2523,22 +2523,21 @@ export default function CaptionsPage() {
                                                 formatValue={(v) => `${v}%`}
                                                 onChange={setCaptionYPosition}
                                             />
-                                            <TactileScrubber
-                                                label="Timing delay"
-                                                value={overlayDelay}
-                                                min={-5}
-                                                max={10}
-                                                step={0.1}
-                                                formatValue={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s`}
-                                                onChange={setOverlayDelay}
-                                                presets={[
-                                                    { label: '0s', value: 0 },
-                                                    { label: '+0.5s', value: 0.5 },
-                                                    { label: '+1s', value: 1 },
-                                                    { label: '+5s', value: 5 },
-                                                    { label: '+10s', value: 10 },
-                                                ]}
-                                            />
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <TactileScrubber
+                                                    label="Delay"
+                                                    value={overlayDelay}
+                                                    min={-5}
+                                                    max={10}
+                                                    step={0.1}
+                                                    formatValue={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s`}
+                                                    onChange={setOverlayDelay}
+                                                    presets={[
+                                                        { label: '0.5s', value: 0.5 },
+                                                        { label: '1s', value: 1 },
+                                                    ]}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

@@ -879,46 +879,75 @@ export async function renderCaptionsToVideo(
                 `[overlay-export] probe t=${probeT.toFixed(2)}s inkSamples=${inkSamples} ` +
                 `cues=${cues.length} frames=${totalFrames} dur=${duration.toFixed(2)}s delay=${delaySeconds.toFixed(1)}s mode=${resolvedMode}`
             );
+            if (inkSamples === 0) {
+                // Fail LOUDLY instead of encoding minutes of empty green.
+                throw new Error(
+                    `Overlay export aborted: no caption pixels drawn at t=${probeT.toFixed(2)}s ` +
+                    `(cues=${cues.length}). The cue timeline looks empty for this session — ` +
+                    're-open the session from Recent Sessions or re-transcribe, then export again.'
+                );
+            }
         }
     } catch (err) {
         console.warn('[overlay-export] probe failed:', err);
     }
 
-    // ── Plain-canvas blit ───────────────────────────────────────────────
-    // Draw each frame into a normal (non-desynchronized) scratch canvas,
-    // then blit into the exporter's context. Some GPU drivers rasterize
-    // low-latency 'desynchronized' contexts unreliably on detached
-    // canvases; drawImage from a regular canvas forces a synchronous
-    // blit into the backing store the encoder captures.
-    const scratch = document.createElement('canvas');
-    scratch.width = width;
-    scratch.height = height;
-    const scratchCtx = scratch.getContext('2d', { alpha: false });
-    if (!scratchCtx) throw new Error('Could not create overlay scratch canvas.');
+    // ── Plain-canvas blit + capture-safety cascade ─────────────────────
+    // Each frame is drawn into a normal (non-desynchronized) scratch canvas
+    // and blitted into the exporter's context, which is also asked for a
+    // plain context — some GPU drivers rasterize low-latency desynchronized
+    // canvases unreliably when detached, encoding blank frames.
+    const attempt = async (w: number, h: number) => {
+        const scratch = document.createElement('canvas');
+        scratch.width = w;
+        scratch.height = h;
+        const scratchCtx = scratch.getContext('2d', { alpha: false });
+        if (!scratchCtx) throw new Error('Could not create overlay scratch canvas.');
 
-    const result = await exportCanvasVideoToMp4({
-        width,
-        height,
-        fps,
-        totalFrames,
-        bitrate: 12_000_000, // 12 Mbps for razor-sharp typography
-        renderFrame: (frameIndex, ctx) => {
-            drawCaptionFrame(
-                scratchCtx,
-                width,
-                height,
-                (frameIndex / fps) - delaySeconds,
-                cues,
-                resolvedMode,
-                effectiveBackground,
-                highlighterColor,
-                typography
-            );
-            ctx.drawImage(scratch, 0, 0);
-        },
-        // Exporter reports 0..1; the UI progress bar expects 0..100.
-        onProgress: (p) => onProgress?.(Math.min(100, Math.round(p * 100))),
-    });
+        const res = await exportCanvasVideoToMp4({
+            width: w,
+            height: h,
+            fps,
+            totalFrames,
+            bitrate: 12_000_000, // 12 Mbps for razor-sharp typography
+            desynchronized: false,
+            renderFrame: (frameIndex, ctx) => {
+                drawCaptionFrame(
+                    scratchCtx,
+                    w,
+                    h,
+                    (frameIndex / fps) - delaySeconds,
+                    cues,
+                    resolvedMode,
+                    effectiveBackground,
+                    highlighterColor,
+                    typography
+                );
+                ctx.drawImage(scratch, 0, 0);
+            },
+            // Exporter reports 0..1; the UI progress bar expects 0..100.
+            onProgress: (p) => onProgress?.(Math.min(100, Math.round(p * 100))),
+        });
+        return res;
+    };
+
+    let result = await attempt(width, height);
+
+    if (result.usedFallback) {
+        // Some drivers reject WebCodecs H.264 at full portrait resolution;
+        // the exporter then silently records via MediaRecorder, which can
+        // produce empty output on detached canvases. Retry once at a
+        // 720-class size every hardware encoder accepts.
+        const retryW = width > height ? 1280 : 720;
+        const retryH = width > height ? 720 : 1280;
+        console.warn(`[overlay-export] encoder fallback at ${width}x${height} — retrying at ${retryW}x${retryH}`);
+        const second = await attempt(retryW, retryH);
+        if (!second.usedFallback) {
+            result = second;
+        } else {
+            console.error('[overlay-export] MediaRecorder fallback engaged even at 720p — export may be empty');
+        }
+    }
 
     console.info(
         `[overlay-export] done: ${(result.blob.size / 1048576).toFixed(2)}MB ` +

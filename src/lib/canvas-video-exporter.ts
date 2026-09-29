@@ -38,6 +38,10 @@ export interface CanvasVideoExportOptions {
     isKeyFrame?: (frameIndex: number) => boolean;
     onProgress?: (progress: number) => void;
     signal?: AbortSignal;
+    /** Use a low-latency desynchronized 2D context (default true). Some GPU
+     * drivers rasterize desynchronized canvases unreliably once detached,
+     * encoding blank frames — pass false to force a plain context. */
+    desynchronized?: boolean;
 }
 
 export interface CanvasVideoExportResult {
@@ -204,6 +208,7 @@ export async function exportCanvasVideoToMp4(
         keyframeIntervalSec = 2,
         onProgress,
         signal,
+        desynchronized = true,
     } = options;
 
     const progress = new ThrottledProgress(onProgress);
@@ -239,7 +244,7 @@ export async function exportCanvasVideoToMp4(
     const canvas = document.createElement('canvas');
     canvas.width = encWidth;
     canvas.height = encHeight;
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized });
     if (!ctx) throw new Error('Could not acquire 2D context for export canvas.');
 
     const target = new ArrayBufferTarget();
