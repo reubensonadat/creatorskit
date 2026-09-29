@@ -1464,7 +1464,9 @@ export default function CaptionsPage() {
 
             const url = URL.createObjectURL(videoBlob);
             const baseName = file?.name?.replace(/\.[^/.]+$/, '') || 'captions';
-            const ext = 'webm';
+            // Same MP4 pipeline as match cut / text highlighter. Transparent
+            // requests are flattened onto green (H.264 has no alpha channel).
+            const ext = videoBlob.type.includes('mp4') ? 'mp4' : 'webm';
             downloadFile(url, `${baseName}_overlay_${videoMode}_${overlayAspectRatio.replace(':', 'x')}.${ext}`, videoBlob.type);
         } catch (err) {
             console.error('Error rendering overlay video:', err);
@@ -2652,7 +2654,7 @@ export default function CaptionsPage() {
                                                 disabled={cues.length === 0}
                                                 style={{ padding: '12px 18px', fontSize: '0.82rem', boxShadow: '4px 4px 0 #000' }}
                                             >
-                                                <Download size={16} /> Export .webm
+                                                <Download size={16} /> Export .mp4
                                             </button>
                                             <button
                                                 type="button"
@@ -2661,8 +2663,11 @@ export default function CaptionsPage() {
                                                 disabled={cues.length === 0}
                                                 style={{ padding: '12px 18px', fontSize: '0.82rem', boxShadow: '4px 4px 0 #000' }}
                                             >
-                                                Green screen .webm
+                                                Green screen .mp4
                                             </button>
+                                            <div style={{ gridColumn: '1 / -1', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase', color: '#555' }}>
+                                                MP4 exports use a green key background (H.264 has no alpha) — chroma key it over your footage.
+                                            </div>
                                         </div>
                                     )}
                                 </div>

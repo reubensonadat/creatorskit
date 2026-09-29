@@ -2,8 +2,9 @@
  * Video Overlay Renderer for CreatorKit Auto Captions
  * ====================================================
  * Renders animated, timestamped kinetic captions directly onto an HTML5 Canvas
- * and exports as a transparent video (WebM VP9 with Alpha Channel) or Chroma Key (Green Screen)
- * for direct overlay onto video timelines in Premiere Pro, DaVinci Resolve, Final Cut, and CapCut.
+ * and exports as a green-key MP4 (deterministic WebCodecs H.264 via the shared
+ * canvas-video-exporter) for direct overlay onto video timelines in Premiere Pro,
+ * DaVinci Resolve, Final Cut, and CapCut.
  * 
  * Customization System:
  * - Font Family: Bebas Neue (Tabloid), Montserrat (Modern), Inter (Brutalist), Archivo Black, Space Mono
@@ -23,6 +24,7 @@
  */
 
 import { SubtitleCue, cleanStageDirections } from './vtt-formatter';
+import { exportCanvasVideoToMp4 } from '@/lib/canvas-video-exporter';
 
 export type CaptionVideoMode = 'teleprompter' | 'kinetic-pop' | 'minimal';
 export type CaptionStylePreset = CaptionVideoMode | 'tiktok' | 'hormozi'; // Backward compatibility
@@ -145,11 +147,11 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         name: 'Karaoke Clean',
         videoMode: 'teleprompter',
         fontFamily: 'poppins',
-        fontSize: 46,
+        fontSize: 52,
         letterSpacing: 0,
         yPositionPercent: 72,
         pillBackground: 'dark',
-        highlighterColor: '#06B6D4',
+        highlighterColor: '#67E8F9',
         springPhysics: true,
         bounceIntensity: 1.0,
         wordRotation: false,
@@ -463,6 +465,19 @@ export function drawCaptionFrame(
     // MODE 1: TELEPROMPTER WORD-BY-WORD KINETIC HIGHLIGHT (STRICTLY ONE CLEAN LINE)
     // ─────────────────────────────────────────────────────────────────────────
     if (mode === 'teleprompter') {
+        // SPOKEN-ONLY REVEAL: a word appears the moment it is said — never
+        // before. Nothing renders until the first word starts; past words
+        // dim; the imminent next word pre-reveals during the glide window
+        // (last 20% of the current word) so the karaoke glide lands on it.
+        const glideIntoNext =
+            activeWordIndex >= 0 && activeWordIndex < words.length - 1 && wordProgress > 0.80;
+        const visibleCount = activeWordIndex < 0 ? 0 : glideIntoNext ? activeWordIndex + 2 : activeWordIndex + 1;
+        if (visibleCount <= 0) {
+            ctx.restore();
+            return;
+        }
+        const visibleWords = words.slice(0, Math.min(visibleCount, words.length));
+
         // Safe area: cap the line at 80% of portrait width (~10%
         // margins each side) so text clears TikTok/YouTube UI.
         const maxAllowedWidth = width * (isPortrait ? 0.80 : 0.84);
@@ -472,16 +487,16 @@ export function drawCaptionFrame(
 
         // Generous, natural word spacing matching teleprompter DOM layout
         let spaceWidth = Math.max(ctx.measureText(' ').width, Math.round(activeFontSize * 0.34));
-        let wordWidths = words.map((w) => ctx.measureText(w).width);
-        let totalContentWidth = wordWidths.reduce((a, b) => a + b, 0) + (words.length - 1) * spaceWidth;
+        let wordWidths = visibleWords.map((w) => ctx.measureText(w).width);
+        let totalContentWidth = wordWidths.reduce((a, b) => a + b, 0) + (visibleWords.length - 1) * spaceWidth;
 
         // Guarantee strictly single line: scale font down if text exceeds maxAllowedWidth
         if (totalContentWidth > maxAllowedWidth) {
             activeFontSize = Math.max(16, Math.round(baseFontSize * (maxAllowedWidth / totalContentWidth)));
             ctx.font = resolveFont(fontFamily, activeFontSize, '800');
             spaceWidth = Math.max(ctx.measureText(' ').width, Math.round(activeFontSize * 0.34));
-            wordWidths = words.map((w) => ctx.measureText(w).width);
-            totalContentWidth = wordWidths.reduce((a, b) => a + b, 0) + (words.length - 1) * spaceWidth;
+            wordWidths = visibleWords.map((w) => ctx.measureText(w).width);
+            totalContentWidth = wordWidths.reduce((a, b) => a + b, 0) + (visibleWords.length - 1) * spaceWidth;
         }
 
         ctx.textAlign = 'center';
@@ -530,9 +545,11 @@ export function drawCaptionFrame(
 
         // TELEPROMPTER KINETIC HIGHLIGHT GLIDE:
         // Render smooth gliding highlight pill behind the active spoken word
-        if (activeWordIndex >= 0 && activeWordIndex < words.length) {
-            const padX = Math.round(activeFontSize * 0.16);
-            const padY = Math.round(activeFontSize * 0.12);
+        if (activeWordIndex >= 0 && activeWordIndex < visibleWords.length) {
+            // Tighter box — the old 0.16/0.12 pads + full-radius corners
+            // made the highlight feel heavy ("a bit too much").
+            const padX = Math.round(activeFontSize * 0.11);
+            const padY = Math.round(activeFontSize * 0.09);
             const curLeft = wordLefts[activeWordIndex] - padX;
             const curW = wordWidths[activeWordIndex] + padX * 2;
 
@@ -540,7 +557,7 @@ export function drawCaptionFrame(
             let pillBoxW = curW;
 
             // Liquid glide toward next word during transition (last 20% of word duration)
-            if (activeWordIndex < words.length - 1 && wordProgress > 0.80) {
+            if (activeWordIndex < visibleWords.length - 1 && wordProgress > 0.80) {
                 const nextLeft = wordLefts[activeWordIndex + 1] - padX;
                 const nextW = wordWidths[activeWordIndex + 1] + padX * 2;
                 const glideFrac = (wordProgress - 0.80) / 0.20;
@@ -558,14 +575,14 @@ export function drawCaptionFrame(
                 centerY - activeFontSize / 2 - padY,
                 pillBoxW,
                 activeFontSize + padY * 2,
-                Math.round(activeFontSize * 0.16)
+                Math.round(activeFontSize * 0.12)
             );
             ctx.fill();
             ctx.restore();
         }
 
-        // Render each word with exact teleprompter contrast hierarchy
-        words.forEach((w, idx) => {
+        // Render each (revealed) word with exact teleprompter contrast hierarchy
+        visibleWords.forEach((w, idx) => {
             const wordCenterX = wordCenters[idx];
             const isCurrent = idx === activeWordIndex;
             const isPast = activeWordIndex >= 0 && idx < activeWordIndex;
@@ -722,25 +739,36 @@ export function drawCaptionFrame(
     // MODE 3: MINIMAL CLEAN (Small, Crisp TV / Film Subtitles - Strictly Single Line)
     // ─────────────────────────────────────────────────────────────────────────
     } else {
+        // Size the font on the FULL line (so it never jumps as words are
+        // revealed), but only draw what has actually been SPOKEN — the old
+        // whole-line render put unspoken words on screen early.
         const fullLine = words.join(' ');
-        const minimalSize = Math.round(baseFontSize * 0.65);
+        const visibleCount = Math.max(0, activeWordIndex + 1);
+        if (visibleCount === 0) {
+            ctx.restore();
+            return;
+        }
+        const drawLine = words.slice(0, visibleCount).join(' ');
+        // 0.65x weight-600 was "almost invisible" — read like real TV subs now.
+        const minimalSize = Math.round(baseFontSize * 0.88);
         const maxAllowedWidth = width * (isPortrait ? 0.80 : 0.84);
 
         let activeSize = minimalSize;
-        ctx.font = resolveFont(fontFamily, activeSize, '600');
+        ctx.font = resolveFont(fontFamily, activeSize, '800');
         let fullWidth = ctx.measureText(fullLine).width;
 
         if (fullWidth > maxAllowedWidth) {
             activeSize = Math.max(16, Math.round(minimalSize * (maxAllowedWidth / fullWidth)));
-            ctx.font = resolveFont(fontFamily, activeSize, '600');
+            ctx.font = resolveFont(fontFamily, activeSize, '800');
             fullWidth = ctx.measureText(fullLine).width;
         }
 
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const paddingX = 18;
-        const pillWidth = fullWidth + paddingX * 2;
+        const drawWidth = ctx.measureText(drawLine).width;
+        const paddingX = Math.round(activeSize * 0.35);
+        const pillWidth = drawWidth + paddingX * 2;
         const pillHeight = Math.round(activeSize * 1.85);
         const pillTop = centerY - pillHeight / 2;
 
@@ -768,18 +796,26 @@ export function drawCaptionFrame(
             ctx.lineWidth = Math.max(3, activeSize * 0.12);
             ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
             ctx.lineJoin = 'round';
-            ctx.strokeText(fullLine, width / 2, centerY);
+            ctx.strokeText(drawLine, width / 2, centerY);
         }
 
         ctx.fillStyle = pillBg === 'light' ? '#000000' : '#FFFFFF';
-        ctx.fillText(fullLine, width / 2, centerY);
+        ctx.fillText(drawLine, width / 2, centerY);
     }
 
     ctx.restore();
 }
 
 /**
- * Renders and exports the subtitle cues as a transparent or green-screen video file (Blob).
+ * Renders and exports the subtitle cues as a video file (Blob) through the
+ * shared canvas-video-exporter — the exact same deterministic WebCodecs -> MP4
+ * pipeline the text match cut, text highlighter and resizer studios use.
+ * Frames are drawn on demand with exact per-frame timestamps (no wall-clock
+ * capture stream), so exports are frame-exact and never play sped-up.
+ *
+ * NOTE: H.264 MP4 cannot carry an alpha channel, so a requested 'transparent'
+ * background is flattened onto green — the chroma key editors apply anyway.
+ * Browsers without WebCodecs fall back to the exporter's MediaRecorder path.
  */
 export async function renderCaptionsToVideo(
     options: OverlayRenderOptions
@@ -806,78 +842,36 @@ export async function renderCaptionsToVideo(
     const width = aspectRatio === '9:16' ? 1080 : 1920;
     const height = aspectRatio === '9:16' ? 1920 : 1080;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    // Both the WebCodecs MP4 path and the exporter's MediaRecorder fallback
+    // render on an opaque canvas — flatten 'transparent' onto green so the
+    // overlay stays chroma-keyable in every editor.
+    const effectiveBackground: VideoBackgroundMode =
+        background === 'transparent' ? 'green-screen' : background;
 
-    const ctx = canvas.getContext('2d', { alpha: background === 'transparent' });
-    if (!ctx) throw new Error('Could not obtain 2D canvas rendering context.');
+    const totalFrames = Math.max(1, Math.ceil(duration * fps));
 
-    // Determine codec (VP9 supports transparent alpha channel)
-    let mimeType = 'video/webm; codecs=vp9';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
-    }
-
-    const stream = canvas.captureStream(fps);
-    const mediaRecorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 12_000_000, // 12 Mbps for razor-sharp typography
+    const result = await exportCanvasVideoToMp4({
+        width,
+        height,
+        fps,
+        totalFrames,
+        bitrate: 12_000_000, // 12 Mbps for razor-sharp typography
+        renderFrame: (frameIndex, ctx) => {
+            drawCaptionFrame(
+                ctx,
+                width,
+                height,
+                frameIndex / fps,
+                cues,
+                resolvedMode,
+                effectiveBackground,
+                highlighterColor,
+                typography
+            );
+        },
+        // Exporter reports 0..1; the UI progress bar expects 0..100.
+        onProgress: (p) => onProgress?.(Math.min(100, Math.round(p * 100))),
     });
 
-    const chunks: Blob[] = [];
-    mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-    };
-
-    return new Promise((resolve, reject) => {
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: mimeType });
-            resolve(blob);
-        };
-
-        mediaRecorder.onerror = (err) => {
-            reject(err);
-        };
-
-        mediaRecorder.start();
-
-        const frameDuration = 1 / fps;
-        let currentTime = 0;
-
-        function renderNextFrame() {
-            if (currentTime > duration) {
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                }, 250);
-                return;
-            }
-
-            if (ctx) {
-                drawCaptionFrame(
-                    ctx,
-                    width,
-                    height,
-                    currentTime,
-                    cues,
-                    resolvedMode,
-                    background,
-                    highlighterColor,
-                    typography
-                );
-            }
-
-            const percent = Math.min(100, Math.round((currentTime / Math.max(0.1, duration)) * 100));
-            onProgress?.(percent);
-
-            currentTime += frameDuration;
-            // Real-time pacing: MediaRecorder timestamps frames by WALL CLOCK,
-            // so if drawing outruns real time the export plays sped-up (old
-            // bug: 2x-fast video). Pace at exactly 1/fps so the exported
-            // duration equals the audio duration.
-            setTimeout(renderNextFrame, 1000 / fps);
-        }
-
-        renderNextFrame();
-    });
+    return result.blob;
 }
