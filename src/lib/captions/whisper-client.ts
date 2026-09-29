@@ -40,13 +40,26 @@ export function extractWordTimings(rawChunks: any[]): SubtitleWord[] {
             });
         } else if (splitWords.length > 1) {
             const dur = Math.max(0.08, end - start);
-            const perWord = dur / splitWords.length;
+            // Segment-level fallback timestamps stretch across trailing
+            // silence, and an even split made words "spoken" during pauses —
+            // the overlay kept highlighting through dead air. Distribute by
+            // word length (longer words take longer to say) and COMPRESS any
+            // implausibly slow span so the highlight ends when speech does.
+            const weights = splitWords.map((w) => w.length + 1);
+            const weightTotal = weights.reduce((sum, w) => sum + w, 0);
+            const avgWordS = dur / splitWords.length;
+            const compress = avgWordS > 0.85 ? (0.85 * splitWords.length) / dur : 1;
+            let cursor = start;
             splitWords.forEach((w, idx) => {
+                const span = Math.max(0.12, (weights[idx] / weightTotal) * dur * compress);
+                const wordStart = cursor;
+                const wordEnd = Math.min(end, cursor + span);
                 words.push({
                     word: w,
-                    start: parseFloat((start + idx * perWord).toFixed(3)),
-                    end: parseFloat((start + (idx + 1) * perWord).toFixed(3)),
+                    start: parseFloat(wordStart.toFixed(3)),
+                    end: parseFloat(Math.max(wordStart + 0.1, wordEnd).toFixed(3)),
                 });
+                cursor = wordEnd;
             });
         }
     }

@@ -250,6 +250,40 @@ function resolveFont(family: string = 'Montserrat', size: number, weight: string
     return `${weight} ${size}px ${familyString}`;
 }
 
+/** How long the final word of a cue stays highlighted after it ends (s). */
+const LAST_WORD_HOLD_S = 0.45;
+
+/**
+ * Fonts that only exist in a single weight (or lack a 600/800/900 axis)
+ * on Google Fonts — load exactly what exists instead of synthesizing.
+ */
+const FONT_WEIGHT_HINTS: Record<string, string[]> = {
+    'bebas-neue': ['400'],
+    'archivo-black': ['400'],
+    'space-mono': ['400', '700'],
+};
+
+/**
+ * Canvas does NOT wait for webfonts: draw before the Google font arrives
+ * and canvas silently bakes in a system fallback face (the "terrible
+ * typography" bug). Await the exact faces this renderer draws with.
+ */
+export async function ensureOverlayFontReady(fontFamily: string): Promise<void> {
+    if (typeof document === 'undefined' || !document.fonts?.load) return;
+    const selected = POPULAR_OVERLAY_FONTS.find(
+        (f) => f.id === fontFamily || f.name.toLowerCase() === fontFamily.toLowerCase()
+    );
+    if (!selected) return; // custom family — nothing reliable to await
+    const bare = selected.family.split(',')[0].replace(/"/g, '').trim();
+    const weights = FONT_WEIGHT_HINTS[selected.id] ?? ['600', '800', '900'];
+    try {
+        await Promise.all(weights.map((w) => document.fonts.load(`${w} 48px "${bare}"`)));
+        await document.fonts.ready;
+    } catch {
+        /* best effort — canvas falls back to a system font */
+    }
+}
+
 /**
  * Word layout interfaces for multi-line wrapping
  */
@@ -392,10 +426,15 @@ export function drawCaptionFrame(
             }
         }
 
-        // 4c. Past the last word in this cue
+        // 4c. Past the last word in this cue — hold the final highlight for a
+        // short grace period only, then go dark. Without this cap the last
+        // word stays lit through trailing silence, which reads as the app
+        // "highlighting words nobody is saying".
         if (activeWordIndex === -1 && currentTime >= cueWords[cueWords.length - 1].end) {
-            activeWordIndex = cueWords.length - 1;
-            wordProgress = 1.0;
+            if (currentTime <= cueWords[cueWords.length - 1].end + LAST_WORD_HOLD_S) {
+                activeWordIndex = cueWords.length - 1;
+                wordProgress = 1.0;
+            }
         }
 
         // CRITICAL: If currentTime < cueWords[0].start:
@@ -600,31 +639,41 @@ export function drawCaptionFrame(
         const startIdx = Math.max(0, Math.min(words.length - windowSize, activeWordIndex - 1));
         const visibleWords = words.slice(startIdx, startIdx + windowSize);
 
+        // Measure the text EXACTLY as it will be drawn: uppercase words are
+        // wider than the raw transcript, and the old code measured the raw
+        // string but drew uppercase — the mismatch accumulated word by word
+        // and shoved captions off-center / past the right edge in portrait.
+        const styledWords = visibleWords.map((raw) => (typography.uppercase ? raw.toUpperCase() : raw));
+
         let popFontSize = Math.round(baseFontSize * 1.2);
+        const measureAt = (size: number) => {
+            ctx.font = resolveFont(fontFamily, size, '900');
+            const widths = styledWords.map((t) => ctx.measureText(t).width);
+            const gap = Math.max(6, Math.round(size * 0.28));
+            const total = widths.reduce((sum, w) => sum + w, 0) + gap * (styledWords.length - 1);
+            return { widths, gap, total };
+        };
+
+        let m = measureAt(popFontSize);
+        const maxWidth = width * (isPortrait ? 0.86 : 0.90);
+
+        // Auto shrink if the word window exceeds the safe area
+        if (m.total > maxWidth) {
+            popFontSize = Math.max(18, Math.round(popFontSize * (maxWidth / m.total)));
+            m = measureAt(popFontSize);
+        }
+
         ctx.font = resolveFont(fontFamily, popFontSize, '900');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const totalText = visibleWords.join(' ');
-        let totalWidth = ctx.measureText(totalText).width;
-        const maxWidth = width * 0.88;
+        let currentX = (width - m.total) / 2;
 
-        // Auto shrink if 3 long words exceed screen width
-        if (totalWidth > maxWidth) {
-            popFontSize = Math.round(popFontSize * (maxWidth / totalWidth));
-            ctx.font = resolveFont(fontFamily, popFontSize, '900');
-            totalWidth = ctx.measureText(totalText).width;
-        }
-
-        const startX = (width - totalWidth) / 2;
-        let currentX = startX;
-
-        visibleWords.forEach((rawWord, relativeIdx) => {
+        visibleWords.forEach((_rawWord, relativeIdx) => {
             const absoluteIdx = startIdx + relativeIdx;
             const isCurrent = absoluteIdx === activeWordIndex;
-            const word = typography.uppercase ? rawWord.toUpperCase() : rawWord;
-            const wordWidth = ctx.measureText(word + ' ').width;
-            const wordCenterX = currentX + wordWidth / 2;
+            const word = styledWords[relativeIdx];
+            const wordCenterX = currentX + m.widths[relativeIdx] / 2;
 
             ctx.save();
             ctx.translate(wordCenterX, centerY);
@@ -682,7 +731,7 @@ export function drawCaptionFrame(
             }
 
             ctx.restore();
-            currentX += wordWidth;
+            currentX += m.widths[relativeIdx] + (relativeIdx < styledWords.length - 1 ? m.gap : 0);
         });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -765,6 +814,11 @@ export async function renderCaptionsToVideo(
     } = options;
 
     const resolvedMode = resolveVideoMode(videoMode, style);
+
+    // Load the real webfont BEFORE the first frame: canvas never waits
+    // for fonts, so an export started too early ships the fallback face.
+    await ensureOverlayFontReady(typography.fontFamily || 'Montserrat');
+
     const width = aspectRatio === '9:16' ? 1080 : 1920;
     const height = aspectRatio === '9:16' ? 1920 : 1080;
 
@@ -833,8 +887,11 @@ export async function renderCaptionsToVideo(
             onProgress?.(percent);
 
             currentTime += frameDuration;
-            // Accelerated frame recording
-            setTimeout(renderNextFrame, 1000 / (fps * 2));
+            // Real-time pacing: MediaRecorder timestamps frames by WALL CLOCK,
+            // so if drawing outruns real time the export plays sped-up (old
+            // bug: 2x-fast video). Pace at exactly 1/fps so the exported
+            // duration equals the audio duration.
+            setTimeout(renderNextFrame, 1000 / fps);
         }
 
         renderNextFrame();

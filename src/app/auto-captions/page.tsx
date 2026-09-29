@@ -66,6 +66,7 @@ import {
     CAPTION_STYLE_PRESETS,
     drawCaptionFrame,
     renderCaptionsToVideo,
+    ensureOverlayFontReady,
     POPULAR_OVERLAY_FONTS,
 } from '@/lib/captions/overlay-renderer';
 import { alignScriptWithAudioCues } from '@/lib/captions/script-aligner';
@@ -1052,6 +1053,19 @@ export default function CaptionsPage() {
     useEffect(() => {
         renderPreviewCanvas(overlayCurrentTime);
     }, [renderPreviewCanvas, overlayCurrentTime]);
+
+    // Canvas draws synchronously and does NOT wait for webfonts — the
+    // first paints after a font switch show the system fallback. Redraw
+    // once the selected webfont has actually finished loading.
+    useEffect(() => {
+        let cancelled = false;
+        ensureOverlayFontReady(captionFont).then(() => {
+            if (!cancelled) renderPreviewCanvas(overlayCurrentTime);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [captionFont, renderPreviewCanvas, overlayCurrentTime]);
 
     // Live 60FPS Overlay Audio Animation Loop (direct high-speed canvas draw)
     useEffect(() => {
