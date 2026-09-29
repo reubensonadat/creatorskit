@@ -22,13 +22,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # no marker ever prints again). start.sh re-verifies at boot and rebuilds
 # in the background if build/main.js is missing — output lands in
 # /tmp/pot.log, which /health exposes as pot_log.
-RUN (git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot \
- || (rm -rf /pot && sleep 3 \
-     && git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot)) \
- && cd /pot \
- && (npm install --no-audit --no-fund || npm install --no-audit --no-fund) \
- && npx tsc \
- && echo "POT_BUILD_OK") \
+RUN ( (git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot \
+      || (rm -rf /pot && sleep 3 \
+          && git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot)) \
+     && cd /pot \
+     && (npm install --no-audit --no-fund || npm install --no-audit --no-fund) \
+     && npx tsc \
+     && echo "POT_BUILD_OK") \
  || echo "POT_BUILD_FAILED - start.sh retries at boot (see /health pot_log)"
 
 COPY app.py start.sh ./
