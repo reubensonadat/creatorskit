@@ -206,6 +206,10 @@ function BrutProgress({ percent, label, statusText }: { percent: number; label?:
 export default function CaptionsPage() {
     const [file, setFile] = useState<File | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    // True when a restored session has cues but its audio blob could not be
+    // recovered from IndexedDB (quota / private mode / cleared storage) — the
+    // workspace stays fully usable, but the player needs a loud heads-up.
+    const [sessionAudioMissing, setSessionAudioMissing] = useState(false);
     const [vttUrl, setVttUrl] = useState<string | null>(null);
     const [cues, setCues] = useState<SubtitleCue[]>([]);
     const [fullText, setFullText] = useState<string>('');
@@ -217,6 +221,66 @@ export default function CaptionsPage() {
         message: 'Ready for audio',
         percent: 0,
     });
+    const [displayPercent, setDisplayPercent] = useState<number>(0);
+    const maxPercentRef = useRef<number>(0);
+    const progressStartTimeRef = useRef<number>(0);
+    const autoRetryCountRef = useRef<number>(0);
+    const MAX_AUTO_RETRIES = 2;
+
+    const resetProgressForNewAttempt = useCallback((initialMessage: string) => {
+        progressStartTimeRef.current = Date.now();
+        maxPercentRef.current = 0;
+        setDisplayPercent(0);
+        setProgress({
+            stage: 'loading_model',
+            message: initialMessage,
+            percent: 0,
+        });
+    }, []);
+
+    // Strictly monotonic & eased progress ticker:
+    // Starts fast (lying nicely up to ~65% in a few seconds), gradually decelerates towards ~92-95%,
+    // and NEVER drops backward (unless resetProgressForNewAttempt explicitly starts a new attempt).
+    const handleProgressUpdate = useCallback((prog: WhisperProgress) => {
+        setProgress(prog);
+        if (typeof prog.percent === 'number' && !isNaN(prog.percent)) {
+            if (prog.percent > maxPercentRef.current) {
+                const capped = prog.stage === 'complete' ? 100 : Math.min(95, prog.percent);
+                maxPercentRef.current = capped;
+                setDisplayPercent(Math.round(capped));
+            }
+        }
+        if (prog.stage === 'complete') {
+            maxPercentRef.current = 100;
+            setDisplayPercent(100);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!isProcessing) {
+            if (progress.stage === 'complete') {
+                maxPercentRef.current = 100;
+                setDisplayPercent(100);
+            }
+            return;
+        }
+
+        const timer = setInterval(() => {
+            if (!progressStartTimeRef.current) return;
+            const elapsed = (Date.now() - progressStartTimeRef.current) / 1000;
+            // Eased curve: fast initial acceleration, then asymptotic braking
+            // 1s: ~25%, 2s: ~41%, 3s: ~53%, 5s: ~69%, 8s: ~81%, 12s: ~88%, 20s: ~92%, 30s: ~94%
+            const easedVal = 95 * (1 - Math.exp(-elapsed / 4.5));
+            const newTarget = Math.min(95, Math.max(maxPercentRef.current, easedVal));
+            if (newTarget > maxPercentRef.current) {
+                maxPercentRef.current = newTarget;
+                setDisplayPercent(Math.round(newTarget));
+            }
+        }, 80);
+
+        return () => clearInterval(timer);
+    }, [isProcessing, progress.stage]);
+
     const [activeTab, setActiveTab] = useState<'cues' | 'text'>('cues');
     const [copied, setCopied] = useState(false);
     const whisperClientRef = useRef<WhisperClient | null>(null);
@@ -230,7 +294,7 @@ export default function CaptionsPage() {
     const [captionFont, setCaptionFont] = useState<string>('montserrat');
     const [captionFontSize, setCaptionFontSize] = useState<number>(48);
     const [captionLetterSpacing, setCaptionLetterSpacing] = useState<number>(0);
-    const [captionYPosition, setCaptionYPosition] = useState<number>(78);
+    const [captionYPosition, setCaptionYPosition] = useState<number>(70);
     const [captionPillBg, setCaptionPillBg] = useState<CaptionPillBackground>('dark');
     const [captionPillCustomColor, setCaptionPillCustomColor] = useState<string>('#18181b');
     const [emojiMode, setEmojiMode] = useState<boolean>(false);
@@ -317,6 +381,7 @@ export default function CaptionsPage() {
 
     const handleFile = async (selectedFile: File, engineOverride?: EngineChoice) => {
         const activeEngine = engineOverride || transcriptionEngine;
+        autoRetryCountRef.current = 0;
 
         // Reject empty/unreadable files up front with a clear message
         if (!selectedFile || selectedFile.size === 0) {
@@ -339,6 +404,7 @@ export default function CaptionsPage() {
         const objectUrl = URL.createObjectURL(selectedFile);
         setFile(selectedFile);
         setAudioUrl(objectUrl);
+        setSessionAudioMissing(false);
         setCues([]);
         setFullText('');
         setVttUrl(null);
@@ -363,6 +429,9 @@ export default function CaptionsPage() {
             console.warn('Metadata inspection fallback:', metaErr);
         }
 
+        progressStartTimeRef.current = Date.now();
+        maxPercentRef.current = 8;
+        setDisplayPercent(8);
         setIsProcessing(true);
         try {
             let result: TranscriptionResult;
@@ -379,7 +448,7 @@ export default function CaptionsPage() {
                     return;
                 }
 
-                setProgress({
+                handleProgressUpdate({
                     stage: 'loading_model',
                     message: `Connecting to ${activeEngine === 'groq' ? 'Groq Cloud' : 'OpenAI'} Whisper...`,
                     percent: 20,
@@ -390,7 +459,7 @@ export default function CaptionsPage() {
                     activeEngine,
                     userKey,
                     effectiveScript,
-                    (prog) => setProgress(prog)
+                    (prog) => handleProgressUpdate(prog)
                 );
             } else if (activeEngine === 'server') {
                 // SERVER (the DEFAULT): free Render worker first (one-time
@@ -398,27 +467,20 @@ export default function CaptionsPage() {
                 // never enters client code). The browser engine is a silent
                 // bodyguard: only when BOTH paths fail does the user see an
                 // error with retry options.
-                //
-                // Decode locally first when the browser can: it's quick, it
-                // primes the fallback, and it lets us upload a tiny 16k WAV
-                // instead of the raw file (smaller upload, server skips its
-                // ffmpeg step). If this browser can't decode the codec at
-                // all, send the raw file — the worker's ffmpeg normalizes
-                // it server-side.
-                setProgress({
+                handleProgressUpdate({
                     stage: 'decoding',
                     message: 'Analyzing audio...',
-                    percent: 5,
+                    percent: 10,
                 });
 
                 let browserPcm: Float32Array | null = null;
                 let decodedDuration: number | undefined;
                 try {
                     const decoded = await processAudioForWhisper(selectedFile, () => {
-                        setProgress({
+                        handleProgressUpdate({
                             stage: 'decoding',
                             message: 'Analyzing audio...',
-                            percent: 15,
+                            percent: 20,
                         });
                     });
                     browserPcm = decoded.audioData;
@@ -428,10 +490,10 @@ export default function CaptionsPage() {
                     // Undecodable in this browser (MKV / AC-3 …) — raw upload it is.
                 }
 
-                setProgress({
+                handleProgressUpdate({
                     stage: 'loading_model',
                     message: 'Generating captions on the free server...',
-                    percent: 20,
+                    percent: 30,
                 });
 
                 try {
@@ -439,37 +501,64 @@ export default function CaptionsPage() {
                         file: selectedFile,
                         audioData: browserPcm,
                         durationSeconds: decodedDuration,
-                        onProgress: (prog) => setProgress(prog),
+                        onProgress: (prog) => handleProgressUpdate(prog),
                     });
                 } catch (serverErr) {
-                    // These two have no sensible browser rescue (file too
-                    // big for anyone / edge function unreachable) — surface
-                    // them straight away.
                     if (
                         serverErr instanceof WorkerTranscribeError &&
                         (serverErr.code === 'too_large' || serverErr.code === 'edge_offline')
                     ) {
                         throw serverErr;
                     }
-                    // Anything else (busy, cold start, network hiccup):
-                    // quietly finish in the browser on the audio we already
-                    // decoded — no restart, no alarm. No decoded audio →
-                    // nothing to fall back to, so the server error is the
-                    // story the user needs to see.
                     if (!browserPcm) {
+                        try {
+                            const decoded = await processAudioForWhisper(selectedFile);
+                            browserPcm = decoded.audioData;
+                            decodedDuration = decoded.duration;
+                            setAudioDuration(decoded.duration);
+                        } catch {
+                            throw serverErr;
+                        }
+                    }
+
+                    // Automatic failure recovery: switch to Local engine and restart progress from 0%
+                    // Allows a maximum of 2 automatic retries as requested.
+                    if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
+                        autoRetryCountRef.current += 1;
+                        const attempt = autoRetryCountRef.current;
+
+                        // 1. Visually switch the active engine chip from 'server' to 'local'
+                        setTranscriptionEngine('local');
+
+                        const failReason =
+                            serverErr instanceof WorkerTranscribeError && serverErr.code === 'timeout'
+                                ? 'Server timed out'
+                                : 'Server failed';
+
+                        // 2. Clear notice explaining what happened
+                        handleProgressUpdate({
+                            stage: 'loading_model',
+                            message: `${failReason} · Retrying using local offline engine (Attempt ${attempt} of ${MAX_AUTO_RETRIES})...`,
+                        });
+
+                        // 3. Briefly pause so user sees the engine switch, then restart progress bar all over from 0%
+                        await new Promise((r) => setTimeout(r, 650));
+                        resetProgressForNewAttempt(`${failReason} · Starting local offline AI (Attempt ${attempt} of ${MAX_AUTO_RETRIES})...`);
+
+                        // 4. Run in-browser local engine
+                        if (!whisperClientRef.current) {
+                            whisperClientRef.current = new WhisperClient();
+                        }
+                        result = await whisperClientRef.current.transcribe(browserPcm, (prog) => {
+                            handleProgressUpdate({
+                                ...prog,
+                                message: prog.message ? `${prog.message} (Local Attempt ${attempt})` : `Generating captions (Local Attempt ${attempt})`,
+                            });
+                        });
+                    } else {
+                        // Max retries reached — do not retry again
                         throw serverErr;
                     }
-                    setProgress({
-                        stage: 'loading_model',
-                        message: 'Server busy — finishing in your browser instead...',
-                        percent: 20,
-                    });
-                    if (!whisperClientRef.current) {
-                        whisperClientRef.current = new WhisperClient();
-                    }
-                    result = await whisperClientRef.current.transcribe(browserPcm, (prog) => {
-                        setProgress(prog);
-                    });
                 }
             } else {
                 // LOCAL: fully-offline browser Whisper first. The free
@@ -482,27 +571,26 @@ export default function CaptionsPage() {
 
                 const runBrowserEngine = async (): Promise<TranscriptionResult> => {
                     // Step 1: Decode audio locally
-                    setProgress({
+                    handleProgressUpdate({
                         stage: 'decoding',
                         message: 'Analyzing audio...',
-                        percent: 5,
+                        percent: 10,
                     });
 
                     const { audioData, duration: decodedDuration } = await processAudioForWhisper(selectedFile, () => {
-                        setProgress({
+                        handleProgressUpdate({
                             stage: 'decoding',
                             message: 'Analyzing audio...',
-                            percent: 15,
+                            percent: 25,
                         });
                     });
                     browserPcm = audioData;
                     setAudioDuration(decodedDuration);
 
                     // Step 2: Transcribe audio with in-browser Web Worker Whisper
-                    setProgress({
+                    handleProgressUpdate({
                         stage: 'loading_model',
                         message: 'Generating captions...',
-                        percent: 20,
                     });
 
                     if (!whisperClientRef.current) {
@@ -510,19 +598,31 @@ export default function CaptionsPage() {
                     }
 
                     return whisperClientRef.current.transcribe(audioData, (prog) => {
-                        setProgress(prog);
+                        handleProgressUpdate(prog);
                     });
                 };
 
                 try {
                     result = await runBrowserEngine();
-                } catch {
-                    // Server rescue — same silent-recovery deal, mirrored.
-                    result = await transcribeOnWorker({
-                        file: selectedFile,
-                        audioData: browserPcm,
-                        onProgress: (prog) => setProgress(prog),
-                    });
+                } catch (localErr) {
+                    if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
+                        autoRetryCountRef.current += 1;
+                        const attempt = autoRetryCountRef.current;
+                        setTranscriptionEngine('server');
+                        handleProgressUpdate({
+                            stage: 'loading_model',
+                            message: `Local failed · Retrying on server (Attempt ${attempt} of ${MAX_AUTO_RETRIES})...`,
+                        });
+                        await new Promise((r) => setTimeout(r, 650));
+                        resetProgressForNewAttempt(`Retrying on server (Attempt ${attempt} of ${MAX_AUTO_RETRIES})...`);
+                        result = await transcribeOnWorker({
+                            file: selectedFile,
+                            audioData: browserPcm,
+                            onProgress: (prog) => handleProgressUpdate(prog),
+                        });
+                    } else {
+                        throw localErr;
+                    }
                 }
             }
 
@@ -564,14 +664,14 @@ export default function CaptionsPage() {
                 console.warn('Session caching warning:', cacheErr);
             }
 
-            setProgress({
+            handleProgressUpdate({
                 stage: 'complete',
                 message: 'Transcription complete',
                 percent: 100,
             });
         } catch (err) {
             console.error('Transcription error:', err);
-            setProgress({
+            handleProgressUpdate({
                 stage: 'error',
                 message: err instanceof Error ? err.message : 'Transcription failed',
                 percent: 0,
@@ -602,8 +702,14 @@ export default function CaptionsPage() {
                     if (handoff.script) {
                         setTeleprompterScript(handoff.script);
                     }
+                    // NEVER silently re-transcribe over finished work: if cues from a
+                    // completed run are already stored, a refresh must RESTORE that
+                    // session instead of going back to the server to redo everything.
+                    // The handoff card still appears so a NEW take can be started
+                    // deliberately.
+                    const hasFinishedSession = !!localStorage.getItem(STORAGE_KEYS.CUES);
                     const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob) {
+                    if (urlParams.get('auto') === 'true' && handoff.mediaBlob && !hasFinishedSession) {
                         const transferredFile = new File([handoff.mediaBlob], handoff.fileName || 'teleprompter_take.webm', {
                             type: handoff.mediaBlob.type || 'audio/webm',
                         });
@@ -667,7 +773,9 @@ export default function CaptionsPage() {
                             percent: 100,
                         });
                     } else if (savedCues && isMounted) {
-                        // In case audio was not cached (e.g. older session), restore text and cues
+                        // In case audio was not cached (quota / private mode / cleared
+                        // storage), still restore the caption work — and be LOUD
+                        // about the missing audio instead of a silently dead player.
                         let parsedCues: SubtitleCue[] = [];
                         try {
                             parsedCues = ensureSingleLineCues(JSON.parse(savedCues));
@@ -679,11 +787,25 @@ export default function CaptionsPage() {
                         setCues(parsedCues);
                         setFullText(savedFullText || '');
                         setElapsed(savedElapsed || '');
+
+                        // Keep the overlay timeline & export length correct even
+                        // without the audio file.
+                        const savedDur = localStorage.getItem(STORAGE_KEYS.DURATION);
+                        setAudioDuration(savedDur ? parseFloat(savedDur) : parsedCues[parsedCues.length - 1]?.end || 0);
+
+                        setSessionAudioMissing(true);
+
                         if (parsedCues.length > 0) {
                             const vttContent = generateVtt(parsedCues);
                             const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
                             setVttUrl(URL.createObjectURL(vttBlob));
                         }
+
+                        setProgress({
+                            stage: 'complete',
+                            message: 'Session restored — audio missing from browser storage',
+                            percent: 100,
+                        });
                     }
                 }
             } catch (err) {
@@ -956,6 +1078,7 @@ export default function CaptionsPage() {
         if (audioUrl && audioUrl.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
         setFile(null);
         setAudioUrl(null);
+        setSessionAudioMissing(false);
         setVttUrl(null);
         setCues([]);
         setFullText('');
@@ -1646,12 +1769,31 @@ export default function CaptionsPage() {
                     }}
                 >
                     <BrutProgress
-                        percent={progress.percent ?? (progress.stage === 'complete' ? 100 : 15)}
+                        percent={progress.stage === 'complete' ? 100 : displayPercent}
                         label={progress.message || 'GENERATING CAPTIONS...'}
                     />
                     <p style={{ margin: 0, fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 600, color: '#666' }}>
                         Transcribing speech and aligning word timestamps — this only takes a moment.
                     </p>
+                </div>
+            )}
+
+            {/* Restored without audio: warn loudly — the work is still usable */}
+            {sessionAudioMissing && !isProcessing && (
+                <div
+                    className="brutalist-card"
+                    style={{
+                        padding: '12px 16px',
+                        borderColor: '#eab308',
+                        background: '#fef9c3',
+                        fontSize: '0.78rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 600,
+                    }}
+                >
+                    ⚠ SESSION RESTORED WITHOUT AUDIO — the browser did not keep the recording
+                    (storage quota or private mode). Your cues, SRT/VTT export and the overlay
+                    render still work. Re-attach the audio file only if you want to listen along.
                 </div>
             )}
 

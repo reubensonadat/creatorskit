@@ -99,91 +99,61 @@ export interface CaptionStylePresetConfig {
 
 export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
     {
-        id: 'tiktok-pop',
-        name: 'TikTok Pop',
+        // The everyday driver: big clean uppercase pop, yellow active word,
+        // restrained spring settle, anchored at the top of the bottom third.
+        id: 'creator-pop',
+        name: 'Creator Pop',
         videoMode: 'kinetic-pop',
         fontFamily: 'montserrat',
-        fontSize: 60,
+        fontSize: 56,
         letterSpacing: 0,
-        yPositionPercent: 76,
+        yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#FFE500',
         springPhysics: true,
-        bounceIntensity: 1.2,
-        wordRotation: true,
+        bounceIntensity: 1.0,
+        wordRotation: false,
         wordPop: false,
         textShadow: true,
         uppercase: true,
         emojiMode: false,
     },
     {
-        id: 'hormozi-bold',
-        name: 'Hormozi Bold',
+        // Maximum punch for short-form hooks: heavier face, green highlight,
+        // slightly stronger pop — still settles naturally, no wobble.
+        id: 'hormozi-punch',
+        name: 'Hormozi Punch',
         videoMode: 'kinetic-pop',
         fontFamily: 'archivo-black',
-        fontSize: 68,
+        fontSize: 60,
         letterSpacing: -1,
-        yPositionPercent: 72,
+        yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#22C55E',
         springPhysics: true,
-        bounceIntensity: 1.45,
-        wordRotation: true,
+        bounceIntensity: 1.15,
+        wordRotation: false,
         wordPop: false,
         textShadow: true,
         uppercase: true,
         emojiMode: false,
     },
     {
-        id: 'karaoke-stream',
-        name: 'Karaoke Stream',
+        // The pro commentary look: one calm line in a soft dark pill with a
+        // gliding karaoke highlight — made for talking-head & voiceover cuts.
+        id: 'karaoke-clean',
+        name: 'Karaoke Clean',
         videoMode: 'teleprompter',
         fontFamily: 'poppins',
-        fontSize: 50,
+        fontSize: 46,
         letterSpacing: 0,
-        yPositionPercent: 78,
+        yPositionPercent: 72,
         pillBackground: 'dark',
         highlighterColor: '#06B6D4',
         springPhysics: true,
-        bounceIntensity: 1.15,
+        bounceIntensity: 1.0,
         wordRotation: false,
         wordPop: true,
-        textShadow: true,
-        uppercase: false,
-        emojiMode: false,
-    },
-    {
-        id: 'clean-vlog',
-        name: 'Clean Vlog',
-        videoMode: 'teleprompter',
-        fontFamily: 'inter',
-        fontSize: 42,
-        letterSpacing: 0,
-        yPositionPercent: 80,
-        pillBackground: 'dark',
-        highlighterColor: '#FFFFFF',
-        springPhysics: true,
-        bounceIntensity: 1,
-        wordRotation: false,
-        wordPop: false,
-        textShadow: false,
-        uppercase: false,
-        emojiMode: false,
-    },
-    {
-        id: 'cinema-min',
-        name: 'Cinema Min',
-        videoMode: 'minimal',
-        fontFamily: 'space-mono',
-        fontSize: 36,
-        letterSpacing: 0,
-        yPositionPercent: 84,
-        pillBackground: 'light',
-        highlighterColor: '#FFE500',
-        springPhysics: false,
-        bounceIntensity: 1,
-        wordRotation: false,
-        wordPop: false,
         textShadow: false,
         uppercase: false,
         emojiMode: false,
@@ -234,9 +204,12 @@ export function calculateSpringScale(progress: number, intensity: number = 1.1):
     // Harmonic oscillation with exponential decay:
     // Snappy entrance peaking at ~1.28 within first 18% of word duration, then smooth elastic settle
     const t = progress;
-    const frequency = 9.5;
-    const decay = 5.0;
-    const amplitude = 0.32 * intensity;
+    // Natural settle: ONE quick overshoot, then rest. The old
+    // 9.5/5.0/0.32 spring visibly wobbled ("bouncing too much") —
+    // lower frequency, faster decay, half the amplitude.
+    const frequency = 7.0;
+    const decay = 7.5;
+    const amplitude = 0.16 * intensity;
     const springOffset = amplitude * Math.exp(-decay * t) * Math.sin(frequency * t * Math.PI);
     return Math.max(0.9, 1.0 + springOffset);
 }
@@ -470,7 +443,10 @@ export function drawCaptionFrame(
     const baseFontSize = userFontSize || Math.round(referenceDimension * (isPortrait ? 0.068 : 0.062));
 
     // Vertical Y position with user customization
-    const defaultYPercent = isPortrait ? 78 : 82;
+    // Default sits at the TOP of the bottom third of the screen so
+    // captions never fight the TikTok/YouTube UI chrome at the very
+    // bottom, and never cover the subject's face in the middle.
+    const defaultYPercent = isPortrait ? 70 : 74;
     const yPercent = typography.yPositionPercent !== undefined ? typography.yPositionPercent : defaultYPercent;
     const centerY = (height * yPercent) / 100;
 
@@ -487,7 +463,9 @@ export function drawCaptionFrame(
     // MODE 1: TELEPROMPTER WORD-BY-WORD KINETIC HIGHLIGHT (STRICTLY ONE CLEAN LINE)
     // ─────────────────────────────────────────────────────────────────────────
     if (mode === 'teleprompter') {
-        const maxAllowedWidth = width * (isPortrait ? 0.88 : 0.82);
+        // Safe area: cap the line at 80% of portrait width (~10%
+        // margins each side) so text clears TikTok/YouTube UI.
+        const maxAllowedWidth = width * (isPortrait ? 0.80 : 0.84);
 
         let activeFontSize = baseFontSize;
         ctx.font = resolveFont(fontFamily, activeFontSize, '800');
@@ -635,33 +613,39 @@ export function drawCaptionFrame(
     // MODE 2: KINETIC POP (Punchy 2-3 Word Creator Pop with Heavy Stroke)
     // ─────────────────────────────────────────────────────────────────────────
     } else if (mode === 'kinetic-pop') {
-        const windowSize = 3;
-        const startIdx = Math.max(0, Math.min(words.length - windowSize, activeWordIndex - 1));
-        const visibleWords = words.slice(startIdx, startIdx + windowSize);
+        // Safe area: pop captions cap at ~78% of portrait width (~11%
+        // margins each side) — comfortably inside platform UI zones.
+        const maxWidth = width * (isPortrait ? 0.78 : 0.84);
 
-        // Measure the text EXACTLY as it will be drawn: uppercase words are
-        // wider than the raw transcript, and the old code measured the raw
-        // string but drew uppercase — the mismatch accumulated word by word
-        // and shoved captions off-center / past the right edge in portrait.
-        const styledWords = visibleWords.map((raw) => (typography.uppercase ? raw.toUpperCase() : raw));
-
-        let popFontSize = Math.round(baseFontSize * 1.2);
-        const measureAt = (size: number) => {
-            ctx.font = resolveFont(fontFamily, size, '900');
-            const widths = styledWords.map((t) => ctx.measureText(t).width);
-            const gap = Math.max(6, Math.round(size * 0.28));
-            const total = widths.reduce((sum, w) => sum + w, 0) + gap * (styledWords.length - 1);
-            return { widths, gap, total };
+        // Fit a window of spoken words: measure the text EXACTLY as it
+        // will be drawn (uppercase aware), shrink to fit the safe area,
+        // and if three words would get squeezed unnaturally small,
+        // drop to TWO words — short punchy beats, never a shrunken line.
+        const fitWindow = (size: number) => {
+            const idx = Math.max(0, Math.min(words.length - size, activeWordIndex - 1));
+            const vis = words.slice(idx, idx + size);
+            const styled = vis.map((raw) => (typography.uppercase ? raw.toUpperCase() : raw));
+            const meas = (fontPx: number) => {
+                ctx.font = resolveFont(fontFamily, fontPx, '900');
+                const widths = styled.map((t) => ctx.measureText(t).width);
+                const gap = Math.max(6, Math.round(fontPx * 0.28));
+                const total = widths.reduce((sum, w) => sum + w, 0) + gap * (styled.length - 1);
+                return { widths, gap, total };
+            };
+            let fontPx = Math.round(baseFontSize * 1.2);
+            let mm = meas(fontPx);
+            if (mm.total > maxWidth) {
+                fontPx = Math.max(18, Math.round(fontPx * (maxWidth / mm.total)));
+                mm = meas(fontPx);
+            }
+            return { startIdx: idx, visibleWords: vis, styledWords: styled, popFontSize: fontPx, m: mm };
         };
 
-        let m = measureAt(popFontSize);
-        const maxWidth = width * (isPortrait ? 0.86 : 0.90);
-
-        // Auto shrink if the word window exceeds the safe area
-        if (m.total > maxWidth) {
-            popFontSize = Math.max(18, Math.round(popFontSize * (maxWidth / m.total)));
-            m = measureAt(popFontSize);
+        let win = fitWindow(3);
+        if (win.popFontSize < Math.round(baseFontSize * 0.62) && words.length >= 3) {
+            win = fitWindow(2);
         }
+        const { startIdx, visibleWords, styledWords, popFontSize, m } = win;
 
         ctx.font = resolveFont(fontFamily, popFontSize, '900');
         ctx.textAlign = 'center';
@@ -740,7 +724,7 @@ export function drawCaptionFrame(
     } else {
         const fullLine = words.join(' ');
         const minimalSize = Math.round(baseFontSize * 0.65);
-        const maxAllowedWidth = width * (isPortrait ? 0.88 : 0.80);
+        const maxAllowedWidth = width * (isPortrait ? 0.80 : 0.84);
 
         let activeSize = minimalSize;
         ctx.font = resolveFont(fontFamily, activeSize, '600');
