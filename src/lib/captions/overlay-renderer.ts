@@ -184,26 +184,6 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         uppercase: true,
         emojiMode: false,
     },
-    {
-        // The pro commentary look: one calm line in a soft dark pill with a
-        // gliding karaoke highlight — made for talking-head & voiceover cuts.
-        id: 'karaoke-clean',
-        name: 'Karaoke Clean',
-        videoMode: 'teleprompter',
-        fontFamily: 'poppins',
-        fontSize: 52,
-        letterSpacing: 0,
-        yPositionPercent: 72,
-        pillBackground: 'dark',
-        highlighterColor: '#67E8F9',
-        springPhysics: true,
-        bounceIntensity: 1.0,
-        wordRotation: false,
-        wordPop: true,
-        textShadow: false,
-        uppercase: false,
-        emojiMode: false,
-    },
 ];
 
 const EMOJI_DICTIONARY: Record<string, string> = {

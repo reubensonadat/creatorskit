@@ -330,7 +330,7 @@ export default function CaptionsPage() {
     const [activeStudioDeck, setActiveStudioDeck] = useState<'cassette' | 'overlay'>('cassette');
 
     // Video Overlay Studio Configuration (3 Modes: Teleprompter Highlight, Kinetic Pop, Minimal)
-    const [videoMode, setVideoMode] = useState<CaptionVideoMode>('teleprompter');
+    const [videoMode, setVideoMode] = useState<CaptionVideoMode>('kinetic-pop');
     const [captionFont, setCaptionFont] = useState<string>('montserrat');
     const [captionFontSize, setCaptionFontSize] = useState<number>(48);
     const [captionLetterSpacing, setCaptionLetterSpacing] = useState<number>(0);
@@ -346,6 +346,7 @@ export default function CaptionsPage() {
     const [cueDragView, setCueDragView] = useState<{ index: number; newStart: number } | null>(null);
     const cueDragRef = useRef<{ index: number; startX: number; origStart: number; width: number; dur: number; len: number; newStart: number; movedPx: number } | null>(null);
     const cueTrackRef = useRef<HTMLDivElement | null>(null);
+    const cueTrackScrollRef = useRef<HTMLDivElement | null>(null);
     const [isRenderingVideo, setIsRenderingVideo] = useState(false);
     const [videoRenderProgress, setVideoRenderProgress] = useState(0);
 
@@ -1482,6 +1483,20 @@ export default function CaptionsPage() {
         return () => window.cancelAnimationFrame(animId);
     }, [overlayPlaying, renderPreviewCanvas]);
 
+    // Keep the cue-timeline playhead inside the visible scroll window
+    useEffect(() => {
+        const wrap = cueTrackScrollRef.current;
+        const track = cueTrackRef.current;
+        if (!wrap || !track) return;
+        const trackDur = Math.max(1, audioDuration || (cues.length > 0 ? cues[cues.length - 1].end : 10));
+        const trackW = track.getBoundingClientRect().width || 1;
+        const px = (overlayCurrentTime / trackDur) * trackW;
+        const view = wrap.clientWidth || 1;
+        if (px < wrap.scrollLeft + view * 0.1 || px > wrap.scrollLeft + view * 0.9) {
+            wrap.scrollLeft = Math.max(0, px - view * 0.35);
+        }
+    }, [overlayCurrentTime, audioDuration, cues]);
+
     const toggleOverlayPlayback = () => {
         const audio = overlayAudioRef.current;
         if (!audio) return;
@@ -2390,11 +2405,14 @@ export default function CaptionsPage() {
                                         </span>
                                     </div>
 
-                                    {/* Per-cue timeline strip — drag blocks to retime, gaps = silence, click to seek */}
+                                    {/* Per-cue timeline strip — scroll sideways, drag blocks to retime, gaps = silence */}
                                     {cues.length > 0 && (() => {
                                         const trackDur = Math.max(1, audioDuration || cues[cues.length - 1].end);
                                         const activeIdx = cues.findIndex((c) => overlayCurrentTime >= c.start && overlayCurrentTime <= c.end);
-                                        const BCOLORS = ['#FFE500', '#67E8F9', '#F97316', '#22C55E', '#EC4899'];
+                                        const tickStep = trackDur > 120 ? 30 : trackDur > 40 ? 10 : 5;
+                                        const ticks: number[] = [];
+                                        for (let t = 0; t <= trackDur; t += tickStep) ticks.push(parseFloat(t.toFixed(1)));
+                                        const innerWidth = `max(100%, ${Math.max(480, Math.ceil(trackDur * 24))}px)`;
                                         const seekTo = (t: number) => {
                                             const clamped = Math.min(Math.max(0, t), trackDur);
                                             setOverlayCurrentTime(clamped);
@@ -2403,113 +2421,126 @@ export default function CaptionsPage() {
                                         return (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                                 <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', justifyContent: 'space-between', letterSpacing: '0.02em' }}>
-                                                    <span>CUE TIMELINE — DRAG TO RETIME · GAPS = SILENCE</span>
+                                                    <span>CUE TIMELINE — DRAG TO RETIME · SCROLL → FOR MORE</span>
                                                     <span>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
                                                 </div>
                                                 <div
-                                                    ref={cueTrackRef}
+                                                    ref={cueTrackScrollRef}
                                                     style={{
-                                                        position: 'relative',
                                                         width: '100%',
-                                                        height: 44,
+                                                        overflowX: 'auto',
+                                                        overflowY: 'hidden',
                                                         border: '2px solid #000',
                                                         borderRadius: 4,
                                                         background: '#ffffff',
-                                                        overflow: 'hidden',
-                                                        cursor: 'pointer',
-                                                        userSelect: 'none',
-                                                        touchAction: 'none',
-                                                    }}
-                                                    onClick={(e) => {
-                                                        if (e.target !== e.currentTarget) return;
-                                                        const rect = e.currentTarget.getBoundingClientRect();
-                                                        seekTo(((e.clientX - rect.left) / rect.width) * trackDur);
+                                                        WebkitOverflowScrolling: 'touch',
                                                     }}
                                                 >
-                                                    <div style={{ position: 'absolute', inset: 0, background: 'repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 24px)' }} />
-                                                    {cues.map((c, i) => {
-                                                        const len = Math.max(0.05, c.end - c.start);
-                                                        const posStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : c.start;
-                                                        const leftPct = Math.min(98.5, (posStart / trackDur) * 100);
-                                                        const widthPct = Math.max(1.1, (len / trackDur) * 100);
-                                                        return (
-                                                            <div
-                                                                key={i}
-                                                                title={`#${i + 1}  ${c.start.toFixed(2)}s → ${c.end.toFixed(2)}s — ${c.text}`}
-                                                                style={{
-                                                                    position: 'absolute',
-                                                                    top: 4,
-                                                                    height: 32,
-                                                                    left: `${leftPct}%`,
-                                                                    width: `${widthPct}%`,
-                                                                    minWidth: 12,
-                                                                    background: BCOLORS[i % BCOLORS.length],
-                                                                    border: i === activeIdx ? '2.5px solid #000' : '1.5px solid rgba(0,0,0,0.65)',
-                                                                    borderRadius: 3,
-                                                                    opacity: cueDragView && cueDragView.index !== i ? 0.55 : 1,
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    padding: '0 4px',
-                                                                    overflow: 'hidden',
-                                                                    whiteSpace: 'nowrap',
-                                                                    fontSize: '0.56rem',
-                                                                    fontFamily: 'monospace',
-                                                                    fontWeight: 900,
-                                                                    color: '#000',
-                                                                    cursor: 'grab',
-                                                                    touchAction: 'none',
-                                                                }}
-                                                                onPointerDown={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
-                                                                    cueDragRef.current = {
-                                                                        index: i,
-                                                                        startX: e.clientX,
-                                                                        origStart: c.start,
-                                                                        width: cueTrackRef.current?.getBoundingClientRect().width ?? 1,
-                                                                        dur: trackDur,
-                                                                        len,
-                                                                        newStart: c.start,
-                                                                        movedPx: 0,
-                                                                    };
-                                                                }}
-                                                                onPointerMove={(e) => {
-                                                                    const d = cueDragRef.current;
-                                                                    if (!d || d.index !== i) return;
-                                                                    const dx = e.clientX - d.startX;
-                                                                    const ns = Math.min(Math.max(0, d.origStart + (dx / d.width) * d.dur), Math.max(0, d.dur - d.len));
-                                                                    d.newStart = ns;
-                                                                    d.movedPx = Math.abs(dx);
-                                                                    setCueDragView({ index: i, newStart: ns });
-                                                                }}
-                                                                onPointerUp={(e) => {
-                                                                    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { }
-                                                                    const d = cueDragRef.current;
-                                                                    cueDragRef.current = null;
-                                                                    setCueDragView(null);
-                                                                    if (!d || d.index !== i) return;
-                                                                    if (d.movedPx < 4) {
-                                                                        seekTo(d.origStart);
-                                                                    } else {
-                                                                        handleMoveCue(i, parseFloat(d.newStart.toFixed(2)));
-                                                                    }
-                                                                }}
-                                                                onPointerCancel={() => {
-                                                                    cueDragRef.current = null;
-                                                                    setCueDragView(null);
-                                                                }}
-                                                            >
-                                                                {c.text.trim() || '·'}
+                                                    <div
+                                                        ref={cueTrackRef}
+                                                        style={{
+                                                            position: 'relative',
+                                                            width: innerWidth,
+                                                            minWidth: '100%',
+                                                            height: 50,
+                                                            cursor: 'pointer',
+                                                            userSelect: 'none',
+                                                        }}
+                                                        onClick={(e) => {
+                                                            if (e.target !== e.currentTarget) return;
+                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                            seekTo(((e.clientX - rect.left) / rect.width) * trackDur);
+                                                        }}
+                                                    >
+                                                        {ticks.map((t) => (
+                                                            <div key={`tick-${t}`} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(t / trackDur) * 100}%`, borderLeft: '1px solid rgba(0,0,0,0.12)', pointerEvents: 'none' }}>
+                                                                <span style={{ position: 'absolute', bottom: 1, left: 2, fontSize: '0.5rem', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)', fontWeight: 700 }}>{t}s</span>
                                                             </div>
-                                                        );
-                                                    })}
-                                                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${(overlayCurrentTime / trackDur) * 100}%`, width: 2, background: '#000', boxShadow: '0 0 1px rgba(255,255,255,0.75)', pointerEvents: 'none', zIndex: 2 }} />
+                                                        ))}
+                                                        {cues.map((c, i) => {
+                                                            const len = Math.max(0.05, c.end - c.start);
+                                                            const posStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : c.start;
+                                                            const leftPct = Math.min(99, (posStart / trackDur) * 100);
+                                                            const widthPct = Math.max(0.8, (len / trackDur) * 100);
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    title={`#${i + 1}  ${c.start.toFixed(2)}s → ${c.end.toFixed(2)}s — ${c.text}`}
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: 4,
+                                                                        height: 32,
+                                                                        left: `${leftPct}%`,
+                                                                        width: `${widthPct}%`,
+                                                                        minWidth: 14,
+                                                                        background: cueDragView && cueDragView.index === i ? '#FFE500' : i === activeIdx ? '#FFF3B0' : '#FFFFFF',
+                                                                        border: i === activeIdx ? '2px solid #000' : '1.5px solid rgba(0,0,0,0.6)',
+                                                                        borderRadius: 3,
+                                                                        opacity: cueDragView && cueDragView.index !== i ? 0.6 : 1,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        padding: '0 4px',
+                                                                        overflow: 'hidden',
+                                                                        whiteSpace: 'nowrap',
+                                                                        fontSize: '0.56rem',
+                                                                        fontFamily: 'monospace',
+                                                                        fontWeight: 900,
+                                                                        color: '#000',
+                                                                        cursor: 'grab',
+                                                                        touchAction: 'none',
+                                                                        zIndex: 1,
+                                                                    }}
+                                                                    onPointerDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+                                                                        cueDragRef.current = {
+                                                                            index: i,
+                                                                            startX: e.clientX,
+                                                                            origStart: c.start,
+                                                                            width: cueTrackRef.current?.getBoundingClientRect().width ?? 1,
+                                                                            dur: trackDur,
+                                                                            len,
+                                                                            newStart: c.start,
+                                                                            movedPx: 0,
+                                                                        };
+                                                                    }}
+                                                                    onPointerMove={(e) => {
+                                                                        const d = cueDragRef.current;
+                                                                        if (!d || d.index !== i) return;
+                                                                        const dx = e.clientX - d.startX;
+                                                                        const ns = Math.min(Math.max(0, d.origStart + (dx / d.width) * d.dur), Math.max(0, d.dur - d.len));
+                                                                        d.newStart = ns;
+                                                                        d.movedPx = Math.abs(dx);
+                                                                        setCueDragView({ index: i, newStart: ns });
+                                                                    }}
+                                                                    onPointerUp={(e) => {
+                                                                        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { }
+                                                                        const d = cueDragRef.current;
+                                                                        cueDragRef.current = null;
+                                                                        setCueDragView(null);
+                                                                        if (!d || d.index !== i) return;
+                                                                        if (d.movedPx < 4) {
+                                                                            seekTo(d.origStart);
+                                                                        } else {
+                                                                            handleMoveCue(i, parseFloat(d.newStart.toFixed(2)));
+                                                                        }
+                                                                    }}
+                                                                    onPointerCancel={() => {
+                                                                        cueDragRef.current = null;
+                                                                        setCueDragView(null);
+                                                                    }}
+                                                                >
+                                                                    {c.text.trim() || '·'}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${(overlayCurrentTime / trackDur) * 100}%`, width: 2, background: '#000', boxShadow: '0 0 1px rgba(255,255,255,0.75)', pointerEvents: 'none', zIndex: 2 }} />
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
                                     })()}
-
                                     {/* Caption style & font */}
                                     <div
                                         style={{
@@ -2544,9 +2575,7 @@ export default function CaptionsPage() {
                                             }}
                                         >
                                             {[
-                                                { id: 'teleprompter', label: 'Highlight', desc: 'Teleprompter' },
                                                 { id: 'kinetic-pop', label: 'Kinetic pop', desc: 'Shorts' },
-                                                { id: 'minimal', label: 'Minimal', desc: 'TV & film' },
                                             ].map((m) => (
                                                 <button
                                                     key={m.id}
