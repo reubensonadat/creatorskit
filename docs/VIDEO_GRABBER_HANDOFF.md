@@ -136,5 +136,53 @@ so present it as their decision, not a push.
 - next.config.ts has `typescript.ignoreBuildErrors: true`; TS1005 parse errors
   still break builds; lucide `Image` must be aliased (`Image as ImageIcon`).
 - Browser 502s from our edge function CARRY the real error in the JSON body.
+  (Update: the edge's *formats* path collapses worker errors to `worker_502`
+  and discards our JSON detail — read the worker's `/health` `last_error`
+  instead; it now carries the real yt-dlp tail.)
 - The user is tired and wants plain language: explain WHAT each step is for
   before doing it.
+
+## 8. UPDATE 2026-09-29 ~13:15Z — pot FIXED; Move A + Move B both executed; wall persists → §5 endgame branch
+
+Deployed and live: commit `34bf773`. `/health` now returns `pot:"up"`,
+`cookies:true`, `ua:"…Chrome/154.0.8037.58…"`, plus the new diagnostic
+fields `pot_log`, `last_error`, `uptime_s`, `ua` (open route, no token).
+
+What was actually wrong with the pot build (months of `pot:"down"`):
+
+1. **Upstream server lives in `/pot/SERVER`**, not the repo root — npm died
+   with `ENOENT /pot/package.json` and the old `|| true` hid it forever.
+   Dockerfile + start.sh now build/run in `/pot/server`; tsc emits
+   `/pot/server/build/main.js`.
+2. **`engines: node >= 22`** vs Debian slim's Node 18 — the image now installs
+   official Node 22.17.0 (pinned tarball into /usr/local).
+3. **Render's registry cache resurrects FAILED layers** when a RUN exits 0
+   via `|| echo` — markers (`POT_BUILD_OK/FAILED`) print on every fresh run;
+   start.sh also re-verifies at boot and rebuilds in the background if
+   `main.js` is missing (never blocks the port; output → `/tmp/pot.log` →
+   `/health` `pot_log`), and supervises node with a 3s restart loop (it was
+   observed dying minutes after boot once).
+4. Shell-syntax lesson: a stray unbalanced paren in a Dockerfile RUN kills
+   the build hard (deploy `39a4488`). `sh -n` the exact command text before
+   pushing (mirror kept at `scratch/potrun.sh`).
+
+Move B (2026-09-29 ~13:10Z): `_cookie_args()` now passes
+`--user-agent` = the donor browser's exact Chrome/154.0.8037.58 string
+(env `YTDLP_USER_AGENT` overridable; visible in `/health` `ua`), combined
+with a fresh (<30 min) cookie re-export pasted into the Render Secret File.
+
+**Result: still `Sign in to confirm you're not a bot`** (see `/health`
+`last_error`) with pot UP + fresh cookies + matching UA simultaneously.
+That is §5's "both fail" branch: the Render/AWS datacenter IP (or the
+residential-cookies-vs-datacenter-IP mismatch) is the wall itself.
+
+Standing guidance from here:
+
+- **STOP probing YouTube from Render.** Every attempt deepens session flags
+  and risks burning the spare Google account.
+- The scoped endgame (user's decision, $0 budget — present, don't push):
+  Hostinger ~$7/mo VPS, 4GB, dedicated IP, SSH; run the same Docker image;
+  point `VIDEO_WORKER_URL` in Supabase secrets at the VPS URL.
+- Rotate the spare account's session when this saga ends (§7).
+- Test URL + cmd quirks unchanged (§6). curl `/health` for ALL diagnosis —
+  the edge hides worker errors.
