@@ -342,6 +342,10 @@ export default function CaptionsPage() {
     const [overlayAspectRatio, setOverlayAspectRatio] = useState<VideoAspectRatio>('9:16');
     const [overlayBackground, setOverlayBackground] = useState<VideoBackgroundMode>('transparent');
     const [overlayDelay, setOverlayDelay] = useState<number>(0);
+    // Per-cue drag-to-retime state for the overlay studio cue timeline strip
+    const [cueDragView, setCueDragView] = useState<{ index: number; newStart: number } | null>(null);
+    const cueDragRef = useRef<{ index: number; startX: number; origStart: number; width: number; dur: number; len: number; newStart: number; movedPx: number } | null>(null);
+    const cueTrackRef = useRef<HTMLDivElement | null>(null);
     const [isRenderingVideo, setIsRenderingVideo] = useState(false);
     const [videoRenderProgress, setVideoRenderProgress] = useState(0);
 
@@ -961,8 +965,19 @@ export default function CaptionsPage() {
             const next = [...prev];
             const cue = { ...next[index] };
             if (field === 'start') {
+                const origStart = cue.start;
                 cue.start = Math.max(0, parseFloat((cue.start + delta).toFixed(2)));
                 if (cue.start >= cue.end) cue.start = Math.max(0, cue.end - 0.05);
+                // Word timings drive the karaoke reveal — shift them with the
+                // cue start so edited cue times actually move the overlay.
+                const appliedShift = cue.start - origStart;
+                if (appliedShift !== 0 && cue.words && cue.words.length > 0) {
+                    cue.words = cue.words.map((w) => ({
+                        ...w,
+                        start: parseFloat((w.start + appliedShift).toFixed(2)),
+                        end: parseFloat((w.end + appliedShift).toFixed(2)),
+                    }));
+                }
             } else {
                 cue.end = parseFloat((cue.end + delta).toFixed(2));
                 if (cue.end <= cue.start) cue.end = cue.start + 0.05;
@@ -995,8 +1010,25 @@ export default function CaptionsPage() {
             const midWordIdx = Math.ceil(words.length / 2);
             const firstHalf = words.slice(0, midWordIdx).join(' ');
             const secondHalf = words.slice(midWordIdx).join(' ');
+            // Split word timings at the word whose center is closest to the
+            // time midpoint so both halves keep accurate karaoke reveal.
+            let splitWordIdx = midWordIdx;
+            if (cue.words && cue.words.length > 0) {
+                let bestDist = Infinity;
+                cue.words.forEach((w, wi) => {
+                    const dist = Math.abs((w.start + w.end) / 2 - midTime);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        splitWordIdx = wi + 1;
+                    }
+                });
+            }
             const c1: SubtitleCue = { start: cue.start, end: midTime, text: firstHalf };
             const c2: SubtitleCue = { start: midTime, end: cue.end, text: secondHalf };
+            if (cue.words && cue.words.length > 0) {
+                c1.words = cue.words.slice(0, splitWordIdx);
+                c2.words = cue.words.slice(splitWordIdx);
+            }
             const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
@@ -1015,6 +1047,9 @@ export default function CaptionsPage() {
                 end: c2.end,
                 text: `${c1.text} ${c2.text}`.trim(),
             };
+            if (c1.words && c2.words && c1.words.length > 0 && c2.words.length > 0) {
+                merged.words = [...c1.words, ...c2.words];
+            }
             const next = [...prev.slice(0, index), merged, ...prev.slice(index + 2)];
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
@@ -1051,14 +1086,58 @@ export default function CaptionsPage() {
 
     const handleBulkShift = (deltaSeconds: number) => {
         setCues((prev) => {
-            const next = prev.map((c) => ({
-                ...c,
-                start: Math.max(0, parseFloat((c.start + deltaSeconds).toFixed(2))),
-                end: Math.max(0.1, parseFloat((c.end + deltaSeconds).toFixed(2))),
-            }));
+            const next = prev.map((c) => {
+                const newStart = Math.max(0, parseFloat((c.start + deltaSeconds).toFixed(2)));
+                const appliedShift = newStart - c.start;
+                const shifted: SubtitleCue = {
+                    ...c,
+                    start: newStart,
+                    end: Math.max(newStart + 0.05, parseFloat((c.end + deltaSeconds).toFixed(2))),
+                };
+                if (appliedShift !== 0 && c.words && c.words.length > 0) {
+                    shifted.words = c.words.map((w) => ({
+                        ...w,
+                        start: parseFloat((w.start + appliedShift).toFixed(2)),
+                        end: parseFloat((w.end + appliedShift).toFixed(2)),
+                    }));
+                }
+                return shifted;
+            });
             const vtt = generateVtt(next);
             setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
             try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
+            return next;
+        });
+    };
+
+    // Physically move a cue (and its word timings) to a new start time —
+    // the commit step of drag-to-retime on the cue timeline strip.
+    const handleMoveCue = (index: number, newStartSeconds: number) => {
+        setCues((prev) => {
+            const cue = prev[index];
+            if (!cue) return prev;
+            const len = Math.max(0.05, cue.end - cue.start);
+            const newStart = Math.max(0, parseFloat(newStartSeconds.toFixed(2)));
+            const appliedShift = newStart - cue.start;
+            const moved: SubtitleCue = {
+                ...cue,
+                start: newStart,
+                end: parseFloat((newStart + len).toFixed(2)),
+            };
+            if (appliedShift !== 0 && cue.words && cue.words.length > 0) {
+                moved.words = cue.words.map((w) => ({
+                    ...w,
+                    start: parseFloat((w.start + appliedShift).toFixed(2)),
+                    end: parseFloat((w.end + appliedShift).toFixed(2)),
+                }));
+            }
+            const next = [...prev];
+            next[index] = moved;
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try {
+                localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
+            } catch { }
             return next;
         });
     };
@@ -2310,6 +2389,126 @@ export default function CaptionsPage() {
                                             {overlayCurrentTime.toFixed(1)}s
                                         </span>
                                     </div>
+
+                                    {/* Per-cue timeline strip — drag blocks to retime, gaps = silence, click to seek */}
+                                    {cues.length > 0 && (() => {
+                                        const trackDur = Math.max(1, audioDuration || cues[cues.length - 1].end);
+                                        const activeIdx = cues.findIndex((c) => overlayCurrentTime >= c.start && overlayCurrentTime <= c.end);
+                                        const BCOLORS = ['#FFE500', '#67E8F9', '#F97316', '#22C55E', '#EC4899'];
+                                        const seekTo = (t: number) => {
+                                            const clamped = Math.min(Math.max(0, t), trackDur);
+                                            setOverlayCurrentTime(clamped);
+                                            if (overlayAudioRef.current) overlayAudioRef.current.currentTime = clamped;
+                                        };
+                                        return (
+                                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', display: 'flex', justifyContent: 'space-between', letterSpacing: '0.02em' }}>
+                                                    <span>CUE TIMELINE — DRAG TO RETIME · GAPS = SILENCE</span>
+                                                    <span>{overlayCurrentTime.toFixed(1)} / {trackDur.toFixed(1)}s</span>
+                                                </div>
+                                                <div
+                                                    ref={cueTrackRef}
+                                                    style={{
+                                                        position: 'relative',
+                                                        width: '100%',
+                                                        height: 44,
+                                                        border: '2px solid #000',
+                                                        borderRadius: 4,
+                                                        background: '#ffffff',
+                                                        overflow: 'hidden',
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none',
+                                                        touchAction: 'none',
+                                                    }}
+                                                    onClick={(e) => {
+                                                        if (e.target !== e.currentTarget) return;
+                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                        seekTo(((e.clientX - rect.left) / rect.width) * trackDur);
+                                                    }}
+                                                >
+                                                    <div style={{ position: 'absolute', inset: 0, background: 'repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 24px)' }} />
+                                                    {cues.map((c, i) => {
+                                                        const len = Math.max(0.05, c.end - c.start);
+                                                        const posStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : c.start;
+                                                        const leftPct = Math.min(98.5, (posStart / trackDur) * 100);
+                                                        const widthPct = Math.max(1.1, (len / trackDur) * 100);
+                                                        return (
+                                                            <div
+                                                                key={i}
+                                                                title={`#${i + 1}  ${c.start.toFixed(2)}s → ${c.end.toFixed(2)}s — ${c.text}`}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: 4,
+                                                                    height: 32,
+                                                                    left: `${leftPct}%`,
+                                                                    width: `${widthPct}%`,
+                                                                    minWidth: 12,
+                                                                    background: BCOLORS[i % BCOLORS.length],
+                                                                    border: i === activeIdx ? '2.5px solid #000' : '1.5px solid rgba(0,0,0,0.65)',
+                                                                    borderRadius: 3,
+                                                                    opacity: cueDragView && cueDragView.index !== i ? 0.55 : 1,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    padding: '0 4px',
+                                                                    overflow: 'hidden',
+                                                                    whiteSpace: 'nowrap',
+                                                                    fontSize: '0.56rem',
+                                                                    fontFamily: 'monospace',
+                                                                    fontWeight: 900,
+                                                                    color: '#000',
+                                                                    cursor: 'grab',
+                                                                    touchAction: 'none',
+                                                                }}
+                                                                onPointerDown={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+                                                                    cueDragRef.current = {
+                                                                        index: i,
+                                                                        startX: e.clientX,
+                                                                        origStart: c.start,
+                                                                        width: cueTrackRef.current?.getBoundingClientRect().width ?? 1,
+                                                                        dur: trackDur,
+                                                                        len,
+                                                                        newStart: c.start,
+                                                                        movedPx: 0,
+                                                                    };
+                                                                }}
+                                                                onPointerMove={(e) => {
+                                                                    const d = cueDragRef.current;
+                                                                    if (!d || d.index !== i) return;
+                                                                    const dx = e.clientX - d.startX;
+                                                                    const ns = Math.min(Math.max(0, d.origStart + (dx / d.width) * d.dur), Math.max(0, d.dur - d.len));
+                                                                    d.newStart = ns;
+                                                                    d.movedPx = Math.abs(dx);
+                                                                    setCueDragView({ index: i, newStart: ns });
+                                                                }}
+                                                                onPointerUp={(e) => {
+                                                                    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { }
+                                                                    const d = cueDragRef.current;
+                                                                    cueDragRef.current = null;
+                                                                    setCueDragView(null);
+                                                                    if (!d || d.index !== i) return;
+                                                                    if (d.movedPx < 4) {
+                                                                        seekTo(d.origStart);
+                                                                    } else {
+                                                                        handleMoveCue(i, parseFloat(d.newStart.toFixed(2)));
+                                                                    }
+                                                                }}
+                                                                onPointerCancel={() => {
+                                                                    cueDragRef.current = null;
+                                                                    setCueDragView(null);
+                                                                }}
+                                                            >
+                                                                {c.text.trim() || '·'}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${(overlayCurrentTime / trackDur) * 100}%`, width: 2, background: '#000', boxShadow: '0 0 1px rgba(255,255,255,0.75)', pointerEvents: 'none', zIndex: 2 }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Caption style & font */}
                                     <div

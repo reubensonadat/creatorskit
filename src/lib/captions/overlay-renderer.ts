@@ -144,6 +144,47 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         emojiMode: false,
     },
     {
+        // Kinetic variation 2: condensed tall Bebas face + alternating tilt
+        // on every spoken word + cyan fill — the classic TikTok edit energy.
+        id: 'tiktok-tilt',
+        name: 'TikTok Tilt',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'bebas-neue',
+        fontSize: 64,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#06B6D4',
+        springPhysics: true,
+        bounceIntensity: 1.25,
+        wordRotation: true,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Kinetic variation 3: heaviest face on the list, orange active word,
+        // yellow inactive words — a two-tone boxing-poster punch that stays
+        // readable on any background.
+        id: 'bold-boxing',
+        name: 'Bold Boxing',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'archivo-black',
+        fontSize: 66,
+        letterSpacing: -1.5,
+        yPositionPercent: 68,
+        pillBackground: 'light',
+        highlighterColor: '#F97316',
+        springPhysics: true,
+        bounceIntensity: 1.3,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
         // The pro commentary look: one calm line in a soft dark pill with a
         // gliding karaoke highlight — made for talking-head & voiceover cuts.
         id: 'karaoke-clean',
