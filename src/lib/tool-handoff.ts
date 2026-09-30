@@ -22,12 +22,29 @@ function openDb(): Promise<IDBDatabase> {
     });
 }
 
-export async function putHandoffImage(tool: string, blob: Blob): Promise<void> {
+export interface HandoffImageRecord {
+    blob: Blob;
+    format?: 'longform' | 'shorts';
+    sourceTool?: string;
+    timestamp?: number;
+}
+
+export async function putHandoffImage(
+    tool: string,
+    blob: Blob,
+    options?: { format?: 'longform' | 'shorts'; sourceTool?: string }
+): Promise<void> {
     const db = await openDb();
     try {
         await new Promise<void>((resolve, reject) => {
             const tx = db.transaction(STORE, 'readwrite');
-            tx.objectStore(STORE).put(blob, tool);
+            const data: HandoffImageRecord = {
+                blob,
+                format: options?.format,
+                sourceTool: options?.sourceTool,
+                timestamp: Date.now(),
+            };
+            tx.objectStore(STORE).put(data, tool);
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error ?? new Error('hand-off write failed'));
         });
@@ -37,17 +54,30 @@ export async function putHandoffImage(tool: string, blob: Blob): Promise<void> {
 }
 
 /** Reads and DELETES the pending hand-off for this tool (consume-once). */
-export async function takeHandoffImage(tool: string): Promise<Blob | null> {
+export async function takeHandoffImage(
+    tool: string
+): Promise<{ blob: Blob; format?: 'longform' | 'shorts' } | null> {
     try {
         const db = await openDb();
         try {
-            return await new Promise<Blob | null>((resolve) => {
+            return await new Promise<{ blob: Blob; format?: 'longform' | 'shorts' } | null>((resolve) => {
                 const tx = db.transaction(STORE, 'readwrite');
                 const store = tx.objectStore(STORE);
                 const get = store.get(tool);
                 get.onsuccess = () => {
-                    if (get.result != null) store.delete(tool);
-                    resolve(get.result ?? null);
+                    const res = get.result;
+                    if (res != null) store.delete(tool);
+                    if (!res) {
+                        resolve(null);
+                        return;
+                    }
+                    if (res instanceof Blob) {
+                        resolve({ blob: res });
+                    } else if (res.blob instanceof Blob) {
+                        resolve({ blob: res.blob, format: res.format });
+                    } else {
+                        resolve(null);
+                    }
                 };
                 get.onerror = () => resolve(null);
             });
@@ -58,3 +88,4 @@ export async function takeHandoffImage(tool: string): Promise<Blob | null> {
         return null;
     }
 }
+

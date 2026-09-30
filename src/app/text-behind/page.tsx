@@ -412,6 +412,8 @@ export default function TextBehindPage() {
     const [hoveringLayerId, setHoveringLayerId] = useState<string | null>(null);
     const [exporting, setExporting] = useState(false);
     const [exportNote, setExportNote] = useState('');
+    const [handoffModalOpen, setHandoffModalOpen] = useState(false);
+    const [sendingHandoff, setSendingHandoff] = useState(false);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const controlsRef = useRef<HTMLDivElement>(null);
@@ -617,18 +619,7 @@ export default function TextBehindPage() {
         mode: cutoutMode,
     };
 
-    /** Cross-tool: ship the current canvas straight into Thumbnail Lab. */
-    const handleSendToThumbnailLab = useCallback(async () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        await new Promise<void>((resolve) => {
-            canvas.toBlob(async (blob) => {
-                if (blob) await putHandoffImage('thumbnail-lab', blob);
-                resolve();
-            }, 'image/png');
-        });
-        window.open('/thumbnail-lab', '_blank');
-    }, []);
+
 
     // --- multi-textbox management -------------------------------------------
     const handleAddTextBox = () => {
@@ -1010,6 +1001,37 @@ export default function TextBehindPage() {
             setExportNote(err instanceof Error ? err.message : 'Export failed.');
         } finally {
             setExporting(false);
+        }
+    };
+
+    /** Cross-tool: ship the current clean canvas straight into Thumbnail Lab without preview overlays. */
+    const handleSendToThumbnailLab = async (format: 'longform' | 'shorts') => {
+        if (!bgImage || sendingHandoff) return;
+        setSendingHandoff(true);
+        try {
+            await Promise.all(
+                layers.map((l) => ensurePosterFontReady(l.fontId, l.weight, l.italic))
+            );
+            const off = document.createElement('canvas');
+            off.width = canvasW;
+            off.height = canvasH;
+            const ctx = off.getContext('2d');
+            if (!ctx) throw new Error('Offscreen context failed');
+            // Clean render: preview: false ensures yellow selection border & snap lines are excluded
+            drawSandwich(ctx, canvasW, canvasH, {
+                preview: false,
+            });
+            const blob = await new Promise<Blob | null>((resolve) =>
+                off.toBlob(resolve, 'image/png')
+            );
+            if (!blob) throw new Error('Handoff render failed.');
+            await putHandoffImage('thumbnail-lab', blob, { format, sourceTool: 'text-behind' });
+            setHandoffModalOpen(false);
+            window.open('/thumbnail-lab', '_blank');
+        } catch (err) {
+            console.error('Failed to send to Thumbnail Lab:', err);
+        } finally {
+            setSendingHandoff(false);
         }
     };
 
@@ -2148,7 +2170,12 @@ export default function TextBehindPage() {
                                 <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
                                     JPG · 2×
                                 </button>
-                                <button className="brutalist-button" style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }} disabled={!bgImage || exporting} onClick={() => void handleSendToThumbnailLab()}>
+                                <button
+                                    className="brutalist-button"
+                                    style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }}
+                                    disabled={!bgImage || exporting || sendingHandoff}
+                                    onClick={() => setHandoffModalOpen(true)}
+                                >
                                     → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
                                 </button>
                             </div>
@@ -2163,6 +2190,143 @@ export default function TextBehindPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Cross-Tool Handoff Format Choice Modal */}
+            {handoffModalOpen && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0, 0, 0, 0.8)',
+                        backdropFilter: 'blur(6px)',
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                    }}
+                    onClick={() => !sendingHandoff && setHandoffModalOpen(false)}
+                >
+                    <div
+                        style={{
+                            width: '100%',
+                            maxWidth: 500,
+                            background: '#fff',
+                            border: '3px solid #000',
+                            boxShadow: '8px 8px 0 #000',
+                            padding: 24,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 16,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.08em', color: '#666', textTransform: 'uppercase' }}>
+                                    CROSS-TOOL HANDOFF
+                                </div>
+                                <h3 style={{ margin: '4px 0 0 0', fontFamily: 'monospace', fontWeight: 900, fontSize: '1.15rem', color: '#000', textTransform: 'uppercase' }}>
+                                    Send to Thumbnail Lab
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => !sendingHandoff && setHandoffModalOpen(false)}
+                                style={{
+                                    border: '2px solid #000',
+                                    background: '#f4f4f5',
+                                    fontWeight: 900,
+                                    fontFamily: 'monospace',
+                                    cursor: 'pointer',
+                                    padding: '4px 8px',
+                                    lineHeight: 1,
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <p style={{ margin: 0, fontSize: '0.82rem', fontFamily: 'sans-serif', color: '#333', lineHeight: 1.5 }}>
+                            Select the destination placement in Thumbnail Lab for your clean graphic:
+                            {canvasW > 0 && canvasH > 0 && (
+                                <span style={{ display: 'block', marginTop: 8, fontWeight: 700, fontFamily: 'monospace', fontSize: '0.74rem', color: '#000' }}>
+                                    📐 Canvas dimensions: {canvasW} × {canvasH} ({canvasW >= canvasH ? 'Horizontal 16:9 recommended' : 'Vertical 9:16 Shorts recommended'})
+                                </span>
+                            )}
+                        </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            {/* Option 1: Longform */}
+                            <button
+                                className="brutalist-button"
+                                disabled={sendingHandoff}
+                                onClick={() => void handleSendToThumbnailLab('longform')}
+                                style={{
+                                    padding: '16px 10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    textAlign: 'center',
+                                    background: canvasW >= canvasH ? '#FFE500' : '#fff',
+                                    border: '2px solid #000',
+                                    cursor: sendingHandoff ? 'wait' : 'pointer',
+                                }}
+                            >
+                                <span style={{ fontSize: '1.6rem' }}>🎬</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                                    16:9 Long-Form
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: '#444', lineHeight: 1.3 }}>
+                                    YouTube Mobile & Desktop Video Feed
+                                </span>
+                                {canvasW >= canvasH && (
+                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#FFE500', padding: '2px 6px' }}>
+                                        ★ MATCHES RATIO
+                                    </span>
+                                )}
+                            </button>
+
+                            {/* Option 2: Shorts */}
+                            <button
+                                className="brutalist-button"
+                                disabled={sendingHandoff}
+                                onClick={() => void handleSendToThumbnailLab('shorts')}
+                                style={{
+                                    padding: '16px 10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    textAlign: 'center',
+                                    background: canvasW < canvasH ? '#FFE500' : '#fff',
+                                    border: '2px solid #000',
+                                    cursor: sendingHandoff ? 'wait' : 'pointer',
+                                }}
+                            >
+                                <span style={{ fontSize: '1.6rem' }}>📱</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                                    9:16 Shorts / Reel
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: '#444', lineHeight: 1.3 }}>
+                                    YouTube Shorts Shelf & Player
+                                </span>
+                                {canvasW < canvasH && (
+                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#FFE500', padding: '2px 6px' }}>
+                                        ★ MATCHES RATIO
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
+                        {sendingHandoff && (
+                            <div style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', color: '#B45309' }}>
+                                ⏳ RENDERING CLEAN GRAPHIC (WITHOUT BORDER) & OPENING LAB…
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 /* Clean brutalist scrollbar for settings column */

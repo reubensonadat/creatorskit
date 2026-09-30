@@ -780,8 +780,10 @@ export default function ThumbnailLabPage() {
     return Math.round((contrastLuminanceScore * 0.4) + (badgeCollisionScore * 0.3) + (focalBalanceScore * 0.3));
   }, [contrastLuminanceScore, badgeCollisionScore, focalBalanceScore]);
 
-  const addCandidateImage = (url: string, candidateId?: string) => {
-    if (contentFormat === 'longform') {
+  const addCandidateImage = (url: string, candidateId?: string, forceFormat?: 'longform' | 'shorts') => {
+    const targetFormat = forceFormat ?? contentFormat;
+    if (targetFormat === 'longform') {
+      setContentFormat('longform');
       if (candidateId) {
         setLongformCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
       } else {
@@ -797,6 +799,7 @@ export default function ThumbnailLabPage() {
         setActiveLongformId(newId);
       }
     } else {
+      setContentFormat('shorts');
       if (candidateId) {
         setShortsCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
       } else {
@@ -829,13 +832,13 @@ export default function ThumbnailLabPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const blob = await takeHandoffImage('thumbnail-lab');
-      if (!blob || cancelled) return;
+      const handoff = await takeHandoffImage('thumbnail-lab');
+      if (!handoff || cancelled) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (!cancelled) addCandidateImage(event.target?.result as string);
+        if (!cancelled) addCandidateImage(event.target?.result as string, undefined, handoff.format);
       };
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(handoff.blob);
     })();
     return () => {
       cancelled = true;
