@@ -51,10 +51,13 @@ export async function removeBackgroundBrowser(
             // isnet_quint8 ≈ 13MB download vs isnet_fp16 ≈ 44MB: the first-use
             // download shrinks 3× and poster cutouts stay crisp.
             model: 'isnet_quint8',
-            // No proxy worker: under Next.js dev Fast Refresh the ORT worker
-            // script goes stale (_OrtGetInputOutputMetadata crash). Main-thread
-            // inference costs ~2-6s and keeps the progress UI honest.
-            proxyToWorker: false,
+            // GPU + proxy worker: on WebGPU browsers inference runs in a
+            // worker on the GPU — the tab does NOT freeze. (@imgly forces
+            // main-thread inference on its CPU path, which locked the UI for
+            // the whole cut; device:'gpu' is the no-freeze route.) Browsers
+            // without WebGPU fall back to CPU wasm automatically.
+            device: 'gpu',
+            proxyToWorker: true,
             // v1.7 API: progress(key, current, total) — 'fetch:*' keys are the
             // one-time engine download; everything else is inference.
             progress: (key: string, current: number, total: number) => {

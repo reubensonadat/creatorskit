@@ -122,6 +122,24 @@ export const NATIVE_TOOLS: ToolItem[] = [
     // the VPS/residential route ships.
     badge: 'IN DEVELOPMENT',
   },
+  {
+    label: 'Text Behind Image',
+    href: '/text-behind',
+    hint: 'DEPTH POSTERS',
+    desc: 'Type-behind-subject posters — on-device or server cutout, giant type sandwich, background dim & exports',
+    isFlagship: true,
+    category: 'studio',
+    badge: 'NEW',
+  },
+  {
+    label: 'Background Remover & Cutout',
+    href: '/background-replace',
+    hint: 'ONE-CLICK PNG',
+    desc: 'Remove any photo background on your device or our server — transparent PNG in seconds, hand-off to other tools',
+    isFlagship: false,
+    category: 'utility',
+    badge: 'NEW',
+  },
 ];
 
 // ─── 2. CURATED EXTERNAL TOOLS (Routed Through 4-Sector Ad Bridge) ───────────

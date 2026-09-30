@@ -45,12 +45,23 @@ const ORT_PREFIX = '/onnxruntime-web/';
 // then gets the COMPRESSED length reported, while the streamed body is
 // decompressed, so a live HEAD would lie to the lib's byte-exact chunk
 // validation). If the pin above changes, re-measure these.
-const ORT_FILES: Record<string, number> = {
-    'ort-wasm-simd-threaded.mjs': 24_180,
-    'ort-wasm-simd-threaded.wasm': 12_942_611,
-    'ort-wasm-simd-threaded.jsep.mjs': 46_490,
-    'ort-wasm-simd-threaded.jsep.wasm': 26_101_073,
+//
+// We serve the JSEP build for EVERY ort name: the onnxruntime-web bundle
+// we ship is compiled jsep-always (its own dist hard-selects
+// "ort-wasm-simd-threaded.jsep.mjs" even on the CPU/wasm path), while
+// @imgly asks for the PLAIN simd-threaded names on its CPU path. Plain
+// glue + jsep-built JS = "_OrtGetInputOutputMetadata is not a function".
+// Answering every name with the jsep glue keeps JS and glue in agreement.
+const ORT_GLUE = {
+    mjs: { file: 'ort-wasm-simd-threaded.jsep.mjs', size: 46_490 },
+    wasm: { file: 'ort-wasm-simd-threaded.jsep.wasm', size: 26_101_073 },
 };
+const ORT_KEYS = [
+    'ort-wasm-simd-threaded.mjs',
+    'ort-wasm-simd-threaded.wasm',
+    'ort-wasm-simd-threaded.jsep.mjs',
+    'ort-wasm-simd-threaded.jsep.wasm',
+];
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
 async function patchedManifest(): Promise<string> {
@@ -58,11 +69,12 @@ async function patchedManifest(): Promise<string> {
     if (!upstream.ok) throw new Error(`upstream manifest ${upstream.status}`);
     const manifest = (await upstream.json()) as Record<string, unknown>;
 
-    for (const [file, size] of Object.entries(ORT_FILES)) {
-        manifest[`${ORT_PREFIX}${file}`] = {
-            chunks: [{ name: `__ort/${file}`, offsets: [0, size] }],
-            size,
-            mime: file.endsWith('.mjs') ? 'text/javascript' : 'application/wasm',
+    for (const key of ORT_KEYS) {
+        const glue = key.endsWith('.mjs') ? ORT_GLUE.mjs : ORT_GLUE.wasm;
+        manifest[`${ORT_PREFIX}${key}`] = {
+            chunks: [{ name: `__ort/${glue.file}`, offsets: [0, glue.size] }],
+            size: glue.size,
+            mime: key.endsWith('.mjs') ? 'text/javascript' : 'application/wasm',
         };
     }
 

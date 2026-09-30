@@ -28,7 +28,7 @@ import {
     type MatteEngine,
     type MatteProgress,
 } from '@/lib/background-removal';
-import { putHandoffImage } from '@/lib/tool-handoff';
+import { putHandoffImage, takeHandoffImage } from '@/lib/tool-handoff';
 
 // ---------------------------------------------------------------------------
 // Fonts — 75+ Google Fonts across Cursive, Graffiti, Gothic, Tabloid, Serif, Sans, Mono
@@ -526,6 +526,17 @@ export default function TextBehindPage() {
             if (cut && !cancelled) {
                 setCutoutImage(cut.img);
                 setCutoutInfo(`${cut.img.naturalWidth} × ${cut.img.naturalHeight}px · PNG · restored`);
+            }
+            // Cross-tool hand-off (Background Remover → here): a freshly sent
+            // cutout wins over whatever was restored from IndexedDB.
+            const handoff = await takeHandoffImage('text-behind');
+            if (handoff && !cancelled) {
+                try {
+                    const img = await loadImage(handoff.blob);
+                    setCutoutImage(img);
+                    setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · PNG · FROM BACKGROUND REMOVER`);
+                    await idbPut('cutout', handoff.blob);
+                } catch { /* not a decodable image — ignore */ }
             }
         })();
         return () => {
