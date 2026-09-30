@@ -426,6 +426,8 @@ export default function TextBehindPage() {
         mode: 'browser',
     });
     const [dropActive, setDropActive] = useState(false);
+    /** Background dim (0–0.85) — darkens the photo so the type pops. */
+    const [bgDim, setBgDim] = useState(0);
 
     /** Metrics for each text layer — powers multi-layer hit testing & dragging. */
     const metricsRef = useRef<Record<string, TextMetrics>>({});
@@ -485,6 +487,19 @@ export default function TextBehindPage() {
             localStorage.setItem(CUTOUT_MODE_KEY, cutoutMode);
         } catch { /* non-fatal */ }
     }, [cutoutMode]);
+
+    useEffect(() => {
+        try {
+            const saved = parseFloat(localStorage.getItem('ck_text_behind_bgdim') ?? '');
+            if (Number.isFinite(saved) && saved > 0) setBgDim(Math.min(0.85, saved));
+        } catch { /* default */}
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('ck_text_behind_bgdim', String(bgDim));
+        } catch { /* non-fatal */ }
+    }, [bgDim]);
 
     // Restore saved images from IndexedDB
     useEffect(() => {
@@ -687,6 +702,15 @@ export default function TextBehindPage() {
             // Layer 0: Background photo
             if (bgImage) {
                 ctx.drawImage(bgImage, 0, 0, W, H);
+                // Darken the photo so the type behind the subject pops — the
+                // classic poster trick. Part of the shared draw, so the
+                // export is exactly the preview.
+                if (bgDim > 0) {
+                    ctx.save();
+                    ctx.fillStyle = `rgba(0,0,0,${bgDim})`;
+                    ctx.fillRect(0, 0, W, H);
+                    ctx.restore();
+                }
             }
 
             // Single Layer Renderer
@@ -845,7 +869,7 @@ export default function TextBehindPage() {
                 ctx.restore();
             }
         },
-        [bgImage, cutoutImage, layers, activeLayerId, guides]
+        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim]
     );
 
     // Repaint on canvas changes
@@ -1247,6 +1271,26 @@ export default function TextBehindPage() {
                             )}
                             {bgInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 6 }}>{bgInfo}</div>}
                             {cutoutInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 2 }}>{cutoutInfo}</div>}
+                            {bgImage && (
+                                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1.5px solid #eee' }}>
+                                    <TactileScrubber
+                                        label="BACKGROUND DIM"
+                                        value={Math.round(bgDim * 100)}
+                                        min={0}
+                                        max={85}
+                                        step={5}
+                                        onChange={(v) => setBgDim(v / 100)}
+                                        formatValue={(v) => (v === 0 ? 'OFF' : `${v}%`)}
+                                        presets={[
+                                            { label: 'OFF', value: 0 },
+                                            { label: 'SUBTLE', value: 25 },
+                                            { label: 'MOODY', value: 50 },
+                                            { label: 'NIGHT', value: 75 },
+                                        ]}
+                                        width="100%"
+                                    />
+                                </div>
+                            )}
                             {matte && (
                                 <div style={{ marginTop: 8, padding: '6px 8px', border: '1.5px solid #000', background: '#fafafa' }}>
                                     <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: matte.busy ? '#000' : '#b00' }}>
@@ -1273,6 +1317,7 @@ export default function TextBehindPage() {
                                     setCutoutImage(null);
                                     setCutoutInfo('');
                                     setMatte(null);
+                                    setBgDim(0);
                                     bgFileRef.current = null;
                                     setExportNote('');
                                     void idbClear(['bg', 'cutout']);
