@@ -164,3 +164,31 @@ for thousands of MAU, because the browser does the heavy lifting.
 One VPS is one box — it can die. The architecture above keeps the Render
 box warm as an instant DNS-fallback, exactly how the whisper bake survives
 Render's ephemeral disk today.
+
+## 7. Render's paid tiers vs the KVM deals (the comparison)
+
+Render paid instances (checked against the live pricing page):
+
+| Render tier | Price | Cores / RAM | Nearest KVM | KVM price | KVM spec |
+|---|---|---|---|---|---|
+| Starter | $7/mo | 0.5 / 0.5 GB | KVM 1 | $6.49 | 1 / 4 GB |
+| Standard | $25/mo | 1 / 2 GB | KVM 2 | $8.99 | 2 / 8 GB |
+| (mid) | $85/mo | 2 / 4 GB | KVM 4 | $12.99 | 4 / 16 GB |
+| (upper) | $135/mo | 2 / 8 GB | KVM 8 | $25.99 | 8 / 32 GB |
+
+Per unit of compute, Render paid is **4–10× more expensive** than these KVM
+deals — you pay for the managed platform (git-push deploys, no Linux admin,
+built-in TLS/metrics), not for the hardware. For CPU-bound inference
+(whisper, rembg) the hardware is what matters, and our workers were already
+designed as "run anywhere Docker runs."
+
+**The one Render-paid exception worth knowing:** the **$7 Starter** on the
+EXISTING worker is the zero-migration cold-start fix — flip the service from
+free to Starter and the 50s wake-up disappears, nothing else changes. But it
+keeps 512 MB / half a core, so it does nothing for the matte RAM problem or
+concurrency. Lazy $7 = cold starts only.
+
+**Verdict:** free tier → stay on Render $0. First money spent → KVM 2/4
+VPS (§6), never Render paid. Render's management premium only makes sense
+if server administration is a hard no — and by then KVM 4 costs $12.99 to
+Render's $85 for half the machine.
