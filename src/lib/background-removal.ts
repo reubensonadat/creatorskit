@@ -181,9 +181,27 @@ const patchedFetch: typeof fetch = async (input, init) => {
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
     const real = originalFetch ?? window.fetch.bind(window);
     if (method !== 'GET' || !isEngineUrl(url)) return real(input, init);
-    const cached = await engineCacheGet(url);
-    if (cached) return new Response(cached, { status: 200, statusText: 'OK' });
-    const res = await real(input, init);
+    // serve from IDB when we have it — but NEVER let a cache hiccup kill the
+    // fetch: any failure here just falls through to the network
+    try {
+        const cached = await engineCacheGet(url);
+        if (cached) return new Response(cached, { status: 200, statusText: 'OK' });
+    } catch {
+        /* cache read failed — go to network */
+    }
+    let res: Response;
+    try {
+        res = await real(input, init);
+    } catch {
+        // one retry — the ~26MB glue files blip on mobile networks all the time
+        await sleep(1500);
+        try {
+            res = await real(input, init);
+        } catch {
+            // tag the URL so the user-facing error says WHICH file died
+            throw new TypeError(`Failed to fetch ${url}`);
+        }
+    }
     if (res.ok) {
         try {
             const copy = res.clone();

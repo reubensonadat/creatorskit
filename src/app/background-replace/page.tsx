@@ -113,6 +113,16 @@ export default function BackgroundRemoverPage() {
     const [doneWith, setDoneWith] = useState<MatteEngine | null>(null);
     const [preview, setPreview] = useState<'cutout' | 'original'>('cutout');
     const [dropActive, setDropActive] = useState(false);
+    const [isNarrow, setIsNarrow] = useState(false);
+
+    // mobile layout — stack the stage above the controls below 900px
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 900px)');
+        const update = () => setIsNarrow(mq.matches);
+        update();
+        mq.addEventListener('change', update);
+        return () => mq.removeEventListener('change', update);
+    }, []);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const runIdRef = useRef(0);
@@ -294,7 +304,16 @@ export default function BackgroundRemoverPage() {
                 </p>
             </div>
 
-            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 16, alignItems: 'start' }}>
+            <div
+                style={{
+                    maxWidth: 1100,
+                    margin: '0 auto',
+                    display: 'grid',
+                    gridTemplateColumns: isNarrow ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) 320px',
+                    gap: isNarrow ? 12 : 16,
+                    alignItems: 'start',
+                }}
+            >
                 {/* ── STAGE ─────────────────────────────────────────────── */}
                 <div
                     className="brutalist-card"
@@ -317,7 +336,7 @@ export default function BackgroundRemoverPage() {
                             onClick={() => fileInputRef.current?.click()}
                             style={{
                                 width: '100%',
-                                minHeight: 380,
+                                minHeight: isNarrow ? 300 : 380,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
@@ -384,7 +403,7 @@ export default function BackgroundRemoverPage() {
                                     ...CHECKERBOARD,
                                     border: '2px solid #000',
                                     borderRadius: 8,
-                                    minHeight: 380,
+                                    minHeight: isNarrow ? 300 : 380,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
@@ -396,7 +415,7 @@ export default function BackgroundRemoverPage() {
                                 <img
                                     src={shownUrl ?? originalUrl ?? undefined}
                                     alt={preview === 'cutout' ? 'Cutout preview' : 'Original photo'}
-                                    style={{ maxWidth: '100%', maxHeight: 560, objectFit: 'contain' }}
+                                    style={{ maxWidth: '100%', maxHeight: isNarrow ? '55vh' : 560, objectFit: 'contain' }}
                                 />
                                 {busy && (
                                     <div
