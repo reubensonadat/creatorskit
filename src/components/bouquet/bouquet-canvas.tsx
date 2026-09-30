@@ -16,6 +16,7 @@ export interface BouquetCanvasProps {
     from: string;
   };
   onCardClick?: () => void;
+  onPromptClick?: () => void;
 }
 
 export const BouquetCanvas = forwardRef<HTMLDivElement, BouquetCanvasProps>(
@@ -25,27 +26,61 @@ export const BouquetCanvas = forwardRef<HTMLDivElement, BouquetCanvasProps>(
       flowerLayers,
       borderless = false,
       className = '',
+      onPromptClick,
     },
     ref
   ) => {
+    const hasGreenery = greeneryLayers.length > 0;
+    const hasFlowers = flowerLayers.length > 0;
+    const hasSelection = hasGreenery || hasFlowers;
+
+    // Background box: only on desktop when completely empty and not borderless.
+    // Immediately disappears the second foliage or flowers are selected!
+    const showBoxBg = !hasSelection && !borderless;
+
     return (
       <div
         ref={ref}
         id="bouquet-canvas-export"
         className={`relative max-w-full max-h-full aspect-[4/5] overflow-hidden select-none transition-all duration-300 flex items-center justify-center ${
-          borderless
-            ? 'bg-transparent'
-            : 'rounded-2xl border-2 border-black bg-[#FAF8F5] shadow-[6px_6px_0_#000000]'
+          showBoxBg
+            ? 'border-0 bg-transparent shadow-none md:border-2 md:border-black md:bg-[#FAF8F5] md:shadow-[6px_6px_0_#000]'
+            : 'bg-transparent border-0 shadow-none'
         } ${className}`}
       >
-        {/* Subtle Ambient Garden Warmth */}
-        {!borderless && (
-          <div className="absolute inset-0 pointer-events-none opacity-30 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-50/80 via-transparent to-stone-200/50" />
+        {/* Subtle Ambient Garden Warmth & Fine Paper Texture (desktop empty box mode only) */}
+        {showBoxBg && (
+          <>
+            <div className="hidden md:block absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-50/70 via-transparent to-stone-200/50" />
+            
+            {/* Fine Archival Corner Crop Marks (desktop only) */}
+            <span className="hidden md:block absolute top-2.5 left-3 text-stone-400 font-mono text-[12px] leading-none select-none pointer-events-none">⌜</span>
+            <span className="hidden md:block absolute top-2.5 right-3 text-stone-400 font-mono text-[12px] leading-none select-none pointer-events-none">⌝</span>
+            <span className="hidden md:block absolute bottom-2.5 left-3 text-stone-400 font-mono text-[12px] leading-none select-none pointer-events-none">⌞</span>
+            <span className="hidden md:block absolute bottom-2.5 right-3 text-stone-400 font-mono text-[12px] leading-none select-none pointer-events-none">⌟</span>
+          </>
         )}
 
         {/* Full Canvas Stage Container */}
         <div className="relative w-full h-full pointer-events-none flex items-center justify-center p-2">
-          {/* 1. GRAND GREENERY BACKDROP: Big, lush garden foliage that encapsulates the flowers */}
+          {/* Prompt when completely empty: Subtle clean label in center */}
+          {!hasSelection && (
+            <div
+              onClick={onPromptClick}
+              className="absolute pointer-events-auto cursor-pointer flex flex-col items-center justify-center transition-all duration-300 group z-30"
+              style={{
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              <span className="font-mono text-[10px] text-stone-400 group-hover:text-stone-700 tracking-[0.24em] uppercase font-bold transition-colors select-none py-1.5 px-3 border border-dashed border-stone-300 group-hover:border-stone-500">
+                select a foliage
+              </span>
+            </div>
+          )}
+
+          {/* 1. GRAND GREENERY BACKDROP: Only the user's selected foliage */}
           {greeneryLayers.map((layer) => (
             <div
               key={layer.id}
@@ -71,7 +106,7 @@ export const BouquetCanvas = forwardRef<HTMLDivElement, BouquetCanvasProps>(
             </div>
           ))}
 
-          {/* 2. NESTLED BLOOMS: Generous, crisp floral bunch centered inside foliage */}
+          {/* 2. NESTLED BLOOMS: Only the user's selected blooms */}
           {flowerLayers.map((layer) => (
             <div
               key={layer.id}

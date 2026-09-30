@@ -93,7 +93,7 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
   }, [bouquet.metadata?.cardFont]);
 
   const cardPlacement = useMemo(() => {
-    return (bouquet.metadata?.cardPlacement as 'right' | 'left' | 'bottom') || 'right';
+    return (bouquet.metadata?.cardPlacement as 'right' | 'left' | 'bottom' | 'top') || 'right';
   }, [bouquet.metadata?.cardPlacement]);
 
   const giftFormat = useMemo(() => {
@@ -439,26 +439,115 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
           </div>
         )}
 
-        {/* PRINT FORMAT: BOTH (Fixed desktop A4 side-by-side or stacked layout!) */}
+        {/* PRINT FORMAT: BOTH (Respects cardPlacement: right, left, bottom, top) */}
         {giftFormat === 'both' && (
-          <div className={`w-full items-center ${cardPlacement === 'bottom' ? 'flex flex-col gap-6' : 'grid grid-cols-2 gap-8'}`}>
-            <div className="w-full aspect-[4/5] flex items-center justify-center">
-              <BouquetCanvas
-                greeneryLayers={arrangement.greeneryLayers}
-                flowerLayers={arrangement.flowerLayers}
-                showRibbon={true}
-                borderless={true}
-                className="w-full h-full"
-              />
-            </div>
-            <div className="w-full flex items-center justify-center">
-              <BouquetCard
-                note={note}
-                cardFont={cardFont}
-                editable={false}
-                className="w-full aspect-[4/5] border border-stone-300"
-              />
-            </div>
+          <div className="w-full">
+            {cardPlacement === 'right' && (
+              <div className="grid grid-cols-2 gap-8 items-center">
+                <div className="w-full aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+                <div className="w-full flex items-center justify-center">
+                  <BouquetCard
+                    note={note}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full aspect-[4/5] border border-stone-300"
+                  />
+                </div>
+              </div>
+            )}
+            {cardPlacement === 'left' && (
+              <div className="grid grid-cols-2 gap-8 items-center">
+                <div className="w-full flex items-center justify-center">
+                  <BouquetCard
+                    note={note}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full aspect-[4/5] border border-stone-300"
+                  />
+                </div>
+                <div className="w-full aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
+            {cardPlacement === 'bottom' && (
+              <div className="flex flex-col gap-6 items-center">
+                <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+                <div className="w-full max-w-[460px] flex items-center justify-center">
+                  <BouquetCard
+                    note={note}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full border border-stone-300"
+                  />
+                </div>
+              </div>
+            )}
+
+              {cardPlacement === 'top' && (
+                <div className="flex flex-col gap-6 items-center">
+                  <div className="w-full max-w-[420px] flex items-center justify-center">
+                    <BouquetCard
+                      note={note}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full aspect-[4/3] border border-stone-300"
+                    />
+                  </div>
+                  <div className="w-full max-w-[340px] aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
+            {cardPlacement === 'top' && (
+              <div className="flex flex-col gap-6 items-center">
+                <div className="w-full max-w-[460px] flex items-center justify-center">
+                  <BouquetCard
+                    note={note}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full border border-stone-300"
+                  />
+                </div>
+                <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -727,7 +816,7 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                   <div
                     id="bouquet-canvas-export"
                     className={`w-full items-center justify-center ${
-                      cardPlacement === 'bottom'
+                      cardPlacement === 'bottom' || cardPlacement === 'top'
                         ? 'flex flex-col gap-4 max-w-xl'
                         : 'grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 max-w-4xl'
                     }`}
@@ -739,6 +828,8 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                       } ${
                         cardPlacement === 'bottom'
                           ? 'max-w-[270px] sm:max-w-[320px]'
+                          : cardPlacement === 'top'
+                          ? 'max-w-[270px] sm:max-w-[320px] order-2'
                           : cardPlacement === 'left'
                           ? 'max-w-[270px] sm:max-w-[380px] md:order-2'
                           : 'max-w-[270px] sm:max-w-[380px]'
@@ -760,6 +851,8 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                       } ${
                         cardPlacement === 'bottom'
                           ? 'max-w-[350px] sm:max-w-[460px]'
+                          : cardPlacement === 'top'
+                          ? 'max-w-[350px] sm:max-w-[460px] order-1'
                           : cardPlacement === 'left'
                           ? 'max-w-[350px] sm:max-w-[390px] md:order-1'
                           : 'max-w-[350px] sm:max-w-[390px]'
@@ -773,7 +866,7 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                         editable={false}
                         isSelfWriting={true}
                         className={`w-full border-2 border-black rounded shadow-[6px_6px_0_#000] ${
-                          cardPlacement === 'bottom' ? 'aspect-[4/3]' : 'aspect-[4/5]'
+                          cardPlacement === 'bottom' || cardPlacement === 'top' ? 'aspect-[4/3]' : 'aspect-[4/5]'
                         }`}
                       />
 
@@ -869,30 +962,91 @@ export default function BouquetViewer({ initialBouquet }: BouquetViewerProps) {
                 )}
 
                 {giftFormat === 'both' && (
-                  <div
-                    className={`grid items-center gap-5 sm:gap-6 ${
-                      cardPlacement === 'bottom'
-                        ? 'grid-cols-1 max-w-[420px] mx-auto'
-                        : 'grid-cols-1 sm:grid-cols-2'
-                    }`}
-                  >
-                    <div className="w-full max-w-[300px] sm:max-w-none mx-auto aspect-[4/5] flex items-center justify-center">
-                      <BouquetCanvas
-                        greeneryLayers={arrangement.greeneryLayers}
-                        flowerLayers={arrangement.flowerLayers}
-                        showRibbon={true}
-                        borderless={true}
-                        className="w-full h-full"
-                      />
-                    </div>
-                    <div className="w-full max-w-[380px] sm:max-w-none mx-auto flex items-center justify-center">
-                      <BouquetCard
-                        note={note}
-                        cardFont={cardFont}
-                        editable={false}
-                        className="w-full aspect-[4/5] border border-stone-300 rounded"
-                      />
-                    </div>
+                  <div className="w-full">
+                    {cardPlacement === 'right' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 items-center">
+                        <div className="w-full max-w-[300px] sm:max-w-none mx-auto aspect-[4/5] flex items-center justify-center">
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="w-full max-w-[380px] sm:max-w-none mx-auto flex items-center justify-center">
+                          <BouquetCard
+                            note={note}
+                            cardFont={cardFont}
+                            editable={false}
+                            className="w-full aspect-[4/5] border border-stone-300 rounded"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {cardPlacement === 'left' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 items-center">
+                        <div className="w-full max-w-[380px] sm:max-w-none mx-auto flex items-center justify-center">
+                          <BouquetCard
+                            note={note}
+                            cardFont={cardFont}
+                            editable={false}
+                            className="w-full aspect-[4/5] border border-stone-300 rounded"
+                          />
+                        </div>
+                        <div className="w-full max-w-[300px] sm:max-w-none mx-auto aspect-[4/5] flex items-center justify-center">
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {cardPlacement === 'bottom' && (
+                      <div className="flex flex-col gap-5 max-w-[420px] mx-auto items-center">
+                        <div className="w-full max-w-[280px] aspect-[4/5] flex items-center justify-center">
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="w-full max-w-[380px] flex items-center justify-center">
+                          <BouquetCard
+                            note={note}
+                            cardFont={cardFont}
+                            editable={false}
+                            className="w-full border border-stone-300 rounded"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {cardPlacement === 'top' && (
+                      <div className="flex flex-col gap-5 max-w-[420px] mx-auto items-center">
+                        <div className="w-full max-w-[380px] flex items-center justify-center">
+                          <BouquetCard
+                            note={note}
+                            cardFont={cardFont}
+                            editable={false}
+                            className="w-full border border-stone-300 rounded"
+                          />
+                        </div>
+                        <div className="w-full max-w-[280px] aspect-[4/5] flex items-center justify-center">
+                          <BouquetCanvas
+                            greeneryLayers={arrangement.greeneryLayers}
+                            flowerLayers={arrangement.flowerLayers}
+                            showRibbon={true}
+                            borderless={true}
+                            className="w-full h-full"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

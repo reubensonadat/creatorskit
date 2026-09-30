@@ -180,22 +180,8 @@ export function generateBouquetArrangement(
   // Filter activeFlowers to ONLY contain flowers of collectionType:
   const validFlowers = activeItems.filter(f => f.flowerSize === collectionType);
 
-  const minAllowed = isBigCollection ? 2 : 3;
   const maxAllowed = isBigCollection ? 3 : 10;
   const activeFlowers = validFlowers.slice(0, maxAllowed);
-
-  if (activeFlowers.length < minAllowed) {
-    const defaults = isBigCollection
-      ? ['net-rose', 'net-tulip', 'net-lily']
-      : ['rose-pink', 'sunflower-golden', 'peony-blush'];
-    for (const defId of defaults) {
-      if (activeFlowers.length >= minAllowed) break;
-      const found = FLOWERS.find(f => f.id === defId);
-      if (found && !activeFlowers.some(f => f.id === found.id)) {
-        activeFlowers.push(found);
-      }
-    }
-  }
 
   // 2. GREENERY:
   // For Big Flowers: TWO (2) sets of greenery (e.g. Lush Foliage + Forest Fern), fanning out harmoniously
@@ -206,48 +192,54 @@ export function generateBouquetArrangement(
 
   const greeneryLayers: ArrangedElement[] = [];
 
-  if (isBigCollection) {
-    const primaryG = activeGreenery[0] || GREENERY.find(g => g.id === 'net-leafy') || GREENERY[0];
-    const secondaryG = activeGreenery[1] || primaryG;
+  if (activeGreenery.length > 0) {
+    if (isBigCollection) {
+      const primaryG = activeGreenery[0];
+      const secondaryG = activeGreenery[1] || primaryG;
 
-    const cfg1 = GREENERY_CONFIGS[primaryG.id] || { scale: 1.40, yPercent: -4 };
-    const cfg2 = GREENERY_CONFIGS[secondaryG.id] || { scale: 1.35, yPercent: 2 };
+      const cfg1 = GREENERY_CONFIGS[primaryG.id] || { scale: 1.40, yPercent: -4 };
+      const cfg2 = GREENERY_CONFIGS[secondaryG.id] || { scale: 1.35, yPercent: 2 };
 
-    greeneryLayers.push(
-      // Greenery Set 1: Upper Right branch
-      {
-        id: `${primaryG.id}-set-1`,
-        item: primaryG,
-        xPercent: 12,
-        yPercent: cfg1.yPercent - 3,
-        rotationDeg: 14,
-        scale: cfg1.scale,
-        zIndex: 1,
-      },
-      // Greenery Set 2: Lower Left cradle branch
-      {
-        id: `${secondaryG.id}-set-2`,
-        item: secondaryG,
-        xPercent: -12,
-        yPercent: cfg2.yPercent + 4,
-        rotationDeg: -16,
-        scale: Math.round(cfg2.scale * 0.95 * 100) / 100,
-        zIndex: 2,
+      greeneryLayers.push(
+        // Greenery Set 1: Upper Right branch
+        {
+          id: `${primaryG.id}-set-1`,
+          item: primaryG,
+          xPercent: 12,
+          yPercent: cfg1.yPercent - 3,
+          rotationDeg: 14,
+          scale: cfg1.scale,
+          zIndex: 1,
+        }
+      );
+      if (activeGreenery.length > 1) {
+        greeneryLayers.push(
+          // Greenery Set 2: Lower Left cradle branch
+          {
+            id: `${secondaryG.id}-set-2`,
+            item: secondaryG,
+            xPercent: -12,
+            yPercent: cfg2.yPercent + 4,
+            rotationDeg: -16,
+            scale: Math.round(cfg2.scale * 0.95 * 100) / 100,
+            zIndex: 2,
+          }
+        );
       }
-    );
-  } else {
-    const primaryG = activeGreenery[0] || GREENERY.find(g => g.id === 'fern-illustration') || GREENERY[0];
-    const cfg = GREENERY_CONFIGS[primaryG.id] || { scale: 1.45, yPercent: -4 };
+    } else {
+      const primaryG = activeGreenery[0];
+      const cfg = GREENERY_CONFIGS[primaryG.id] || { scale: 1.45, yPercent: -4 };
 
-    greeneryLayers.push({
-      id: `${primaryG.id}-backdrop`,
-      item: primaryG,
-      xPercent: 0,
-      yPercent: cfg.yPercent,
-      rotationDeg: cfg.rotationDeg || 0,
-      scale: cfg.scale,
-      zIndex: 1,
-    });
+      greeneryLayers.push({
+        id: `${primaryG.id}-backdrop`,
+        item: primaryG,
+        xPercent: 0,
+        yPercent: cfg.yPercent,
+        rotationDeg: cfg.rotationDeg || 0,
+        scale: cfg.scale,
+        zIndex: 1,
+      });
+    }
   }
 
   // 3. FLOWER SLOTS:
@@ -256,8 +248,11 @@ export function generateBouquetArrangement(
   const flowerLayers: ArrangedElement[] = [];
   const fCount = activeFlowers.length;
 
-  // ── A. BIG FLOWERS SLOTS (Min 2 · Max 3 Statement Blooms with Wide Balanced Spacing) ──
+  // ── A. BIG FLOWERS SLOTS (1 to 3 Statement Blooms with Wide Balanced Spacing) ──
   const bigSlotLayouts: Record<number, Array<{ x: number; y: number; rot: number; z: number }>> = {
+    1: [
+      { x: 0, y: 0, rot: 0, z: 10 },
+    ],
     2: [
       { x: -12, y: -5, rot: -7, z: 10 },
       { x: 12, y: 7, rot: 7, z: 12 },
@@ -269,33 +264,40 @@ export function generateBouquetArrangement(
     ],
   };
 
-  // ── B. SMALL FLOWERS SLOTS (Max 10 · Brought together much more, strictly <= 30% overlap) ──
+  // ── B. SMALL FLOWERS SLOTS (1 to 10 · Brought together snugly) ──
   const smallSlotLayouts: Record<number, Array<{ x: number; y: number; rot: number; z: number }>> = {
+    1: [
+      { x: 0, y: 0, rot: 0, z: 10 },
+    ],
+    2: [
+      { x: -8, y: 0, rot: -4, z: 10 },
+      { x: 8, y: 0, rot: 4, z: 12 },
+    ],
     3: [
-      { x: 0, y: -5, rot: 0, z: 10 },
-      { x: -6, y: 4, rot: -5, z: 12 },
-      { x: 6, y: 4, rot: 5, z: 12 },
+      { x: 0, y: -7, rot: 0, z: 10 },
+      { x: -9, y: 5, rot: -5, z: 12 },
+      { x: 9, y: 5, rot: 5, z: 12 },
     ],
     4: [
-      { x: -5.5, y: -5.5, rot: -4, z: 10 },
-      { x: 5.5, y: -5.5, rot: 4, z: 10 },
-      { x: -5.5, y: 5.5, rot: -4, z: 12 },
-      { x: 5.5, y: 5.5, rot: 4, z: 12 },
+      { x: -8, y: -7, rot: -4, z: 10 },
+      { x: 8, y: -7, rot: 4, z: 10 },
+      { x: -8, y: 7, rot: -4, z: 12 },
+      { x: 8, y: 7, rot: 4, z: 12 },
     ],
     5: [
-      { x: -6, y: -6.5, rot: -4, z: 10 },
-      { x: 6, y: -6.5, rot: 4, z: 10 },
+      { x: -8.5, y: -8, rot: -4, z: 10 },
+      { x: 8.5, y: -8, rot: 4, z: 10 },
       { x: 0, y: 0, rot: 0, z: 11 },
-      { x: -6, y: 6.5, rot: -4, z: 13 },
-      { x: 6, y: 6.5, rot: 4, z: 13 },
+      { x: -8.5, y: 8, rot: -4, z: 13 },
+      { x: 8.5, y: 8, rot: 4, z: 13 },
     ],
     6: [
-      { x: -6, y: -9, rot: -4, z: 10 },
-      { x: 6, y: -9, rot: 4, z: 10 },
-      { x: -7, y: 0, rot: -3, z: 11 },
-      { x: 7, y: 0, rot: 3, z: 11 },
-      { x: -6, y: 9, rot: -4, z: 13 },
-      { x: 6, y: 9, rot: 4, z: 13 },
+      { x: -8, y: -11, rot: -4, z: 10 },
+      { x: 8, y: -11, rot: 4, z: 10 },
+      { x: -9, y: 0, rot: -3, z: 11 },
+      { x: 9, y: 0, rot: 3, z: 11 },
+      { x: -8, y: 11, rot: -4, z: 13 },
+      { x: 8, y: 11, rot: 4, z: 13 },
     ],
     7: [
       { x: 0, y: -9, rot: 0, z: 10 },
@@ -342,44 +344,46 @@ export function generateBouquetArrangement(
   };
 
   const activeSlotTable = isBigCollection ? bigSlotLayouts : smallSlotLayouts;
-  const currentSlots = activeSlotTable[fCount] || activeSlotTable[Math.min(maxAllowed, Math.max(minAllowed, fCount))];
+  const currentSlots = activeSlotTable[fCount] || activeSlotTable[Math.min(maxAllowed, Math.max(1, fCount))] || [];
 
-  // Shuffle slot assignments using the PRNG so clicking SHUFFLE physically swaps bloom locations!
-  const slotIndices = activeFlowers.map((_, i) => i);
-  for (let i = slotIndices.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    const temp = slotIndices[i];
-    slotIndices[i] = slotIndices[j];
-    slotIndices[j] = temp;
-  }
+  if (fCount > 0) {
+    // Shuffle slot assignments using the PRNG so clicking SHUFFLE physically swaps bloom locations!
+    const slotIndices = activeFlowers.map((_, i) => i);
+    for (let i = slotIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      const temp = slotIndices[i];
+      slotIndices[i] = slotIndices[j];
+      slotIndices[j] = temp;
+    }
 
-  activeFlowers.forEach((item, originalIdx) => {
-    const assignedSlotIdx = slotIndices[originalIdx];
-    const slot = currentSlots[assignedSlotIdx] || {
-      x: rand() * 12 - 6,
-      y: rand() * 12 - 6,
-      rot: rand() * 8 - 4,
-      z: 10 + originalIdx,
-    };
+    activeFlowers.forEach((item, originalIdx) => {
+      const assignedSlotIdx = slotIndices[originalIdx];
+      const slot = currentSlots[assignedSlotIdx] || {
+        x: rand() * 12 - 6,
+        y: rand() * 12 - 6,
+        rot: rand() * 8 - 4,
+        z: 10 + originalIdx,
+      };
 
-    // Noticeable physical variation on shuffle
-    const jiggleX = rand() * 3.0 - 1.5;
-    const jiggleY = rand() * 3.0 - 1.5;
-    const jiggleRot = rand() * 14 - 7;
-    const jiggleScale = rand() * 0.08 - 0.04;
+      // Noticeable physical variation on shuffle
+      const jiggleX = rand() * 3.0 - 1.5;
+      const jiggleY = rand() * 3.0 - 1.5;
+      const jiggleRot = rand() * 14 - 7;
+      const jiggleScale = rand() * 0.08 - 0.04;
 
-    const visualScale = (FLOWER_VISUAL_SCALES[item.id] ?? 1.0) + jiggleScale;
+      const visualScale = (FLOWER_VISUAL_SCALES[item.id] ?? 1.0) + jiggleScale;
 
-    flowerLayers.push({
-      id: `${item.id}-${originalIdx}`,
-      item,
-      xPercent: Math.round((slot.x + jiggleX) * 10) / 10,
-      yPercent: Math.round((slot.y + jiggleY) * 10) / 10,
-      rotationDeg: Math.round(slot.rot + jiggleRot),
-      scale: Math.round(visualScale * 100) / 100,
-      zIndex: slot.z,
+      flowerLayers.push({
+        id: `${item.id}-${originalIdx}`,
+        item,
+        xPercent: Math.round((slot.x + jiggleX) * 10) / 10,
+        yPercent: Math.round((slot.y + jiggleY) * 10) / 10,
+        rotationDeg: Math.round(slot.rot + jiggleRot),
+        scale: Math.round(visualScale * 100) / 100,
+        zIndex: slot.z,
+      });
     });
-  });
+  }
 
   return {
     greeneryLayers,

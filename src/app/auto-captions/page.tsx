@@ -36,6 +36,9 @@ import {
     Pause,
     Trash2,
     Scissors,
+    FileText,
+    RotateCcw,
+    Film,
 } from 'lucide-react';
 import {
     extractMetadataFromMediaBlob,
@@ -246,6 +249,35 @@ function BrutProgress({ percent, label, statusText }: { percent: number; label?:
     );
 }
 
+function getExactMediaDuration(mediaFile: File): Promise<number> {
+    return new Promise((resolve) => {
+        try {
+            const url = URL.createObjectURL(mediaFile);
+            const isVid = mediaFile.type.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(mediaFile.name);
+            const el = document.createElement(isVid ? 'video' : 'audio');
+            el.preload = 'metadata';
+            const cleanup = () => {
+                try { URL.revokeObjectURL(url); } catch { }
+                el.removeAttribute('src');
+                el.load();
+            };
+            el.onloadedmetadata = () => {
+                const d = el.duration;
+                cleanup();
+                if (Number.isFinite(d) && d > 0) resolve(d);
+                else resolve(0);
+            };
+            el.onerror = () => {
+                cleanup();
+                resolve(0);
+            };
+            el.src = url;
+        } catch {
+            resolve(0);
+        }
+    });
+}
+
 export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette' | 'overlay' } = {}) {
     const [file, setFile] = useState<File | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -356,6 +388,13 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
     };
 
     // Video Overlay Studio Configuration (3 Modes: Teleprompter Highlight, Kinetic Pop, Minimal)
+    // Video playback & script-to-captions states
+    const isVideoFile = !!(file && (file.type.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(file.name)));
+    const [mediaViewMode, setMediaViewMode] = useState<'video' | 'cassette'>('video');
+    const [scriptModalOpen, setScriptModalOpen] = useState(false);
+    const [customScriptInput, setCustomScriptInput] = useState('');
+    const [scriptEstimatedDuration, setScriptEstimatedDuration] = useState(30);
+
     const [videoMode, setVideoMode] = useState<CaptionVideoMode>('kinetic-pop');
     const [captionFont, setCaptionFont] = useState<string>('montserrat');
     const [captionFontSize, setCaptionFontSize] = useState<number>(48);
@@ -511,6 +550,179 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setShowHandoffReplacePrompt(false);
     };
 
+    // 🔄 Fresh Session: completely wipe current active audio & cues from IndexedDB and storage
+    const handleStartNewSession = async () => {
+        if (typeof window !== 'undefined') {
+            const confirmed = window.confirm('Start a fresh video session? This will wipe the active cues and audio cache so you can start with a clean slate.');
+            if (!confirmed) return;
+        }
+
+        try {
+            await clearAudioCache(STORAGE_KEYS.AUDIO_KEY);
+            localStorage.removeItem(STORAGE_KEYS.CUES);
+            localStorage.removeItem(STORAGE_KEYS.FULL_TEXT);
+            localStorage.removeItem(STORAGE_KEYS.FILE_NAME);
+            localStorage.removeItem(STORAGE_KEYS.ELAPSED);
+            localStorage.removeItem(STORAGE_KEYS.DURATION);
+            localStorage.removeItem('creatorkit_teleprompter_script');
+        } catch (e) {
+            console.warn('Error clearing session cache:', e);
+        }
+
+        if (audioUrlRef.current && audioUrlRef.current.startsWith('blob:')) {
+            URL.revokeObjectURL(audioUrlRef.current);
+        }
+        if (vttUrlRef.current && vttUrlRef.current.startsWith('blob:')) {
+            URL.revokeObjectURL(vttUrlRef.current);
+        }
+
+        setFile(null);
+        setAudioUrl(null);
+        setCues([]);
+        setFullText('');
+        setElapsed('');
+        setAudioDuration(0);
+        setTeleprompterScript(null);
+        setScriptAligned(false);
+        setMagicMetadata(null);
+        setOverlayCurrentTime(0);
+        if (overlayAudioRef.current) overlayAudioRef.current.currentTime = 0;
+    };
+
+    // ✂️ Split cue at specific timestamp (e.g. playhead position)
+    const handleSplitCueAtTime = (cueIndex: number, splitTime: number) => {
+        if (cueIndex < 0 || cueIndex >= cues.length) return;
+        const targetCue = cues[cueIndex];
+        const minBuffer = 0.15;
+        if (splitTime <= targetCue.start + minBuffer || splitTime >= targetCue.end - minBuffer) return;
+
+        const words = targetCue.text.trim().split(/\s+/).filter(Boolean);
+        if (words.length <= 1) return;
+
+        const dur = targetCue.end - targetCue.start;
+        const ratio = (splitTime - targetCue.start) / dur;
+        const splitWordIdx = Math.max(1, Math.min(words.length - 1, Math.round(words.length * ratio)));
+
+        const text1 = words.slice(0, splitWordIdx).join(' ');
+        const text2 = words.slice(splitWordIdx).join(' ');
+
+        const splitRounded = parseFloat(splitTime.toFixed(2));
+
+        const cue1: SubtitleCue = {
+            start: targetCue.start,
+            end: splitRounded,
+            text: text1,
+        };
+
+        const cue2: SubtitleCue = {
+            start: splitRounded,
+            end: targetCue.end,
+            text: text2,
+        };
+
+        const next = [...cues.slice(0, cueIndex), cue1, cue2, ...cues.slice(cueIndex + 1)]
+            .map((c, i) => ({ ...c, id: i + 1 }));
+
+        setPastCues((prev) => [...prev.slice(-30), cues]);
+        setFutureCues([]);
+        setCues(next);
+
+        try {
+            localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
+        } catch { }
+
+        const nextVtt = generateVtt(next);
+        const vttBlob = new Blob([nextVtt], { type: 'text/vtt' });
+        setVttUrl(URL.createObjectURL(vttBlob));
+    };
+
+    // ✂️ Quick split cue in half at midpoint
+    const handleSplitCueInHalf = (cueIndex: number) => {
+        if (cueIndex < 0 || cueIndex >= cues.length) return;
+        const targetCue = cues[cueIndex];
+        const mid = (targetCue.start + targetCue.end) / 2;
+        handleSplitCueAtTime(cueIndex, mid);
+    };
+
+    // 📝 Script-to-Captions: Generate evenly timed subtitle cues from user's provided text
+    const handleGenerateCaptionsFromScript = (scriptText: string) => {
+        const trimmed = scriptText.trim();
+        if (!trimmed) return;
+
+        // Split sentences on punctuation or lines
+        const rawSegments = trimmed
+            .replace(/([.?!,;:\n]+)/g, '$1|')
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+        const chunks: string[] = [];
+        for (const seg of rawSegments) {
+            const words = seg.split(/\s+/).filter(Boolean);
+            if (words.length <= 7) {
+                chunks.push(seg);
+            } else {
+                for (let i = 0; i < words.length; i += 5) {
+                    chunks.push(words.slice(i, i + 5).join(' '));
+                }
+            }
+        }
+
+        if (chunks.length === 0) return;
+
+        const targetDur = audioDuration > 0 ? audioDuration : Math.max(10, scriptEstimatedDuration || (chunks.length * 2.5));
+        const totalWords = chunks.reduce((sum, c) => sum + c.split(/\s+/).length, 0);
+
+        let curTime = 0.25;
+        const availableTime = Math.max(1, targetDur - 0.5);
+
+        const generatedCues: SubtitleCue[] = chunks.map((chunk, idx) => {
+            const wordList = chunk.split(/\s+/).filter(Boolean);
+            const dur = (wordList.length / Math.max(1, totalWords)) * availableTime;
+            const start = parseFloat(curTime.toFixed(2));
+            const end = parseFloat(Math.min(targetDur, curTime + Math.max(0.8, dur)).toFixed(2));
+            curTime = end + 0.08;
+
+            const wDur = (end - start) / Math.max(1, wordList.length);
+            const words = wordList.map((w, wIdx) => ({
+                word: w,
+                start: parseFloat((start + wIdx * wDur).toFixed(2)),
+                end: parseFloat((start + (wIdx + 1) * wDur).toFixed(2)),
+            }));
+
+            return {
+                id: idx + 1,
+                start,
+                end,
+                text: chunk,
+                words,
+            };
+        });
+
+        setPastCues((prev) => [...prev.slice(-30), cues]);
+        setFutureCues([]);
+        setCues(generatedCues);
+        setFullText(trimmed);
+
+        if (audioDuration === 0) {
+            setAudioDuration(targetDur);
+            try {
+                localStorage.setItem(STORAGE_KEYS.DURATION, targetDur.toString());
+            } catch { }
+        }
+
+        const vtt = generateVtt(generatedCues);
+        setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+
+        try {
+            localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(generatedCues));
+            localStorage.setItem(STORAGE_KEYS.FULL_TEXT, trimmed);
+        } catch { }
+
+        setScriptModalOpen(false);
+        setCustomScriptInput('');
+    };
+
     // ✍️ Manual Subtitle Cue Editing & Search
     const [showFindReplace, setShowFindReplace] = useState<boolean>(false);
     const [findQuery, setFindQuery] = useState<string>('');
@@ -587,6 +799,22 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setFullText('');
         setVttUrl(null);
 
+        // Clean out any stale teleprompter script from previous takes
+        setTeleprompterScript(null);
+        setScriptAligned(false);
+        setMagicMetadata(null);
+        localStorage.removeItem('creatorkit_teleprompter_script');
+
+        // Immediately measure true media duration from container header (guarantees accurate timeline for video uploads)
+        let containerDuration = 0;
+        try {
+            containerDuration = await getExactMediaDuration(selectedFile);
+            if (containerDuration > 0) {
+                setAudioDuration(containerDuration);
+                localStorage.setItem(STORAGE_KEYS.DURATION, containerDuration.toString());
+            }
+        } catch { }
+
         // Immediately persist audio blob into IndexedDB so it's safely cached
         saveAudioBlobToCache(STORAGE_KEYS.AUDIO_KEY, selectedFile).catch((err) => {
             console.warn('Immediate audio cache warning:', err);
@@ -613,7 +841,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setIsProcessing(true);
         try {
             let result: TranscriptionResult;
-            const effectiveScript = extractedScript || teleprompterScript || undefined;
+            // Only use script for forced alignment if embedded in the file or provided explicitly
+            const effectiveScript = extractedScript || undefined;
 
             if (activeEngine === 'groq' || activeEngine === 'openai') {
                 const userKey = activeEngine === 'groq' ? groqKey : openaiKey;
@@ -838,7 +1067,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                 localStorage.setItem(STORAGE_KEYS.FILE_NAME, selectedFile.name);
                 localStorage.setItem(STORAGE_KEYS.ELAPSED, result.elapsedSeconds);
                 if (finalCues.length > 0) {
-                    const dur = finalCues[finalCues.length - 1].end;
+                    const dur = (containerDuration > 0 ? containerDuration : (audioDuration > 0 ? audioDuration : finalCues[finalCues.length - 1].end));
                     setAudioDuration(dur);
                     localStorage.setItem(STORAGE_KEYS.DURATION, dur.toString());
                 }
@@ -978,8 +1207,10 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
 
                         // Check if a script was transferred from teleprompter
                         const pendingScript = localStorage.getItem('creatorkit_teleprompter_script');
-                        if (pendingScript && isMounted) {
+                        if (pendingScript && fromTeleprompter && isMounted) {
                             setTeleprompterScript(pendingScript);
+                        } else if (!fromTeleprompter) {
+                            localStorage.removeItem('creatorkit_teleprompter_script');
                         }
 
                         if (parsedCues.length > 0) {

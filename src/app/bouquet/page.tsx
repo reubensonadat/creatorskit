@@ -51,7 +51,7 @@ import { soundEngine, SOUND_PRESETS } from '@/lib/bouquet/soundscapes';
 import { getBouquetFontEmbedCSS, prefetchBouquetFonts } from '@/lib/bouquet/font-embed';
 
 type StudioStep = 1 | 2 | 3 | 4;
-type CardPlacement = 'right' | 'left' | 'bottom';
+type CardPlacement = 'right' | 'left' | 'bottom' | 'top';
 export type GiftFormat = 'both' | 'flower' | 'card';
 
 export default function BouquetStudioPage() {
@@ -78,19 +78,14 @@ export default function BouquetStudioPage() {
   // Flower category: 'small' (Petite Blooms, 3 to 10) or 'big' (Grand Blooms, 3 to 5)
   const [flowerCategory, setFlowerCategory] = useState<'small' | 'big'>('small');
 
-  // Greenery selection state: 1 backdrop for small flowers, 2 sets for big flowers
-  const [selectedGreenery, setSelectedGreenery] = useState<string[]>([
-    'fern-illustration',
-  ]);
+  // Greenery selection state: starts empty, no forced presets on entry
+  const [selectedGreenery, setSelectedGreenery] = useState<string[]>([]);
 
-  // Flower selection state: 5 default petite blooms
-  const [selectedFlowers, setSelectedFlowers] = useState<string[]>([
-    'rose-pink',
-    'sunflower-golden',
-    'peony-blush',
-    'carnation-blush',
-    'daisy-cream',
-  ]);
+  // Flower selection state: starts empty, no forced presets on entry
+  const [selectedFlowers, setSelectedFlowers] = useState<string[]>([]);
+
+  // URL state persistence hydration flag
+  const [isUrlHydrated, setIsUrlHydrated] = useState(false);
 
   // Note card content: starts empty so placeholder text shows and disappears on typing
   const [note, setNote] = useState({
@@ -126,6 +121,128 @@ export default function BouquetStudioPage() {
 
   const minAllowed = flowerCategory === 'big' ? 2 : 3;
   const maxAllowed = flowerCategory === 'big' ? 3 : 10;
+
+  // 1. Read URL Query Parameters on initial load / refresh
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const gParam = params.get('greenery') || params.get('g');
+      const bParam = params.get('blooms') || params.get('flowers') || params.get('b');
+      const catParam = params.get('cat');
+      const stepParam = params.get('step');
+      const placeParam = params.get('placement');
+      const fontParam = params.get('font');
+      const seedParam = params.get('seed');
+      const soundParam = params.get('sound');
+      const toParam = params.get('to');
+      const fromParam = params.get('from');
+      const msgParam = params.get('msg');
+      const greetParam = params.get('greeting');
+      const closeParam = params.get('closing');
+
+      if (gParam !== null && gParam.trim().length > 0) {
+        const list = gParam.split(',').map((s) => s.trim()).filter((id) => GREENERY.some((g) => g.id === id));
+        setSelectedGreenery(list);
+      }
+      if (bParam !== null && bParam.trim().length > 0) {
+        const list = bParam.split(',').map((s) => s.trim()).filter((id) => FLOWERS.some((f) => f.id === id));
+        setSelectedFlowers(list);
+        if (!catParam && list.length > 0) {
+          const firstBloom = FLOWERS.find((f) => f.id === list[0]);
+          if (firstBloom && firstBloom.flowerSize) setFlowerCategory(firstBloom.flowerSize);
+        }
+      }
+      if (catParam === 'big' || catParam === 'small') {
+        setFlowerCategory(catParam);
+      }
+      if (stepParam) {
+        const s = parseInt(stepParam, 10);
+        if (s >= 1 && s <= 4) setActiveStep(s as StudioStep);
+      }
+      if (placeParam && ['right', 'left', 'bottom', 'top'].includes(placeParam)) {
+        setCardPlacement(placeParam as CardPlacement);
+      }
+      if (fontParam && NOTE_FONTS.some((f) => f.id === fontParam)) {
+        setCardFont(fontParam);
+      }
+      if (seedParam) {
+        const parsedSeed = parseInt(seedParam, 10);
+        if (!isNaN(parsedSeed)) setSeed(parsedSeed);
+      }
+      if (soundParam && SOUND_PRESETS.some((s) => s.id === soundParam || soundParam === 'none')) {
+        setSelectedSoundPreset(soundParam);
+      }
+      if (toParam !== null || fromParam !== null || msgParam !== null || greetParam !== null || closeParam !== null) {
+        setNote((prev) => ({
+          greeting: greetParam !== null ? greetParam : prev.greeting,
+          to: toParam !== null ? toParam : prev.to,
+          message: msgParam !== null ? msgParam : prev.message,
+          closing: closeParam !== null ? closeParam : prev.closing,
+          from: fromParam !== null ? fromParam : prev.from,
+        }));
+      }
+    } catch (e) {
+      console.error('Error hydrating bouquet studio from URL:', e);
+    } finally {
+      setIsUrlHydrated(true);
+    }
+  }, []);
+
+  // 2. Synchronize active state changes back to URL without page reload
+  useEffect(() => {
+    if (!isUrlHydrated || typeof window === 'undefined') return;
+
+    try {
+      const params = new URLSearchParams();
+      if (selectedGreenery.length > 0) {
+        params.set('greenery', selectedGreenery.join(','));
+      }
+      if (selectedFlowers.length > 0) {
+        params.set('blooms', selectedFlowers.join(','));
+      }
+      if (flowerCategory !== 'small') {
+        params.set('cat', flowerCategory);
+      }
+      if (activeStep > 1) {
+        params.set('step', String(activeStep));
+      }
+      if (cardPlacement !== 'right') {
+        params.set('placement', cardPlacement);
+      }
+      if (cardFont !== 'space-mono') {
+        params.set('font', cardFont);
+      }
+      if (seed !== 1042) {
+        params.set('seed', String(seed));
+      }
+      if (selectedSoundPreset !== 'music-box') {
+        params.set('sound', selectedSoundPreset);
+      }
+      if (note.to) params.set('to', note.to);
+      if (note.from) params.set('from', note.from);
+      if (note.message) params.set('msg', note.message);
+
+      const qs = params.toString();
+      const newUrl = window.location.pathname + (qs ? `?${qs}` : '');
+      window.history.replaceState(null, '', newUrl);
+    } catch (e) {
+      console.error('Error synchronizing bouquet studio to URL:', e);
+    }
+  }, [
+    isUrlHydrated,
+    selectedGreenery,
+    selectedFlowers,
+    flowerCategory,
+    activeStep,
+    cardPlacement,
+    cardFont,
+    seed,
+    selectedSoundPreset,
+    note.to,
+    note.from,
+    note.message,
+  ]);
 
   // Selected handwriting font style
   const selectedFontFamily = useMemo(() => {
@@ -221,52 +338,25 @@ export default function BouquetStudioPage() {
     setSeed((prev) => prev + Math.floor(Math.random() * 888) + 17);
   };
 
-  // Switch Category cleanly
+  // Switch Category cleanly without forcing defaults onto fresh canvas
   const handleCategoryChange = (category: 'small' | 'big') => {
     setFlowerCategory(category);
     if (category === 'big') {
-      const hasBig = selectedFlowers.some(
-        (id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'big'
+      setSelectedFlowers((prev) =>
+        prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'big').slice(0, 3)
       );
-      if (!hasBig) {
-        setSelectedFlowers(['net-tulip', 'net-rose', 'net-lily']);
-      } else {
-        setSelectedFlowers((prev) =>
-          prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'big').slice(0, 3)
-        );
-      }
       const validBigGreeneries = selectedGreenery.filter(
         (id) => GREENERY.find((g) => g.id === id)?.greenerySize === 'big'
       );
-      if (validBigGreeneries.length >= 2) {
-        setSelectedGreenery(validBigGreeneries.slice(0, 2));
-      } else if (validBigGreeneries.length === 1) {
-        const other = validBigGreeneries[0] === 'net-fern' ? 'net-leafy' : 'net-fern';
-        setSelectedGreenery([validBigGreeneries[0], other]);
-      } else {
-        setSelectedGreenery(['net-leafy', 'net-fern']);
-      }
+      setSelectedGreenery(validBigGreeneries.slice(0, 2));
     } else {
-      const hasSmall = selectedFlowers.some(
-        (id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'small'
+      setSelectedFlowers((prev) =>
+        prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'small').slice(0, 10)
       );
-      if (!hasSmall) {
-        setSelectedFlowers([
-          'sunflower-golden',
-          'peony-blush',
-          'african-daisy-coral',
-          'rose-pink',
-          'carnation-blush',
-        ]);
-      } else {
-        setSelectedFlowers((prev) =>
-          prev.filter((id) => FLOWERS.find((f) => f.id === id)?.flowerSize === 'small').slice(0, 10)
-        );
-      }
       const validSmallGreenery = selectedGreenery.find(
         (id) => GREENERY.find((g) => g.id === id)?.greenerySize === 'small'
       );
-      setSelectedGreenery([validSmallGreenery || 'fern-illustration']);
+      setSelectedGreenery(validSmallGreenery ? [validSmallGreenery] : []);
     }
     setSeed(Math.floor(Math.random() * 9999));
   };
@@ -306,45 +396,27 @@ export default function BouquetStudioPage() {
     if (item.greenerySize === 'small') {
       if (flowerCategory !== 'small') {
         setFlowerCategory('small');
-        const hasSmallFlowers = selectedFlowers.some(
-          (fid) => FLOWERS.find((f) => f.id === fid)?.flowerSize === 'small'
+        setSelectedFlowers((prev) =>
+          prev.filter((fid) => FLOWERS.find((f) => f.id === fid)?.flowerSize === 'small')
         );
-        if (!hasSmallFlowers) {
-          setSelectedFlowers([
-            'rose-pink',
-            'sunflower-golden',
-            'peony-blush',
-            'carnation-blush',
-            'daisy-cream',
-          ]);
-        }
       }
-      setSelectedGreenery([id]);
+      setSelectedGreenery((prev) => (prev.includes(id) ? [] : [id]));
     } else {
       if (flowerCategory !== 'big') {
         setFlowerCategory('big');
-        const hasBigFlowers = selectedFlowers.some(
-          (fid) => FLOWERS.find((f) => f.id === fid)?.flowerSize === 'big'
+        setSelectedFlowers((prev) =>
+          prev.filter((fid) => FLOWERS.find((f) => f.id === fid)?.flowerSize === 'big')
         );
-        if (!hasBigFlowers) {
-          setSelectedFlowers(['net-tulip', 'net-rose', 'net-lily']);
-        }
-        const companion = id === 'net-fern' ? 'net-leafy' : 'net-fern';
-        setSelectedGreenery([id, companion]);
-      } else {
-        setSelectedGreenery((prev) => {
-          if (prev.includes(id)) {
-            if (prev.length > 1) {
-              return prev.filter((gId) => gId !== id);
-            }
-            return prev;
-          }
-          if (prev.length < 2) {
-            return [...prev, id];
-          }
-          return [prev[0], id];
-        });
       }
+      setSelectedGreenery((prev) => {
+        if (prev.includes(id)) {
+          return prev.filter((gId) => gId !== id);
+        }
+        if (prev.length < 2) {
+          return [...prev, id];
+        }
+        return [prev[0], id];
+      });
     }
     setSeed((prev) => prev + 1);
   };
@@ -359,7 +431,7 @@ export default function BouquetStudioPage() {
 
   // Remove 1 bloom
   const removeOneFlower = (id: string) => {
-    if (selectedFlowers.length <= minAllowed) return;
+    if (selectedFlowers.length === 0) return;
     setSelectedFlowers((prev) => {
       const idx = prev.lastIndexOf(id);
       if (idx === -1) return prev;
@@ -373,10 +445,6 @@ export default function BouquetStudioPage() {
   const toggleFlower = (id: string) => {
     const count = selectedFlowers.filter((fId) => fId === id).length;
     if (count > 0) {
-      if (selectedFlowers.filter((fId) => fId !== id).length < minAllowed) {
-        // Preserve minimum required blooms (2 for big, 3 for small)
-        return;
-      }
       setSelectedFlowers((prev) => prev.filter((fId) => fId !== id));
     } else {
       if (selectedFlowers.length >= maxAllowed) return;
@@ -686,26 +754,93 @@ export default function BouquetStudioPage() {
           </div>
         )}
 
-        {/* PRINT FORMAT: BOTH (Fixed desktop A4 side-by-side or stacked layout!) */}
+        {/* PRINT FORMAT: BOTH (Respects cardPlacement: right, left, bottom, top) */}
         {giftFormat === 'both' && (
-          <div className={`w-full items-center ${cardPlacement === 'bottom' ? 'flex flex-col gap-6' : 'grid grid-cols-2 gap-8'}`}>
-            <div className="w-full aspect-[4/5] flex items-center justify-center">
-              <BouquetCanvas
-                greeneryLayers={arrangement.greeneryLayers}
-                flowerLayers={arrangement.flowerLayers}
-                showRibbon={true}
-                borderless={true}
-                className="w-full h-full"
-              />
-            </div>
-            <div className="w-full flex items-center justify-center">
-              <BouquetCard
-                note={fullNote}
-                cardFont={cardFont}
-                editable={false}
-                className="w-full aspect-[4/5] border border-stone-300"
-              />
-            </div>
+          <div className="w-full">
+            {cardPlacement === 'right' && (
+              <div className="grid grid-cols-2 gap-8 items-center">
+                <div className="w-full aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+                <div className="w-full flex items-center justify-center">
+                  <BouquetCard
+                    note={fullNote}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full aspect-[4/5] border border-stone-300"
+                  />
+                </div>
+              </div>
+            )}
+            {cardPlacement === 'left' && (
+              <div className="grid grid-cols-2 gap-8 items-center">
+                <div className="w-full flex items-center justify-center">
+                  <BouquetCard
+                    note={fullNote}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full aspect-[4/5] border border-stone-300"
+                  />
+                </div>
+                <div className="w-full aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
+            {cardPlacement === 'bottom' && (
+              <div className="flex flex-col gap-6 items-center">
+                <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+                <div className="w-full max-w-[460px] flex items-center justify-center">
+                  <BouquetCard
+                    note={fullNote}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full border border-stone-300"
+                  />
+                </div>
+              </div>
+            )}
+            {cardPlacement === 'top' && (
+              <div className="flex flex-col gap-6 items-center">
+                <div className="w-full max-w-[460px] flex items-center justify-center">
+                  <BouquetCard
+                    note={fullNote}
+                    cardFont={cardFont}
+                    editable={false}
+                    className="w-full border border-stone-300"
+                  />
+                </div>
+                <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                  <BouquetCanvas
+                    greeneryLayers={arrangement.greeneryLayers}
+                    flowerLayers={arrangement.flowerLayers}
+                    showRibbon={true}
+                    borderless={true}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -839,6 +974,29 @@ export default function BouquetStudioPage() {
                   </div>
                 </div>
               )}
+
+              {/* Stacked: Card on Top, Bouquet at Bottom */}
+              {cardPlacement === 'top' && (
+                <div className="flex flex-col items-center gap-6">
+                  <div className="w-full max-w-[460px] flex items-center justify-center">
+                    <BouquetCard
+                      note={fullNote}
+                      cardFont={cardFont}
+                      editable={false}
+                      className="w-full border border-stone-300"
+                    />
+                  </div>
+                  <div className="w-full max-w-[380px] aspect-[4/5] flex items-center justify-center">
+                    <BouquetCanvas
+                      greeneryLayers={arrangement.greeneryLayers}
+                      flowerLayers={arrangement.flowerLayers}
+                      showRibbon={true}
+                      borderless={true}
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -961,8 +1119,12 @@ export default function BouquetStudioPage() {
                   greeneryLayers={arrangement.greeneryLayers}
                   flowerLayers={arrangement.flowerLayers}
                   showRibbon={true}
-                  borderless={true}
+                  borderless={false}
                   className="w-full h-full"
+                  onPromptClick={() => {
+                    setSidebarOpen(true);
+                    setMobileStudioTab('sidebar');
+                  }}
                 />
               </div>
             )}
@@ -1089,6 +1251,17 @@ export default function BouquetStudioPage() {
                         }`}
                       >
                         RIGHT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCardPlacement('top')}
+                        className={`px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          cardPlacement === 'top'
+                            ? 'bg-black text-white'
+                            : 'bg-white text-stone-700 hover:text-black'
+                        }`}
+                      >
+                        TOP
                       </button>
                       <button
                         type="button"
@@ -1288,6 +1461,28 @@ export default function BouquetStudioPage() {
                                           cardFont={cardFont}
                                           editable={false}
                                           className="w-full border border-stone-300 shadow-sm"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {cardPlacement === 'top' && (
+                                    <div className="flex flex-col items-center gap-4">
+                                      <div className="w-full max-w-[420px] flex items-center justify-center">
+                                        <BouquetCard
+                                          note={fullNote}
+                                          cardFont={cardFont}
+                                          editable={false}
+                                          className="w-full border border-stone-300 shadow-sm"
+                                        />
+                                      </div>
+                                      <div className="w-full max-w-[320px] aspect-[4/5] flex items-center justify-center">
+                                        <BouquetCanvas
+                                          greeneryLayers={arrangement.greeneryLayers}
+                                          flowerLayers={arrangement.flowerLayers}
+                                          showRibbon={true}
+                                          borderless={true}
+                                          className="w-full h-full"
                                         />
                                       </div>
                                     </div>
@@ -2130,7 +2325,7 @@ export default function BouquetStudioPage() {
                             <span>REPRINT</span>
                           </button>
                         </div>
-                        <div className="grid grid-cols-3 gap-1">
+                        <div className="grid grid-cols-4 gap-1">
                           <button
                             type="button"
                             onClick={() => {
@@ -2142,6 +2337,18 @@ export default function BouquetStudioPage() {
                             }`}
                           >
                             RIGHT
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardPlacement('top');
+                              // keep in sidebar
+                            }}
+                            className={`p-1.5 text-[10px] font-mono font-black uppercase border border-black cursor-pointer whitespace-nowrap ${
+                              cardPlacement === 'top' ? 'bg-black text-white' : 'bg-white text-black'
+                            }`}
+                          >
+                            TOP
                           </button>
                           <button
                             type="button"
@@ -2472,16 +2679,25 @@ export default function BouquetStudioPage() {
             <button
               type="button"
               onClick={() => setMobileStudioTab('sidebar')}
-              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
+              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
             >
-              <SlidersHorizontal size={14} />
-              <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
+              {selectedGreenery.length === 0 && selectedFlowers.length === 0 ? (
+                <>
+                  <Plus size={14} />
+                  <span>SELECT A FOLIAGE</span>
+                </>
+              ) : (
+                <>
+                  <SlidersHorizontal size={14} />
+                  <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
+                </>
+              )}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setMobileStudioTab('stage')}
-              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider rounded border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
+              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
             >
               <Eye size={14} />
               <span>VIEW CREATION</span>
