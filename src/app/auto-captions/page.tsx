@@ -52,6 +52,7 @@ import {
 } from '@/lib/captions/whisper-cloud';
 import {
     transcribeOnWorker,
+    warmCaptionsWorker,
     WorkerTranscribeError,
 } from '@/lib/captions/worker-transcribe';
 
@@ -248,6 +249,8 @@ function BrutProgress({ percent, label, statusText }: { percent: number; label?:
 export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette' | 'overlay' } = {}) {
     const [file, setFile] = useState<File | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    // Where the current transcript came from — shown as a chip on the cue list.
+    const [engineSourceLabel, setEngineSourceLabel] = useState<string | null>(null);
     // True when a restored session has cues but its audio blob could not be
     // recovered from IndexedDB (quota / private mode / cleared storage) — the
     // workspace stays fully usable, but the player needs a loud heads-up.
@@ -636,6 +639,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     effectiveScript,
                     (prog) => handleProgressUpdate(prog)
                 );
+                setEngineSourceLabel(activeEngine === 'groq' ? 'GROQ' : 'OPENAI');
             } else if (activeEngine === 'server') {
                 // SERVER (the DEFAULT): free Render worker first (one-time
                 // ticket minted by the edge function — the real worker token
@@ -678,6 +682,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         durationSeconds: decodedDuration,
                         onProgress: (prog) => handleProgressUpdate(prog),
                     });
+                    setEngineSourceLabel('SERVER');
                 } catch (serverErr) {
                     if (
                         serverErr instanceof WorkerTranscribeError &&
@@ -730,6 +735,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                 message: prog.message ? `${prog.message} (Local Attempt ${attempt})` : `Generating captions (Local Attempt ${attempt})`,
                             });
                         });
+                        setEngineSourceLabel('BROWSER FALLBACK');
                     } else {
                         // Max retries reached — do not retry again
                         throw serverErr;
@@ -779,6 +785,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
 
                 try {
                     result = await runBrowserEngine();
+                    setEngineSourceLabel('BROWSER');
                 } catch (localErr) {
                     if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
                         autoRetryCountRef.current += 1;
@@ -795,6 +802,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                             audioData: browserPcm,
                             onProgress: (prog) => handleProgressUpdate(prog),
                         });
+                        setEngineSourceLabel('SERVER');
                     } else {
                         throw localErr;
                     }
@@ -986,6 +994,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                             message: 'Session restored from local cache',
                             percent: 100,
                         });
+                        setEngineSourceLabel('RESTORED');
                     } else if (savedCues && isMounted) {
                         // In case audio was not cached (quota / private mode / cleared
                         // storage), still restore the caption work — and be LOUD
@@ -1020,6 +1029,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                             message: 'Session restored — audio missing from browser storage',
                             percent: 100,
                         });
+                        setEngineSourceLabel('RESTORED');
                     }
                 }
             } catch (err) {
@@ -1464,6 +1474,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                 message: blob ? `Session restored — ${entry.name}` : `Session restored — audio missing (${entry.name})`,
                 percent: 100,
             });
+            setEngineSourceLabel('RESTORED');
         } catch (err) {
             console.warn('Could not open saved session:', err);
         }
@@ -1629,6 +1640,12 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         audio.preservesPitch = true;
         audio.playbackRate = overlayPlaybackRate;
     }, [overlayPlaybackRate, audioUrl, overlayPlaying]);
+
+    // Wake the free Render worker the moment this page opens so its
+    // cold-start burns off while the user is still picking a file.
+    useEffect(() => {
+        warmCaptionsWorker();
+    }, []);
 
     const toggleOverlayPlayback = () => {
         const audio = overlayAudioRef.current;
@@ -3505,6 +3522,25 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                     </div>
                                 )}
 
+                                {engineSourceLabel && cues.length > 0 && (
+                                    <span
+                                        title="Engine that produced this transcript"
+                                        style={{
+                                            display: 'inline-block',
+                                            padding: '2px 8px',
+                                            border: '1.5px solid #000',
+                                            borderRadius: 3,
+                                            background: '#FFE500',
+                                            fontFamily: 'monospace',
+                                            fontWeight: 900,
+                                            fontSize: '0.56rem',
+                                            letterSpacing: '0.04em',
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        ENGINE: {engineSourceLabel}
+                                    </span>
+                                )}
                                 {cues.length === 0 ? (
                                     <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 700, color: '#888' }}>
                                         NO CUES YET — ADD ONE MANUALLY OR RE-TRANSCRIBE.

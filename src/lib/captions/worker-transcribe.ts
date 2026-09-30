@@ -26,6 +26,21 @@ export const CAPTIONS_WORKER_BASE =
     process.env.NEXT_PUBLIC_CAPTIONS_WORKER_URL?.replace(/\/+$/, '') ||
     'https://video-worker-xwv9.onrender.com';
 
+/**
+ * Fire-and-forget GET that wakes the free Render container the moment the
+ * captions page mounts — the ~50s cold-start then happens while the user is
+ * still picking a file instead of stalling their first transcription.
+ * mode:'no-cors' keeps it a silent opaque ping (any HTTP request wakes it).
+ */
+export function warmCaptionsWorker(): void {
+    if (typeof window === 'undefined') return;
+    try {
+        fetch(`${CAPTIONS_WORKER_BASE}/health`, { mode: 'no-cors', keepalive: true }).catch(() => { });
+    } catch {
+        // a warming ping must never break anything
+    }
+}
+
 /** Worker hard cap is 100MB — stay just under to avoid a 413 after a long upload. */
 const MAX_UPLOAD_BYTES = 99 * 1024 * 1024;
 const POLL_INTERVAL_MS = 2500;
