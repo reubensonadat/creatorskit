@@ -290,6 +290,19 @@ const TEXT_PRESETS: { id: string; name: string; swatch: string; patch: Partial<T
     },
 ];
 
+/** The layer's case transform — ONE source of truth for canvas AND previews. */
+const applyCase = (
+    text: string,
+    caseMode?: 'uppercase' | 'capitalize' | 'lowercase' | 'original',
+    uppercaseCompat?: boolean,
+): string => {
+    const mode = caseMode ?? (uppercaseCompat ? 'uppercase' : 'original');
+    if (mode === 'uppercase') return text.toUpperCase();
+    if (mode === 'lowercase') return text.toLowerCase();
+    if (mode === 'capitalize') return text.replace(/\b\w/g, (c) => c.toUpperCase());
+    return text;
+};
+
 // --- Refresh-safe persistence: images in IndexedDB, layers in localStorage
 const CUTOUT_MODE_KEY = 'ck_text_behind_cutout_mode_v1';
 type CutoutMode = 'manual' | 'browser' | 'server';
@@ -681,15 +694,7 @@ export default function TextBehindPage() {
                 if (!l.text.trim()) return;
                 const font = fontById(l.fontId);
 
-                let textToRender = l.text;
-                const mode = l.caseMode ?? (l.uppercase ? 'uppercase' : 'original');
-                if (mode === 'uppercase') {
-                    textToRender = textToRender.toUpperCase();
-                } else if (mode === 'lowercase') {
-                    textToRender = textToRender.toLowerCase();
-                } else if (mode === 'capitalize') {
-                    textToRender = textToRender.replace(/\b\w/g, (c) => c.toUpperCase());
-                }
+                const textToRender = applyCase(l.text, l.caseMode, l.uppercase);
 
                 const lines = textToRender.split('\n');
                 const targetWeight = l.weight || font.weight;
@@ -1326,7 +1331,7 @@ export default function TextBehindPage() {
                                                 }}
                                             >
                                                 <span style={{ opacity: 0.6 }}>#{index + 1}</span>
-                                                <span>{l.text ? l.text.slice(0, 9).toUpperCase() : 'EMPTY'}</span>
+                                                <span>{l.text ? applyCase(l.text.slice(0, 9), l.caseMode, l.uppercase) : 'EMPTY'}</span>
                                                 <span
                                                     style={{
                                                         fontSize: '0.52rem',
@@ -1608,7 +1613,7 @@ export default function TextBehindPage() {
                                                                 </span>
                                                             </div>
                                                             <span style={{ fontFamily: f.family, fontSize: '0.92rem', color: isSelected ? '#000' : '#666', letterSpacing: '0.04em' }}>
-                                                                {layer.text ? layer.text.slice(0, 10).toUpperCase() : 'POSTER'}
+                                                                {layer.text ? applyCase(layer.text.slice(0, 10), layer.caseMode, layer.uppercase) : 'POSTER'}
                                                             </span>
                                                         </button>
                                                     );
