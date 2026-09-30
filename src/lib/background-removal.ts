@@ -41,11 +41,13 @@ export async function removeBackgroundBrowser(
     const { removeBackground } = await imglyModule;
     try {
         return await removeBackground(source, {
-            // Same-origin proxy (src/app/api/imgly) — adds immutable caching
+            // Same-origin proxy (src/app/api/imgly/v2) — adds immutable caching
             // so the ~15MB engine downloads ONCE per browser, not per visit
             // (the lib has no built-in persistence). publicPath must be
             // absolute: the lib resolves every resource with new URL(rel, base).
-            publicPath: `${window.location.origin}/api/imgly/`,
+            // /v2/ is a cache-generation bump — early visitors have the v1
+            // manifest pinned as immutable for a year (see route.ts).
+            publicPath: `${window.location.origin}/api/imgly/v2/`,
             // isnet_quint8 ≈ 13MB download vs isnet_fp16 ≈ 44MB: the first-use
             // download shrinks 3× and poster cutouts stay crisp.
             model: 'isnet_quint8',
@@ -67,10 +69,15 @@ export async function removeBackgroundBrowser(
         });
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // The classic onnxruntime-web glue/wasm cache mismatch (stale service
-        // worker or dev-server cache mixing engine versions).
-        if (/publicPath|Failed to create session|_Ort/i.test(message)) {
-            throw new Error('The cutout engine hit a stale browser cache — hard-refresh (Ctrl+Shift+R) and press CUT again.');
+        // Engine-start failures (ort glue/wasm mismatch, resource fetch
+        // problems). Honest message — the old "hard-refresh" advice was a
+        // misdiagnosis and sent the user refreshing 30+ times for nothing.
+        // The real error rides along in parens so a failure screenshot is
+        // immediately diagnosable.
+        if (/publicPath|Failed to create session|_Ort|Failed to fetch/i.test(message)) {
+            throw new Error(
+                `The on-device cutout engine could not start in this browser — use CUT ON SERVER instead (or upload your own PNG). (${message.slice(0, 160)})`,
+            );
         }
         throw err;
     }
