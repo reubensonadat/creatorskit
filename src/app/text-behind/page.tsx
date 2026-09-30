@@ -290,6 +290,23 @@ const TEXT_PRESETS: { id: string; name: string; swatch: string; patch: Partial<T
     },
 ];
 
+/** Custom color entry — accepts #rgb, #rrggbb, rrggbb or rgb(r,g,b). */
+function parseColorInput(raw: string): string | null {
+    const s = raw.trim().replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3}$/.test(s)) {
+        return '#' + s.split('').map((ch) => ch + ch).join('').toLowerCase();
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(s)) return `#${s.toLowerCase()}`;
+    const m = raw.match(/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+    if (m) {
+        const parts = [m[1], m[2], m[3]].map(Number);
+        if (parts.every((n) => n >= 0 && n <= 255)) {
+            return '#' + parts.map((n) => n.toString(16).padStart(2, '0')).join('');
+        }
+    }
+    return null;
+}
+
 /** The layer's case transform — ONE source of truth for canvas AND previews. */
 const applyCase = (
     text: string,
@@ -390,6 +407,13 @@ export default function TextBehindPage() {
     const [activeLayerId, setActiveLayerId] = useState<string>(DEFAULT_TEXT_LAYER.id);
 
     const activeLayer = layers.find((l) => l.id === activeLayerId) ?? layers[0] ?? DEFAULT_TEXT_LAYER;
+
+    // Custom color text field — mirrors the active layer's color both ways
+    const [customColorInput, setCustomColorInput] = useState('');
+    useEffect(() => {
+        setCustomColorInput(activeLayer.color);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeLayer.color]);
 
     const patchActiveLayer = useCallback((patch: Partial<TextLayer>) => {
         setLayers((prev) =>
@@ -1910,6 +1934,54 @@ export default function TextBehindPage() {
                                         onChange={(e) => patchLayer({ color: e.target.value })}
                                         style={{ width: 28, height: 24, border: '2px solid #999', padding: 0, cursor: 'pointer', background: 'none' }}
                                     />
+                                </div>
+                                {/* Custom hex / RGB entry */}
+                                <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>CUSTOM</span>
+                                    <input
+                                        value={customColorInput}
+                                        onChange={(e) => {
+                                            const raw = e.target.value;
+                                            setCustomColorInput(raw);
+                                            const parsed = parseColorInput(raw);
+                                            if (parsed) patchLayer({ color: parsed });
+                                        }}
+                                        placeholder="#FFDD00 · fda · rgb(255,221,0)"
+                                        spellCheck={false}
+                                        style={{
+                                            flex: 1,
+                                            minWidth: 120,
+                                            padding: '4px 6px',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            border: `2px solid ${customColorInput && !parseColorInput(customColorInput) ? '#DC2626' : '#999'}`,
+                                            outline: 'none',
+                                        }}
+                                    />
+                                    {['R', 'G', 'B'].map((ch, i) => {
+                                        const hex = layer.color.replace('#', '').padEnd(6, '0');
+                                        const val = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+                                        return (
+                                            <span key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                                <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>{ch}</span>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={255}
+                                                    value={val}
+                                                    onChange={(e) => {
+                                                        const parts = [0, 1, 2].map((j) => parseInt(hex.slice(j * 2, j * 2 + 2), 16));
+                                                        parts[i] = Math.max(0, Math.min(255, Number(e.target.value) || 0));
+                                                        const next = '#' + parts.map((n) => n.toString(16).padStart(2, '0')).join('');
+                                                        patchLayer({ color: next });
+                                                        setCustomColorInput(next);
+                                                    }}
+                                                    style={{ width: 44, padding: '4px 3px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700, border: '2px solid #999', outline: 'none' }}
+                                                />
+                                            </span>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
