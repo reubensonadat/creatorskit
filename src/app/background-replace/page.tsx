@@ -569,7 +569,7 @@ export default function BackgroundRemoverPage() {
                 )}
                     <p style={{ fontSize: '0.68rem', color: '#666', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
                         {mode === 'browser'
-                            ? `Runs in your browser — your photo never leaves your device. The ${BROWSER_MODELS[browserModel].label} engine downloads once (${BROWSER_MODELS[browserModel].sub}) and is kept in IndexedDB. Higher quality = slower cut and a longer tab freeze.`
+                            ? `Runs in your browser — your photo never leaves your device. The ${BROWSER_MODELS[browserModel].label} engine downloads once (${BROWSER_MODELS[browserModel].sub}) and is kept in IndexedDB. Higher tiers freeze the tab longer while cutting — the gain is subtler edges (hair, fur) at full zoom; the preview may look identical.`
                             : 'Our server does the cutting — works for any subject, handy on low-power phones.'}
                     </p>
 

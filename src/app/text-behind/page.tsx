@@ -1351,6 +1351,11 @@ export default function TextBehindPage() {
                                             ⚠ {BROWSER_MODELS[browserModel].label} CAN FREEZE THIS TAB — OR YOUR WHOLE PHONE — FOR UP TO ~15 SECONDS WHILE IT CUTS. THAT'S NORMAL; DON'T CLOSE THE PAGE.
                                         </div>
                                     )}
+                                    {cutoutMode === 'browser' && (
+                                        <div style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#999', fontWeight: 700, marginBottom: 8 }}>
+                                            SAME AI, HIGHER PRECISION — THE GAIN IS FINER EDGES (HAIR/FUR) AT FULL ZOOM; PREVIEWS MAY LOOK IDENTICAL.
+                                        </div>
+                                    )}
                                     <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
                                         1 · UPLOAD THE PHOTO {bgInfo ? '✓' : ''}
                                     </button>
