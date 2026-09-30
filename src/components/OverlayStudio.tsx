@@ -549,21 +549,31 @@ export function OverlayStudio({
                 const tickStep = trackDur > 120 ? 30 : trackDur > 40 ? 10 : 5;
                 const ticks: number[] = [];
                 for (let t = 0; t <= trackDur; t += tickStep) ticks.push(parseFloat(t.toFixed(1)));
-                const basePx = Math.max(480, Math.ceil(trackDur * 24));
+                const basePx = Math.max(900, Math.ceil(trackDur * 48));
                 const CARD_GAP = 6;
-                const textPx = (t: string) => t.trim().length * 6 + 16;
+                const textPx = (t: string) => Math.min(180, t.trim().length * 6 + 18);
                 const laneEnds: number[] = [];
-                const laneOf = cues.map((c) => {
+                const laneOf: number[] = new Array(cues.length).fill(0);
+                for (let k = 0; k < cues.length; k++) {
+                    const c = cues[k];
                     const leftPx = (c.start / trackDur) * basePx;
                     const wPx = Math.max((Math.max(0.05, c.end - c.start) / trackDur) * basePx, textPx(c.text));
-                    let lane = laneEnds.findIndex((end) => leftPx >= end + CARD_GAP);
-                    if (lane === -1) {
-                        lane = laneEnds.length;
-                        laneEnds.push(0);
+                    let minLane = 0;
+                    if (k > 0 && c.start < cues[k - 1].end) {
+                        minLane = laneOf[k - 1] + 1;
                     }
+                    let lane = -1;
+                    for (let l = minLane; l < Math.max(minLane + 1, laneEnds.length); l++) {
+                        if (l >= laneEnds.length || leftPx >= laneEnds[l] + CARD_GAP) {
+                            lane = l;
+                            break;
+                        }
+                    }
+                    if (lane === -1) lane = Math.max(minLane, laneEnds.length);
+                    while (laneEnds.length <= lane) laneEnds.push(0);
                     laneEnds[lane] = leftPx + wPx;
-                    return lane;
-                });
+                    laneOf[k] = lane;
+                }
                 const laneCount = Math.max(1, laneEnds.length);
                 const trackH = laneCount * 37 + 16;
                 const innerWidth = `max(100%, ${Math.max(basePx, ...laneEnds, 0) + 8}px)`;
