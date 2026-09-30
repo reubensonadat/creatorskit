@@ -96,7 +96,9 @@ export default function BackgroundRemoverPage() {
         const onProgress: MatteProgress = (stage, message, pct) => {
             if (runIdRef.current !== runId) return;
             setStatusText(message);
-            setPercent(pct);
+            // monotonic: the engine reports per-file, so a raw percent jumps
+            // 100 → 5 when the next file starts — never walk the bar backwards
+            setPercent((prev) => Math.max(prev, pct));
         };
 
         try {
@@ -319,7 +321,9 @@ export default function BackgroundRemoverPage() {
                                             padding: 20,
                                         }}
                                     >
-                                        <RefreshCw size={30} className="animate-spin" />
+                                        <span style={{ width: 34, height: 34, display: 'inline-block' }}>
+                                            <RefreshCw size={30} style={{ animation: 'ck-remover-spin 1s linear infinite' }} />
+                                        </span>
                                         <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#000', textAlign: 'center' }}>
                                             {statusText}
                                         </span>
@@ -460,6 +464,12 @@ export default function BackgroundRemoverPage() {
                     </p>
                 </div>
             </div>
+            <style>{`
+                @keyframes ck-remover-spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 }

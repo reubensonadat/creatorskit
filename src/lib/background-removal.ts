@@ -51,13 +51,14 @@ export async function removeBackgroundBrowser(
             // isnet_quint8 ≈ 13MB download vs isnet_fp16 ≈ 44MB: the first-use
             // download shrinks 3× and poster cutouts stay crisp.
             model: 'isnet_quint8',
-            // GPU + proxy worker: on WebGPU browsers inference runs in a
-            // worker on the GPU — the tab does NOT freeze. (@imgly forces
-            // main-thread inference on its CPU path, which locked the UI for
-            // the whole cut; device:'gpu' is the no-freeze route.) Browsers
-            // without WebGPU fall back to CPU wasm automatically.
-            device: 'gpu',
-            proxyToWorker: true,
+            // CPU path — device:'gpu' is a dead end here: @imgly's WebGPU
+            // code targets ort 1.21's API and this ort build renamed the
+            // init (webgpuInit is not a function → no available backend).
+            // Note: @imgly forces main-thread inference on its CPU path, so
+            // the tab pauses briefly during the actual cut — CUT ON SERVER
+            // is the freeze-free option.
+            device: 'cpu',
+            proxyToWorker: false,
             // v1.7 API: progress(key, current, total) — 'fetch:*' keys are the
             // one-time engine download; everything else is inference.
             progress: (key: string, current: number, total: number) => {
