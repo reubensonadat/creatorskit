@@ -18,7 +18,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ImagePlus, Scissors, Download, Layers, Type as TypeIcon, Plus, Copy, Trash2, Search, X } from 'lucide-react';
+import { ImagePlus, Scissors, Download, Layers, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud } from 'lucide-react';
 import { downloadBlob } from '@/lib/canvas-video-exporter';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
@@ -1118,29 +1118,32 @@ export default function TextBehindPage() {
                             ) : (
                                 <div
                                     onClick={() => bgInputRef.current?.click()}
-                                    style={{ textAlign: 'center', padding: '34px 26px', maxWidth: 460, background: '#fff', border: dropActive ? '3px dashed #DC2626' : '3px solid #000', boxShadow: '5px 5px 0 #000', color: '#000', margin: 20, cursor: 'pointer' }}
+                                    style={{
+                                        textAlign: 'center',
+                                        padding: '40px 32px',
+                                        minWidth: 360,
+                                        maxWidth: 460,
+                                        background: dropActive ? '#FFFBEA' : '#fafafa',
+                                        border: dropActive ? '2px dashed #000' : '2px dashed #a3a3a3',
+                                        borderRadius: 12,
+                                        cursor: 'pointer',
+                                        margin: 20,
+                                    }}
                                 >
-                                    <Layers size={38} style={{ margin: '0 auto 12px', display: 'block', color: '#000' }} />
-                                    <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '0.92rem', marginBottom: 8, color: '#000' }}>
-                                        {dropActive ? 'RELEASE TO START' : 'GIANT TYPE. BEHIND THE SUBJECT.'}
+                                    <UploadCloud size={40} style={{ margin: '0 auto 10px', display: 'block', color: dropActive ? '#000' : '#737373' }} />
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#000', marginBottom: 4 }}>
+                                        {dropActive ? 'Drop it — we’ll take it from here' : 'Drag & drop your photo here'}
                                     </div>
-                                    <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.7 }}>
-                                        {cutoutMode === 'manual' ? (
-                                            <>
-                                                DROP OR CLICK TO LOAD THE BACKGROUND PHOTO,
-                                                <br />
-                                                THEN ADD YOUR CUTOUT PNG.
-                                            </>
-                                        ) : (
-                                            <>
-                                                DROP A PHOTO (OR CLICK) — THE SUBJECT CUTS ITSELF OUT
-                                                <br />
-                                                <span style={{ color: '#000', fontWeight: 900, background: '#FFE500', padding: '1px 4px', border: '1px solid #000' }}>
-                                                    {cutoutMode === 'browser' ? 'ON YOUR DEVICE — NOTHING UPLOADS' : 'VIA THE CREATORKIT SERVER'}
-                                                </span>
-                                            </>
-                                        )}
+                                    <div style={{ fontSize: '0.78rem', color: '#737373', marginBottom: 12 }}>
+                                        or click to browse
                                     </div>
+                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.04em', background: '#FFE500', border: '1.5px solid #000', padding: '2px 8px' }}>
+                                        {cutoutMode === 'manual'
+                                            ? 'MANUAL MODE · ADD YOUR OWN PNG NEXT'
+                                            : cutoutMode === 'browser'
+                                                ? 'SUBJECT CUTS OUT AUTOMATICALLY · ON YOUR DEVICE'
+                                                : 'SUBJECT CUTS OUT AUTOMATICALLY · ON THE SERVER'}
+                                    </span>
                                 </div>
                             )}
                         </div>
