@@ -141,3 +141,74 @@ a ghost overlay for one second after auto-place.
   before the export draw (lesson from overlay presets).
 - **Cutout edge halos** → 1 px alpha erode/feather toggle on the cutout
   layer before compositing.
+
+## 10. Standalone Background Remover tool (shared engine)
+
+The matte engine is a product of its own, not just text-behind plumbing:
+
+- Audit the existing `/background-replace` page + `api/remove-background`
+  route first; rebuild on the SAME four-mode pipeline (§2) so there is ONE
+  cutout engine in the codebase, used by both tools.
+- UX: drop image → cutout → transparent-PNG export, plus "preview on
+  background" (solid color / custom image / blur) and the manual refine
+  brush. CUTOUT engine chip like everywhere else.
+
+## 11. Free-canvas principle (no forced sizes)
+
+- The text-behind editor canvas takes the **uploaded image's native
+  dimensions** — never a forced 16:9/9:16/1:1. Zoom-to-fit for display;
+  export at native resolution (optional 2×).
+- "Done? Change the size?" → **hand-off, not built-in**: an explicit
+  "RESIZE / REFORMAT →" button routes the finished PNG (or the project) to
+  the Photo Media Resizer (§12). One tool, one job — the CapCut lesson.
+
+## 12. Photo Media Resizer — client-side video reformat (NEW SCOPE)
+
+Portrait video → landscape (or any ratio) with the blurred-background-fill
+look, **100% client-side, no server**:
+
+1. Decode the uploaded video frame-by-frame in-browser (WebCodecs
+   `VideoDecoder` / HTMLVideoElement seek — MediaStagePlayer patterns).
+2. Per output frame, draw the sandwich: scaled-up + gaussian-blurred copy
+   of the frame filling the target canvas, then the sharp video centered.
+   Blend controls: blur strength, background scale, dim/vignette, custom
+   color fill instead of blur.
+3. Encode with the existing `exportCanvasVideoToMp4` (WebCodecs + mp4-muxer)
+   and mux the original audio track with the existing `muxAudioTrack`.
+4. Classic photo sizes (1:1, 4:5, 16:9, 9:16, custom) share the same
+   fill engine; presets remember last-used ratio per user.
+5. Upgrade the existing `/resizer` page; keep server out of the path.
+
+## 13. Why matting does NOT go on the Supabase edge function
+
+Question on the table: "run the model on the Supabase edge function — we
+have the power there?" Honest answer — no, for four hard reasons:
+
+1. **Runtime mismatch**: rembg is Python + native ONNX wheels; Supabase
+   edge functions are Deno isolates that cannot load native modules. Only
+   WASM inference is even theoretically possible there.
+2. **CPU/memory caps**: isolates get soft CPU limits (~2 s CPU) and ~400 MB
+   memory. u2net inference is multiple CPU-seconds; u2netp barely fits,
+   u2net does not. Requests would die mid-inference.
+3. **"<10 ms" is not achievable anywhere free**: even dedicated GPUs take
+   ~50–300 ms for u2net-class models. Realistic latencies: browser WASM
+   person-seg ~1 s, worker u2netp ~2–6 s. Any tool claiming instant is
+   caching or lying.
+4. **The edge's real job** stays what it already does well: instant,
+   cheap orchestration — minting one-time tickets, proxying secrets. Heavy
+   compute lives on Render (worker) or the client.
+
+So the tiering in §2 stands: browser (instant-ish) → Render worker (free,
+any subject) → BYO API (premium quality). The edge never runs the model.
+
+## 14. Updated milestones (superset)
+
+- **M0 — audit** `/text-behind`, `/background-replace`, `/resizer` pages.
+- **M1 — static sandwich (no AI)** + free-canvas + PNG export.
+- **M2 — server `/matte`** + auto-place + engine chip.
+- **M3 — person-in-browser + manual refine brush.**
+- **M4 — polish**: blend modes, snap guides, 2× export, BYO API,
+  preset gallery (EGYPT / MUSTANG / MAUI recipes).
+- **M5 — standalone Background Remover tool** (shared engine).
+- **M6 — Photo Media Resizer video reformat** (blur-fill + audio mux,
+  client-side) + text-behind → resizer hand-off button.
