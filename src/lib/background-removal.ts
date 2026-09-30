@@ -41,6 +41,11 @@ export async function removeBackgroundBrowser(
     const { removeBackground } = await imglyModule;
     try {
         return await removeBackground(source, {
+            // Same-origin proxy (src/app/api/imgly) — adds immutable caching
+            // so the ~15MB engine downloads ONCE per browser, not per visit
+            // (the lib has no built-in persistence). publicPath must be
+            // absolute: the lib resolves every resource with new URL(rel, base).
+            publicPath: `${window.location.origin}/api/imgly/`,
             // isnet_quint8 ≈ 13MB download vs isnet_fp16 ≈ 44MB: the first-use
             // download shrinks 3× and poster cutouts stay crisp.
             model: 'isnet_quint8',
