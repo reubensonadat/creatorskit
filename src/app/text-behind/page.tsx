@@ -25,10 +25,16 @@ import { TactileScrubber } from '@/components/tactile-scrubber';
 import {
     removeBackgroundBrowser,
     removeBackgroundServer,
+    BROWSER_MODELS,
     type MatteEngine,
     type MatteProgress,
+    type BrowserModel,
 } from '@/lib/background-removal';
+
 import { putHandoffImage, takeHandoffImage } from '@/lib/tool-handoff';
+
+/** Engine quality choice — same key as /background-replace so the two tools stay in sync. */
+const QUALITY_KEY = 'ck_bgrem_quality_v1';
 
 // ---------------------------------------------------------------------------
 // Fonts — 75+ Google Fonts across Cursive, Graffiti, Gothic, Tabloid, Serif, Sans, Mono
@@ -611,6 +617,16 @@ export default function TextBehindPage() {
         }
     }, []);
 
+    // engine quality — synced with /background-replace via the shared key
+    const [browserModel, setBrowserModel] = useState<BrowserModel>('isnet_quint8');
+    useEffect(() => {
+        const saved = window.localStorage.getItem(QUALITY_KEY);
+        if (saved === 'isnet_quint8' || saved === 'isnet_fp16' || saved === 'isnet') setBrowserModel(saved);
+    }, []);
+    useEffect(() => {
+        window.localStorage.setItem(QUALITY_KEY, browserModel);
+    }, [browserModel]);
+
     /**
      * AUTO CUTOUT — runs the background photo through a matting engine and
      * drops the transparent PNG straight into the sandwich's cutout layer.
@@ -634,7 +650,7 @@ export default function TextBehindPage() {
         };
         try {
             const blob = engine === 'browser'
-                ? await removeBackgroundBrowser(source, onProgress)
+                ? await removeBackgroundBrowser(source, onProgress, browserModel)
                 : await removeBackgroundServer(source, onProgress);
             const img = await loadImage(blob);
             setCutoutImage(img);
@@ -645,7 +661,7 @@ export default function TextBehindPage() {
             const message = err instanceof Error ? err.message : 'Cutout failed — try the other engine.';
             setMatte({ busy: false, engine, message, percent: 0 });
         }
-    }, []);
+    }, [browserModel]);
 
     // Keep the seamless-kick bridge fresh (assigned during render, used by
     // handleBgFile which has [] deps and must not see stale mode/runner).
@@ -1310,9 +1326,31 @@ export default function TextBehindPage() {
                                 <>
                                     <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>
                                         {cutoutMode === 'browser'
-                                            ? 'THE CUTOUT IS COMPUTED RIGHT HERE IN YOUR BROWSER — NOTHING LEAVES YOUR MACHINE. THE FIRST RUN DOWNLOADS THE ENGINE ONE TIME.'
+                                            ? 'THE CUTOUT IS COMPUTED RIGHT HERE IN YOUR BROWSER — NOTHING LEAVES YOUR MACHINE. THE FIRST RUN DOWNLOADS THE ENGINE ONE TIME (KEPT IN INDEXEDDB).'
                                             : 'THE PHOTO GOES TO THE CREATORKIT WORKER AND THE CUTOUT COMES BACK AS A PNG — WORKS FOR ANY SUBJECT.'}
                                     </div>
+                                    {cutoutMode === 'browser' && (
+                                        <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                                            {(Object.entries(BROWSER_MODELS) as [BrowserModel, typeof BROWSER_MODELS[BrowserModel]][]).map(
+                                                ([key, { label, sub }]) => (
+                                                    <button
+                                                        key={key}
+                                                        className={browserModel === key ? 'brutalist-button brutalist-button-primary' : 'brutalist-button'}
+                                                        style={{ flex: 1, padding: '5px 3px', fontSize: '0.52rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
+                                                        onClick={() => setBrowserModel(key)}
+                                                    >
+                                                        <span>{label}</span>
+                                                        <span style={{ fontSize: '0.46rem', color: browserModel === key ? '#000' : '#777', fontWeight: 700 }}>{sub}</span>
+                                                    </button>
+                                                ),
+                                            )}
+                                        </div>
+                                    )}
+                                    {cutoutMode === 'browser' && browserModel !== 'isnet_quint8' && (
+                                        <div style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, color: '#b00', marginBottom: 8, lineHeight: 1.4 }}>
+                                            ⚠ {BROWSER_MODELS[browserModel].label} CAN FREEZE THIS TAB — OR YOUR WHOLE PHONE — FOR UP TO ~15 SECONDS WHILE IT CUTS. THAT'S NORMAL; DON'T CLOSE THE PAGE.
+                                        </div>
+                                    )}
                                     <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
                                         1 · UPLOAD THE PHOTO {bgInfo ? '✓' : ''}
                                     </button>

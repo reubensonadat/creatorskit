@@ -18,8 +18,10 @@ import {
 import {
     removeBackgroundBrowser,
     removeBackgroundServer,
+    BROWSER_MODELS,
     type MatteEngine,
     type MatteProgress,
+    type BrowserModel,
 } from '@/lib/background-removal';
 import { putHandoffImage } from '@/lib/tool-handoff';
 
@@ -28,7 +30,8 @@ import { putHandoffImage } from '@/lib/tool-handoff';
  * fileconv.online. Same engine stack as /text-behind:
  *
  *   CUT ON MY DEVICE  → @imgly isnet via /api/imgly proxy (free, private,
- *                       engine cached by the browser after first use)
+ *                       engine kept in IndexedDB after first use — shared
+ *                       with /text-behind, survives cache eviction)
  *   CUT ON SERVER     → Render worker /matte (rembg u2netp, any subject)
  *
  * Results hand off to /text-behind (cutout) or /thumbnail-lab (original)
@@ -36,6 +39,8 @@ import { putHandoffImage } from '@/lib/tool-handoff';
  */
 
 const MODE_KEY = 'ck_bgrem_mode_v1';
+/** Engine quality choice — same key as /text-behind so the two tools stay in sync. */
+const QUALITY_KEY = 'ck_bgrem_quality_v1';
 type CutMode = MatteEngine;
 
 const CHECKERBOARD: React.CSSProperties = {
@@ -46,8 +51,57 @@ const CHECKERBOARD: React.CSSProperties = {
     backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
 };
 
+/* ── result persistence (IndexedDB, survives reload + cache eviction) ──
+ * The last original + cutout pair is saved the moment a cut succeeds, so a
+ * reload re-shows your prior work before you upload a new photo. */
+const RESULT_DB = 'ck_bgrem';
+const RESULT_STORE = 'images';
+const ENGINE_KEY = 'ck_bgrem_engine_v1';
+
+function resultDbOpen(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const req = window.indexedDB.open(RESULT_DB, 1);
+        req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains(RESULT_STORE)) req.result.createObjectStore(RESULT_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function resultPut(key: 'original' | 'cutout', blob: Blob): Promise<void> {
+    try {
+        const db = await resultDbOpen();
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(RESULT_STORE, 'readwrite');
+            tx.objectStore(RESULT_STORE).put(blob, key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+    } catch {
+        /* persistence is best-effort — never block the cut */
+    }
+}
+
+async function resultGet(key: 'original' | 'cutout'): Promise<Blob | null> {
+    try {
+        const db = await resultDbOpen();
+        const blob = await new Promise<Blob | null>((resolve) => {
+            const get = db.transaction(RESULT_STORE, 'readonly').objectStore(RESULT_STORE).get(key);
+            get.onsuccess = () => resolve(get.result instanceof Blob ? get.result : null);
+            get.onerror = () => resolve(null);
+        });
+        db.close();
+        return blob;
+    } catch {
+        return null;
+    }
+}
+
 export default function BackgroundRemoverPage() {
     const [mode, setMode] = useState<CutMode>('browser');
+    const [browserModel, setBrowserModel] = useState<BrowserModel>('isnet_quint8');
     const [originalFile, setOriginalFile] = useState<File | null>(null);
     const [originalUrl, setOriginalUrl] = useState<string | null>(null);
     const [cutoutBlob, setCutoutBlob] = useState<Blob | null>(null);
@@ -72,6 +126,15 @@ export default function BackgroundRemoverPage() {
         window.localStorage.setItem(MODE_KEY, mode);
     }, [mode]);
 
+    // restore + persist engine quality (shared with /text-behind)
+    useEffect(() => {
+        const saved = window.localStorage.getItem(QUALITY_KEY);
+        if (saved === 'isnet_quint8' || saved === 'isnet_fp16' || saved === 'isnet') setBrowserModel(saved);
+    }, []);
+    useEffect(() => {
+        window.localStorage.setItem(QUALITY_KEY, browserModel);
+    }, [browserModel]);
+
     // revoke object URLs when replaced/unmount
     useEffect(() => {
         return () => {
@@ -90,7 +153,7 @@ export default function BackgroundRemoverPage() {
             if (prev) URL.revokeObjectURL(prev);
             return null;
         });
-        setStatusText(engine === 'server' ? 'Connecting…' : 'Starting engine…');
+        setStatusText(engine === 'server' ? 'Connecting to CreatorKit Server…' : 'Preparing…');
         setPercent(0);
 
         const onProgress: MatteProgress = (stage, message, pct) => {
@@ -105,13 +168,21 @@ export default function BackgroundRemoverPage() {
             const out =
                 engine === 'server'
                     ? await removeBackgroundServer(file, onProgress)
-                    : await removeBackgroundBrowser(file, onProgress);
+                    : await removeBackgroundBrowser(file, onProgress, browserModel);
             if (runIdRef.current !== runId) return;
             setCutoutBlob(out);
             setCutoutUrl(URL.createObjectURL(out));
             setDoneWith(engine);
             setPreview('cutout');
             setStatusText('');
+            // persist the pair so a reload re-shows this work
+            void resultPut('original', file);
+            void resultPut('cutout', out);
+            try {
+                window.localStorage.setItem(ENGINE_KEY, engine);
+            } catch {
+                /* non-fatal */
+            }
         } catch (err) {
             if (runIdRef.current !== runId) return;
             setError(err instanceof Error ? err.message : String(err));
@@ -119,6 +190,26 @@ export default function BackgroundRemoverPage() {
         } finally {
             if (runIdRef.current === runId) setBusy(false);
         }
+    }, [browserModel]);
+
+    // restore the last saved original + cutout pair on reload — you see your
+    // previous work first, then hit NEW PHOTO when ready for the next one
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const [original, cutout] = await Promise.all([resultGet('original'), resultGet('cutout')]);
+            if (cancelled || !original || !cutout) return;
+            setOriginalFile(new File([original], 'original', { type: original.type || 'image/png' }));
+            setOriginalUrl(URL.createObjectURL(original));
+            setCutoutBlob(cutout);
+            setCutoutUrl(URL.createObjectURL(cutout));
+            setPreview('cutout');
+            const savedEngine = window.localStorage.getItem(ENGINE_KEY);
+            if (savedEngine === 'browser' || savedEngine === 'server') setDoneWith(savedEngine);
+        })();
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const handleFile = useCallback(
@@ -269,13 +360,13 @@ export default function BackgroundRemoverPage() {
                                         disabled={p === 'cutout' && !hasResult}
                                         style={{
                                             padding: '5px 12px',
-                            fontSize: '0.7rem',
-                            fontWeight: 900,
-                            fontFamily: 'monospace',
-                            border: '2px solid #000',
-                            background: preview === p ? '#000' : '#fff',
-                            color: preview === p ? '#fff' : '#000',
-                            cursor: p === 'cutout' && !hasResult ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 900,
+                                            fontFamily: 'monospace',
+                                            border: '2px solid #000',
+                                            background: preview === p ? '#000' : '#fff',
+                                            color: preview === p ? '#fff' : '#000',
+                                            cursor: p === 'cutout' && !hasResult ? 'not-allowed' : 'pointer',
                                             opacity: p === 'cutout' && !hasResult ? 0.4 : 1,
                                         }}
                                     >
@@ -311,24 +402,22 @@ export default function BackgroundRemoverPage() {
                                     <div
                                         style={{
                                             position: 'absolute',
-                                            inset: 0,
-                                            background: 'rgba(255,255,255,0.82)',
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                            borderTop: '2px solid #000',
+                                            background: 'rgba(255,255,255,0.92)',
+                                            padding: '8px 10px',
                                             display: 'flex',
                                             flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: 10,
-                                            padding: 20,
+                                            gap: 4,
                                         }}
                                     >
-                                        <span style={{ width: 34, height: 34, display: 'inline-block' }}>
-                                            <RefreshCw size={30} style={{ animation: 'ck-remover-spin 1s linear infinite' }} />
-                                        </span>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#000', textAlign: 'center' }}>
-                                            {statusText}
-                                        </span>
-                                        <div style={{ width: '80%', maxWidth: 320, height: 10, border: '2px solid #000', background: '#fff' }}>
-                                            <div style={{ width: `${percent}%`, height: '100%', background: '#FFDD00', transition: 'width 0.25s ease' }} />
+                                        <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                                            {statusText} ({percent}%)
+                                        </div>
+                                        <div style={{ height: 6, background: '#fff', border: '1px solid #000' }}>
+                                            <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, percent))}%`, background: '#FFE500', transition: 'width 0.25s ease' }} />
                                         </div>
                                     </div>
                                 )}
@@ -353,15 +442,17 @@ export default function BackgroundRemoverPage() {
                                 display: 'flex',
                                 gap: 8,
                                 alignItems: 'flex-start',
-                                border: '2px solid #000',
+                                border: '1.5px solid #000',
                                 background: '#FEE2E2',
-                                padding: '10px 12px',
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
+                                padding: '6px 8px',
+                                fontSize: '0.6rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 900,
                                 color: '#7F1D1D',
+                                textTransform: 'uppercase',
                             }}
                         >
-                            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
                             <span>{error}</span>
                         </div>
                     )}
@@ -369,6 +460,23 @@ export default function BackgroundRemoverPage() {
 
                 {/* ── CONTROLS ──────────────────────────────────────────── */}
                 <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {(busy || statusText) && !error && (
+                        <div style={{ padding: '6px 8px', border: '1.5px solid #000', background: '#fafafa' }}>
+                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: busy ? '#000' : '#b00' }}>
+                                {busy ? `${statusText} (${percent}%)` : statusText}
+                            </div>
+                            {busy && (
+                                <div style={{ height: 6, background: '#fff', border: '1px solid #000', marginTop: 4 }}>
+                                    <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, percent))}%`, background: '#FFE500' }} />
+                                </div>
+                            )}
+                            {!busy && (
+                                <button className="brutalist-button" style={{ padding: '3px 8px', fontSize: '0.56rem', marginTop: 5 }} onClick={() => setStatusText('')}>
+                                    ✕ CLEAR
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <div style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.06em', color: '#000' }}>
                         WHERE SHOULD THE CUT HAPPEN?
                     </div>
@@ -401,9 +509,48 @@ export default function BackgroundRemoverPage() {
                             </button>
                         ))}
                     </div>
+                    {mode === 'browser' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, letterSpacing: '0.04em' }}>
+                                ENGINE QUALITY
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                                {(Object.entries(BROWSER_MODELS) as [BrowserModel, typeof BROWSER_MODELS[BrowserModel]][]).map(
+                                    ([key, { label, sub }]) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setBrowserModel(key)}
+                                            disabled={busy}
+                                            style={{
+                                                flex: 1,
+                                                padding: '6px 4px',
+                                                border: browserModel === key ? '2.5px solid #000' : '2px solid #ccc',
+                                                background: browserModel === key ? '#FFDD00' : '#fff',
+                                                boxShadow: browserModel === key ? '3px 3px 0 #000' : 'none',
+                                                cursor: busy ? 'wait' : 'pointer',
+                                                opacity: busy ? 0.6 : 1,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                gap: 2,
+                                            }}
+                                        >
+                                            <span style={{ fontSize: '0.66rem', fontWeight: 900, fontFamily: 'monospace' }}>{label}</span>
+                                            <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', color: '#444', fontWeight: 700 }}>{sub}</span>
+                                        </button>
+                                    ),
+                                )}
+                        </div>
+                        {browserModel !== 'isnet_quint8' && (
+                            <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#b00', lineHeight: 1.4 }}>
+                                ⚠ {BROWSER_MODELS[browserModel].label} CAN FREEZE THIS TAB — OR YOUR WHOLE PHONE — FOR UP TO ~15 SECONDS WHILE IT CUTS. THAT'S NORMAL; DON'T CLOSE THE PAGE.
+                            </div>
+                        )}
+                    </div>
+                )}
                     <p style={{ fontSize: '0.68rem', color: '#666', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
                         {mode === 'browser'
-                            ? 'The AI runs in your browser — your photo never leaves your device. First cut downloads the engine (~13MB, once).'
+                            ? `Runs in your browser — your photo never leaves your device. The ${BROWSER_MODELS[browserModel].label} engine downloads once (${BROWSER_MODELS[browserModel].sub}) and is kept in IndexedDB. Higher quality = slower cut and a longer tab freeze.`
                             : 'Our server does the cutting — works for any subject, handy on low-power phones.'}
                     </p>
 
@@ -464,12 +611,6 @@ export default function BackgroundRemoverPage() {
                     </p>
                 </div>
             </div>
-            <style>{`
-                @keyframes ck-remover-spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-            `}</style>
         </div>
     );
 }
