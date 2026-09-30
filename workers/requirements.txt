@@ -5,3 +5,6 @@ bgutil-ytdlp-pot-provider>=1.1.0
 imageio-ffmpeg>=0.5
 faster-whisper>=1.0,<2
 python-multipart>=0.0.9
+# /matte background cutouts — pulls onnxruntime (CPU) + Pillow; u2netp is
+# the light model (see captions/matte.py). No torch involved.
+rembg>=2.0.57,<3

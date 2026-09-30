@@ -171,6 +171,18 @@ def _idle_unloader() -> None:
 threading.Thread(target=_idle_unloader, daemon=True).start()
 
 
+def release() -> bool:
+    """Unload whisper NOW — the matte module calls this before rembg takes
+    the RAM (the 512MB box fits one heavy model at a time)."""
+    global _model
+    with _model_lock:
+        was_loaded = _model is not None
+        _model = None
+    if was_loaded:
+        gc.collect()   # hand the ~180MB back before rembg loads
+    return was_loaded
+
+
 def status() -> dict:
     """Cheap /health peek — never blocks on _model_lock."""
     return {

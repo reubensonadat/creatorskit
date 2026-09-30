@@ -57,6 +57,15 @@ RUN ( (mkdir -p /models/captions \
      || echo "CAPTIONS_BAKE_FAILED - engine.py downloads at first use" ) \
  && (chown -R 1000:1000 /models 2>/dev/null || true)
 
+# Background-matte weights — u2netp is tiny (~4.7MB) but the disk is
+# ephemeral, so bake it for the same first-use-download reason as whisper.
+# U2NET_HOME is rembg's cache-dir env var (default ~/.u2net).
+ENV U2NET_HOME=/models/matte
+RUN ( (mkdir -p /models/matte \
+       && python -c "from rembg import new_session; new_session('u2netp'); print('MATTE_MODEL_BAKED')") \
+      || echo "MATTE_BAKE_FAILED - matte.py downloads at first use" ) \
+ && (chown -R 1000:1000 /models/matte 2>/dev/null || true)
+
 COPY app.py start.sh ./
 COPY captions ./captions/
 RUN chmod +x start.sh \

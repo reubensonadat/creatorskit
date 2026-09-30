@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from . import engine
 
@@ -268,3 +269,163 @@ def _sweeper() -> None:
 
 
 threading.Thread(target=_sweeper, daemon=True).start()
+
+
+# ── Background matte (/matte) — same ticket pool, own job store ────────────
+# The browser's FIRST choice is the in-page @imgly WASM engine (runs on the
+# user's CPU, costs the worker nothing); this route is the fallback for
+# machines where WASM matting failed or is too slow. Reuses the SAME
+# one-time tickets as /transcribe (edge action 'captions-ticket') so no
+# edge changes are needed. Own job dict / lock / sweeper: a matte bug must
+# never touch transcription state.
+
+MAX_IMAGE_BYTES = int(os.environ.get('MATTE_MAX_BYTES', str(99 * 1024 * 1024)))
+
+_MATTE_JOBS: dict[str, dict] = {}
+_MATTE_JOBS_LOCK = threading.Lock()
+# rembg inference is serialized inside matte.py (one session at a time on
+# the 512MB box); this lock makes extra jobs WAIT their turn, not pile RAM.
+_MATTE_RUN_LOCK = threading.Lock()
+
+
+@router.post('/matte')
+async def matte_upload(
+    file: UploadFile = File(...),
+    ticket: str | None = None,
+    x_worker_token: str | None = Header(default=None),
+) -> dict:
+    """Image → transparent-PNG cutout, same instant-job contract."""
+    if WORKER_TOKEN:
+        authorized = (x_worker_token == WORKER_TOKEN) or bool(ticket and _consume_ticket(ticket))
+        if not authorized:
+            raise HTTPException(status_code=401, detail='bad worker token or ticket')
+    elif ticket:
+        _consume_ticket(ticket)   # dev mode: burn it anyway so tests match prod
+
+    # Shared backpressure: whisper AND rembg fight for the same 512MB, so
+    # count BOTH queues before admitting another heavy job.
+    with _JOBS_LOCK:
+        pending = sum(1 for m in _JOBS.values() if m.get('status') == 'processing')
+    with _MATTE_JOBS_LOCK:
+        pending += sum(1 for m in _MATTE_JOBS.values() if m.get('status') == 'processing')
+    if pending >= _MAX_PENDING:
+        raise HTTPException(status_code=429, detail='matte busy — try again shortly')
+
+    job_id = secrets.token_urlsafe(12)
+    token = secrets.token_urlsafe(16)
+    raw_suffix = Path(file.filename or 'image').suffix or '.png'
+    suffix = re.sub(r'[^\w.]', '', raw_suffix)[:12] or '.png'
+    image_path = _CAP_DIR / f'{job_id}{suffix}'
+
+    # Stream to disk in 1MB chunks — never hold the upload in RAM.
+    size = 0
+    try:
+        with image_path.open('wb') as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_IMAGE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f'image too large (max {MAX_IMAGE_BYTES // (1024 * 1024)}MB)',
+                    )
+                out.write(chunk)
+    except HTTPException:
+        image_path.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        image_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f'could not store upload: {exc}') from exc
+    finally:
+        await file.close()
+
+    if size == 0:
+        image_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail='empty upload')
+
+    queued_ahead = _MATTE_RUN_LOCK.locked()
+    with _MATTE_JOBS_LOCK:
+        _MATTE_JOBS[job_id] = {
+            'status': 'processing',
+            'token': token,
+            'path': image_path,
+            'queued_ahead': queued_ahead,
+            'expires': time.time() + JOB_TTL_SECONDS,
+        }
+
+    threading.Thread(target=_run_matte_job, args=(job_id,), daemon=True).start()
+    return {'jobId': job_id, 'token': token, 'status': 'processing', 'queuedAhead': queued_ahead}
+
+
+def _run_matte_job(job_id: str) -> None:
+    """Background: rembg the stored upload → write {input}.out.png."""
+    from . import matte as matte_engine   # late: importing rembg is heavy
+
+    job = _MATTE_JOBS.get(job_id)
+    if job is None:   # sweeper won the race — only possible past the 1h TTL
+        return
+    source_path = Path(job['path'])
+    out_path = source_path.with_name(source_path.name + '.out.png')
+    try:
+        with _MATTE_RUN_LOCK:
+            png_bytes = matte_engine.remove_subject_png(source_path.read_bytes())
+        out_path.write_bytes(png_bytes)
+        with _MATTE_JOBS_LOCK:
+            job.update({
+                'status': 'ready',
+                'path': out_path,
+                'expires': time.time() + JOB_TTL_SECONDS,
+            })
+    except Exception as exc:  # noqa: BLE001 — background thread boundary
+        out_path.unlink(missing_ok=True)
+        with _MATTE_JOBS_LOCK:
+            job.update({
+                'status': 'failed',
+                'error': str(exc)[:300],
+                'expires': time.time() + 600,
+            })
+    finally:
+        # INPUT bytes are worthless after matting — free the disk now (the
+        # .out.png lives until the browser fetches it or the TTL sweep).
+        source_path.unlink(missing_ok=True)
+
+
+@router.get('/matte/job/{job_id}')
+def matte_job(job_id: str, t: str) -> dict:
+    # No X-Worker-Token here: the BROWSER polls this; the random per-job
+    # token from the POST response is the credential (same as /transcribe).
+    job = _MATTE_JOBS.get(job_id)
+    if not job or job['token'] != t:
+        raise HTTPException(status_code=404, detail='unknown job')
+
+    if job['status'] == 'ready':
+        return {'status': 'ready'}
+    if job['status'] == 'failed':
+        return {'status': 'failed', 'error': job.get('error') or 'matte failed'}
+    return {'status': 'processing', 'queuedAhead': bool(job.get('queued_ahead'))}
+
+
+@router.get('/matte/file/{job_id}')
+def matte_file(job_id: str, t: str) -> FileResponse:
+    """The cutout PNG — browser fetches with the job token, TTL sweep reaps."""
+    job = _MATTE_JOBS.get(job_id)
+    if not job or job['token'] != t:
+        raise HTTPException(status_code=404, detail='unknown job')
+    if job.get('status') != 'ready':
+        raise HTTPException(status_code=409, detail='not ready yet')
+    path = Path(job['path'])
+    if not path.exists():
+        raise HTTPException(status_code=410, detail='result expired')
+    return FileResponse(path, media_type='image/png', filename='cutout.png')
+
+
+def _matte_sweeper() -> None:
+    while True:
+        time.sleep(120)
+        now = time.time()
+        with _MATTE_JOBS_LOCK:
+            for jid in [j for j, m in _MATTE_JOBS.items() if m.get('expires', 0) < now]:
+                Path(_MATTE_JOBS[jid]['path']).unlink(missing_ok=True)
+                _MATTE_JOBS.pop(jid, None)
+
+
+threading.Thread(target=_matte_sweeper, daemon=True).start()

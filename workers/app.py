@@ -74,6 +74,7 @@ app.add_middleware(
 try:
     from captions import routes as _captions_routes
     from captions.engine import status as _captions_status
+    from captions import matte as _captions_matte
 
     app.include_router(_captions_routes.router)
     CAPTIONS_OK = True
@@ -81,6 +82,7 @@ try:
 except Exception as _exc:  # noqa: BLE001 — optional module boundary
     _captions_routes = None
     _captions_status = None
+    _captions_matte = None
     CAPTIONS_OK = False
     CAPTIONS_ERROR = str(_exc)[:300]
 
@@ -411,6 +413,9 @@ def health() -> dict:
         'ua': USER_AGENT,
         'captions': _captions_status() if _captions_status else {
             'loaded': False,
+            'error': CAPTIONS_ERROR or 'module not loaded',
+        },
+        'matte': _captions_matte.status() if _captions_matte else {
             'error': CAPTIONS_ERROR or 'module not loaded',
         },
     }
