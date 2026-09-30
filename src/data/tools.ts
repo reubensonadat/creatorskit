@@ -145,26 +145,6 @@ export const NATIVE_TOOLS: ToolItem[] = [
 // ─── 2. CURATED EXTERNAL TOOLS (Routed Through 4-Sector Ad Bridge) ───────────
 export const CURATED_DIRECTORY: ToolItem[] = [
   {
-    label: 'Text Behind Image (Depth AI)',
-    href: '/text-behind',
-    hint: 'TEXTBEHINDIMAGE.COM',
-    desc: 'Place 3D typography behind subjects in photos with automated depth isolation',
-    isExternal: true,
-    externalUrl: 'https://textbehindimage.com/',
-    category: 'directory',
-    badge: 'EXTERNAL',
-  },
-  {
-    label: 'AI Background Cutout & Remove',
-    href: '/background-replace',
-    hint: 'FILECONV.ONLINE',
-    desc: 'Instant AI subject isolation and background removal powered by FileConv Remove-BG',
-    isExternal: true,
-    externalUrl: 'https://fileconv.online/remove-bg',
-    category: 'directory',
-    badge: 'EXTERNAL',
-  },
-  {
     label: 'AI Voiceover & Speech Dubbing',
     href: '/redirect?url=https%3A%2F%2Felevenlabs.io&name=ElevenLabs+Voice+AI&desc=Industry-leading+human-quality+AI+voiceover%2C+voice+cloning%2C+and+multilingual+speech+dubbing',
     hint: 'ELEVENLABS.IO',
