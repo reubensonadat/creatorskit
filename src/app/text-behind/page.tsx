@@ -28,6 +28,7 @@ import {
     type MatteEngine,
     type MatteProgress,
 } from '@/lib/background-removal';
+import { putHandoffImage } from '@/lib/tool-handoff';
 
 // ---------------------------------------------------------------------------
 // Fonts — 75+ Google Fonts across Cursive, Graffiti, Gothic, Tabloid, Serif, Sans, Mono
@@ -290,6 +291,9 @@ const TEXT_PRESETS: { id: string; name: string; swatch: string; patch: Partial<T
 ];
 
 // --- Refresh-safe persistence: images in IndexedDB, layers in localStorage
+const CUTOUT_MODE_KEY = 'ck_text_behind_cutout_mode_v1';
+type CutoutMode = 'manual' | 'browser' | 'server';
+
 function idbOpen(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const req = indexedDB.open('ck_text_behind', 1);
@@ -365,6 +369,9 @@ export default function TextBehindPage() {
         percent: number;
     } | null>(null);
 
+    /** Which way the user builds the cutout layer — drives the Photos card UI. */
+    const [cutoutMode, setCutoutMode] = useState<CutoutMode>('browser');
+
     // --- multiple text layers -----------------------------------------------
     const [layers, setLayers] = useState<TextLayer[]>([DEFAULT_TEXT_LAYER]);
     const [activeLayerId, setActiveLayerId] = useState<string>(DEFAULT_TEXT_LAYER.id);
@@ -400,6 +407,12 @@ export default function TextBehindPage() {
     const cutoutInputRef = useRef<HTMLInputElement>(null);
     /** The raw background file/blob — the auto-cutout engines take it as input. */
     const bgFileRef = useRef<File | Blob | null>(null);
+    /** Latest auto-cut runner + mode, so ANY intake (button, drop) can kick the cutout. */
+    const autoCutRef = useRef<{ run: (engine: MatteEngine) => void; mode: CutoutMode }>({
+        run: () => {},
+        mode: 'browser',
+    });
+    const [dropActive, setDropActive] = useState(false);
 
     /** Metrics for each text layer — powers multi-layer hit testing & dragging. */
     const metricsRef = useRef<Record<string, TextMetrics>>({});
@@ -421,6 +434,12 @@ export default function TextBehindPage() {
 
     // --- settings persistence (text layers array with backward-compat) ---
     useEffect(() => {
+        try {
+            const savedMode = localStorage.getItem(CUTOUT_MODE_KEY);
+            if (savedMode === 'manual' || savedMode === 'browser' || savedMode === 'server') {
+                setCutoutMode(savedMode);
+            }
+        } catch { /* use default */ }
         try {
             const raw = localStorage.getItem(SETTINGS_KEY);
             if (raw) {
@@ -447,6 +466,12 @@ export default function TextBehindPage() {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(layers));
         } catch { /* non-fatal */ }
     }, [layers]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CUTOUT_MODE_KEY, cutoutMode);
+        } catch { /* non-fatal */ }
+    }, [cutoutMode]);
 
     // Restore saved images from IndexedDB
     useEffect(() => {
@@ -500,6 +525,10 @@ export default function TextBehindPage() {
             setBgImage(img);
             setBgInfo(`${img.naturalWidth} × ${img.naturalHeight}px`);
             void idbPut('bg', file);
+            // SEAMLESS: in auto modes the cutout starts the instant the photo
+            // lands — no second click (drop or upload, both roads lead here).
+            const { run, mode } = autoCutRef.current;
+            if (mode !== 'manual') run(mode === 'server' ? 'server' : 'browser');
         } catch {
             setBgInfo('Could not open that file.');
         }
@@ -510,7 +539,7 @@ export default function TextBehindPage() {
         try {
             const img = await loadImage(file);
             setCutoutImage(img);
-            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · PNG`);
+            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · YOUR PNG`);
             void idbPut('cutout', file);
         } catch {
             setCutoutInfo('Could not open that cutout PNG.');
@@ -544,13 +573,33 @@ export default function TextBehindPage() {
                 : await removeBackgroundServer(source, onProgress);
             const img = await loadImage(blob);
             setCutoutImage(img);
-            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · PNG · ${engine === 'browser' ? 'IN-BROWSER' : 'SERVER'}`);
+            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · PNG · ${engine === 'browser' ? 'CUT ON MY DEVICE' : 'CUT ON SERVER'}`);
             void idbPut('cutout', blob);
             setMatte(null);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Cutout failed — try the other engine.';
             setMatte({ busy: false, engine, message, percent: 0 });
         }
+    }, []);
+
+    // Keep the seamless-kick bridge fresh (assigned during render, used by
+    // handleBgFile which has [] deps and must not see stale mode/runner).
+    autoCutRef.current = {
+        run: (engine) => void handleAutoCutout(engine),
+        mode: cutoutMode,
+    };
+
+    /** Cross-tool: ship the current canvas straight into Thumbnail Lab. */
+    const handleSendToThumbnailLab = useCallback(async () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        await new Promise<void>((resolve) => {
+            canvas.toBlob(async (blob) => {
+                if (blob) await putHandoffImage('thumbnail-lab', blob);
+                resolve();
+            }, 'image/png');
+        });
+        window.open('/thumbnail-lab', '_blank');
     }, []);
 
     // --- multi-textbox management -------------------------------------------
@@ -1020,6 +1069,17 @@ export default function TextBehindPage() {
                                     controlsRef.current.scrollTop += e.deltaY;
                                 }
                             }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                if (!dropActive) setDropActive(true);
+                            }}
+                            onDragLeave={() => setDropActive(false)}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setDropActive(false);
+                                const f = e.dataTransfer.files?.[0];
+                                if (f && f.type.startsWith('image/')) void handleBgFile(f);
+                            }}
                             style={{
                                 flex: 1,
                                 minHeight: 0,
@@ -1031,7 +1091,7 @@ export default function TextBehindPage() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 position: 'relative',
-                                border: '2px solid #000',
+                                border: dropActive ? '3px dashed #DC2626' : '2px solid #000',
                                 overflow: 'hidden',
                             }}
                         >
@@ -1056,18 +1116,30 @@ export default function TextBehindPage() {
                                     }}
                                 />
                             ) : (
-                                <div style={{ textAlign: 'center', padding: '32px 24px', maxWidth: 440, background: '#fff', border: '3px solid #000', boxShadow: '5px 5px 0 #000', color: '#000', margin: 20 }}>
+                                <div
+                                    onClick={() => bgInputRef.current?.click()}
+                                    style={{ textAlign: 'center', padding: '34px 26px', maxWidth: 460, background: '#fff', border: dropActive ? '3px dashed #DC2626' : '3px solid #000', boxShadow: '5px 5px 0 #000', color: '#000', margin: 20, cursor: 'pointer' }}
+                                >
                                     <Layers size={38} style={{ margin: '0 auto 12px', display: 'block', color: '#000' }} />
                                     <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '0.92rem', marginBottom: 8, color: '#000' }}>
-                                        GIANT TYPE. BEHIND THE SUBJECT.
+                                        {dropActive ? 'RELEASE TO START' : 'GIANT TYPE. BEHIND THE SUBJECT.'}
                                     </div>
                                     <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.7 }}>
-                                        1. Upload a photo (the background).<br />
-                                        2. Upload its cutout as a transparent PNG.<br />
-                                        3. Add multiple text boxes with 52 Google fonts.<br />
-                                        <span style={{ color: '#000', fontWeight: 900, background: '#FFE500', padding: '1px 4px', border: '1px solid #000' }}>
-                                            Everything stays centered while you scroll settings.
-                                        </span>
+                                        {cutoutMode === 'manual' ? (
+                                            <>
+                                                DROP OR CLICK TO LOAD THE BACKGROUND PHOTO,
+                                                <br />
+                                                THEN ADD YOUR CUTOUT PNG.
+                                            </>
+                                        ) : (
+                                            <>
+                                                DROP A PHOTO (OR CLICK) — THE SUBJECT CUTS ITSELF OUT
+                                                <br />
+                                                <span style={{ color: '#000', fontWeight: 900, background: '#FFE500', padding: '1px 4px', border: '1px solid #000' }}>
+                                                    {cutoutMode === 'browser' ? 'ON YOUR DEVICE — NOTHING UPLOADS' : 'VIA THE CREATORKIT SERVER'}
+                                                </span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -1102,35 +1174,71 @@ export default function TextBehindPage() {
                             {sectionTitle(<ImagePlus size={14} />, '1 · Photos & Cutout')}
                             <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleBgFile(e.target.files?.[0] ?? null)} />
                             <input ref={cutoutInputRef} type="file" accept="image/png,image/*" style={{ display: 'none' }} onChange={(e) => handleCutoutFile(e.target.files?.[0] ?? null)} />
-                            <button className="brutalist-button brutalist-button-primary" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
-                                1 · BACKGROUND PHOTO {bgInfo ? '✓' : ''}
-                            </button>
-                            {bgInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>{bgInfo}</div>}
-                            <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => cutoutInputRef.current?.click()}>
-                                2 · SUBJECT CUTOUT PNG {cutoutInfo ? '✓' : ''}
-                            </button>
-                            {cutoutInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666' }}>{cutoutInfo}</div>}
-                            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                                <button
-                                    className="brutalist-button brutalist-button-primary"
-                                    style={{ flex: 1, padding: '7px 8px', fontSize: '0.62rem' }}
-                                    disabled={!!matte?.busy}
-                                    onClick={() => void handleAutoCutout('browser')}
-                                >
-                                    ✦ AUTO CUTOUT · BROWSER
-                                </button>
-                                <button
-                                    className="brutalist-button"
-                                    style={{ flex: 1, padding: '7px 8px', fontSize: '0.62rem' }}
-                                    disabled={!!matte?.busy}
-                                    onClick={() => void handleAutoCutout('server')}
-                                >
-                                    AUTO CUTOUT · SERVER
-                                </button>
+                            {/* HOW DO YOU WANT TO BUILD THE SANDWICH? Pick a mode first —
+                                the card then shows ONLY the flow that matches the choice. */}
+                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 5 }}>
+                                HOW DO YOU WANT TO ADD THE SUBJECT?
                             </div>
-                            <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#888', marginTop: 3 }}>
-                                BROWSER RUNS ON YOUR DEVICE (RECOMMENDED) · SERVER CUTS ANY SUBJECT
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 10 }}>
+                                {([
+                                    { m: 'manual' as CutoutMode, label: 'MY OWN PNG', sub: 'I HAVE BOTH IMAGES' },
+                                    { m: 'browser' as CutoutMode, label: 'CUT ON MY DEVICE', sub: 'FREE · RECOMMENDED' },
+                                    { m: 'server' as CutoutMode, label: 'CUT ON SERVER', sub: 'ANY SUBJECT' },
+                                ]).map(({ m, label, sub }) => (
+                                    <button
+                                        key={m}
+                                        className={cutoutMode === m ? 'brutalist-button brutalist-button-primary' : 'brutalist-button'}
+                                        style={{
+                                            padding: '6px 4px',
+                                            fontSize: '0.56rem',
+                                            lineHeight: 1.25,
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: 2,
+                                        }}
+                                        onClick={() => setCutoutMode(m)}
+                                    >
+                                        <span>{label}</span>
+                                        <span style={{ fontSize: '0.48rem', color: cutoutMode === m ? '#000' : '#777', fontWeight: 700 }}>{sub}</span>
+                                    </button>
+                                ))}
                             </div>
+
+                            {cutoutMode === 'manual' ? (
+                                <>
+                                    <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>
+                                        UPLOAD THE PHOTO, THEN YOUR ALREADY-TRANSPARENT SUBJECT PNG. THE PNG SITS ON TOP OF YOUR TEXT.
+                                    </div>
+                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
+                                        1 · BACKGROUND PHOTO {bgInfo ? '✓' : ''}
+                                    </button>
+                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => cutoutInputRef.current?.click()}>
+                                        2 · SUBJECT CUTOUT PNG {cutoutInfo ? '✓' : ''}
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>
+                                        {cutoutMode === 'browser'
+                                            ? 'THE CUTOUT IS COMPUTED RIGHT HERE IN YOUR BROWSER — NOTHING LEAVES YOUR MACHINE. THE FIRST RUN DOWNLOADS THE ENGINE ONE TIME.'
+                                            : 'THE PHOTO GOES TO THE CREATORKIT WORKER AND THE CUTOUT COMES BACK AS A PNG — WORKS FOR ANY SUBJECT.'}
+                                    </div>
+                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
+                                        1 · UPLOAD THE PHOTO {bgInfo ? '✓' : ''}
+                                    </button>
+                                    <button
+                                        className="brutalist-button brutalist-button-primary"
+                                        style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }}
+                                        disabled={!!matte?.busy}
+                                        onClick={() => void handleAutoCutout(cutoutMode === 'server' ? 'server' : 'browser')}
+                                    >
+                                        {cutoutMode === 'browser' ? '↻ RE-CUT ON MY DEVICE' : '↻ RE-CUT ON THE SERVER'}
+                                    </button>
+                                </>
+                            )}
+                            {bgInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 6 }}>{bgInfo}</div>}
+                            {cutoutInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 2 }}>{cutoutInfo}</div>}
                             {matte && (
                                 <div style={{ marginTop: 8, padding: '6px 8px', border: '1.5px solid #000', background: '#fafafa' }}>
                                     <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: matte.busy ? '#000' : '#b00' }}>
@@ -1986,6 +2094,9 @@ export default function TextBehindPage() {
                                 </button>
                                 <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
                                     JPG · 2×
+                                </button>
+                                <button className="brutalist-button" style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }} disabled={!bgImage || exporting} onClick={() => void handleSendToThumbnailLab()}>
+                                    → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
                                 </button>
                             </div>
                             {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}

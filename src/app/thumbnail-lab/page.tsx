@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { takeHandoffImage } from '@/lib/tool-handoff';
 import {
   ChevronLeft,
   ChevronRight,
@@ -779,47 +780,68 @@ export default function ThumbnailLabPage() {
     return Math.round((contrastLuminanceScore * 0.4) + (badgeCollisionScore * 0.3) + (focalBalanceScore * 0.3));
   }, [contrastLuminanceScore, badgeCollisionScore, focalBalanceScore]);
 
+  const addCandidateImage = (url: string, candidateId?: string) => {
+    if (contentFormat === 'longform') {
+      if (candidateId) {
+        setLongformCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
+      } else {
+        const newId = `cand-long-${Date.now()}`;
+        const newLetter = String.fromCharCode(65 + longformCandidates.length);
+        const newCand: ThumbnailCandidate = {
+          ...DEFAULT_LONGFORM_THUMBNAIL,
+          id: newId,
+          name: `Variation ${newLetter}`,
+          imageUrl: url,
+        };
+        setLongformCandidates((prev) => [...prev, newCand]);
+        setActiveLongformId(newId);
+      }
+    } else {
+      if (candidateId) {
+        setShortsCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
+      } else {
+        const newId = `cand-short-${Date.now()}`;
+        const newLetter = String.fromCharCode(65 + shortsCandidates.length);
+        const newCand: ThumbnailCandidate = {
+          ...DEFAULT_SHORTS_COVER,
+          id: newId,
+          name: `Shorts Variation ${newLetter}`,
+          imageUrl: url,
+        };
+        setShortsCandidates((prev) => [...prev, newCand]);
+        setActiveShortsId(newId);
+      }
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, candidateId?: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const url = event.target?.result as string;
-      if (contentFormat === 'longform') {
-        if (candidateId) {
-          setLongformCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
-        } else {
-          const newId = `cand-long-${Date.now()}`;
-          const newLetter = String.fromCharCode(65 + longformCandidates.length);
-          const newCand: ThumbnailCandidate = {
-            ...DEFAULT_LONGFORM_THUMBNAIL,
-            id: newId,
-            name: `Variation ${newLetter}`,
-            imageUrl: url,
-          };
-          setLongformCandidates((prev) => [...prev, newCand]);
-          setActiveLongformId(newId);
-        }
-      } else {
-        if (candidateId) {
-          setShortsCandidates((prev) => prev.map((c) => (c.id === candidateId ? { ...c, imageUrl: url } : c)));
-        } else {
-          const newId = `cand-short-${Date.now()}`;
-          const newLetter = String.fromCharCode(65 + shortsCandidates.length);
-          const newCand: ThumbnailCandidate = {
-            ...DEFAULT_SHORTS_COVER,
-            id: newId,
-            name: `Shorts Variation ${newLetter}`,
-            imageUrl: url,
-          };
-          setShortsCandidates((prev) => [...prev, newCand]);
-          setActiveShortsId(newId);
-        }
-      }
-    };
+    reader.onload = (event) => addCandidateImage(event.target?.result as string, candidateId);
     reader.readAsDataURL(file);
   };
+
+  // ── Cross-tool hand-off ──────────────────────────────────────────────────
+  // Other CreatorKit tools (e.g. text-behind "OPEN IN THUMBNAIL LAB") send
+  // their canvas via src/lib/tool-handoff.ts — consume it once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const blob = await takeHandoffImage('thumbnail-lab');
+      if (!blob || cancelled) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (!cancelled) addCandidateImage(event.target?.result as string);
+      };
+      reader.readAsDataURL(blob);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const copyAuditSummary = () => {
     const text = `🎯 THUMBNAIL LAB REPORT (${contentFormat === 'longform' ? '16:9 Long-Form Video' : '9:16 YouTube Short'})

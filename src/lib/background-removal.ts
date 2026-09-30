@@ -39,19 +39,36 @@ export async function removeBackgroundBrowser(
 ): Promise<Blob> {
     if (!imglyModule) imglyModule = import('@imgly/background-removal');
     const { removeBackground } = await imglyModule;
-    return removeBackground(source, {
-        // v1.7 API: progress(key, current, total) — 'fetch:*' keys are the
-        // one-time engine download; everything else is inference.
-        progress: (key: string, current: number, total: number) => {
-            const pct = total > 0 ? Math.round((current / total) * 100) : 0;
-            if (key.startsWith('fetch')) {
-                onProgress?.('downloading', 'Downloading the cutout engine (one time)…', pct);
-            } else {
-                onProgress?.('processing', 'Cutting out the subject…', pct);
-            }
-        },
-        output: { format: 'image/png' },
-    });
+    try {
+        return await removeBackground(source, {
+            // isnet_quint8 ≈ 13MB download vs isnet_fp16 ≈ 44MB: the first-use
+            // download shrinks 3× and poster cutouts stay crisp.
+            model: 'isnet_quint8',
+            // No proxy worker: under Next.js dev Fast Refresh the ORT worker
+            // script goes stale (_OrtGetInputOutputMetadata crash). Main-thread
+            // inference costs ~2-6s and keeps the progress UI honest.
+            proxyToWorker: false,
+            // v1.7 API: progress(key, current, total) — 'fetch:*' keys are the
+            // one-time engine download; everything else is inference.
+            progress: (key: string, current: number, total: number) => {
+                const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+                if (key.startsWith('fetch')) {
+                    onProgress?.('downloading', 'Downloading the cutout engine (one time)…', pct);
+                } else {
+                    onProgress?.('processing', 'Cutting out the subject…', pct);
+                }
+            },
+            output: { format: 'image/png' },
+        });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // The classic onnxruntime-web glue/wasm cache mismatch (stale service
+        // worker or dev-server cache mixing engine versions).
+        if (/publicPath|Failed to create session|_Ort/i.test(message)) {
+            throw new Error('The cutout engine hit a stale browser cache — hard-refresh (Ctrl+Shift+R) and press CUT again.');
+        }
+        throw err;
+    }
 }
 
 // ---------------------------------------------------------------------------
