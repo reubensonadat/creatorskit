@@ -17,15 +17,18 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ImagePlus, Scissors, Download, SlidersHorizontal, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, Eye, LayoutTemplate, Home } from 'lucide-react';
 import Link from 'next/link';
-import { ImagePlus, Scissors, Download, Layers, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud } from 'lucide-react';
+import NextImage from 'next/image';
+import { ALL_TOOLS } from '@/data/tools';
 import { downloadBlob } from '@/lib/canvas-video-exporter';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import {
     removeBackgroundBrowser,
-    removeBackgroundServer,
+    standardizeSourceImage,
     BROWSER_MODELS,
+    prewarmBackgroundEngine,
     type MatteEngine,
     type MatteProgress,
     type BrowserModel,
@@ -93,17 +96,17 @@ const BASE_FONTS: PosterFont[] = GOOGLE_FONTS_LIST.map((f) => ({
     category: (['caveat', 'kalam', 'shadows', 'indie-flower', 'covered-grace'].includes(f.id)
         ? 'Cursive'
         : ['permanent-marker', 'rock-salt', 'bangers'].includes(f.id)
-        ? 'Graffiti'
-        : f.category) as PosterFont['category'],
+            ? 'Graffiti'
+            : f.category) as PosterFont['category'],
     weight: f.category === 'Tabloid'
         ? (['anton', 'bebas-neue', 'russo-one'].includes(f.id) ? 400 : 900)
         : f.category === 'Sans'
-        ? (['inter', 'montserrat', 'outfit', 'syne'].includes(f.id) ? 900 : 700)
-        : f.category === 'Serif'
-        ? (['playfair', 'cinzel', 'bodoni'].includes(f.id) ? 900 : 700)
-        : f.category === 'Typewriter'
-        ? (f.id === 'space-mono' ? 700 : 400)
-        : 400,
+            ? (['inter', 'montserrat', 'outfit', 'syne'].includes(f.id) ? 900 : 700)
+            : f.category === 'Serif'
+                ? (['playfair', 'cinzel', 'bodoni'].includes(f.id) ? 900 : 700)
+                : f.category === 'Typewriter'
+                    ? (f.id === 'space-mono' ? 700 : 400)
+                    : 400,
 }));
 
 const POSTER_FONTS: PosterFont[] = [
@@ -327,8 +330,6 @@ const applyCase = (
 };
 
 // --- Refresh-safe persistence: images in IndexedDB, layers in localStorage
-const CUTOUT_MODE_KEY = 'ck_text_behind_cutout_mode_v1';
-type CutoutMode = 'manual' | 'browser' | 'server';
 
 function idbOpen(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -404,9 +405,23 @@ export default function TextBehindPage() {
         message: string;
         percent: number;
     } | null>(null);
+    const [cutoutError, setCutoutError] = useState<string | null>(null);
 
-    /** Which way the user builds the cutout layer — drives the Photos card UI. */
-    const [cutoutMode, setCutoutMode] = useState<CutoutMode>('browser');
+    /** Mobile studio mode (bouquet-style): 'stage' = full-bleed canvas,
+     * 'sidebar' = full-screen controls. Never split-screen — the artwork is
+     * either fully visible or the controls fully own the screen. */
+    const [mobileStudioTab, setMobileStudioTab] = useState<'stage' | 'sidebar'>('stage');
+    /** CreatorKit tools navigation drawer (bouquet-style slide-out) */
+    const [toolsOpen, setToolsOpen] = useState(false);
+    const [toolSearch, setToolSearch] = useState('');
+    /** Guard: require explicit confirmation before wiping the user's photos */
+    const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+
+    const filteredTools = useMemo(() => {
+        const q = toolSearch.trim().toLowerCase();
+        if (!q) return ALL_TOOLS;
+        return ALL_TOOLS.filter((t) => `${t.label} ${t.desc} ${t.hint}`.toLowerCase().includes(q));
+    }, [toolSearch]);
 
     // --- multiple text layers -----------------------------------------------
     const [layers, setLayers] = useState<TextLayer[]>([DEFAULT_TEXT_LAYER]);
@@ -452,11 +467,6 @@ export default function TextBehindPage() {
     const cutoutInputRef = useRef<HTMLInputElement>(null);
     /** The raw background file/blob — the auto-cutout engines take it as input. */
     const bgFileRef = useRef<File | Blob | null>(null);
-    /** Latest auto-cut runner + mode, so ANY intake (button, drop) can kick the cutout. */
-    const autoCutRef = useRef<{ run: (engine: MatteEngine) => void; mode: CutoutMode }>({
-        run: () => {},
-        mode: 'browser',
-    });
     const [dropActive, setDropActive] = useState(false);
     /** Background dim (0–0.85) — darkens the photo so the type pops. */
     const [bgDim, setBgDim] = useState(0);
@@ -481,12 +491,6 @@ export default function TextBehindPage() {
 
     // --- settings persistence (text layers array with backward-compat) ---
     useEffect(() => {
-        try {
-            const savedMode = localStorage.getItem(CUTOUT_MODE_KEY);
-            if (savedMode === 'manual' || savedMode === 'browser' || savedMode === 'server') {
-                setCutoutMode(savedMode);
-            }
-        } catch { /* use default */ }
         try {
             const raw = localStorage.getItem(SETTINGS_KEY);
             if (raw) {
@@ -516,15 +520,9 @@ export default function TextBehindPage() {
 
     useEffect(() => {
         try {
-            localStorage.setItem(CUTOUT_MODE_KEY, cutoutMode);
-        } catch { /* non-fatal */ }
-    }, [cutoutMode]);
-
-    useEffect(() => {
-        try {
             const saved = parseFloat(localStorage.getItem('ck_text_behind_bgdim') ?? '');
             if (Number.isFinite(saved) && saved > 0) setBgDim(Math.min(0.85, saved));
-        } catch { /* default */}
+        } catch { /* default */ }
     }, []);
 
     useEffect(() => {
@@ -575,6 +573,12 @@ export default function TextBehindPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Warm the AI engine silently after first interaction so the first real
+    // cutout skips the ~110 MB model download the moment a photo lands.
+    useEffect(() => {
+        prewarmBackgroundEngine();
+    }, []);
+
     // --- file intake --------------------------------------------------------
     const loadImage = (source: File | Blob): Promise<HTMLImageElement> =>
         new Promise((resolve, reject) => {
@@ -588,89 +592,92 @@ export default function TextBehindPage() {
             img.src = url;
         });
 
-    const handleBgFile = useCallback(async (file: File | null) => {
-        if (!file) return;
-        try {
-            const img = await loadImage(file);
-            bgFileRef.current = file;
-            setBgImage(img);
-            setBgInfo(`${img.naturalWidth} × ${img.naturalHeight}px`);
-            void idbPut('bg', file);
-            // SEAMLESS: in auto modes the cutout starts the instant the photo
-            // lands — no second click (drop or upload, both roads lead here).
-            const { run, mode } = autoCutRef.current;
-            if (mode !== 'manual') run(mode === 'server' ? 'server' : 'browser');
-        } catch {
-            setBgInfo('Could not open that file.');
-        }
-    }, []);
-
-    const handleCutoutFile = useCallback(async (file: File | null) => {
-        if (!file) return;
-        try {
-            const img = await loadImage(file);
-            setCutoutImage(img);
-            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · YOUR PNG`);
-            void idbPut('cutout', file);
-        } catch {
-            setCutoutInfo('Could not open that cutout PNG.');
-        }
-    }, []);
-
-    // engine quality — synced with /background-replace via the shared key
-    const [browserModel, setBrowserModel] = useState<BrowserModel>('isnet_quint8');
-    useEffect(() => {
-        const saved = window.localStorage.getItem(QUALITY_KEY);
-        if (saved === 'isnet_quint8' || saved === 'isnet_fp16' || saved === 'isnet') setBrowserModel(saved);
-    }, []);
-    useEffect(() => {
-        window.localStorage.setItem(QUALITY_KEY, browserModel);
-    }, [browserModel]);
-
-    /**
-     * AUTO CUTOUT — runs the background photo through a matting engine and
-     * drops the transparent PNG straight into the sandwich's cutout layer.
-     * BROWSER = @imgly WASM on the user's CPU (recommended, free);
-     * SERVER = worker /matte, rembg u2netp (any subject, any machine).
-     */
-    const handleAutoCutout = useCallback(async (engine: MatteEngine) => {
-        const source = bgFileRef.current;
+    const handleAutoCutout = useCallback(async (customBlob?: Blob) => {
+        const source = customBlob || bgFileRef.current;
         if (!source) {
-            setMatte({ busy: false, engine, message: 'Upload the background photo first.', percent: 0 });
+            setCutoutError('Upload the background photo first.');
+            setMatte(null);
             return;
         }
+        setCutoutError(null);
         setMatte({
             busy: true,
-            engine,
-            message: engine === 'browser' ? 'Starting the browser engine…' : 'Connecting…',
-            percent: 2,
+            engine: 'browser',
+            message: 'Starting AI cutout model…',
+            percent: 5,
         });
         const onProgress: MatteProgress = (_stage, message, percent) => {
             setMatte((prev) => (prev ? { ...prev, message, percent } : prev));
         };
         try {
-            const blob = engine === 'browser'
-                ? await removeBackgroundBrowser(source, onProgress, browserModel)
-                : await removeBackgroundServer(source, onProgress);
-            const img = await loadImage(blob);
-            setCutoutImage(img);
-            setCutoutInfo(`${img.naturalWidth} × ${img.naturalHeight}px · PNG · ${engine === 'browser' ? 'CUT ON MY DEVICE' : 'CUT ON SERVER'}`);
-            void idbPut('cutout', blob);
+            const rawCutout = await removeBackgroundBrowser(source, onProgress, 'isnet_quint8');
+            const stdCutout = await standardizeSourceImage(rawCutout);
+            setCutoutImage(stdCutout.img);
+            setCutoutInfo(`${stdCutout.width} × ${stdCutout.height}px · Subject Cutout Ready`);
+            void idbPut('cutout', stdCutout.blob);
+            setCutoutError(null);
             setMatte(null);
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Cutout failed — try the other engine.';
-            setMatte({ busy: false, engine, message, percent: 0 });
+            const message = err instanceof Error ? err.message : 'Cutout failed — please try again.';
+            console.error('[handleAutoCutout] Cutout error:', err);
+            setCutoutError(message);
+            setMatte(null);
         }
-    }, [browserModel]);
+    }, []);
 
-    // Keep the seamless-kick bridge fresh (assigned during render, used by
-    // handleBgFile which has [] deps and must not see stale mode/runner).
-    autoCutRef.current = {
-        run: (engine) => void handleAutoCutout(engine),
-        mode: cutoutMode,
+    const handleBgFile = useCallback(async (file: File | null) => {
+        if (!file) return;
+        try {
+            setCutoutError(null);
+            setMatte({
+                busy: true,
+                engine: 'browser',
+                message: 'Standardizing image format…',
+                percent: 5,
+            });
+            const std = await standardizeSourceImage(file);
+            bgFileRef.current = std.blob;
+            setBgImage(std.img);
+            setBgInfo(`${std.width} × ${std.height}px · Standardized PNG`);
+            void idbPut('bg', std.blob);
+
+            // Trigger AI cutout automatically
+            void handleAutoCutout(std.blob);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Could not open that file — please select a valid JPG or PNG.';
+            setBgInfo('Could not open that file.');
+            setCutoutError(msg);
+            setMatte(null);
+        }
+    }, [handleAutoCutout]);
+
+    const handleCutoutFile = useCallback(async (file: File | null) => {
+        if (!file) return;
+        try {
+            const std = await standardizeSourceImage(file);
+            setCutoutImage(std.img);
+            setCutoutInfo(`${std.width} × ${std.height}px · YOUR PNG`);
+            void idbPut('cutout', std.blob);
+        } catch {
+            setCutoutInfo('Could not open that cutout PNG.');
+        }
+    }, []);
+
+
+
+    /** Wipes photo + cutout — only ever called after the user confirms. */
+    const handleResetPhotos = () => {
+        setBgImage(null);
+        setBgInfo('');
+        setCutoutImage(null);
+        setCutoutInfo('');
+        setCutoutError(null);
+        setMatte(null);
+        setBgDim(0);
+        bgFileRef.current = null;
+        setExportNote('');
+        void idbClear(['bg', 'cutout']);
     };
-
-
 
     // --- multi-textbox management -------------------------------------------
     const handleAddTextBox = () => {
@@ -1106,11 +1113,11 @@ export default function TextBehindPage() {
 
     return (
         <div
-            className="text-behind-root"
+            className={`text-behind-root${mobileStudioTab === 'sidebar' ? ' mode-sidebar' : ''}`}
             style={{
                 width: '100%',
-                height: 'calc(100vh - 56px)',
-                maxHeight: 'calc(100vh - 56px)',
+                height: '100dvh',
+                maxHeight: '100dvh',
                 overflow: 'hidden',
                 background: '#f4f4f5',
                 color: '#000',
@@ -1120,6 +1127,7 @@ export default function TextBehindPage() {
             }}
         >
             <div
+                className="text-behind-container"
                 style={{
                     maxWidth: 1600,
                     width: '100%',
@@ -1133,8 +1141,18 @@ export default function TextBehindPage() {
                     overflow: 'hidden',
                 }}
             >
-                {/* Clean Header */}
-                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, padding: '2px 0' }}>
+                {/* Clean Header — tools toggle + title, nothing else */}
+                <div className="text-behind-header" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 10, padding: '2px 0' }}>
+                    <button
+                        type="button"
+                        className="brutalist-button"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: '0.66rem' }}
+                        onClick={() => setToolsOpen(true)}
+                        title="Open CreatorKit Tools Menu"
+                    >
+                        <LayoutTemplate size={14} />
+                        <span>TOOLS</span>
+                    </button>
                     <h1 style={{ fontSize: '0.95rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '-0.02em', margin: 0, textTransform: 'uppercase' }}>
                         TEXT BEHIND IMAGE
                     </h1>
@@ -1198,25 +1216,193 @@ export default function TextBehindPage() {
                             }}
                         >
                             {bgImage ? (
-                                <canvas
-                                    ref={canvasRef}
-                                    onPointerDown={handlePointerDown}
-                                    onPointerMove={handlePointerMove}
-                                    onPointerUp={endDrag}
-                                    onPointerCancel={endDrag}
-                                    style={{
-                                        maxWidth: 'calc(100% - 24px)',
-                                        maxHeight: 'calc(100% - 24px)',
-                                        width: 'auto',
-                                        height: 'auto',
-                                        objectFit: 'contain',
-                                        display: 'block',
-                                        touchAction: 'none',
-                                        cursor: hoveringLayerId ? 'grab' : 'default',
-                                        border: '2px solid #000',
-                                        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.22), 4px 4px 0 #000',
-                                    }}
-                                />
+                                <>
+                                    <canvas
+                                        ref={canvasRef}
+                                        onPointerDown={handlePointerDown}
+                                        onPointerMove={handlePointerMove}
+                                        onPointerUp={endDrag}
+                                        onPointerCancel={endDrag}
+                                        style={{
+                                            maxWidth: 'calc(100% - 24px)',
+                                            maxHeight: 'calc(100% - 24px)',
+                                            width: 'auto',
+                                            height: 'auto',
+                                            objectFit: 'contain',
+                                            display: 'block',
+                                            touchAction: 'none',
+                                            cursor: hoveringLayerId ? 'grab' : 'default',
+                                            border: '2px solid #000',
+                                            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.22), 4px 4px 0 #000',
+                                        }}
+                                    />
+                                    {bgImage && confirmResetOpen && (
+                                        <div
+                                            className="text-behind-confirm-pop"
+                                            style={{
+                                                position: 'fixed',
+                                                right: 12,
+                                                bottom: 'calc(84px + env(safe-area-inset-bottom, 0px))',
+                                                zIndex: 60,
+                                                maxWidth: 'min(300px, calc(100vw - 24px))',
+                                                backgroundColor: '#fff',
+                                                border: '2px solid #000',
+                                                boxShadow: '4px 4px 0 #000',
+                                                padding: '12px 14px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 10,
+                                            }}
+                                        >
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 900, fontFamily: 'monospace' }}>
+                                                RESET THE PHOTOS YOU PUT HERE?
+                                            </span>
+                                            <span style={{ fontSize: '0.62rem', color: '#555', fontFamily: 'monospace', lineHeight: 1.4 }}>
+                                                Clears your photo, cutout and background dim. This cannot be undone.
+                                            </span>
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                                <button
+                                                    type="button"
+                                                    className="brutalist-button brutalist-button-primary"
+                                                    style={{ flex: 1, padding: '8px 10px', fontSize: '0.7rem' }}
+                                                    onClick={() => {
+                                                        setConfirmResetOpen(false);
+                                                        handleResetPhotos();
+                                                    }}
+                                                >
+                                                    YES, RESET
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="brutalist-button"
+                                                    style={{ flex: 1, padding: '8px 10px', fontSize: '0.7rem' }}
+                                                    onClick={() => setConfirmResetOpen(false)}
+                                                >
+                                                    NO, KEEP
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {cutoutError && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                bottom: 12,
+                                                left: 12,
+                                                right: 12,
+                                                backgroundColor: '#fff',
+                                                border: '2px solid #ef4444',
+                                                boxShadow: '4px 4px 0 #000',
+                                                padding: '12px 14px',
+                                                zIndex: 35,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 8,
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <AlertTriangle size={18} color="#dc2626" />
+                                                    <span style={{ fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', color: '#b91c1c' }}>
+                                                        BACKGROUND REMOVAL FAILED
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCutoutError(null)}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: '0.85rem', padding: '0 4px' }}
+                                                    title="Dismiss"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                            <div style={{ fontSize: '0.66rem', color: '#444', fontFamily: 'monospace', lineHeight: 1.4 }}>
+                                                {cutoutError}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                                                <button
+                                                    type="button"
+                                                    className="brutalist-button brutalist-button-primary"
+                                                    style={{ flex: 1, padding: '7px 10px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                                                    onClick={() => {
+                                                        setCutoutError(null);
+                                                        void handleAutoCutout();
+                                                    }}
+                                                >
+                                                    <span>RETRY CUTOUT</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="brutalist-button"
+                                                    style={{ padding: '7px 10px', fontSize: '0.7rem' }}
+                                                    onClick={() => cutoutInputRef.current?.click()}
+                                                >
+                                                    <span>UPLOAD PNG CUTOUT</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {matte?.busy && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                inset: 0,
+                                                backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                                                backdropFilter: 'blur(6px)',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                padding: 24,
+                                                zIndex: 25,
+                                            }}
+                                        >
+                                            {/* Shimmering Skeleton of the image */}
+                                            <div
+                                                className="ck-skeleton-box"
+                                                style={{
+                                                    width: Math.min(260, canvasW ? Math.round((canvasW / Math.max(canvasW, canvasH)) * 220) : 200),
+                                                    height: Math.min(260, canvasH ? Math.round((canvasH / Math.max(canvasW, canvasH)) * 220) : 200),
+                                                    backgroundColor: '#e5e7eb',
+                                                    border: '2px solid #000',
+                                                    boxShadow: '4px 4px 0 #000',
+                                                    borderRadius: 12,
+                                                    marginBottom: 16,
+                                                    position: 'relative',
+                                                    overflow: 'hidden',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <div className="ck-skeleton-shimmer" />
+                                                <Scissors size={32} style={{ color: '#000', zIndex: 2 }} />
+                                            </div>
+
+                                            {/* Status & Progress Info */}
+                                            <div style={{ textAlign: 'center', maxWidth: 320, width: '100%' }}>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 900, fontFamily: 'monospace', color: '#000', marginBottom: 4 }}>
+                                                    {matte.message || 'Extracting Subject…'}
+                                                </div>
+                                                <div style={{ fontSize: '0.66rem', color: '#666', marginBottom: 10 }}>
+                                                    {matte.message.includes('fetch') || matte.message.includes('Downloading')
+                                                        ? 'Fetching AI engine files — one time only, then kept offline.'
+                                                        : 'Cutting out subject — This takes a few seconds'}
+                                                </div>
+                                                <div style={{ width: '100%', maxWidth: 220, height: 8, background: '#fff', border: '1.5px solid #000', margin: '0 auto', overflow: 'hidden' }}>
+                                                    <div
+                                                        style={{
+                                                            height: '100%',
+                                                            width: `${Math.max(6, Math.min(100, matte.percent))}%`,
+                                                            background: '#FFE500',
+                                                            transition: 'width 0.2s ease-out',
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <div
                                     onClick={() => bgInputRef.current?.click()}
@@ -1240,18 +1426,39 @@ export default function TextBehindPage() {
                                         or click to browse
                                     </div>
                                     <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.04em', background: '#FFE500', border: '1.5px solid #000', padding: '2px 8px' }}>
-                                        {cutoutMode === 'manual'
-                                            ? 'MANUAL MODE · ADD YOUR OWN PNG NEXT'
-                                            : cutoutMode === 'browser'
-                                                ? 'SUBJECT CUTS OUT AUTOMATICALLY · ON YOUR DEVICE'
-                                                : 'SUBJECT CUTS OUT AUTOMATICALLY · ON THE SERVER'}
+                                        ON-DEVICE AI CUTOUT · 100% PRIVATE & FAST
                                     </span>
+                                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1.5px dashed #d4d4d4' }}>
+                                        <div style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.05em', color: '#525252', marginBottom: 8 }}>
+                                            POSTERS MADE WITH TEXT BEHIND IMAGE
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+                                            {[
+                                                { src: '/assets/text-behind/demo-cruise-poster.jpg', alt: 'Travel poster with giant CRUISE text layered behind the photo subject' },
+                                                { src: '/assets/text-behind/demo-earth-poster.jpg', alt: 'Earth poster with EARTH typography behind the subject — depth text effect' },
+                                                { src: '/assets/text-behind/demo-portrait-poster.jpg', alt: 'Portrait poster with bold text behind the person, on-device background remover cutout' },
+                                                { src: '/assets/text-behind/demo-egypt-poster.jpg', alt: 'Egypt travel poster with EGYPT text behind the subject' },
+                                            ].map((demo) => (
+                                                <NextImage
+                                                    key={demo.src}
+                                                    src={demo.src}
+                                                    alt={demo.alt}
+                                                    width={150}
+                                                    height={100}
+                                                    style={{ border: '1.5px solid #000', borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#a3a3a3', marginTop: 6, fontFamily: 'monospace' }}>
+                                            giant type sandwiched behind your subject · free · no signup
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
                         {bgImage && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 6px', flexShrink: 0 }}>
+                            <div className="text-behind-meta-strip" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 6px', flexShrink: 0 }}>
                                 <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#666' }}>
                                     {canvasW} × {canvasH}px · Active: #{layers.findIndex((l) => l.id === activeLayerId) + 1} ({activeLayer.depth.toUpperCase()})
                                 </span>
@@ -1274,642 +1481,624 @@ export default function TextBehindPage() {
                             paddingRight: 6,
                         }}
                     >
-                        {/* 1. Images Intake */}
-                        <div className="brutalist-card" style={{ padding: 14 }}>
-                            {sectionTitle(<ImagePlus size={14} />, '1 · Photos & Cutout')}
-                            <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleBgFile(e.target.files?.[0] ?? null)} />
-                            <input ref={cutoutInputRef} type="file" accept="image/png,image/*" style={{ display: 'none' }} onChange={(e) => handleCutoutFile(e.target.files?.[0] ?? null)} />
-                            {/* HOW DO YOU WANT TO BUILD THE SANDWICH? Pick a mode first —
-                                the card then shows ONLY the flow that matches the choice. */}
-                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 5 }}>
-                                HOW DO YOU WANT TO ADD THE SUBJECT?
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 10 }}>
-                                {([
-                                    { m: 'manual' as CutoutMode, label: 'MY OWN PNG', sub: 'I HAVE BOTH IMAGES' },
-                                    { m: 'browser' as CutoutMode, label: 'CUT ON MY DEVICE', sub: 'FREE · RECOMMENDED' },
-                                    { m: 'server' as CutoutMode, label: 'CUT ON SERVER', sub: 'ANY SUBJECT' },
-                                ]).map(({ m, label, sub }) => (
-                                    <button
-                                        key={m}
-                                        className={cutoutMode === m ? 'brutalist-button brutalist-button-primary' : 'brutalist-button'}
-                                        style={{
-                                            padding: '6px 4px',
-                                            fontSize: '0.56rem',
-                                            lineHeight: 1.25,
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            gap: 2,
-                                        }}
-                                        onClick={() => setCutoutMode(m)}
-                                    >
-                                        <span>{label}</span>
-                                        <span style={{ fontSize: '0.48rem', color: cutoutMode === m ? '#000' : '#777', fontWeight: 700 }}>{sub}</span>
-                                    </button>
-                                ))}
-                            </div>
+                        {/* Hidden File Inputs */}
+                        <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleBgFile(e.target.files?.[0] ?? null)} />
+                        <input ref={cutoutInputRef} type="file" accept="image/png,image/*" style={{ display: 'none' }} onChange={(e) => handleCutoutFile(e.target.files?.[0] ?? null)} />
 
-                            {cutoutMode === 'manual' ? (
-                                <>
-                                    <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>
-                                        UPLOAD THE PHOTO, THEN YOUR ALREADY-TRANSPARENT SUBJECT PNG. THE PNG SITS ON TOP OF YOUR TEXT.
-                                    </div>
-                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
-                                        1 · BACKGROUND PHOTO {bgInfo ? '✓' : ''}
-                                    </button>
-                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => cutoutInputRef.current?.click()}>
-                                        2 · SUBJECT CUTOUT PNG {cutoutInfo ? '✓' : ''}
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', marginBottom: 8 }}>
-                                        {cutoutMode === 'browser'
-                                            ? 'THE CUTOUT IS COMPUTED RIGHT HERE IN YOUR BROWSER — NOTHING LEAVES YOUR MACHINE. THE FIRST RUN DOWNLOADS THE ENGINE ONE TIME (KEPT IN INDEXEDDB).'
-                                            : 'THE PHOTO GOES TO THE CREATORKIT WORKER AND THE CUTOUT COMES BACK AS A PNG — WORKS FOR ANY SUBJECT.'}
-                                    </div>
-                                    {cutoutMode === 'browser' && (
-                                        <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
-                                            {(Object.entries(BROWSER_MODELS) as [BrowserModel, typeof BROWSER_MODELS[BrowserModel]][]).map(
-                                                ([key, { label, sub }]) => (
-                                                    <button
-                                                        key={key}
-                                                        className={browserModel === key ? 'brutalist-button brutalist-button-primary' : 'brutalist-button'}
-                                                        style={{ flex: 1, padding: '5px 3px', fontSize: '0.52rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
-                                                        onClick={() => setBrowserModel(key)}
-                                                    >
-                                                        <span>{label}</span>
-                                                        <span style={{ fontSize: '0.46rem', color: browserModel === key ? '#000' : '#777', fontWeight: 700 }}>{sub}</span>
-                                                    </button>
-                                                ),
-                                            )}
-                                        </div>
-                                    )}
-                                    {cutoutMode === 'browser' && browserModel !== 'isnet_quint8' && (
-                                        <div style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, color: '#b00', marginBottom: 8, lineHeight: 1.4 }}>
-                                            ⚠ {BROWSER_MODELS[browserModel].label} CAN FREEZE THIS TAB — OR YOUR WHOLE PHONE — FOR UP TO ~15 SECONDS WHILE IT CUTS. THAT'S NORMAL; DON'T CLOSE THE PAGE.
-                                        </div>
-                                    )}
-                                    {cutoutMode === 'browser' && (
-                                        <div style={{ fontSize: '0.48rem', fontFamily: 'monospace', color: '#999', fontWeight: 700, marginBottom: 8 }}>
-                                            SAME AI, HIGHER PRECISION — THE GAIN IS FINER EDGES (HAIR/FUR) AT FULL ZOOM; PREVIEWS MAY LOOK IDENTICAL.
-                                        </div>
-                                    )}
-                                    <button className="brutalist-button" style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }} onClick={() => bgInputRef.current?.click()}>
-                                        1 · UPLOAD THE PHOTO {bgInfo ? '✓' : ''}
-                                    </button>
-                                    <button
-                                        className="brutalist-button brutalist-button-primary"
-                                        style={{ width: '100%', padding: '8px 10px', fontSize: '0.72rem', marginBottom: 6 }}
-                                        disabled={!!matte?.busy}
-                                        onClick={() => void handleAutoCutout(cutoutMode === 'server' ? 'server' : 'browser')}
-                                    >
-                                        {cutoutMode === 'browser' ? '↻ RE-CUT ON MY DEVICE' : '↻ RE-CUT ON THE SERVER'}
-                                    </button>
-                                </>
-                            )}
-                            {bgInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 6 }}>{bgInfo}</div>}
-                            {cutoutInfo && <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginBottom: 2 }}>{cutoutInfo}</div>}
-                            {bgImage && (
-                                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1.5px solid #eee' }}>
-                                    <TactileScrubber
-                                        label="BACKGROUND DIM"
-                                        value={Math.round(bgDim * 100)}
-                                        min={0}
-                                        max={85}
-                                        step={5}
-                                        onChange={(v) => setBgDim(v / 100)}
-                                        formatValue={(v) => (v === 0 ? 'OFF' : `${v}%`)}
-                                        presets={[
-                                            { label: 'OFF', value: 0 },
-                                            { label: 'SUBTLE', value: 25 },
-                                            { label: 'MOODY', value: 50 },
-                                            { label: 'NIGHT', value: 75 },
-                                        ]}
-                                        width="100%"
-                                    />
-                                </div>
-                            )}
-                            {matte && (
-                                <div style={{ marginTop: 8, padding: '6px 8px', border: '1.5px solid #000', background: '#fafafa' }}>
-                                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: matte.busy ? '#000' : '#b00' }}>
-                                        {matte.busy ? `${matte.message} (${matte.percent}%)` : matte.message}
-                                    </div>
-                                    {matte.busy && (
-                                        <div style={{ height: 6, background: '#fff', border: '1px solid #000', marginTop: 4 }}>
-                                            <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, matte.percent))}%`, background: '#FFE500' }} />
-                                        </div>
-                                    )}
-                                    {!matte.busy && (
-                                        <button className="brutalist-button" style={{ padding: '3px 8px', fontSize: '0.56rem', marginTop: 5 }} onClick={() => setMatte(null)}>
-                                            DISMISS
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                            <button
-                                className="brutalist-button"
-                                style={{ width: '100%', padding: '5px 10px', fontSize: '0.62rem', marginTop: 6 }}
-                                onClick={() => {
-                                    setBgImage(null);
-                                    setBgInfo('');
-                                    setCutoutImage(null);
-                                    setCutoutInfo('');
-                                    setMatte(null);
-                                    setBgDim(0);
-                                    bgFileRef.current = null;
-                                    setExportNote('');
-                                    void idbClear(['bg', 'cutout']);
-                                }}
-                            >
-                                RESET IMAGES
+                        {/* Mobile sidebar header (mobile only) — context + jump back to the stage */}
+                        <div className="text-behind-drawer-bar">
+                            <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, letterSpacing: '0.04em' }}>
+                                POSTER CONTROLS · {layers.length} TEXT {layers.length === 1 ? 'BOX' : 'BOXES'}
+                            </span>
+                            <button type="button" onClick={() => setMobileStudioTab('stage')}>
+                                <Eye size={13} />
+                                <span>VIEW</span>
                             </button>
                         </div>
 
-                        {/* 2. Text Boxes & Typography */}
-                        <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {/* Multi-Textbox Selector */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 10, borderBottom: '1.5px solid #000' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    {sectionTitle(<TypeIcon size={14} />, `Text Boxes (${layers.length})`)}
+                        {/* Desktop Continuous Cards Column */}
+                        <div className="text-behind-desktop-cards">
+                            {/* 1. Photos & Subject Cutout Card */}
+                            <div className="brutalist-card" style={{ padding: 14 }}>
+                                {sectionTitle(<ImagePlus size={14} />, 'Photos & Cutout')}
+                                <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666', marginBottom: 10 }}>
+                                    STANDARDIZED CANVAS RENDERING · 100% PRIVATE ON-DEVICE AI
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                                    <button
+                                        className="brutalist-button brutalist-button-primary"
+                                        style={{ padding: '9px 8px', fontSize: '0.72rem' }}
+                                        onClick={() => bgInputRef.current?.click()}
+                                    >
+                                        {bgImage ? 'CHANGE PHOTO ↻' : '+ UPLOAD PHOTO'}
+                                    </button>
                                     <button
                                         type="button"
-                                        onClick={handleAddTextBox}
                                         className="brutalist-button"
-                                        style={{
-                                            padding: '4px 8px',
-                                            fontSize: '0.64rem',
-                                            fontFamily: 'monospace',
-                                            fontWeight: 900,
-                                            background: '#FFDD00',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 4,
-                                        }}
+                                        style={{ padding: '9px 8px', fontSize: '0.72rem' }}
+                                        disabled={!bgImage || !!matte?.busy}
+                                        onClick={() => void handleAutoCutout()}
                                     >
-                                        <Plus size={12} /> ADD TEXT BOX
+                                        {matte?.busy ? 'CUTTING OUT…' : '↻ RE-CUT SUBJECT'}
                                     </button>
                                 </div>
 
-                                {/* Layer Pill Bar */}
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {layers.map((l, index) => {
-                                        const isActive = l.id === activeLayerId;
-                                        return (
-                                            <button
-                                                key={l.id}
-                                                type="button"
-                                                onClick={() => setActiveLayerId(l.id)}
-                                                style={{
-                                                    padding: '5px 8px',
-                                                    border: '2px solid #000',
-                                                    background: isActive ? '#FFDD00' : '#fff',
-                                                    boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.68rem',
-                                                    fontFamily: 'monospace',
-                                                    fontWeight: 900,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: 6,
-                                                }}
-                                            >
-                                                <span style={{ opacity: 0.6 }}>#{index + 1}</span>
-                                                <span>{l.text ? applyCase(l.text.slice(0, 9), l.caseMode, l.uppercase) : 'EMPTY'}</span>
-                                                <span
-                                                    style={{
-                                                        fontSize: '0.52rem',
-                                                        padding: '1px 4px',
-                                                        background: l.depth === 'behind' ? '#e0e7ff' : '#fef3c7',
-                                                        color: l.depth === 'behind' ? '#3730a3' : '#92400e',
-                                                        border: '1px solid #000',
-                                                    }}
-                                                >
-                                                    {l.depth === 'behind' ? 'BEHIND' : 'FRONT'}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                {cutoutInfo ? (
+                                    <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#16a34a', marginBottom: 8, padding: '6px 8px', background: '#f0fdf4', border: '1.5px solid #16a34a' }}>
+                                        ✓ {cutoutInfo}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#888', marginBottom: 8 }}>
+                                        {bgImage ? 'Subject cutout not generated yet.' : 'Upload a photo to extract the subject.'}
+                                    </div>
+                                )}
 
-                                {/* Active Box Actions */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                                    <div style={{ display: 'flex', gap: 4 }}>
+                                {bgInfo && (
+                                    <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#000', marginBottom: 8, padding: '4px 6px', background: '#f5f5f5', border: '1px solid #ddd' }}>
+                                        PHOTO: {bgInfo}
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    className="brutalist-button"
+                                    style={{ width: '100%', padding: '6px 10px', fontSize: '0.66rem', marginBottom: 8 }}
+                                    onClick={() => cutoutInputRef.current?.click()}
+                                >
+                                    UPLOAD CUSTOM SUBJECT PNG
+                                </button>
+
+                                {bgImage && (
+                                    <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1.5px solid #eee' }}>
+                                        <TactileScrubber
+                                            label="BACKGROUND DIM"
+                                            value={Math.round(bgDim * 100)}
+                                            min={0}
+                                            max={85}
+                                            step={5}
+                                            onChange={(v) => setBgDim(v / 100)}
+                                            formatValue={(v) => (v === 0 ? 'OFF' : `${v}%`)}
+                                            presets={[
+                                                { label: 'OFF', value: 0 },
+                                                { label: 'SUBTLE', value: 25 },
+                                                { label: 'MOODY', value: 50 },
+                                                { label: 'NIGHT', value: 75 },
+                                            ]}
+                                            width="100%"
+                                        />
+                                    </div>
+                                )}
+
+                                {bgImage && (
+                                    <button
+                                        className="brutalist-button"
+                                        style={{ width: '100%', padding: '5px 10px', fontSize: '0.6rem', marginTop: 10 }}
+                                        onClick={() => setConfirmResetOpen(true)}
+                                    >
+                                        RESET / REMOVE PHOTO
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* 2. Text Boxes & Typography Card */}
+                            <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {/* Multi-Textbox Selector */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 10, borderBottom: '1.5px solid #000' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        {sectionTitle(<TypeIcon size={14} />, `Text Boxes (${layers.length})`)}
                                         <button
                                             type="button"
-                                            onClick={handleDuplicateActiveTextBox}
+                                            onClick={handleAddTextBox}
+                                            className="brutalist-button"
                                             style={{
-                                                padding: '3px 6px',
-                                                fontSize: '0.58rem',
+                                                padding: '4px 8px',
+                                                fontSize: '0.64rem',
                                                 fontFamily: 'monospace',
-                                                fontWeight: 700,
-                                                border: '1px solid #000',
-                                                background: '#fff',
-                                                cursor: 'pointer',
+                                                fontWeight: 900,
+                                                background: '#FFDD00',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: 3,
+                                                gap: 4,
                                             }}
                                         >
-                                            <Copy size={10} /> DUP
+                                            <Plus size={12} /> ADD TEXT BOX
                                         </button>
-                                        {layers.length > 1 && (
+                                    </div>
+
+                                    {/* Layer Pill Bar */}
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {layers.map((l, index) => {
+                                            const isActive = l.id === activeLayerId;
+                                            return (
+                                                <button
+                                                    key={l.id}
+                                                    type="button"
+                                                    onClick={() => setActiveLayerId(l.id)}
+                                                    style={{
+                                                        padding: '5px 8px',
+                                                        border: '2px solid #000',
+                                                        background: isActive ? '#FFDD00' : '#fff',
+                                                        boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.68rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 6,
+                                                    }}
+                                                >
+                                                    <span style={{ opacity: 0.6 }}>#{index + 1}</span>
+                                                    <span>{l.text ? applyCase(l.text.slice(0, 9), l.caseMode, l.uppercase) : 'EMPTY'}</span>
+                                                    <span
+                                                        style={{
+                                                            fontSize: '0.52rem',
+                                                            padding: '1px 4px',
+                                                            background: l.depth === 'behind' ? '#e0e7ff' : '#fef3c7',
+                                                            color: l.depth === 'behind' ? '#3730a3' : '#92400e',
+                                                            border: '1px solid #000',
+                                                        }}
+                                                    >
+                                                        {l.depth === 'behind' ? 'BEHIND' : 'FRONT'}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Active Box Actions */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                                        <div style={{ display: 'flex', gap: 4 }}>
                                             <button
                                                 type="button"
-                                                onClick={handleDeleteActiveTextBox}
+                                                onClick={handleDuplicateActiveTextBox}
                                                 style={{
                                                     padding: '3px 6px',
                                                     fontSize: '0.58rem',
                                                     fontFamily: 'monospace',
                                                     fontWeight: 700,
-                                                    border: '1px solid #ff4d4d',
-                                                    color: '#b91c1c',
-                                                    background: '#fff5f5',
+                                                    border: '1px solid #000',
+                                                    background: '#fff',
                                                     cursor: 'pointer',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: 3,
                                                 }}
                                             >
-                                                <Trash2 size={10} /> DEL
+                                                <Copy size={10} /> DUP
                                             </button>
-                                        )}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 4 }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => patchLayer({ depth: 'behind' })}
-                                            style={{
-                                                padding: '3px 6px',
-                                                fontSize: '0.58rem',
-                                                fontFamily: 'monospace',
-                                                fontWeight: 900,
-                                                border: '1px solid #000',
-                                                background: layer.depth === 'behind' ? '#000' : '#fff',
-                                                color: layer.depth === 'behind' ? '#fff' : '#000',
-                                                cursor: 'pointer',
-                                            }}
-                                        >
-                                            BEHIND CUTOUT
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => patchLayer({ depth: 'front' })}
-                                            style={{
-                                                padding: '3px 6px',
-                                                fontSize: '0.58rem',
-                                                fontFamily: 'monospace',
-                                                fontWeight: 900,
-                                                border: '1px solid #000',
-                                                background: layer.depth === 'front' ? '#000' : '#fff',
-                                                color: layer.depth === 'front' ? '#fff' : '#000',
-                                                cursor: 'pointer',
-                                            }}
-                                        >
-                                            IN FRONT
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Text Input Area */}
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                    <span style={labelStyle}>TEXT CONTENT</span>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>LINE BREAKS SUPPORTED</span>
-                                </div>
-                                <textarea
-                                    value={layer.text}
-                                    onChange={(e) => patchLayer({ text: e.target.value })}
-                                    rows={2}
-                                    style={{
-                                        width: '100%',
-                                        border: '2px solid #000',
-                                        padding: '6px 8px',
-                                        fontSize: '0.85rem',
-                                        fontWeight: 700,
-                                        fontFamily: 'monospace',
-                                        resize: 'vertical',
-                                        boxSizing: 'border-box',
-                                    }}
-                                    placeholder="TYPE YOUR TEXT..."
-                                />
-                            </div>
-
-                            {/* 75+ Google Fonts Selector with Search, Cursive & Categories */}
-                            <div style={{ position: 'relative' }} ref={fontDropdownRef}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={labelStyle}>GOOGLE FONTS ({POSTER_FONTS.length}+ VARIATIONS)</span>
-                                    <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#166534', background: '#dcfce7', padding: '1px 5px', border: '1px solid #166534' }}>
-                                        {fontById(layer.fontId).category.toUpperCase()}
-                                    </span>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setFontDropdownOpen((prev) => !prev)}
-                                    style={{
-                                        width: '100%',
-                                        marginTop: 4,
-                                        border: '2px solid #000',
-                                        padding: '8px 10px',
-                                        background: '#fff',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        cursor: 'pointer',
-                                        boxShadow: fontDropdownOpen ? '3px 3px 0 #000' : '2px 2px 0 #000',
-                                        textAlign: 'left',
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontFamily: fontById(layer.fontId).family, fontSize: '1.05rem', fontWeight: layer.weight || fontById(layer.fontId).weight, fontStyle: layer.italic ? 'italic' : 'normal', color: '#000' }}>
-                                            {fontById(layer.fontId).name}
-                                        </div>
-                                        <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>
-                                            {fontById(layer.fontId).category} · {layer.weight || fontById(layer.fontId).weight} {layer.italic ? '· Italic' : ''}
-                                        </div>
-                                    </div>
-                                    <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                                        {fontDropdownOpen ? '▲ CLOSE' : `▼ ${POSTER_FONTS.length} FONTS`}
-                                    </span>
-                                </button>
-
-                                {/* Dropdown Menu with Category Filter & Search */}
-                                {fontDropdownOpen && (
-                                    <div
-                                        style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: 0,
-                                            right: 0,
-                                            marginTop: 4,
-                                            background: '#fff',
-                                            border: '2px solid #000',
-                                            boxShadow: '4px 4px 0 #000',
-                                            zIndex: 70,
-                                            maxHeight: 360,
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                        }}
-                                    >
-                                        {/* Search Bar */}
-                                        <div style={{ padding: '8px', borderBottom: '1.5px solid #000', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <Search size={14} style={{ opacity: 0.6 }} />
-                                            <input
-                                                type="text"
-                                                value={fontSearch}
-                                                onChange={(e) => setFontSearch(e.target.value)}
-                                                placeholder="Search 75+ fonts (cursive, script, gothic, graffiti, sans...)"
-                                                style={{
-                                                    flex: 1,
-                                                    border: '1px solid #ccc',
-                                                    padding: '5px 7px',
-                                                    fontSize: '0.72rem',
-                                                    fontFamily: 'monospace',
-                                                    outline: 'none',
-                                                }}
-                                            />
-                                            {fontSearch && (
+                                            {layers.length > 1 && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => setFontSearch('')}
-                                                    style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2 }}
+                                                    onClick={handleDeleteActiveTextBox}
+                                                    style={{
+                                                        padding: '3px 6px',
+                                                        fontSize: '0.58rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 700,
+                                                        border: '1px solid #ff4d4d',
+                                                        color: '#b91c1c',
+                                                        background: '#fff5f5',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 3,
+                                                    }}
                                                 >
-                                                    <X size={12} />
+                                                    <Trash2 size={10} /> DEL
                                                 </button>
                                             )}
                                         </div>
-
-                                        {/* Category Filter Tabs */}
-                                        <div style={{ display: 'flex', borderBottom: '1.5px solid #000', background: '#f4f4f5', overflowX: 'auto', flexShrink: 0 }}>
-                                            {(['All', 'Tabloid', 'Sans', 'Serif', 'Cursive', 'Graffiti', 'Gothic', 'Typewriter'] as const).map((cat) => {
-                                                const isActive = fontCategory === cat;
-                                                return (
-                                                    <button
-                                                        key={cat}
-                                                        type="button"
-                                                        onClick={() => setFontCategory(cat)}
-                                                        style={{
-                                                            flex: '1 0 auto',
-                                                            padding: '6px 8px',
-                                                            border: 'none',
-                                                            borderRight: '1px solid #ddd',
-                                                            background: isActive ? '#000' : 'transparent',
-                                                            color: isActive ? '#FFE500' : '#000',
-                                                            fontFamily: 'monospace',
-                                                            fontWeight: 900,
-                                                            fontSize: '0.6rem',
-                                                            cursor: 'pointer',
-                                                            textTransform: 'uppercase',
-                                                            whiteSpace: 'nowrap',
-                                                        }}
-                                                    >
-                                                        {cat === 'Cursive' ? 'Cursive / Script' : cat === 'Graffiti' ? 'Graffiti / Brush' : cat}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Font List Items */}
-                                        <div style={{ flex: 1, overflowY: 'auto' }}>
-                                            {filteredFonts.length === 0 ? (
-                                                <div style={{ padding: 16, textAlign: 'center', fontSize: '0.68rem', fontFamily: 'monospace', color: '#888' }}>
-                                                    No fonts matching &ldquo;{fontSearch}&rdquo;
-                                                </div>
-                                            ) : (
-                                                filteredFonts.map((f) => {
-                                                    const isSelected = layer.fontId === f.id;
-                                                    return (
-                                                        <button
-                                                            key={f.id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                patchLayer({ fontId: f.id });
-                                                                setFontDropdownOpen(false);
-                                                                void ensurePosterFontReady(f.id, layer.weight, layer.italic);
-                                                            }}
-                                                            style={{
-                                                                width: '100%',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '9px 12px',
-                                                                background: isSelected ? '#FFDD00' : '#fff',
-                                                                border: 'none',
-                                                                borderBottom: '1px solid #e5e5e5',
-                                                                cursor: 'pointer',
-                                                                textAlign: 'left',
-                                                            }}
-                                                            onMouseEnter={(e) => {
-                                                                if (!isSelected) e.currentTarget.style.background = '#f4f4f5';
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                if (!isSelected) e.currentTarget.style.background = '#fff';
-                                                            }}
-                                                        >
-                                                            <div>
-                                                                <span style={{ fontFamily: f.family, fontSize: '1.05rem', fontWeight: f.weight, color: '#000' }}>
-                                                                    {f.name}
-                                                                </span>
-                                                                <span style={{ marginLeft: 6, fontSize: '0.52rem', fontFamily: 'monospace', background: '#eee', color: '#333', padding: '1px 5px', border: '1px solid #ccc', fontWeight: 700 }}>
-                                                                    {f.category}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{ fontFamily: f.family, fontSize: '0.92rem', color: isSelected ? '#000' : '#666', letterSpacing: '0.04em' }}>
-                                                                {layer.text ? applyCase(layer.text.slice(0, 10), layer.caseMode, layer.uppercase) : 'POSTER'}
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Hero Quick-Audition Chips: Anton first, no sparkles/emojis */}
-                                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                                    {[
-                                        { id: 'anton', label: 'ANTON' },
-                                        { id: 'bebas-neue', label: 'BEBAS' },
-                                        { id: 'archivo-black', label: 'ARCHIVO' },
-                                        { id: 'inter', label: 'INTER' },
-                                        { id: 'playfair', label: 'PLAYFAIR' },
-                                        { id: 'cinzel', label: 'CINZEL' },
-                                        { id: 'syne', label: 'SYNE' },
-                                        { id: 'space-mono', label: 'SPACE MONO' },
-                                        { id: 'pacifico', label: 'PACIFICO' },
-                                        { id: 'great-vibes', label: 'GREAT VIBES' },
-                                        { id: 'dancing-script', label: 'DANCING' },
-                                        { id: 'lobster', label: 'LOBSTER' },
-                                        { id: 'mr-dafoe', label: 'MR DAFOE' },
-                                        { id: 'unifraktur', label: 'GOTHIC' },
-                                        { id: 'permanent-marker', label: 'MARKER' },
-                                    ].map((chip) => {
-                                        const f = fontById(chip.id);
-                                        const isSelected = layer.fontId === chip.id;
-                                        return (
+                                        <div style={{ display: 'flex', gap: 4 }}>
                                             <button
-                                                key={chip.id}
                                                 type="button"
-                                                onClick={() => {
-                                                    patchLayer({ fontId: chip.id });
-                                                    void ensurePosterFontReady(chip.id, layer.weight, layer.italic);
-                                                }}
+                                                onClick={() => patchLayer({ depth: 'behind' })}
                                                 style={{
-                                                    padding: '3px 8px',
-                                                    fontSize: '0.62rem',
-                                                    fontFamily: f.family,
-                                                    border: '1.5px solid #000',
-                                                    background: isSelected ? '#FFDD00' : '#fff',
-                                                    boxShadow: isSelected ? '1.5px 1.5px 0 #000' : 'none',
+                                                    padding: '3px 6px',
+                                                    fontSize: '0.58rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    border: '1px solid #000',
+                                                    background: layer.depth === 'behind' ? '#000' : '#fff',
+                                                    color: layer.depth === 'behind' ? '#fff' : '#000',
                                                     cursor: 'pointer',
-                                                    fontWeight: f.weight,
-                                                    whiteSpace: 'nowrap',
                                                 }}
                                             >
-                                                {chip.label}
+                                                BEHIND CUTOUT
                                             </button>
-                                        );
-                                    })}
+                                            <button
+                                                type="button"
+                                                onClick={() => patchLayer({ depth: 'front' })}
+                                                style={{
+                                                    padding: '3px 6px',
+                                                    fontSize: '0.58rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    border: '1px solid #000',
+                                                    background: layer.depth === 'front' ? '#000' : '#fff',
+                                                    color: layer.depth === 'front' ? '#fff' : '#000',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                IN FRONT
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Typographic Variations (Weight, Italic, Case, 3D Shadow) */}
-                            <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={labelStyle}>TYPOGRAPHIC VARIATIONS</span>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#2563eb' }}>
-                                        WEIGHT · SLANT · CASE
-                                    </span>
+                                {/* Text Input Area */}
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                        <span style={labelStyle}>TEXT CONTENT</span>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>LINE BREAKS SUPPORTED</span>
+                                    </div>
+                                    <textarea
+                                        value={layer.text}
+                                        onChange={(e) => patchLayer({ text: e.target.value })}
+                                        rows={2}
+                                        style={{
+                                            width: '100%',
+                                            border: '2px solid #000',
+                                            padding: '6px 8px',
+                                            fontSize: '0.85rem',
+                                            fontWeight: 700,
+                                            fontFamily: 'monospace',
+                                            resize: 'vertical',
+                                            boxSizing: 'border-box',
+                                        }}
+                                        placeholder="TYPE YOUR TEXT..."
+                                    />
                                 </div>
 
-                                {/* Weight variations */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>WEIGHT VARIATION</span>
-                                    <div style={{ display: 'flex', gap: 4 }}>
-                                        {[
-                                            { weight: 400, label: 'REGULAR (400)' },
-                                            { weight: 700, label: 'BOLD (700)' },
-                                            { weight: 900, label: 'HEAVY (900)' },
-                                        ].map((w) => {
-                                            const active = (layer.weight || fontById(layer.fontId).weight) === w.weight;
-                                            return (
-                                                <button
-                                                    key={w.weight}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        patchLayer({ weight: w.weight });
-                                                        void ensurePosterFontReady(layer.fontId, w.weight, layer.italic);
-                                                    }}
-                                                    className="brutalist-button"
+                                {/* 75+ Google Fonts Selector with Search, Cursive & Categories */}
+                                <div style={{ position: 'relative' }} ref={fontDropdownRef}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={labelStyle}>GOOGLE FONTS ({POSTER_FONTS.length}+ VARIATIONS)</span>
+                                        <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#166534', background: '#dcfce7', padding: '1px 5px', border: '1px solid #166534' }}>
+                                            {fontById(layer.fontId).category.toUpperCase()}
+                                        </span>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setFontDropdownOpen((prev) => !prev)}
+                                        style={{
+                                            width: '100%',
+                                            marginTop: 4,
+                                            border: '2px solid #000',
+                                            padding: '8px 10px',
+                                            background: '#fff',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            cursor: 'pointer',
+                                            boxShadow: fontDropdownOpen ? '3px 3px 0 #000' : '2px 2px 0 #000',
+                                            textAlign: 'left',
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ fontFamily: fontById(layer.fontId).family, fontSize: '1.05rem', fontWeight: layer.weight || fontById(layer.fontId).weight, fontStyle: layer.italic ? 'italic' : 'normal', color: '#000' }}>
+                                                {fontById(layer.fontId).name}
+                                            </div>
+                                            <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>
+                                                {fontById(layer.fontId).category} · {layer.weight || fontById(layer.fontId).weight} {layer.italic ? '· Italic' : ''}
+                                            </div>
+                                        </div>
+                                        <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                                            {fontDropdownOpen ? '▲ CLOSE' : `▼ ${POSTER_FONTS.length} FONTS`}
+                                        </span>
+                                    </button>
+
+                                    {/* Dropdown Menu with Category Filter & Search */}
+                                    {fontDropdownOpen && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                top: '100%',
+                                                left: 0,
+                                                right: 0,
+                                                marginTop: 4,
+                                                background: '#fff',
+                                                border: '2px solid #000',
+                                                boxShadow: '4px 4px 0 #000',
+                                                zIndex: 70,
+                                                maxHeight: 360,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                            }}
+                                        >
+                                            {/* Search Bar */}
+                                            <div style={{ padding: '8px', borderBottom: '1.5px solid #000', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <Search size={14} style={{ opacity: 0.6 }} />
+                                                <input
+                                                    type="text"
+                                                    value={fontSearch}
+                                                    onChange={(e) => setFontSearch(e.target.value)}
+                                                    placeholder="Search 75+ fonts (cursive, script, gothic, graffiti, sans...)"
                                                     style={{
                                                         flex: 1,
-                                                        padding: '4px 4px',
-                                                        fontSize: '0.6rem',
-                                                        fontWeight: 900,
-                                                        background: active ? '#FFDD00' : '#fff',
+                                                        border: '1px solid #ccc',
+                                                        padding: '5px 7px',
+                                                        fontSize: '0.72rem',
+                                                        fontFamily: 'monospace',
+                                                        outline: 'none',
+                                                    }}
+                                                />
+                                                {fontSearch && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFontSearch('')}
+                                                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2 }}
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Category Filter Tabs */}
+                                            <div style={{ display: 'flex', borderBottom: '1.5px solid #000', background: '#f4f4f5', overflowX: 'auto', flexShrink: 0 }}>
+                                                {(['All', 'Tabloid', 'Sans', 'Serif', 'Cursive', 'Graffiti', 'Gothic', 'Typewriter'] as const).map((cat) => {
+                                                    const isActive = fontCategory === cat;
+                                                    return (
+                                                        <button
+                                                            key={cat}
+                                                            type="button"
+                                                            onClick={() => setFontCategory(cat)}
+                                                            style={{
+                                                                flex: '1 0 auto',
+                                                                padding: '6px 8px',
+                                                                border: 'none',
+                                                                borderRight: '1px solid #ddd',
+                                                                background: isActive ? '#000' : 'transparent',
+                                                                color: isActive ? '#FFE500' : '#000',
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 900,
+                                                                fontSize: '0.6rem',
+                                                                cursor: 'pointer',
+                                                                textTransform: 'uppercase',
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                        >
+                                                            {cat === 'Cursive' ? 'Cursive / Script' : cat === 'Graffiti' ? 'Graffiti / Brush' : cat}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Font List Items */}
+                                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                                {filteredFonts.length === 0 ? (
+                                                    <div style={{ padding: 16, textAlign: 'center', fontSize: '0.68rem', fontFamily: 'monospace', color: '#888' }}>
+                                                        No fonts matching &ldquo;{fontSearch}&rdquo;
+                                                    </div>
+                                                ) : (
+                                                    filteredFonts.map((f) => {
+                                                        const isSelected = layer.fontId === f.id;
+                                                        return (
+                                                            <button
+                                                                key={f.id}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    patchLayer({ fontId: f.id });
+                                                                    setFontDropdownOpen(false);
+                                                                    void ensurePosterFontReady(f.id, layer.weight, layer.italic);
+                                                                }}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    padding: '9px 12px',
+                                                                    background: isSelected ? '#FFDD00' : '#fff',
+                                                                    border: 'none',
+                                                                    borderBottom: '1px solid #e5e5e5',
+                                                                    cursor: 'pointer',
+                                                                    textAlign: 'left',
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    if (!isSelected) e.currentTarget.style.background = '#f4f4f5';
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    if (!isSelected) e.currentTarget.style.background = '#fff';
+                                                                }}
+                                                            >
+                                                                <div>
+                                                                    <span style={{ fontFamily: f.family, fontSize: '1.05rem', fontWeight: f.weight, color: '#000' }}>
+                                                                        {f.name}
+                                                                    </span>
+                                                                    <span style={{ marginLeft: 6, fontSize: '0.52rem', fontFamily: 'monospace', background: '#eee', color: '#333', padding: '1px 5px', border: '1px solid #ccc', fontWeight: 700 }}>
+                                                                        {f.category}
+                                                                    </span>
+                                                                </div>
+                                                                <span style={{ fontFamily: f.family, fontSize: '0.92rem', color: isSelected ? '#000' : '#666', letterSpacing: '0.04em' }}>
+                                                                    {layer.text ? applyCase(layer.text.slice(0, 10), layer.caseMode, layer.uppercase) : 'POSTER'}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Hero Quick-Audition Chips: Anton first, no sparkles/emojis */}
+                                    <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                                        {[
+                                            { id: 'anton', label: 'ANTON' },
+                                            { id: 'bebas-neue', label: 'BEBAS' },
+                                            { id: 'archivo-black', label: 'ARCHIVO' },
+                                            { id: 'inter', label: 'INTER' },
+                                            { id: 'playfair', label: 'PLAYFAIR' },
+                                            { id: 'cinzel', label: 'CINZEL' },
+                                            { id: 'syne', label: 'SYNE' },
+                                            { id: 'space-mono', label: 'SPACE MONO' },
+                                            { id: 'pacifico', label: 'PACIFICO' },
+                                            { id: 'great-vibes', label: 'GREAT VIBES' },
+                                            { id: 'dancing-script', label: 'DANCING' },
+                                            { id: 'lobster', label: 'LOBSTER' },
+                                            { id: 'mr-dafoe', label: 'MR DAFOE' },
+                                            { id: 'unifraktur', label: 'GOTHIC' },
+                                            { id: 'permanent-marker', label: 'MARKER' },
+                                        ].map((chip) => {
+                                            const f = fontById(chip.id);
+                                            const isSelected = layer.fontId === chip.id;
+                                            return (
+                                                <button
+                                                    key={chip.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        patchLayer({ fontId: chip.id });
+                                                        void ensurePosterFontReady(chip.id, layer.weight, layer.italic);
+                                                    }}
+                                                    style={{
+                                                        padding: '3px 8px',
+                                                        fontSize: '0.62rem',
+                                                        fontFamily: f.family,
+                                                        border: '1.5px solid #000',
+                                                        background: isSelected ? '#FFDD00' : '#fff',
+                                                        boxShadow: isSelected ? '1.5px 1.5px 0 #000' : 'none',
+                                                        cursor: 'pointer',
+                                                        fontWeight: f.weight,
+                                                        whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    {w.label}
+                                                    {chip.label}
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
 
-                                {/* Slant & Case Variations */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 8 }}>
-                                    {/* Slant / Italic */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>SLANT</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const next = !layer.italic;
-                                                patchLayer({ italic: next });
-                                                void ensurePosterFontReady(layer.fontId, layer.weight, next);
-                                            }}
-                                            className="brutalist-button"
-                                            style={{
-                                                padding: '5px 4px',
-                                                fontSize: '0.62rem',
-                                                fontWeight: 900,
-                                                fontStyle: layer.italic ? 'italic' : 'normal',
-                                                background: layer.italic ? '#FFDD00' : '#fff',
-                                            }}
-                                        >
-                                            {layer.italic ? '✓ ITALIC' : 'NORMAL'}
-                                        </button>
+                                {/* Typographic Variations (Weight, Italic, Case, 3D Shadow) */}
+                                <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={labelStyle}>TYPOGRAPHIC VARIATIONS</span>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#2563eb' }}>
+                                            WEIGHT · SLANT · CASE
+                                        </span>
                                     </div>
 
-                                    {/* Letter Case */}
+                                    {/* Weight variations */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>LETTER CASE</span>
-                                        <div style={{ display: 'flex', gap: 3 }}>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>WEIGHT VARIATION</span>
+                                        <div style={{ display: 'flex', gap: 4 }}>
                                             {[
-                                                { mode: 'uppercase' as const, label: 'ABC' },
-                                                { mode: 'capitalize' as const, label: 'Abc' },
-                                                { mode: 'lowercase' as const, label: 'abc' },
-                                                { mode: 'original' as const, label: 'Aa' },
-                                            ].map((c) => {
-                                                const active = (layer.caseMode ?? (layer.uppercase ? 'uppercase' : 'original')) === c.mode;
+                                                { weight: 400, label: 'REGULAR (400)' },
+                                                { weight: 700, label: 'BOLD (700)' },
+                                                { weight: 900, label: 'HEAVY (900)' },
+                                            ].map((w) => {
+                                                const active = (layer.weight || fontById(layer.fontId).weight) === w.weight;
                                                 return (
                                                     <button
-                                                        key={c.mode}
+                                                        key={w.weight}
                                                         type="button"
-                                                        onClick={() => patchLayer({ caseMode: c.mode, uppercase: c.mode === 'uppercase' })}
+                                                        onClick={() => {
+                                                            patchLayer({ weight: w.weight });
+                                                            void ensurePosterFontReady(layer.fontId, w.weight, layer.italic);
+                                                        }}
                                                         className="brutalist-button"
                                                         style={{
                                                             flex: 1,
-                                                            padding: '5px 2px',
+                                                            padding: '4px 4px',
                                                             fontSize: '0.6rem',
                                                             fontWeight: 900,
                                                             background: active ? '#FFDD00' : '#fff',
                                                         }}
                                                     >
-                                                        {c.label}
+                                                        {w.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Slant & Case Variations */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 8 }}>
+                                        {/* Slant / Italic */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>SLANT</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = !layer.italic;
+                                                    patchLayer({ italic: next });
+                                                    void ensurePosterFontReady(layer.fontId, layer.weight, next);
+                                                }}
+                                                className="brutalist-button"
+                                                style={{
+                                                    padding: '5px 4px',
+                                                    fontSize: '0.62rem',
+                                                    fontWeight: 900,
+                                                    fontStyle: layer.italic ? 'italic' : 'normal',
+                                                    background: layer.italic ? '#FFDD00' : '#fff',
+                                                }}
+                                            >
+                                                {layer.italic ? '✓ ITALIC' : 'NORMAL'}
+                                            </button>
+                                        </div>
+
+                                        {/* Letter Case */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>LETTER CASE</span>
+                                            <div style={{ display: 'flex', gap: 3 }}>
+                                                {[
+                                                    { mode: 'uppercase' as const, label: 'ABC' },
+                                                    { mode: 'capitalize' as const, label: 'Abc' },
+                                                    { mode: 'lowercase' as const, label: 'abc' },
+                                                    { mode: 'original' as const, label: 'Aa' },
+                                                ].map((c) => {
+                                                    const active = (layer.caseMode ?? (layer.uppercase ? 'uppercase' : 'original')) === c.mode;
+                                                    return (
+                                                        <button
+                                                            key={c.mode}
+                                                            type="button"
+                                                            onClick={() => patchLayer({ caseMode: c.mode, uppercase: c.mode === 'uppercase' })}
+                                                            className="brutalist-button"
+                                                            style={{
+                                                                flex: 1,
+                                                                padding: '5px 2px',
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 900,
+                                                                background: active ? '#FFDD00' : '#fff',
+                                                            }}
+                                                        >
+                                                            {c.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Shadow & 3D Depth Modes */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>SHADOW & 3D DEPTH</span>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
+                                            {[
+                                                { mode: 'none' as const, label: 'FLAT', desc: 'No Shadow' },
+                                                { mode: 'soft' as const, label: 'SOFT', desc: 'Drop Glow' },
+                                                { mode: 'hard' as const, label: '3D HARD', desc: 'Brutalist' },
+                                                { mode: 'neon' as const, label: 'NEON', desc: 'Vivid Glow' },
+                                            ].map((s) => {
+                                                const active = (layer.shadowMode ?? (layer.shadow ? 'soft' : 'none')) === s.mode;
+                                                return (
+                                                    <button
+                                                        key={s.mode}
+                                                        type="button"
+                                                        onClick={() => patchLayer({ shadowMode: s.mode, shadow: s.mode !== 'none' })}
+                                                        className="brutalist-button"
+                                                        style={{
+                                                            padding: '4px 2px',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            alignItems: 'center',
+                                                            gap: 2,
+                                                            background: active ? '#FFDD00' : '#fff',
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: '0.6rem', fontWeight: 900, fontFamily: 'monospace' }}>{s.label}</span>
+                                                        <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', color: active ? '#000' : '#666' }}>{s.desc}</span>
                                                     </button>
                                                 );
                                             })}
@@ -1917,405 +2106,446 @@ export default function TextBehindPage() {
                                     </div>
                                 </div>
 
-                                {/* Shadow & 3D Depth Modes */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 700, color: '#555' }}>SHADOW & 3D DEPTH</span>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
-                                        {[
-                                            { mode: 'none' as const, label: 'FLAT', desc: 'No Shadow' },
-                                            { mode: 'soft' as const, label: 'SOFT', desc: 'Drop Glow' },
-                                            { mode: 'hard' as const, label: '3D HARD', desc: 'Brutalist' },
-                                            { mode: 'neon' as const, label: 'NEON', desc: 'Vivid Glow' },
-                                        ].map((s) => {
-                                            const active = (layer.shadowMode ?? (layer.shadow ? 'soft' : 'none')) === s.mode;
+                                {/* Color Selection */}
+                                <div>
+                                    <span style={labelStyle}>TEXT COLOR</span>
+                                    <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {TEXT_COLORS.map((c) => (
+                                            <button
+                                                key={c}
+                                                onClick={() => patchLayer({ color: c })}
+                                                style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                    border: layer.color === c ? '3px solid #000' : '2px solid #999',
+                                                    background: c,
+                                                    cursor: 'pointer',
+                                                    padding: 0,
+                                                }}
+                                                aria-label={`Color ${c}`}
+                                            />
+                                        ))}
+                                        <input
+                                            type="color"
+                                            value={layer.color}
+                                            onChange={(e) => patchLayer({ color: e.target.value })}
+                                            style={{ width: 28, height: 24, border: '2px solid #999', padding: 0, cursor: 'pointer', background: 'none' }}
+                                        />
+                                    </div>
+                                    {/* Custom hex / RGB entry */}
+                                    <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>CUSTOM</span>
+                                        <input
+                                            value={customColorInput}
+                                            onChange={(e) => {
+                                                const raw = e.target.value;
+                                                setCustomColorInput(raw);
+                                                const parsed = parseColorInput(raw);
+                                                if (parsed) patchLayer({ color: parsed });
+                                            }}
+                                            placeholder="#FFDD00 · fda · rgb(255,221,0)"
+                                            spellCheck={false}
+                                            style={{
+                                                flex: 1,
+                                                minWidth: 120,
+                                                padding: '4px 6px',
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                border: `2px solid ${customColorInput && !parseColorInput(customColorInput) ? '#DC2626' : '#999'}`,
+                                                outline: 'none',
+                                            }}
+                                        />
+                                        {['R', 'G', 'B'].map((ch, i) => {
+                                            const hex = layer.color.replace('#', '').padEnd(6, '0');
+                                            const val = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
                                             return (
-                                                <button
-                                                    key={s.mode}
-                                                    type="button"
-                                                    onClick={() => patchLayer({ shadowMode: s.mode, shadow: s.mode !== 'none' })}
-                                                    className="brutalist-button"
-                                                    style={{
-                                                        padding: '4px 2px',
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        alignItems: 'center',
-                                                        gap: 2,
-                                                        background: active ? '#FFDD00' : '#fff',
-                                                    }}
-                                                >
-                                                    <span style={{ fontSize: '0.6rem', fontWeight: 900, fontFamily: 'monospace' }}>{s.label}</span>
-                                                    <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', color: active ? '#000' : '#666' }}>{s.desc}</span>
-                                                </button>
+                                                <span key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                                    <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>{ch}</span>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        max={255}
+                                                        value={val}
+                                                        onChange={(e) => {
+                                                            const parts = [0, 1, 2].map((j) => parseInt(hex.slice(j * 2, j * 2 + 2), 16));
+                                                            parts[i] = Math.max(0, Math.min(255, Number(e.target.value) || 0));
+                                                            const next = '#' + parts.map((n) => n.toString(16).padStart(2, '0')).join('');
+                                                            patchLayer({ color: next });
+                                                            setCustomColorInput(next);
+                                                        }}
+                                                        style={{ width: 44, padding: '4px 3px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700, border: '2px solid #999', outline: 'none' }}
+                                                    />
+                                                </span>
                                             );
                                         })}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Color Selection */}
-                            <div>
-                                <span style={labelStyle}>TEXT COLOR</span>
-                                <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                                    {TEXT_COLORS.map((c) => (
-                                        <button
-                                            key={c}
-                                            onClick={() => patchLayer({ color: c })}
-                                            style={{
-                                                width: 24,
-                                                height: 24,
-                                                border: layer.color === c ? '3px solid #000' : '2px solid #999',
-                                                background: c,
-                                                cursor: 'pointer',
-                                                padding: 0,
-                                            }}
-                                            aria-label={`Color ${c}`}
+                            {/* 3. Style Presets, Blends & Geometry Card */}
+                            <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                {sectionTitle(<Scissors size={14} />, 'Style & Poster Looks')}
+
+                                {/* 10 Style Presets */}
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                        <span style={labelStyle}>POSTER VARIATION PRESETS (10)</span>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>ONE-TAP LOOKS</span>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
+                                        {TEXT_PRESETS.map((p) => (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => patchLayer(p.patch)}
+                                                className="brutalist-button"
+                                                style={{ padding: '5px 3px', display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}
+                                                title={p.name}
+                                            >
+                                                <span style={{ width: '100%', height: 14, border: '2px solid #000', background: p.swatch, display: 'block' }} />
+                                                <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, textAlign: 'center', lineHeight: 1.1 }}>
+                                                    {p.name}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Sizing Controls */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        {([true, false] as const).map((fit) => (
+                                            <button
+                                                key={String(fit)}
+                                                onClick={() => patchLayer({ fitToWidth: fit })}
+                                                className="brutalist-button"
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '5px 6px',
+                                                    fontSize: '0.62rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    background: layer.fitToWidth === fit ? '#FFDD00' : '#fff',
+                                                }}
+                                            >
+                                                {fit ? 'FIT TO WIDTH' : 'FIXED SIZE'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {layer.fitToWidth ? (
+                                        <TactileScrubber
+                                            label="WIDTH"
+                                            value={Math.round(layer.widthPct)}
+                                            min={10}
+                                            max={100}
+                                            step={1}
+                                            onChange={(v) => patchLayer({ widthPct: v })}
+                                            formatValue={(v) => `${v}%`}
+                                            presets={[{ label: 'TIGHT', value: 70 }, { label: 'WIDE', value: 86 }, { label: 'FULL', value: 100 }]}
+                                            width="100%"
                                         />
-                                    ))}
-                                    <input
-                                        type="color"
-                                        value={layer.color}
-                                        onChange={(e) => patchLayer({ color: e.target.value })}
-                                        style={{ width: 28, height: 24, border: '2px solid #999', padding: 0, cursor: 'pointer', background: 'none' }}
-                                    />
+                                    ) : (
+                                        <TactileScrubber
+                                            label="SIZE"
+                                            value={Math.round(layer.heightPct)}
+                                            min={2}
+                                            max={40}
+                                            step={0.5}
+                                            onChange={(v) => patchLayer({ heightPct: v })}
+                                            formatValue={(v) => `${v}%`}
+                                            width="100%"
+                                        />
+                                    )}
                                 </div>
-                                {/* Custom hex / RGB entry */}
-                                <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>CUSTOM</span>
-                                    <input
-                                        value={customColorInput}
-                                        onChange={(e) => {
-                                            const raw = e.target.value;
-                                            setCustomColorInput(raw);
-                                            const parsed = parseColorInput(raw);
-                                            if (parsed) patchLayer({ color: parsed });
-                                        }}
-                                        placeholder="#FFDD00 · fda · rgb(255,221,0)"
-                                        spellCheck={false}
-                                        style={{
-                                            flex: 1,
-                                            minWidth: 120,
-                                            padding: '4px 6px',
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            border: `2px solid ${customColorInput && !parseColorInput(customColorInput) ? '#DC2626' : '#999'}`,
-                                            outline: 'none',
-                                        }}
-                                    />
-                                    {['R', 'G', 'B'].map((ch, i) => {
-                                        const hex = layer.color.replace('#', '').padEnd(6, '0');
-                                        const val = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-                                        return (
-                                            <span key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                                <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>{ch}</span>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    max={255}
-                                                    value={val}
-                                                    onChange={(e) => {
-                                                        const parts = [0, 1, 2].map((j) => parseInt(hex.slice(j * 2, j * 2 + 2), 16));
-                                                        parts[i] = Math.max(0, Math.min(255, Number(e.target.value) || 0));
-                                                        const next = '#' + parts.map((n) => n.toString(16).padStart(2, '0')).join('');
-                                                        patchLayer({ color: next });
-                                                        setCustomColorInput(next);
-                                                    }}
-                                                    style={{ width: 44, padding: '4px 3px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700, border: '2px solid #999', outline: 'none' }}
-                                                />
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* 3. Style Presets, Blends & Geometry */}
-                        <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                            {sectionTitle(<Scissors size={14} />, '2 · Style & Poster Looks')}
-
-                            {/* 10 Style Presets */}
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                    <span style={labelStyle}>POSTER VARIATION PRESETS (10)</span>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>ONE-TAP LOOKS</span>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
-                                    {TEXT_PRESETS.map((p) => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => patchLayer(p.patch)}
-                                            className="brutalist-button"
-                                            style={{ padding: '5px 3px', display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}
-                                            title={p.name}
-                                        >
-                                            <span style={{ width: '100%', height: 14, border: '2px solid #000', background: p.swatch, display: 'block' }} />
-                                            <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, textAlign: 'center', lineHeight: 1.1 }}>
-                                                {p.name}
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Sizing Controls */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                <div style={{ display: 'flex', gap: 4 }}>
-                                    {([true, false] as const).map((fit) => (
-                                        <button
-                                            key={String(fit)}
-                                            onClick={() => patchLayer({ fitToWidth: fit })}
-                                            className="brutalist-button"
-                                            style={{
-                                                flex: 1,
-                                                padding: '5px 6px',
-                                                fontSize: '0.62rem',
-                                                fontFamily: 'monospace',
-                                                fontWeight: 900,
-                                                background: layer.fitToWidth === fit ? '#FFDD00' : '#fff',
-                                            }}
-                                        >
-                                            {fit ? 'FIT TO WIDTH' : 'FIXED SIZE'}
-                                        </button>
-                                    ))}
-                                </div>
-                                {layer.fitToWidth ? (
+                                {/* Spacing & Opacity */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     <TactileScrubber
-                                        label="WIDTH"
-                                        value={Math.round(layer.widthPct)}
+                                        label="LETTER SPACING"
+                                        value={Math.round(layer.letterSpacingEm * 100)}
+                                        min={-5}
+                                        max={30}
+                                        step={1}
+                                        onChange={(v) => patchLayer({ letterSpacingEm: v / 100 })}
+                                        formatValue={(v) => `${(v / 100).toFixed(2)}em`}
+                                        width="100%"
+                                    />
+                                    <TactileScrubber
+                                        label="OPACITY"
+                                        value={Math.round(layer.opacity * 100)}
                                         min={10}
                                         max={100}
                                         step={1}
-                                        onChange={(v) => patchLayer({ widthPct: v })}
+                                        onChange={(v) => patchLayer({ opacity: v / 100 })}
                                         formatValue={(v) => `${v}%`}
-                                        presets={[{ label: 'TIGHT', value: 70 }, { label: 'WIDE', value: 86 }, { label: 'FULL', value: 100 }]}
+                                        presets={[{ label: '50%', value: 50 }, { label: '80%', value: 80 }, { label: '100%', value: 100 }]}
                                         width="100%"
                                     />
-                                ) : (
-                                    <TactileScrubber
-                                        label="SIZE"
-                                        value={Math.round(layer.heightPct)}
-                                        min={2}
-                                        max={40}
-                                        step={0.5}
-                                        onChange={(v) => patchLayer({ heightPct: v })}
-                                        formatValue={(v) => `${v}%`}
-                                        width="100%"
-                                    />
-                                )}
-                            </div>
-
-                            {/* Spacing & Opacity */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                <TactileScrubber
-                                    label="LETTER SPACING"
-                                    value={Math.round(layer.letterSpacingEm * 100)}
-                                    min={-5}
-                                    max={30}
-                                    step={1}
-                                    onChange={(v) => patchLayer({ letterSpacingEm: v / 100 })}
-                                    formatValue={(v) => `${(v / 100).toFixed(2)}em`}
-                                    width="100%"
-                                />
-                                <TactileScrubber
-                                    label="OPACITY"
-                                    value={Math.round(layer.opacity * 100)}
-                                    min={10}
-                                    max={100}
-                                    step={1}
-                                    onChange={(v) => patchLayer({ opacity: v / 100 })}
-                                    formatValue={(v) => `${v}%`}
-                                    presets={[{ label: '50%', value: 50 }, { label: '80%', value: 80 }, { label: '100%', value: 100 }]}
-                                    width="100%"
-                                />
-                            </div>
-
-                            {/* Blend Mode */}
-                            <div style={{ padding: '8px 10px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                    <span style={labelStyle}>BLEND MODE</span>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: layer.blend === 'normal' ? '#15803d' : '#2563eb', background: layer.blend === 'normal' ? '#dcfce7' : '#dbeafe', padding: '1px 5px', border: '1px solid currentColor' }}>
-                                        {layer.blend === 'normal' ? 'SOLID' : layer.blend.toUpperCase()}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                                    {[
-                                        { id: 'normal', label: 'SOLID' },
-                                        { id: 'overlay', label: 'OVERLAY' },
-                                        { id: 'screen', label: 'SCREEN' },
-                                        { id: 'multiply', label: 'MULTIPLY' },
-                                    ].map((b) => {
-                                        const active = layer.blend === b.id;
-                                        return (
-                                            <button
-                                                key={b.id}
-                                                type="button"
-                                                onClick={() => patchLayer({ blend: b.id as BlendMode })}
-                                                className="brutalist-button"
-                                                style={{
-                                                    padding: '6px 2px',
-                                                    fontSize: '0.62rem',
-                                                    fontWeight: 900,
-                                                    fontFamily: 'monospace',
-                                                    textAlign: 'center',
-                                                    background: active ? '#FFDD00' : '#fff',
-                                                    boxShadow: active ? '1.5px 1.5px 0 #000' : 'none',
-                                                    border: '1.5px solid #000',
-                                                    whiteSpace: 'nowrap',
-                                                }}
-                                            >
-                                                {b.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Fill Mode & Gradient */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={labelStyle}>FILL TYPE</span>
-                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>
-                                        {layer.fillMode === 'solid' ? 'FLAT COLOR' : 'TWO-COLOR GRADIENT'}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                    {(['solid', 'gradient'] as const).map((mode) => (
-                                        <button
-                                            key={mode}
-                                            type="button"
-                                            onClick={() => patchLayer({ fillMode: mode })}
-                                            className="brutalist-button"
-                                            style={{
-                                                flex: 1,
-                                                padding: '6px 8px',
-                                                fontSize: '0.64rem',
-                                                fontFamily: 'monospace',
-                                                fontWeight: 900,
-                                                background: layer.fillMode === mode ? '#FFDD00' : '#fff',
-                                                boxShadow: layer.fillMode === mode ? '2px 2px 0 #000' : 'none',
-                                            }}
-                                        >
-                                            {mode === 'solid' ? 'SOLID' : 'GRADIENT'}
-                                        </button>
-                                    ))}
                                 </div>
 
-                                {layer.fillMode === 'gradient' && (
-                                    <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={labelStyle}>GRADIENT END COLOR</span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#555' }}>{layer.gradientColor2}</span>
-                                                <input
-                                                    type="color"
-                                                    value={layer.gradientColor2}
-                                                    onChange={(e) => patchLayer({ gradientColor2: e.target.value })}
-                                                    style={{ width: 28, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
-                                                />
-                                            </div>
-                                        </div>
-                                        <TactileScrubber
-                                            label="GRADIENT ANGLE"
-                                            value={Math.round(layer.gradientAngle)}
-                                            min={0}
-                                            max={360}
-                                            step={1}
-                                            onChange={(v) => patchLayer({ gradientAngle: v })}
-                                            formatValue={(v) => `${v}°`}
-                                            presets={[{ label: '0°', value: 0 }, { label: '45°', value: 45 }, { label: '90°', value: 90 }, { label: '180°', value: 180 }]}
-                                            width="100%"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Outline / Stroke */}
-                            <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <span style={labelStyle}>OUTLINE / STROKE</span>
-                                        <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: layer.strokeEm > 0 ? '#15803d' : '#888' }}>
-                                            {layer.strokeEm > 0 ? '● ON' : '○ OFF'}
+                                {/* Blend Mode */}
+                                <div style={{ padding: '8px 10px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                        <span style={labelStyle}>BLEND MODE</span>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: layer.blend === 'normal' ? '#15803d' : '#2563eb', background: layer.blend === 'normal' ? '#dcfce7' : '#dbeafe', padding: '1px 5px', border: '1px solid currentColor' }}>
+                                            {layer.blend === 'normal' ? 'SOLID' : layer.blend.toUpperCase()}
                                         </span>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#555' }}>{layer.strokeColor}</span>
-                                        <input
-                                            type="color"
-                                            value={layer.strokeColor}
-                                            onChange={(e) => patchLayer({ strokeColor: e.target.value })}
-                                            style={{ width: 28, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
-                                        />
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                                        {[
+                                            { id: 'normal', label: 'SOLID' },
+                                            { id: 'overlay', label: 'OVERLAY' },
+                                            { id: 'screen', label: 'SCREEN' },
+                                            { id: 'multiply', label: 'MULTIPLY' },
+                                        ].map((b) => {
+                                            const active = layer.blend === b.id;
+                                            return (
+                                                <button
+                                                    key={b.id}
+                                                    type="button"
+                                                    onClick={() => patchLayer({ blend: b.id as BlendMode })}
+                                                    className="brutalist-button"
+                                                    style={{
+                                                        padding: '6px 2px',
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 900,
+                                                        fontFamily: 'monospace',
+                                                        textAlign: 'center',
+                                                        background: active ? '#FFDD00' : '#fff',
+                                                        boxShadow: active ? '1.5px 1.5px 0 #000' : 'none',
+                                                        border: '1.5px solid #000',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {b.label}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
+
+                                {/* Fill Mode & Gradient */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={labelStyle}>FILL TYPE</span>
+                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666' }}>
+                                            {layer.fillMode === 'solid' ? 'FLAT COLOR' : 'TWO-COLOR GRADIENT'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        {(['solid', 'gradient'] as const).map((mode) => (
+                                            <button
+                                                key={mode}
+                                                type="button"
+                                                onClick={() => patchLayer({ fillMode: mode })}
+                                                className="brutalist-button"
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '6px 8px',
+                                                    fontSize: '0.64rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    background: layer.fillMode === mode ? '#FFDD00' : '#fff',
+                                                    boxShadow: layer.fillMode === mode ? '2px 2px 0 #000' : 'none',
+                                                }}
+                                            >
+                                                {mode === 'solid' ? 'SOLID' : 'GRADIENT'}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {layer.fillMode === 'gradient' && (
+                                        <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={labelStyle}>GRADIENT END COLOR</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#555' }}>{layer.gradientColor2}</span>
+                                                    <input
+                                                        type="color"
+                                                        value={layer.gradientColor2}
+                                                        onChange={(e) => patchLayer({ gradientColor2: e.target.value })}
+                                                        style={{ width: 28, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <TactileScrubber
+                                                label="GRADIENT ANGLE"
+                                                value={Math.round(layer.gradientAngle)}
+                                                min={0}
+                                                max={360}
+                                                step={1}
+                                                onChange={(v) => patchLayer({ gradientAngle: v })}
+                                                formatValue={(v) => `${v}°`}
+                                                presets={[{ label: '0°', value: 0 }, { label: '45°', value: 45 }, { label: '90°', value: 90 }, { label: '180°', value: 180 }]}
+                                                width="100%"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Outline / Stroke */}
+                                <div style={{ padding: '10px 12px', border: '1.5px solid #000', background: '#fafafa', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={labelStyle}>OUTLINE / STROKE</span>
+                                            <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: layer.strokeEm > 0 ? '#15803d' : '#888' }}>
+                                                {layer.strokeEm > 0 ? '● ON' : '○ OFF'}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#555' }}>{layer.strokeColor}</span>
+                                            <input
+                                                type="color"
+                                                value={layer.strokeColor}
+                                                onChange={(e) => patchLayer({ strokeColor: e.target.value })}
+                                                style={{ width: 28, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <TactileScrubber
+                                        label="OUTLINE WIDTH"
+                                        value={Math.round(layer.strokeEm * 100)}
+                                        min={0}
+                                        max={12}
+                                        step={0.5}
+                                        onChange={(v) => patchLayer({ strokeEm: v / 100 })}
+                                        formatValue={(v) => (v === 0 ? 'OFF' : `${(v / 100).toFixed(2)}em`)}
+                                        presets={[
+                                            { label: 'OFF', value: 0 },
+                                            { label: 'THIN', value: 2 },
+                                            { label: 'MED', value: 5 },
+                                            { label: 'BOLD', value: 8 },
+                                        ]}
+                                        width="100%"
+                                    />
+                                </div>
+
+                                {/* Rotation */}
                                 <TactileScrubber
-                                    label="OUTLINE WIDTH"
-                                    value={Math.round(layer.strokeEm * 100)}
+                                    label="ROTATION"
+                                    value={Math.round(layer.rotationDeg)}
                                     min={0}
-                                    max={12}
-                                    step={0.5}
-                                    onChange={(v) => patchLayer({ strokeEm: v / 100 })}
-                                    formatValue={(v) => (v === 0 ? 'OFF' : `${(v / 100).toFixed(2)}em`)}
-                                    presets={[
-                                        { label: 'OFF', value: 0 },
-                                        { label: 'THIN', value: 2 },
-                                        { label: 'MED', value: 5 },
-                                        { label: 'BOLD', value: 8 },
-                                    ]}
+                                    max={360}
+                                    step={1}
+                                    onChange={(v) => patchLayer({ rotationDeg: v })}
+                                    formatValue={(v) => `${v}°`}
+                                    presets={[{ label: '0°', value: 0 }, { label: '90°', value: 90 }, { label: '180°', value: 180 }, { label: '270°', value: 270 }]}
                                     width="100%"
                                 />
                             </div>
 
-                            {/* Rotation */}
-                            <TactileScrubber
-                                label="ROTATION"
-                                value={Math.round(layer.rotationDeg)}
-                                min={-45}
-                                max={45}
-                                step={1}
-                                onChange={(v) => patchLayer({ rotationDeg: v })}
-                                formatValue={(v) => `${v}°`}
-                                presets={[{ label: '0°', value: 0 }, { label: '-15°', value: -15 }, { label: '+15°', value: 15 }]}
-                                width="100%"
-                            />
+                            {/* 4. Export Card */}
+                            <div className="brutalist-card" style={{ padding: 14 }}>
+                                {sectionTitle(<Download size={14} />, 'Export Poster')}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                                    <button className="brutalist-button brutalist-button-primary" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 1)}>
+                                        PNG · NATIVE
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 2)}>
+                                        PNG · 2×
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 1)}>
+                                        JPG · NATIVE
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
+                                        JPG · 2×
+                                    </button>
+                                    <button
+                                        className="brutalist-button"
+                                        style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }}
+                                        disabled={!bgImage || exporting || sendingHandoff}
+                                        onClick={() => setHandoffModalOpen(true)}
+                                    >
+                                        → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
+                                    </button>
+                                </div>
+                                {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}
+                                {exportNote && !exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{exportNote}</div>}
+                                {!cutoutImage && bgImage && (
+                                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', marginTop: 6, lineHeight: 1.5 }}>
+                                        No cutout uploaded — text renders on top of photo. Add a transparent PNG for the behind-subject effect.
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        {/* 4. Export */}
-                        <div className="brutalist-card" style={{ padding: 14 }}>
-                            {sectionTitle(<Download size={14} />, '3 · Export Poster')}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-                                <button className="brutalist-button brutalist-button-primary" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 1)}>
-                                    PNG · NATIVE
-                                </button>
-                                <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 2)}>
-                                    PNG · 2×
-                                </button>
-                                <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 1)}>
-                                    JPG · NATIVE
-                                </button>
-                                <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
-                                    JPG · 2×
-                                </button>
-                                <button
-                                    className="brutalist-button"
-                                    style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }}
-                                    disabled={!bgImage || exporting || sendingHandoff}
-                                    onClick={() => setHandoffModalOpen(true)}
-                                >
-                                    → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
-                                </button>
-                            </div>
-                            {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}
-                            {exportNote && !exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{exportNote}</div>}
-                            {!cutoutImage && bgImage && (
-                                <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', marginTop: 6, lineHeight: 1.5 }}>
-                                    No cutout uploaded — text renders on top of photo. Add a transparent PNG for the behind-subject effect.
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </div>
             </div>
+
+            {/* Mobile floating mode pill (bouquet-studio style): stage ⇄ sidebar.
+                Never covers the canvas in stage mode; sits above the controls
+                in sidebar mode so the latest change is one tap away. */}
+            <button
+                type="button"
+                className="text-behind-edit-fab"
+                onClick={() => setMobileStudioTab((t) => (t === 'stage' ? 'sidebar' : 'stage'))}
+            >
+                {mobileStudioTab === 'stage' ? (
+                    <>
+                        <SlidersHorizontal size={14} />
+                        <span>{bgImage ? 'EDIT POSTER' : 'START EDITING'}</span>
+                    </>
+                ) : (
+                    <>
+                        <Eye size={14} />
+                        <span>VIEW POSTER</span>
+                    </>
+                )}
+            </button>
+
+            {/* ── CreatorKit Tools Navigation Drawer (bouquet-style slide-out) ── */}
+            {toolsOpen && (
+                <>
+                    <div className="text-behind-tools-backdrop" onClick={() => setToolsOpen(false)} />
+                    <aside className="text-behind-tools-drawer">
+                        <div className="text-behind-tools-head">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, letterSpacing: '0.04em' }}>
+                                    CREATORKIT TOOLS
+                                </span>
+                                <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', padding: '2px 6px', background: '#000', color: '#fff', fontWeight: 700 }}>
+                                    {ALL_TOOLS.length}
+                                </span>
+                            </div>
+                            <button type="button" onClick={() => setToolsOpen(false)} title="Close drawer">
+                                <X size={14} />
+                            </button>
+                        </div>
+                        <div className="text-behind-tools-search">
+                            <Link href="/" onClick={() => setToolsOpen(false)} className="text-behind-tools-home">
+                                <Home size={14} />
+                                <span>CREATORKIT HOME</span>
+                                <span style={{ fontSize: '0.55rem', color: '#d4d4d4' }}>HUB</span>
+                            </Link>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#a3a3a3' }} />
+                                <input
+                                    type="text"
+                                    value={toolSearch}
+                                    onChange={(e) => setToolSearch(e.target.value)}
+                                    placeholder="Filter tools..."
+                                    className="text-behind-tools-input"
+                                />
+                            </div>
+                        </div>
+                        <div className="text-behind-tools-list">
+                            {filteredTools.map((tool) => (
+                                <Link
+                                    key={tool.href}
+                                    href={tool.href}
+                                    onClick={() => setToolsOpen(false)}
+                                    className={`text-behind-tool-item${tool.href === '/text-behind' ? ' active' : ''}`}
+                                >
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 }}>{tool.label}</span>
+                                    <span style={{ fontSize: '0.55rem' }}>{tool.desc}</span>
+                                    <span className="text-behind-tool-hint">{tool.hint}</span>
+                                </Link>
+                            ))}
+                        </div>
+                    </aside>
+                </>
+            )}
 
             {/* Cross-Tool Handoff Format Choice Modal */}
             {handoffModalOpen && (
@@ -2466,27 +2696,374 @@ export default function TextBehindPage() {
                 .text-behind-controls-scroll::-webkit-scrollbar-thumb {
                     background: #000;
                 }
+                @keyframes ckShimmer {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(100%); }
+                }
+                .ck-skeleton-shimmer {
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+                    animation: ckShimmer 1.5s infinite;
+                }
+                .ck-skeleton-box {
+                    animation: ckPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+                }
+                @keyframes ckPulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.85; }
+                }
+                /* ── CreatorKit tools navigation drawer (bouquet-style slide-out) ── */
+                .text-behind-tools-backdrop {
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(0, 0, 0, 0.4);
+                    z-index: 70;
+                }
+                .text-behind-tools-drawer {
+                    position: fixed;
+                    top: 0;
+                    bottom: 0;
+                    left: 0;
+                    width: min(340px, 100vw);
+                    background: #fff;
+                    border-right: 2px solid #000;
+                    z-index: 71;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.25);
+                    animation: ckToolsSlideIn 0.2s ease-out;
+                }
+                @keyframes ckToolsSlideIn {
+                    from { transform: translateX(-100%); }
+                    to { transform: translateX(0); }
+                }
+                .text-behind-tools-head {
+                    height: 44px;
+                    padding: 0 12px;
+                    background: #fafafa;
+                    border-bottom: 2px solid #000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-shrink: 0;
+                }
+                .text-behind-tools-head > button {
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #fff;
+                    border: 1.5px solid #000;
+                    cursor: pointer;
+                }
+                .text-behind-tools-search {
+                    padding: 12px;
+                    border-bottom: 2px solid #000;
+                    background: #fafafa;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    flex-shrink: 0;
+                }
+                .text-behind-tools-home {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    justify-content: space-between;
+                    padding: 8px 10px;
+                    background: #000;
+                    color: #fff;
+                    border: 1.5px solid #000;
+                    font-family: monospace;
+                    font-size: 0.68rem;
+                    font-weight: 900;
+                    letter-spacing: 0.05em;
+                    box-shadow: 2px 2px 0 #000;
+                    text-decoration: none;
+                }
+                .text-behind-tools-input {
+                    width: 100%;
+                    padding: 8px 10px 8px 30px;
+                    border: 1.5px solid #000;
+                    background: #fff;
+                    font-family: monospace;
+                    font-size: 0.72rem;
+                    outline: none;
+                    box-sizing: border-box;
+                }
+                .text-behind-tools-list {
+                    flex: 1;
+                    min-height: 0;
+                    overflow-y: auto;
+                    padding: 12px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+                .text-behind-tool-item {
+                    display: grid;
+                    grid-template-columns: 1fr auto;
+                    grid-template-areas: 'label hint' 'desc hint';
+                    column-gap: 8px;
+                    padding: 10px;
+                    border: 2px solid #e7e5e4;
+                    background: #fff;
+                    text-decoration: none;
+                    color: #000;
+                    align-items: center;
+                }
+                .text-behind-tool-item span:nth-child(1) { grid-area: label; }
+                .text-behind-tool-item span:nth-child(2) { grid-area: desc; color: #78716c; line-height: 1.3; }
+                .text-behind-tool-item:hover { border-color: #000; background: #fafafa; }
+                .text-behind-tool-item.active {
+                    background: #000;
+                    color: #fff;
+                    border-color: #000;
+                    box-shadow: 2px 2px 0 #000;
+                }
+                .text-behind-tool-item.active span:nth-child(2) { color: #d4d4d4; }
+                .text-behind-tool-hint {
+                    grid-area: hint;
+                    font-family: monospace;
+                    font-size: 0.55rem;
+                    font-weight: 700;
+                    padding: 3px 6px;
+                    background: #f5f5f4;
+                    color: #57534e;
+                    align-self: start;
+                    white-space: nowrap;
+                }
+                .text-behind-tool-item.active .text-behind-tool-hint {
+                    background: #fff;
+                    color: #000;
+                }
+                @media (min-width: 981px) {
+                    .text-behind-desktop-cards {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        gap: 14px !important;
+                        height: 100% !important;
+                        min-height: 0 !important;
+                        overflow-y: auto !important;
+                        overflow-x: hidden !important;
+                        padding-right: 6px !important;
+                    }
+                    .text-behind-edit-fab,
+                    .text-behind-drawer-bar {
+                        display: none !important;
+                    }
+                }
                 @media (max-width: 980px) {
+                    /* Pin to the real viewport — no parent padding/background can
+                       leak a gap above or below the studio. */
                     .text-behind-root {
-                        height: auto !important;
-                        max-height: none !important;
-                        overflow: visible !important;
-                        padding-bottom: 40px !important;
+                        position: fixed !important;
+                        inset: 0 !important;
+                        height: 100% !important;
+                        max-height: 100% !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        width: 100% !important;
+                        background: #fff !important;
+                    }
+                    .text-behind-container {
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        gap: 0 !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        height: 100% !important;
+                    }
+                    .text-behind-header {
+                        padding: 8px 12px !important;
+                        border-bottom: 1.5px solid #000 !important;
+                        background: #fff !important;
+                        flex-shrink: 0 !important;
                     }
                     .text-behind-layout {
-                        grid-template-columns: 1fr !important;
-                        height: auto !important;
-                        gap: 20px !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        flex: 1 !important;
+                        min-height: 0 !important;
+                        overflow: hidden !important;
+                        gap: 0 !important;
+                        width: 100% !important;
                     }
+                    /* Canvas-first hero: the poster fills the whole screen while
+                       the drawer is closed — see everything, uninterrupted. */
                     .text-behind-viewport {
-                        height: 50vh !important;
-                        min-height: 280px !important;
-                        margin-bottom: 12px !important;
+                        flex: 1 1 auto !important;
+                        min-height: 0 !important;
+                        max-height: none !important;
+                        position: relative !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        margin: 0 !important;
+                        border: none !important;
+                        width: 100% !important;
+                        background-size: 16px 16px !important;
                     }
-                    .text-behind-controls-scroll {
+                    .text-behind-viewport canvas {
+                        max-width: 100% !important;
+                        max-height: 100% !important;
+                        width: auto !important;
                         height: auto !important;
-                        overflow-y: visible !important;
-                        padding-right: 0 !important;
+                    }
+                    /* Bouquet-faithful: in sidebar mode the controls own the
+                       ENTIRE screen — the canvas is never partially covered by
+                       a differently-colored panel. One tap on VIEW POSTER
+                       shows the change full-screen. */
+                    .text-behind-root.mode-sidebar .text-behind-viewport {
+                        display: none !important;
+                    }
+                    .text-behind-meta-strip {
+                        display: none !important;
+                    }
+                    /* Full control column: hidden until the drawer opens, then a
+                       complete scrollable panel — the SAME controls as desktop. */
+                    .text-behind-controls-scroll {
+                        display: none !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll {
+                        display: flex !important;
+                        flex: 1 1 auto !important;
+                        min-height: 0 !important;
+                        height: auto !important;
+                        overflow-y: auto !important;
+                        overflow-x: hidden !important;
+                        padding: 0 12px 32px !important;
+                        padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+                        background: #fff !important;
+                        -webkit-overflow-scrolling: touch !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll::-webkit-scrollbar {
+                        width: 4px;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll::-webkit-scrollbar-thumb {
+                        background: #000;
+                    }
+                    .text-behind-desktop-cards {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        gap: 14px !important;
+                    }
+                    .text-behind-desktop-cards .brutalist-card {
+                        padding: 14px 12px !important;
+                    }
+                    /* ---- Touch sizing: every control a real finger target ---- */
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll button {
+                        font-size: 0.78rem !important;
+                        min-height: 42px !important;
+                        max-width: 100% !important;
+                        padding: 8px 12px !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll button svg {
+                        width: 16px !important;
+                        height: 16px !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='text'],
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='number'],
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll textarea {
+                        font-size: 1rem !important; /* 16px stops iOS focus-zoom */
+                        min-height: 46px !important;
+                        box-sizing: border-box !important;
+                        max-width: 100% !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='range'] {
+                        min-height: 44px !important;
+                        height: 44px !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='color'] {
+                        width: 44px !important;
+                        height: 44px !important;
+                        min-width: 44px !important;
+                        border: 2px solid #000 !important;
+                        padding: 2px !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll select {
+                        font-size: 0.95rem !important;
+                        min-height: 44px !important;
+                        padding: 10px !important;
+                    }
+                    /* Dense desktop chip-grids -> roomy phone grids
+                       (inline styles are beaten by !important + attribute selectors) */
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll div[style*='repeat(5,'] {
+                        grid-template-columns: repeat(3, 1fr) !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-controls-scroll div[style*='repeat(4,'] {
+                        grid-template-columns: repeat(2, 1fr) !important;
+                    }
+                    /* Empty-state drop zone never overflows narrow phones
+                       (it's a clickable div with an inline min-width: 360px) */
+                    .text-behind-viewport div[style*='min-width:360px'] {
+                        min-width: 0 !important;
+                        max-width: 100% !important;
+                        box-sizing: border-box !important;
+                        margin: 12px !important;
+                    }
+                    /* Reset confirmation popover — real touch targets */
+                    .text-behind-confirm-pop button {
+                        min-height: 44px !important;
+                        font-size: 0.72rem !important;
+                    }
+                    /* Sticky sidebar header bar with VIEW button */
+                    .text-behind-root.mode-sidebar .text-behind-drawer-bar {
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        position: sticky !important;
+                        top: 0 !important;
+                        z-index: 30 !important;
+                        background: #fff !important;
+                        border-bottom: 2px solid #000 !important;
+                        margin: 0 -12px 10px !important;
+                        padding: 10px 14px !important;
+                        flex-shrink: 0 !important;
+                    }
+                    .text-behind-drawer-bar button {
+                        display: inline-flex !important;
+                        align-items: center !important;
+                        gap: 6px !important;
+                        background: #000 !important;
+                        color: #fff !important;
+                        border: 2px solid #000 !important;
+                        font-family: monospace !important;
+                        font-weight: 900 !important;
+                        font-size: 0.68rem !important;
+                        letter-spacing: 0.06em !important;
+                        padding: 6px 12px !important;
+                        cursor: pointer !important;
+                    }
+                    /* Floating EDIT trigger — bouquet-studio style */
+                    .text-behind-edit-fab {
+                        display: flex !important;
+                        position: fixed !important;
+                        bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+                        left: 50% !important;
+                        transform: translateX(-50%) !important;
+                        z-index: 60 !important;
+                        align-items: center !important;
+                        gap: 8px !important;
+                        background: #000 !important;
+                        color: #fff !important;
+                        border: 2px solid #000 !important;
+                        box-shadow: 3px 3px 0 #000, 0 10px 24px rgba(0, 0, 0, 0.35) !important;
+                        font-family: monospace !important;
+                        font-weight: 900 !important;
+                        font-size: 0.78rem !important;
+                        letter-spacing: 0.06em !important;
+                        padding: 12px 22px !important;
+                        cursor: pointer !important;
+                        white-space: nowrap !important;
+                    }
+                    .text-behind-root.mode-sidebar .text-behind-edit-fab {
+                        z-index: 65 !important;
                     }
                 }
             `}</style>

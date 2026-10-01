@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import BouquetViewer from './bouquet-viewer';
 import { getBouquetByShortId, type StoredBouquet } from '@/lib/supabase';
+import { SITE_BASE_URL } from '@/lib/seo';
 
 export const runtime = 'edge';
 
@@ -31,7 +32,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
         ? `“${message.length > 140 ? message.slice(0, 137) + '...' : message}” — A personalized botanical bouquet gift with a handwritten card.`
         : 'A personalized botanical flower bouquet gift with a handwritten card and printable keepsake.';
 
-    const canonicalUrl = `https://creatorkit.app/bouquet/${id}`;
+    const canonicalUrl = `${SITE_BASE_URL}/bouquet/${id}`;
 
     return {
         title,
@@ -46,7 +47,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
             siteName: 'CreatorKit',
             images: [
                 {
-                    url: 'https://creatorkit.app/assets/bouquet/flowers/rose-pink.webp',
+                    url: `${SITE_BASE_URL}/assets/bouquet/flowers/rose-pink.webp`,
                     width: 1200,
                     height: 630,
                     alt: title,
@@ -59,7 +60,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
             card: 'summary_large_image',
             title,
             description,
-            images: ['https://creatorkit.app/assets/bouquet/flowers/rose-pink.webp'],
+            images: [`${SITE_BASE_URL}/assets/bouquet/flowers/rose-pink.webp`],
             creator: '@creatorkit',
         },
         robots: {
@@ -112,7 +113,7 @@ export default async function BouquetPage({ params, searchParams }: Props) {
         scene_type: 'botanical-2d',
         season: 'spring',
         palette_id: 'classic-cream',
-        target_url: `https://creatorkit.app/bouquet/${id}`,
+        target_url: `${SITE_BASE_URL}/bouquet/${id}`,
         sender_name: sender || 'A Friend',
         recipient_name: recipient || 'Someone Special',
         message: message || 'Thinking of you and sending this freshly picked bouquet to brighten your day.',
@@ -146,7 +147,7 @@ export default async function BouquetPage({ params, searchParams }: Props) {
         provider: {
             '@type': 'Organization',
             name: 'CreatorKit',
-            url: 'https://creatorkit.app',
+            url: SITE_BASE_URL,
         },
     };
 

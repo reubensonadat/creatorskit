@@ -1,57 +1,49 @@
 import type { MetadataRoute } from 'next';
+import { SITE_BASE_URL } from '@/lib/seo';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = 'https://creatorkit.app';
     const now = new Date();
 
+    const entry = (
+        path: string,
+        priority: number,
+        changeFrequency: MetadataRoute.Sitemap[number]['changeFrequency'],
+    ): MetadataRoute.Sitemap[number] => ({
+        url: path === '/' ? `${SITE_BASE_URL}/` : `${SITE_BASE_URL}${path}`,
+        lastModified: now,
+        changeFrequency,
+        priority,
+    });
+
     return [
-        {
-            url: `${baseUrl}/bouquet`,
-            lastModified: now,
-            changeFrequency: 'daily',
-            priority: 1.0,
-        },
-        {
-            url: `${baseUrl}`,
-            lastModified: now,
-            changeFrequency: 'daily',
-            priority: 1.0,
-        },
-        {
-            url: `${baseUrl}/space-planner`,
-            lastModified: now,
-            changeFrequency: 'weekly',
-            priority: 0.8,
-        },
-        {
-            url: `${baseUrl}/thumbnail-lab`,
-            lastModified: now,
-            changeFrequency: 'weekly',
-            priority: 0.8,
-        },
-        {
-            url: `${baseUrl}/teleprompter`,
-            lastModified: now,
-            changeFrequency: 'weekly',
-            priority: 0.8,
-        },
-        {
-            url: `${baseUrl}/receipt`,
-            lastModified: now,
-            changeFrequency: 'weekly',
-            priority: 0.8,
-        },
-        {
-            url: `${baseUrl}/blog`,
-            lastModified: now,
-            changeFrequency: 'daily',
-            priority: 0.8,
-        },
-        {
-            url: `${baseUrl}/business`,
-            lastModified: now,
-            changeFrequency: 'monthly',
-            priority: 0.7,
-        },
+        // ── Home ────────────────────────────────────────────────────────────
+        entry('/', 1.0, 'daily'),
+
+        // ── Flagship pair: background remover ⇄ text behind image ──────────
+        // Unified theme, separate pages → two shots at the same queries.
+        entry('/background-replace', 0.95, 'daily'),
+        entry('/text-behind', 0.95, 'daily'),
+
+        // ── Everyday creator business tools ─────────────────────────────────
+        entry('/business', 0.9, 'daily'),
+        entry('/invoice', 0.85, 'weekly'),
+        entry('/receipt', 0.8, 'weekly'),
+
+        // ── Everyday studio tools ───────────────────────────────────────────
+        entry('/teleprompter', 0.85, 'daily'),
+        entry('/thumbnail-lab', 0.85, 'daily'),
+        entry('/auto-captions', 0.8, 'weekly'),
+        entry('/text-highlighter', 0.8, 'weekly'),
+        entry('/match-cut', 0.8, 'weekly'),
+
+        // ── Utility tools ───────────────────────────────────────────────────
+        entry('/resizer', 0.75, 'weekly'),
+        entry('/watermark', 0.75, 'weekly'),
+        entry('/carousel-slicer', 0.7, 'weekly'),
+        entry('/blog', 0.7, 'daily'),
+
+        // ── Secondary / in development ──────────────────────────────────────
+        entry('/video-grabber', 0.6, 'monthly'),
+        entry('/bouquet', 0.5, 'weekly'),
     ];
 }

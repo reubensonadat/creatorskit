@@ -18,10 +18,9 @@ import {
 import {
     removeBackgroundBrowser,
     removeBackgroundServer,
-    BROWSER_MODELS,
+    prewarmBackgroundEngine,
     type MatteEngine,
     type MatteProgress,
-    type BrowserModel,
 } from '@/lib/background-removal';
 import { putHandoffImage } from '@/lib/tool-handoff';
 
@@ -39,8 +38,6 @@ import { putHandoffImage } from '@/lib/tool-handoff';
  */
 
 const MODE_KEY = 'ck_bgrem_mode_v1';
-/** Engine quality choice — same key as /text-behind so the two tools stay in sync. */
-const QUALITY_KEY = 'ck_bgrem_quality_v1';
 type CutMode = MatteEngine;
 
 const CHECKERBOARD: React.CSSProperties = {
@@ -101,7 +98,6 @@ async function resultGet(key: 'original' | 'cutout'): Promise<Blob | null> {
 
 export default function BackgroundRemoverPage() {
     const [mode, setMode] = useState<CutMode>('browser');
-    const [browserModel, setBrowserModel] = useState<BrowserModel>('isnet_quint8');
     const [originalFile, setOriginalFile] = useState<File | null>(null);
     const [originalUrl, setOriginalUrl] = useState<string | null>(null);
     const [cutoutBlob, setCutoutBlob] = useState<Blob | null>(null);
@@ -124,6 +120,12 @@ export default function BackgroundRemoverPage() {
         return () => mq.removeEventListener('change', update);
     }, []);
 
+    // Warm the cutout engine silently after first interaction — the auto-cut
+    // that fires the moment a photo lands then starts instantly.
+    useEffect(() => {
+        prewarmBackgroundEngine();
+    }, []);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const runIdRef = useRef(0);
 
@@ -135,15 +137,6 @@ export default function BackgroundRemoverPage() {
     useEffect(() => {
         window.localStorage.setItem(MODE_KEY, mode);
     }, [mode]);
-
-    // restore + persist engine quality (shared with /text-behind)
-    useEffect(() => {
-        const saved = window.localStorage.getItem(QUALITY_KEY);
-        if (saved === 'isnet_quint8' || saved === 'isnet_fp16' || saved === 'isnet') setBrowserModel(saved);
-    }, []);
-    useEffect(() => {
-        window.localStorage.setItem(QUALITY_KEY, browserModel);
-    }, [browserModel]);
 
     // revoke object URLs when replaced/unmount
     useEffect(() => {
@@ -178,7 +171,7 @@ export default function BackgroundRemoverPage() {
             const out =
                 engine === 'server'
                     ? await removeBackgroundServer(file, onProgress)
-                    : await removeBackgroundBrowser(file, onProgress, browserModel);
+                    : await removeBackgroundBrowser(file, onProgress, 'isnet_quint8');
             if (runIdRef.current !== runId) return;
             setCutoutBlob(out);
             setCutoutUrl(URL.createObjectURL(out));
@@ -200,7 +193,7 @@ export default function BackgroundRemoverPage() {
         } finally {
             if (runIdRef.current === runId) setBusy(false);
         }
-    }, [browserModel]);
+    }, []);
 
     // restore the last saved original + cutout pair on reload — you see your
     // previous work first, then hit NEW PHOTO when ready for the next one
@@ -417,6 +410,41 @@ export default function BackgroundRemoverPage() {
                                     alt={preview === 'cutout' ? 'Cutout preview' : 'Original photo'}
                                     style={{ maxWidth: '100%', maxHeight: isNarrow ? '55vh' : 560, objectFit: 'contain' }}
                                 />
+                                {error && (
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            inset: 0,
+                                            background: 'rgba(255, 235, 235, 0.96)',
+                                            backdropFilter: 'blur(2px)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: 24,
+                                            gap: 12,
+                                            textAlign: 'center',
+                                            zIndex: 15,
+                                        }}
+                                    >
+                                        <AlertTriangle size={36} color="#DC2626" />
+                                        <div style={{ fontWeight: 900, fontSize: '0.9rem', color: '#991B1B', fontFamily: 'monospace' }}>
+                                            BACKGROUND REMOVAL FAILED
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#7F1D1D', maxWidth: 380, fontFamily: 'monospace', background: '#FEE2E2', padding: '8px 12px', border: '1.5px solid #000' }}>
+                                            {error}
+                                        </div>
+                                        {originalFile && (
+                                            <button
+                                                className="brutalist-button brutalist-button-primary"
+                                                onClick={() => runCut(originalFile, mode)}
+                                                style={{ padding: '8px 16px', fontSize: '0.75rem', gap: 6 }}
+                                            >
+                                                <RefreshCw size={14} /> RETRY BACKGROUND REMOVAL
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                                 {busy && (
                                     <div
                                         style={{
@@ -528,48 +556,9 @@ export default function BackgroundRemoverPage() {
                             </button>
                         ))}
                     </div>
-                    {mode === 'browser' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, letterSpacing: '0.04em' }}>
-                                ENGINE QUALITY
-                            </div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                                {(Object.entries(BROWSER_MODELS) as [BrowserModel, typeof BROWSER_MODELS[BrowserModel]][]).map(
-                                    ([key, { label, sub }]) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => setBrowserModel(key)}
-                                            disabled={busy}
-                                            style={{
-                                                flex: 1,
-                                                padding: '6px 4px',
-                                                border: browserModel === key ? '2.5px solid #000' : '2px solid #ccc',
-                                                background: browserModel === key ? '#FFDD00' : '#fff',
-                                                boxShadow: browserModel === key ? '3px 3px 0 #000' : 'none',
-                                                cursor: busy ? 'wait' : 'pointer',
-                                                opacity: busy ? 0.6 : 1,
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                alignItems: 'center',
-                                                gap: 2,
-                                            }}
-                                        >
-                                            <span style={{ fontSize: '0.66rem', fontWeight: 900, fontFamily: 'monospace' }}>{label}</span>
-                                            <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', color: '#444', fontWeight: 700 }}>{sub}</span>
-                                        </button>
-                                    ),
-                                )}
-                        </div>
-                        {browserModel !== 'isnet_quint8' && (
-                            <div style={{ fontSize: '0.56rem', fontFamily: 'monospace', fontWeight: 900, color: '#b00', lineHeight: 1.4 }}>
-                                ⚠ {BROWSER_MODELS[browserModel].label} CAN FREEZE THIS TAB — OR YOUR WHOLE PHONE — FOR UP TO ~15 SECONDS WHILE IT CUTS. THAT'S NORMAL; DON'T CLOSE THE PAGE.
-                            </div>
-                        )}
-                    </div>
-                )}
                     <p style={{ fontSize: '0.68rem', color: '#666', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
                         {mode === 'browser'
-                            ? `Runs in your browser — your photo never leaves your device. The ${BROWSER_MODELS[browserModel].label} engine downloads once (${BROWSER_MODELS[browserModel].sub}) and is kept in IndexedDB. Higher tiers freeze the tab longer while cutting — the gain is subtler edges (hair, fur) at full zoom; the preview may look identical.`
+                            ? 'Runs directly in your browser — your photo never leaves your device. High-precision neural engine downloads once and is kept in your device storage.'
                             : 'Our server does the cutting — works for any subject, handy on low-power phones.'}
                     </p>
 

@@ -25,7 +25,7 @@ const toolPaths = [
   "/overlay",
 ];
 
-const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/video-grabber", "/bouquet"];
+const fullscreenApps = ["/teleprompter", "/space-planner", "/thumbnail-lab", "/video-grabber", "/bouquet", "/text-behind"];
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

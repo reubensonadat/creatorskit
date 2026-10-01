@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { SITE_BASE_URL } from '@/lib/seo';
 
 export default function robots(): MetadataRoute.Robots {
     return {
@@ -7,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
             allow: '/',
             disallow: ['/admin/', '/api/'],
         },
-        sitemap: 'https://creatorkit.app/sitemap.xml',
+        sitemap: `${SITE_BASE_URL}/sitemap.xml`,
     };
 }

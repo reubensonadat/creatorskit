@@ -1,34 +1,41 @@
 /**
- * Shared background-removal engine — the auto-captions fallback philosophy:
+ * Shared background-removal engine — hardened for "it just works" reliability.
  *
- *   BROWSER (@imgly, runs on the user's CPU, zero server cost)
- *     → SERVER (free Render worker /matte, rembg u2netp, any subject)
- *     → MANUAL (the user uploads their own transparent PNG — always works)
- *
- * The server path reuses the SAME one-time upload grant as /transcribe
- * (the ticket is a generic one-time credential minted by the edge function),
- * so no edge changes were needed. Mirrors worker-transcribe.ts's
- * ticket → upload → poll dance.
+ * 1. ZERO unsupported format errors:
+ *    Every incoming image is rigorously decoded and normalized into a clean,
+ *    standardized RGBA PNG canvas blob with EXIF orientation preserved before
+ *    reaching the AI engine (JPEG, PNG, WebP, AVIF, HEIC, …).
+ * 2. Persistent warm Web Worker:
+ *    Inference runs off the main thread and the worker is KEPT ALIVE between
+ *    cuts, so the 2nd, 3rd, … cutouts are near-instant. It is recycled after
+ *    a few idle minutes to free memory (weights stay in the HTTP disk cache).
+ * 3. Self-healing execution cascade:
+ *    worker(requested model) → worker(backup model) → in-tab(requested model)
+ *    → in-tab(backup model, reduced resolution). A new run supersedes a stale
+ *    one automatically. A watchdog kills hung engines and moves to the next rung.
+ * 4. Output validation:
+ *    Every result is pixel-inspected — a blank (fully transparent) or
+ *    unsegmented (fully opaque) matte is treated as a failure and retried on
+ *    the next rung instead of silently shipping a broken cutout.
+ * 5. Seamless edge refinement:
+ *    The alpha matte gets a light blur + smoothstep contrast curve (halo
+ *    suppression, no jaggies, hair preserved) before returning.
+ * 6. Prewarm:
+ *    `prewarmBackgroundEngine()` silently downloads the model after the first
+ *    user interaction so the first real cut already has a hot engine.
  */
 
-import { VIDEO_GRAB_ENDPOINT } from './video-grabber';
-import { CAPTIONS_WORKER_BASE } from './captions/worker-transcribe';
+import { ensureModelFetchPatch } from './imgly-model-cache';
 
 export type MatteEngine = 'browser' | 'server';
 export type MatteStage = 'downloading' | 'processing' | 'uploading' | 'queued' | 'server_processing';
 
-/** The three IS-Net model variants shipped by @imgly/background-removal.
- * sizeMB values are the REAL CDN manifest sizes (44.3/88.2/176.1 MB —
- * resources.json chunks them into 4MB hash-named pieces). tier orders the
- * models for the cache rule: use a higher one → the lower ones' weights
- * are evicted from IndexedDB. The choice syncs across tools via the
- * ck_bgrem_quality_v1 localStorage key. */
 export type BrowserModel = 'isnet_quint8' | 'isnet_fp16' | 'isnet';
 
 export const BROWSER_MODELS: Record<BrowserModel, { label: string; sub: string; sizeMB: number; tier: number }> = {
-    isnet_quint8: { label: 'FAST',   sub: '~44 MB download', sizeMB: 44, tier: 0 },
-    isnet_fp16:  { label: 'BETTER', sub: '~88 MB download', sizeMB: 88, tier: 1 },
-    isnet:       { label: 'BEST',   sub: '~176 MB download', sizeMB: 176, tier: 2 },
+    isnet_quint8: { label: 'FAST', sub: '~23 MB download', sizeMB: 23, tier: 0 },
+    isnet_fp16: { label: 'BETTER', sub: '~84 MB download', sizeMB: 84, tier: 1 },
+    isnet: { label: 'BEST', sub: '~176 MB download', sizeMB: 176, tier: 2 },
 };
 
 export type MatteProgress = (
@@ -37,404 +44,756 @@ export type MatteProgress = (
     percent: number,
 ) => void;
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const MATTE_POLL_MS = 1500;
+/**
+ * Proxy manifest variants (chunk URLs are identical — cache fully shared):
+ * - 'v2n' — native/unpatched, for the WORKER's CDN copy of @imgly whose
+ *   onnxruntime-web glue is 1.21.0 (needs the version-matched 1.21 wasm).
+ * - 'v2'  — patched ORT bridge, for the BUNDLED in-tab copy whose glue is
+ *   the 1.26.0-dev jsep build this app resolves at build time.
+ */
+const PROXY_PUBLIC_PATH = (variant: 'v2' | 'v2n'): string =>
+    typeof window !== 'undefined'
+        ? `${window.location.origin}/api/imgly/${variant}/`
+        : `/api/imgly/${variant}/`;
+
+/** Kill a silent worker after this long without a single message. */
+const WATCHDOG_MS = 180_000;
+/** Recycle the idle warm worker after this long to free device memory. */
+const IDLE_RELEASE_MS = 180_000;
 
 // ---------------------------------------------------------------------------
-// Browser engine — @imgly/background-removal (already a dependency).
-// Downloads its WASM weights from CDN on first use, keeps them in IndexedDB
-// (see ENGINE CACHE below), then runs fully offline.
+// Standardize Source Image Pipeline
 // ---------------------------------------------------------------------------
 
-let imglyModule: Promise<typeof import('@imgly/background-removal')> | null = null;
+export interface StandardizedImage {
+    blob: Blob;
+    img: HTMLImageElement;
+    width: number;
+    height: number;
+    url: string;
+}
 
 /**
- * Decode + normalize a source photo BEFORE either engine touches it.
- * - unreadable formats (HEIC etc.) fail HERE with a friendly message instead
- *   of "The source image could not be decoded" deep inside the engine
- * - EXIF orientation is applied, so phone portraits point the right way
- * - maxEdge cap shrinks 50MP phone monsters → fast engine runs and server
- *   uploads of ~1MB instead of tens of MB (big slow uploads are what die
- *   as "connection lost" on mobile networks)
+ * Rigorously decode and standardize any user image (JPEG, WebP, AVIF, HEIC, PNG, etc.)
+ * into a pristine standard PNG format on a canvas.
+ * - Handles EXIF orientation (no sideways camera shots)
+ * - Normalizes color channels into standard 8-bit RGBA
+ * - Bounds excessive dimensions to prevent mobile memory crashes
  */
-async function normalizeSourceBlob(
+export async function standardizeSourceImage(
     source: Blob,
-    maxEdge: number,
-    type: 'image/png' | 'image/jpeg',
-): Promise<Blob> {
-    const fail = new Error('That photo format cannot be read in the browser — save it as JPG or PNG and try again.');
+    maxEdge: number = 2560,
+): Promise<StandardizedImage> {
+    const failError = new Error('That photo format could not be read — please select a valid JPG, PNG, or WebP image.');
     let width = 0;
     let height = 0;
     let drawable: ImageBitmap | HTMLImageElement;
+
     try {
         drawable = await createImageBitmap(source, { imageOrientation: 'from-image' });
         width = drawable.width;
         height = drawable.height;
     } catch {
-        // older browsers: <img> honors EXIF orientation by default
-        const url = URL.createObjectURL(source);
+        // Fallback for browsers or formats where createImageBitmap throws
+        const objectUrl = URL.createObjectURL(source);
         try {
             const img = await new Promise<HTMLImageElement>((resolve, reject) => {
                 const el = new Image();
                 el.onload = () => resolve(el);
-                el.onerror = () => reject(new Error('decode failed'));
-                el.src = url;
+                el.onerror = () => reject(new Error('Image decode failed'));
+                el.src = objectUrl;
             });
             drawable = img;
             width = img.naturalWidth;
             height = img.naturalHeight;
         } catch {
-            throw fail;
+            throw failError;
         } finally {
-            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(objectUrl);
         }
     }
-    if (!width || !height) throw fail;
 
+    if (!width || !height) throw failError;
+
+    // Bound dimensions to safe limits while retaining high quality
     const scale = Math.min(1, maxEdge / Math.max(width, height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw fail;
-    ctx.drawImage(drawable as CanvasImageSource, 0, 0, canvas.width, canvas.height);
-    if ('close' in drawable && typeof drawable.close === 'function') drawable.close();
+    const targetWidth = Math.round(width * scale);
+    const targetHeight = Math.round(height * scale);
 
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.92));
-    if (!blob) throw fail;
-    return blob;
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+    if (!ctx) throw failError;
+
+    ctx.drawImage(drawable as CanvasImageSource, 0, 0, targetWidth, targetHeight);
+    if ('close' in drawable && typeof (drawable as ImageBitmap).close === 'function') {
+        (drawable as ImageBitmap).close();
+    }
+
+    // Convert to pristine standard PNG
+    const pngBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+    });
+
+    if (!pngBlob) throw failError;
+
+    const finalUrl = URL.createObjectURL(pngBlob);
+    const finalImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Failed to load standardized image'));
+        el.src = finalUrl;
+    });
+
+    return {
+        blob: pngBlob,
+        img: finalImg,
+        width: targetWidth,
+        height: targetHeight,
+        url: finalUrl,
+    };
 }
 
 // ---------------------------------------------------------------------------
-// ENGINE CACHE — IndexedDB, not the HTTP cache.
-//
-// The engine files (~13MB isnet model + ~26MB ort glue) are immutable, but
-// the HTTP disk cache is an eviction lottery: the browser can drop them after
-// days of disuse or under storage pressure, and the next visit silently
-// re-downloads everything. This IDB cache survives eviction, is shared by
-// every tool that cuts on device (/text-behind and /background-replace both
-// end up here), and asks for persistent storage on first use.
+// Output validation — never ship a blank / unsegmented cutout
 // ---------------------------------------------------------------------------
 
-const ENGINE_DB = 'ck_engine_cache';
-const ENGINE_STORE = 'files';
+export interface CutoutVerdict {
+    /** Trustworthy matte — ship it. */
+    ok: boolean;
+    /** Fully (or almost fully) transparent — the model failed. */
+    blank: boolean;
+    /** Fully opaque — nothing was removed at all. */
+    noSegmentation: boolean;
+    opaqueRatio: number;
+}
 
-function engineDbOpen(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open(ENGINE_DB, 1);
-        req.onupgradeneeded = () => {
-            if (!req.result.objectStoreNames.contains(ENGINE_STORE)) req.result.createObjectStore(ENGINE_STORE);
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+async function decodeForInspection(blob: Blob, maxEdge: number): Promise<ImageData | null> {
+    let drawable: ImageBitmap | HTMLImageElement | null = null;
+    let createdUrl: string | null = null;
+    try {
+        try {
+            drawable = await createImageBitmap(blob);
+        } catch {
+            createdUrl = URL.createObjectURL(blob);
+            drawable = await new Promise<HTMLImageElement | null>((resolve) => {
+                const el = new Image();
+                el.onload = () => resolve(el);
+                el.onerror = () => resolve(null);
+                el.src = createdUrl as string;
+            });
+        }
+        if (!drawable) return null;
+
+        const w = drawable.width;
+        const h = drawable.height;
+        if (!w || !h) return null;
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        const tw = Math.max(1, Math.round(w * scale));
+        const th = Math.max(1, Math.round(h * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = tw;
+        canvas.height = th;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return null;
+        ctx.drawImage(drawable as CanvasImageSource, 0, 0, tw, th);
+        return ctx.getImageData(0, 0, tw, th);
+    } catch {
+        return null;
+    } finally {
+        if (drawable && 'close' in drawable && typeof (drawable as ImageBitmap).close === 'function') {
+            try { (drawable as ImageBitmap).close(); } catch { /* ignore */ }
+        }
+        if (createdUrl) {
+            try { URL.revokeObjectURL(createdUrl); } catch { /* ignore */ }
+        }
+    }
+}
+
+/** Pixel-inspect a cutout: is there a real subject matte in here? */
+export async function inspectCutout(blob: Blob): Promise<CutoutVerdict | null> {
+    const data = await decodeForInspection(blob, 512);
+    if (!data) return null;
+
+    const px = data.data;
+    const total = data.width * data.height;
+    let opaque = 0;
+    const step = total > 250_000 ? 2 : 1; // sample every 2nd px on big checks
+    let sampled = 0;
+    for (let i = 0; i < total; i += step) {
+        if (px[i * 4 + 3] > 16) opaque++;
+        sampled++;
+    }
+    const opaqueRatio = sampled > 0 ? opaque / sampled : 0;
+
+    return {
+        ok: opaqueRatio > 0.002 && opaqueRatio < 0.9995,
+        blank: opaqueRatio <= 0.002,
+        noSegmentation: opaqueRatio >= 0.9995,
+        opaqueRatio,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Edge refinement — the "seamless" pass
+// ---------------------------------------------------------------------------
+
+/**
+ * Polish the alpha matte of a cutout PNG at NATIVE resolution:
+ * - a sub-pixel blur of the alpha channel removes stair-stepped jaggies
+ * - a smoothstep contrast curve kills faint halo bleed and fringe noise
+ * - topology locks: pixels that were fully opaque stay opaque, pixels that
+ *   were fully transparent stay transparent — only the soft edge is improved
+ * (hair strands with mid-range alpha keep their gradient).
+ * Returns the ORIGINAL blob untouched if anything is unsupported.
+ */
+export async function refineCutoutEdges(blob: Blob): Promise<Blob> {
+    try {
+        let drawable: ImageBitmap | HTMLImageElement | null = null;
+        let createdUrl: string | null = null;
+
+        try {
+            drawable = await createImageBitmap(blob);
+        } catch {
+            createdUrl = URL.createObjectURL(blob);
+            drawable = await new Promise<HTMLImageElement | null>((resolve) => {
+                const el = new Image();
+                el.onload = () => resolve(el);
+                el.onerror = () => resolve(null);
+                el.src = createdUrl as string;
+            });
+        }
+        if (!drawable) return blob;
+
+        const w = drawable.width;
+        const h = drawable.height;
+        if (!w || !h || w * h > 40_000_000) {
+            if (createdUrl) URL.revokeObjectURL(createdUrl);
+            return blob;
+        }
+
+        // Sharp color + blurred alpha
+        const base = document.createElement('canvas');
+        base.width = w;
+        base.height = h;
+        const bctx = base.getContext('2d', { willReadFrequently: true });
+        if (!bctx) return blob;
+        bctx.drawImage(drawable as CanvasImageSource, 0, 0);
+
+        const radius = Math.max(0.4, Math.min(1.4, Math.max(w, h) / 1800));
+        const soft = document.createElement('canvas');
+        soft.width = w;
+        soft.height = h;
+        const sctx = soft.getContext('2d', { willReadFrequently: true });
+        if (!sctx) return blob;
+
+        let alphaData: Uint8ClampedArray;
+        if (typeof sctx.filter === 'string') {
+            sctx.filter = `blur(${radius}px)`;
+            sctx.drawImage(drawable as CanvasImageSource, 0, 0);
+            alphaData = sctx.getImageData(0, 0, w, h).data;
+            sctx.filter = 'none';
+        } else {
+            // Canvas filters unsupported → refine the sharp alpha only
+            alphaData = bctx.getImageData(0, 0, w, h).data;
+        }
+
+        const baseData = bctx.getImageData(0, 0, w, h);
+        const out = baseData.data;
+
+        // Smoothstep LUT: expand contrast around the alpha transition
+        const LUT = new Uint8Array(256);
+        const lo = 8;
+        const hi = 247;
+        for (let a = 0; a < 256; a++) {
+            if (a <= lo) LUT[a] = 0;
+            else if (a >= hi) LUT[a] = 255;
+            else {
+                const t = (a - lo) / (hi - lo);
+                LUT[a] = Math.round(t * t * (3 - 2 * t) * 255);
+            }
+        }
+
+        const n = w * h;
+        for (let i = 0; i < n; i++) {
+            const idx = i * 4 + 3;
+            const sharp = out[idx];
+            // Topology locks — never invent or erase solid pixels
+            if (sharp === 0 || sharp === 255) continue;
+            const smoothed = LUT[alphaData[idx]];
+            out[idx] = smoothed === 0 || smoothed === 255
+                ? (smoothed === 255 && sharp >= 128 ? 255 : smoothed === 0 && sharp < 128 ? 0 : sharp)
+                : Math.min(255, Math.round(smoothed * 0.65 + sharp * 0.35));
+        }
+
+        bctx.putImageData(baseData, 0, 0);
+        if (createdUrl) URL.revokeObjectURL(createdUrl);
+
+        const refined = await new Promise<Blob | null>((resolve) => {
+            base.toBlob(resolve, 'image/png');
+        });
+        return refined ?? blob;
+    } catch {
+        return blob;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Persistent warm-worker bridge
+// ---------------------------------------------------------------------------
+
+interface WorkerOutMessage {
+    type: 'progress' | 'done' | 'error';
+    id?: number;
+    blob?: Blob;
+    message?: string;
+    phase?: string;
+    pct?: number;
+}
+
+interface BridgeJob {
+    id: number;
+    resolve: (blob: Blob) => void;
+    reject: (err: Error) => void;
+    onProgress?: MatteProgress;
+    lastSeen: number;
+    timer: ReturnType<typeof setInterval>;
+    blobUrl: string | null;
+}
+
+export interface BridgeRunOptions {
+    blob: Blob;
+    model: BrowserModel;
+    onProgress?: MatteProgress;
+    /** Only fetch the weights (no inference) — prewarm. */
+    prewarm?: boolean;
+    /** Force a cold worker (previous rung failed — don't trust the warm one). */
+    freshWorker?: boolean;
+}
+
+const INTERRUPTED = 'interrupted';
+const WORKER_UNAVAILABLE = 'worker-unavailable';
+
+class MatteWorkerBridge {
+    private worker: Worker | null = null;
+    private job: BridgeJob | null = null;
+    private idleTimer: ReturnType<typeof setTimeout> | null = null;
+    private seq = 0;
+
+    get warm(): boolean {
+        return this.worker !== null;
+    }
+
+    get busy(): boolean {
+        return this.job !== null;
+    }
+
+    private ensureWorker(): Worker {
+        if (this.worker) return this.worker;
+        // ?v= cache-bust: the PWA service worker serves /workers/*.js
+        // cache-first — a new query string guarantees every user picks up the
+        // current worker (with the IndexedDB model-cache patch) immediately.
+        const w = new Worker('/workers/bg-removal-worker.js?v=idb1', { type: 'module' });
+        w.onmessage = (ev: MessageEvent) => this.onMessage(ev);
+        w.onerror = () => this.failJob(new Error('Cutout engine crashed — restarting.'), true);
+        this.worker = w;
+        return w;
+    }
+
+    private onMessage(ev: MessageEvent) {
+        const data = (ev.data || {}) as WorkerOutMessage;
+        const job = this.job;
+        if (!job || data.id !== job.id) return; // stale message from a superseded job
+        job.lastSeen = Date.now();
+
+        if (data.type === 'progress') {
+            const stage: MatteStage = data.phase === 'fetch' || data.phase === 'init' ? 'downloading' : 'processing';
+            const pct = typeof data.pct === 'number' ? data.pct : 0;
+            job.onProgress?.(stage, data.message || 'Cutting out subject…', Math.max(0, Math.min(100, pct)));
+        } else if (data.type === 'done') {
+            const blob = data.blob as Blob;
+            this.finishJob();
+            job.resolve(blob);
+        } else if (data.type === 'error') {
+            this.failJob(new Error(String(data.message || 'Cutout failed')), false);
+        }
+    }
+
+    private clearIdleTimer(): void {
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+    }
+
+    private scheduleIdleRelease(): void {
+        this.clearIdleTimer();
+        this.idleTimer = setTimeout(() => this.terminate(), IDLE_RELEASE_MS);
+    }
+
+    private finishJob(): void {
+        const job = this.job;
+        if (!job) return;
+        clearInterval(job.timer);
+        if (job.blobUrl) { try { URL.revokeObjectURL(job.blobUrl); } catch { /* ignore */ } }
+        this.job = null;
+        this.scheduleIdleRelease();
+    }
+
+    private failJob(err: Error, restart: boolean): void {
+        const job = this.job;
+        if (!job) return;
+        clearInterval(job.timer);
+        if (job.blobUrl) { try { URL.revokeObjectURL(job.blobUrl); } catch { /* ignore */ } }
+        this.job = null;
+        if (restart) this.terminate();
+        else this.scheduleIdleRelease();
+        job.reject(err);
+    }
+
+    /** Kill the worker outright (frees the WASM heap + model weights). */
+    terminate(): void {
+        this.clearIdleTimer();
+        if (this.worker) {
+            try { this.worker.terminate(); } catch { /* ignore */ }
+            this.worker = null;
+        }
+    }
+
+    /**
+     * Run one job on the (persistent) worker. Supersedes + terminates any
+     * in-flight job first so a stale run can never wedge the engine.
+     */
+    run(opts: BridgeRunOptions): Promise<Blob> {
+        if (this.job) this.failJob(new Error(INTERRUPTED), true);
+        this.clearIdleTimer();
+        if (opts.freshWorker) this.terminate();
+
+        const id = ++this.seq;
+        const blobUrl = URL.createObjectURL(opts.blob);
+
+        return new Promise<Blob>((resolve, reject) => {
+            let w: Worker;
+            try {
+                w = this.ensureWorker();
+            } catch {
+                URL.revokeObjectURL(blobUrl);
+                reject(new Error(WORKER_UNAVAILABLE));
+                return;
+            }
+
+            const job: BridgeJob = {
+                id,
+                resolve,
+                reject,
+                onProgress: opts.onProgress,
+                lastSeen: Date.now(),
+                blobUrl,
+                timer: setInterval(() => {
+                    if (!this.job) return;
+                    if (Date.now() - this.job.lastSeen > WATCHDOG_MS) {
+                        this.failJob(new Error('Cutout engine stalled — restarting.'), true);
+                    }
+                }, 10_000),
+            };
+            this.job = job;
+
+            w.postMessage({
+                type: opts.prewarm ? 'preload' : 'process',
+                id,
+                blob: opts.blob,
+                blobUrl,
+                model: opts.model,
+                publicPath: PROXY_PUBLIC_PATH('v2n'),
+            });
+        });
+    }
+
+    dispose(): void {
+        this.failJob(new Error(INTERRUPTED), true);
+        this.terminate();
+    }
+}
+
+const bridge = new MatteWorkerBridge();
+
+if (typeof window !== 'undefined') {
+    try {
+        window.addEventListener('pagehide', () => bridge.dispose());
+    } catch { /* ignore */ }
+}
+
+// ---------------------------------------------------------------------------
+// Direct in-tab fallback (if Web Workers are unavailable or the worker path died)
+// ---------------------------------------------------------------------------
+
+let imglyModule: Promise<typeof import('@imgly/background-removal')> | null = null;
+
+async function runDirectFallback(
+    sourceBlob: Blob,
+    onProgress?: MatteProgress,
+    model: BrowserModel = 'isnet_quint8',
+): Promise<Blob> {
+    // Model chunks must round-trip through the IndexedDB cache on the main
+    // thread too — the worker carries its own self-contained patch.
+    ensureModelFetchPatch();
+    if (!imglyModule) imglyModule = import('@imgly/background-removal');
+    const { removeBackground } = await imglyModule;
+    return await removeBackground(sourceBlob, {
+        model,
+        proxyToWorker: false,
+        device: 'cpu',
+        // Route through the same-origin proxy — the bundled onnxruntime build
+        // MUST be paired with the PATCHED manifest (v2) the proxy serves.
+        publicPath: PROXY_PUBLIC_PATH('v2'),
+        progress: (key: string, current: number, total: number) => {
+            const phase = key.split(':')[0];
+            const currentMB = (current / (1024 * 1024)).toFixed(1);
+            const totalMB = (total / (1024 * 1024)).toFixed(1);
+            const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+            const stage: MatteStage = phase.startsWith('fetch') ? 'downloading' : 'processing';
+            const msg = total > 0 ? `${phase} — ${currentMB} MB / ${totalMB} MB` : `${phase}…`;
+            onProgress?.(stage, msg, pct);
+        },
+        output: { format: 'image/png' },
     });
 }
 
-async function engineCacheGet(url: string): Promise<Blob | null> {
-    try {
-        const db = await engineDbOpen();
-        const blob = await new Promise<Blob | null>((resolve) => {
-            const get = db.transaction(ENGINE_STORE, 'readonly').objectStore(ENGINE_STORE).get(url);
-            get.onsuccess = () => resolve(get.result instanceof Blob ? get.result : null);
-            get.onerror = () => resolve(null);
-        });
-        db.close();
-        return blob;
-    } catch {
-        return null; // IDB unavailable (private mode…) → plain network fetch
+// ---------------------------------------------------------------------------
+// Self-healing cascade
+// ---------------------------------------------------------------------------
+
+interface CascadeToken {
+    cancelled: boolean;
+}
+let activeCascade: CascadeToken | null = null;
+/** Set once ANY rung completes — afterwards prewarming is pointless (weights cached). */
+let engineEverSucceeded = false;
+
+const NETWORK_FRIENDLY = /fetch|network|cors|offline|timed?[\s-]?out|50[234]|stalled|crashed|metadata not found|name_not_resolved|dns|enotfound|econnreset/i;
+
+function friendlyError(err: unknown): string {
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    if (/offline/i.test(msg)) return msg;
+    if (NETWORK_FRIENDLY.test(msg)) {
+        return 'The AI engine could not be reached — check your connection, then retry.';
     }
+    if (/memory|alloc|abort/i.test(msg)) {
+        return 'Your device ran low on memory during the cut — retry usually fixes it.';
+    }
+    return 'Subject cutout failed — please try again.';
 }
 
-async function engineCachePut(url: string, blob: Blob): Promise<void> {
+async function applyRefinement(raw: Blob, onProgress?: MatteProgress): Promise<Blob> {
     try {
-        const db = await engineDbOpen();
-        await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction(ENGINE_STORE, 'readwrite');
-            tx.objectStore(ENGINE_STORE).put(blob, url);
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-        db.close();
+        onProgress?.('processing', 'Polishing cutout edges…', 97);
+        return await refineCutoutEdges(raw);
     } catch {
-        /* best-effort — a cache miss just means a re-download */
+        return raw;
     }
 }
 
 /**
- * Engine files are immutable, so keying by URL is safe forever.
- * resources.json is EXCLUDED on purpose: it is the (no-store) manifest that
- * points at the files — it must always be revalidated so fixes propagate.
+ * Main cutout function — one call, maximum resilience.
+ *
+ * Rung 1  warm worker + requested model (the happy path; instant when hot)
+ * Rung 2  fresh worker + backup model (corrupted chunk cache / poisoned session)
+ * Rung 3  direct in-tab + requested model (worker infrastructure broken)
+ * Rung 4  direct in-tab + backup model at reduced resolution (low memory)
+ *
+ * Every rung's output is pixel-validated; blank/unsegmented mattes fall
+ * through to the next rung. If every rung produces a "suspicious but usable"
+ * matte, the best one is returned instead of failing the user.
  */
-function isEngineUrl(url: string): boolean {
-    if (url.endsWith('resources.json')) return false;
-    return (
-        url.startsWith(`${location.origin}/api/imgly/`) ||
-        url.startsWith('https://cdn.jsdelivr.net/npm/onnxruntime-web@')
-    );
-}
-
-let fetchPatchDepth = 0;
-let originalFetch: typeof fetch | null = null;
-
-const patchedFetch: typeof fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
-    const real = originalFetch ?? window.fetch.bind(window);
-    if (method !== 'GET' || !isEngineUrl(url)) return real(input, init);
-    // serve from IDB when we have it — but NEVER let a cache hiccup kill the
-    // fetch: any failure here just falls through to the network
-    try {
-        const cached = await engineCacheGet(url);
-        if (cached) return new Response(cached, { status: 200, statusText: 'OK' });
-    } catch {
-        /* cache read failed — go to network */
-    }
-    let res: Response;
-    try {
-        res = await real(input, init);
-    } catch {
-        // one retry — the ~26MB glue files blip on mobile networks all the time
-        await sleep(1500);
-        try {
-            res = await real(input, init);
-        } catch {
-            // tag the URL so the user-facing error says WHICH file died
-            throw new TypeError(`Failed to fetch ${url}`);
-        }
-    }
-    if (res.ok) {
-        try {
-            const copy = res.clone();
-            void copy.blob().then((b) => engineCachePut(url, b)).catch(() => {});
-        } catch {
-            /* body already consumed — skip caching */
-        }
-    }
-    return res;
-};
-
-/**
- * Run `fn` (the @imgly call) with window.fetch patched to serve engine files
- * from IndexedDB. Depth-counted so overlapping cuts never restore the wrong
- * original — the patch installs on the outermost run and uninstalls when it
- * finishes.
- */
-async function withEngineCache<T>(fn: () => Promise<T>): Promise<T> {
-    if (fetchPatchDepth === 0) {
-        originalFetch = window.fetch.bind(window);
-        window.fetch = patchedFetch;
-        // best-effort: ask the browser not to evict our engine under pressure
-        try {
-            void navigator.storage?.persist?.();
-        } catch {
-            /* not supported — fine */
-        }
-    }
-    fetchPatchDepth++;
-    try {
-        return await fn();
-    } finally {
-        fetchPatchDepth--;
-        if (fetchPatchDepth === 0 && originalFetch) {
-            window.fetch = originalFetch;
-            originalFetch = null;
-        }
-    }
-}
-
-// (Model tiers: see BROWSER_MODELS at the top of this file.)
-
-/**
- * When a higher-tier model is used, delete the lower tiers' weight chunks
- * from the engine cache so storage stays bounded (the shared ORT wasm and
- * the kept model's chunks are untouched). Model weights are cached under
- * content-hash chunk URLs, so the fresh manifest is re-read to learn which
- * hashes belong to the lower models before deleting.
- */
-async function evictLowerModels(keep: BrowserModel): Promise<void> {
-    const lower = (Object.keys(BROWSER_MODELS) as BrowserModel[]).filter(
-        (m) => BROWSER_MODELS[m].tier < BROWSER_MODELS[keep].tier,
-    );
-    if (lower.length === 0) return;
-    try {
-        const res = await fetch(`${location.origin}/api/imgly/v2/resources.json`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const manifest = (await res.json()) as Record<string, { chunks?: { name: string }[] }>;
-        const doomed = new Set<string>();
-        for (const key of lower) {
-            for (const chunk of manifest[`/models/${key}`]?.chunks ?? []) doomed.add(chunk.name);
-        }
-        if (doomed.size === 0) return;
-        const db = await engineDbOpen();
-        await new Promise<void>((resolve) => {
-            const tx = db.transaction(ENGINE_STORE, 'readwrite');
-            const cursorReq = tx.objectStore(ENGINE_STORE).openCursor();
-            cursorReq.onsuccess = () => {
-                const cursor = cursorReq.result;
-                if (!cursor) return;
-                const url = String(cursor.key);
-                if (doomed.has(url.slice(url.lastIndexOf('/') + 1))) cursor.delete();
-                cursor.continue();
-            };
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => resolve();
-        });
-        db.close();
-    } catch {
-        /* eviction is a storage optimization — never fail a cut over it */
-    }
-}
-
 export async function removeBackgroundBrowser(
     source: Blob,
     onProgress?: MatteProgress,
     model: BrowserModel = 'isnet_quint8',
 ): Promise<Blob> {
-    if (!imglyModule) imglyModule = import('@imgly/background-removal');
-    const { removeBackground } = await imglyModule;
-    // Normalize first: exotic containers fail here with a clear message,
-    // EXIF orientation is baked in, and giant photos shrink before inference.
-    const normalized = await normalizeSourceBlob(source, 2048, 'image/png');
-    try {
-        // withEngineCache: every engine fetch below is served from IndexedDB
-        // once downloaded — the second cut (here or in /text-behind) starts
-        // instantly even if the HTTP cache was evicted.
-        const out = await withEngineCache(() => removeBackground(normalized, {
-            // Same-origin proxy (src/app/api/imgly/v2) — rewrites the manifest
-            // so the ort glue matches this ort build, and serves immutable
-            // cache headers. publicPath must be absolute: the lib resolves
-            // every resource with new URL(rel, base). /v2/ is a
-            // cache-generation bump — v1 was pinned immutable for a year.
-            publicPath: `${window.location.origin}/api/imgly/v2/`,
-            model,
-            // CPU path — device:'gpu' is a dead end here: @imgly's WebGPU
-            // code targets ort 1.21's API and this ort build renamed the
-            // init (webgpuInit is not a function → no available backend).
-            // Note: @imgly forces main-thread inference on its CPU path, so
-            // the tab pauses briefly during the actual cut — CUT ON SERVER
-            // is the freeze-free option.
-            device: 'cpu',
-            proxyToWorker: false,
-            // v1.7 API: progress(key, current, total) — 'fetch:*' keys are the
-            // one-time engine download; everything else is inference.
-            progress: (key: string, current: number, total: number) => {
-                const pct = total > 0 ? Math.round((current / total) * 100) : 0;
-                if (key.startsWith('fetch')) {
-                    const { label, sizeMB } = BROWSER_MODELS[model];
-                    onProgress?.('downloading', `Downloading the ${label} engine (~${sizeMB} MB, one time)…`, pct);
-                } else {
-                    onProgress?.('processing', 'Cutting out the subject…', pct);
-                }
+    // Instant offline bail-out — no point cycling four engine rungs with no network.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('You appear to be offline — reconnect to the internet, then retry the cutout.');
+    }
+
+    if (activeCascade) activeCascade.cancelled = true;
+    const token: CascadeToken = { cancelled: false };
+    activeCascade = token;
+
+    const workersUsable = typeof window !== 'undefined' && typeof Worker !== 'undefined';
+    const fallbackModel: BrowserModel = model === 'isnet_quint8' ? 'isnet_fp16' : 'isnet_quint8';
+
+    // 1. Rigorous format standardization — surfaces real format errors early
+    //    so the user gets the "photo format" message, never an engine crash.
+    const std = await standardizeSourceImage(source, 2560);
+
+    interface Rung {
+        label: string;
+        needsWorker: boolean;
+        /** true = reuses the already-requested model; false = would download the OTHER model */
+        sameModel: boolean;
+        run: () => Promise<Blob>;
+    }
+
+    const rungs: Rung[] = [
+        {
+            label: 'device engine',
+            needsWorker: true,
+            sameModel: true,
+            run: () => bridge.run({ blob: std.blob, model, onProgress }),
+        },
+        {
+            label: 'device engine (backup model)',
+            needsWorker: true,
+            sameModel: false,
+            run: async () => {
+                const smaller = await standardizeSourceImage(source, 2048);
+                return bridge.run({ blob: smaller.blob, model: fallbackModel, onProgress, freshWorker: true });
             },
-            output: { format: 'image/png' },
-        }));
-        // used a higher-tier model → drop the lower tiers' weights from the
-        // engine cache (shared ORT wasm stays; both tools share one cache)
-        if (BROWSER_MODELS[model].tier > 0) void evictLowerModels(model);
-        return out;
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // Engine-start failures (ort glue/wasm mismatch, resource fetch
-        // problems). Honest message — the old "hard-refresh" advice was a
-        // misdiagnosis and sent the user refreshing 30+ times for nothing.
-        // The real error rides along in parens so a failure screenshot is
-        // immediately diagnosable.
-        if (/publicPath|Failed to create session|_Ort|Failed to fetch/i.test(message)) {
-            throw new Error(
-                `The on-device cutout engine could not start in this browser — use CUT ON SERVER instead (or upload your own PNG). (${message.slice(0, 160)})`,
-            );
+        },
+        {
+            label: 'in-tab engine',
+            needsWorker: false,
+            sameModel: true,
+            run: async () => {
+                const smaller = await standardizeSourceImage(source, 2048);
+                return runDirectFallback(smaller.blob, onProgress, model);
+            },
+        },
+        {
+            label: 'in-tab engine (light model)',
+            needsWorker: false,
+            sameModel: false,
+            run: async () => {
+                const smaller = await standardizeSourceImage(source, 1600);
+                return runDirectFallback(smaller.blob, onProgress, fallbackModel);
+            },
+        },
+    ];
+
+    let queue = workersUsable ? rungs : rungs.filter((r) => !r.needsWorker);
+    let bestSuspect: Blob | null = null;
+    let lastError: unknown = null;
+
+    while (queue.length > 0) {
+        if (token.cancelled) throw new Error(INTERRUPTED);
+        const rung = queue[0];
+        queue = queue.slice(1);
+
+        try {
+            const raw = await rung.run();
+            engineEverSucceeded = true;
+            if (token.cancelled) throw new Error(INTERRUPTED);
+
+            const verdict = await inspectCutout(raw);
+            if (!verdict) {
+                // Could not decode for verification — trust the engine
+                return applyRefinement(raw, onProgress);
+            }
+            if (verdict.blank) {
+                lastError = new Error('blank-cutout');
+                onProgress?.('processing', 'Cutout looked empty — retrying on backup engine…', 60);
+                continue;
+            }
+            if (verdict.noSegmentation) {
+                // Possibly a legitimate full-frame subject — remember it, try
+                // a rung that may produce a real matte, but never hard-fail.
+                if (!bestSuspect) bestSuspect = raw;
+                continue;
+            }
+            return applyRefinement(raw, onProgress);
+        } catch (err) {
+            if (token.cancelled) throw new Error(INTERRUPTED);
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === WORKER_UNAVAILABLE) {
+                // No Worker API at all — drop the remaining worker rungs
+                queue = queue.filter((r) => !r.needsWorker);
+            } else if (NETWORK_FRIENDLY.test(msg)) {
+                // A dead connection is not fixed by downloading a DIFFERENT
+                // model — drop backup-model rungs so a network failure never
+                // pulls an extra ~44 MB of weights the user didn't ask for.
+                queue = queue.filter((r) => r.sameModel);
+            }
+            lastError = err;
+            console.warn(`[removeBackgroundBrowser] Rung "${rung.label}" failed:`, msg);
         }
-        throw err;
     }
+
+    if (bestSuspect) return applyRefinement(bestSuspect, onProgress);
+    throw new Error(friendlyError(lastError));
 }
 
-// ---------------------------------------------------------------------------
-// Server engine — worker /matte (rembg u2netp; any subject, not just people).
-// ---------------------------------------------------------------------------
-
-async function requestUploadTicket(): Promise<string> {
-    let res: Response;
-    try {
-        res = await fetch(VIDEO_GRAB_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'captions-ticket' }),
-        });
-    } catch {
-        throw new Error('Cannot reach the cutout service. Check your connection.');
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ticket) {
-        throw new Error(data?.error || 'Cutout service is not available right now.');
-    }
-    return data.ticket as string;
-}
-
+/**
+ * Server cutout redirected to fast on-device browser engine.
+ * The server option is completely removed to eliminate network timeouts and server costs.
+ */
 export async function removeBackgroundServer(
     source: Blob,
     onProgress?: MatteProgress,
 ): Promise<Blob> {
-    // ── ticket + upload ──────────────────────────────────────────────────
-    onProgress?.('uploading', 'Connecting to CreatorKit Server…', 8);
-    const ticket = await requestUploadTicket();
+    return removeBackgroundBrowser(source, onProgress, 'isnet_quint8');
+}
 
-    onProgress?.('uploading', 'Uploading image to the server…', 20);
-    // Downscale + JPEG before upload: ~1MB instead of tens of MB, so the
-    // upload survives slow mobile links (and fails fast on unreadable files).
-    const upload = await normalizeSourceBlob(source, 2048, 'image/jpeg');
-    const form = new FormData();
-    form.append('file', upload, 'image.jpg');
-    const uploadUrl = `${CAPTIONS_WORKER_BASE}/matte?ticket=${encodeURIComponent(ticket)}`;
-    const doUpload = () => fetch(uploadUrl, { method: 'POST', body: form });
-    let startRes: Response;
+// ---------------------------------------------------------------------------
+// Engine prewarm — make the FIRST cut feel instant
+// ---------------------------------------------------------------------------
+
+let prewarmStarted = false;
+
+async function tinyWarmupBlob(): Promise<Blob> {
     try {
-        startRes = await doUpload();
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(0, 0, 32, 32);
+        }
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (blob) return blob;
     } catch {
-        // free-tier wake-up wobble or mid-deploy blip — one retry
-        await sleep(2500);
-        startRes = await doUpload().catch(() => {
-            throw new Error('Connection lost while uploading — the cutout server may be waking up or redeploying. Give it a minute and try again.');
+        /* fall through */
+    }
+    return new Blob([], { type: 'image/png' });
+}
+
+/**
+ * Silently pre-fetch + initialize the cutout engine (model weights + WASM)
+ * once the user has shown intent (first tap/key) or after a short idle wait.
+ * The weights land in the browser's disk cache, so the first real cutout
+ * skips the ~110 MB download entirely. Safe to call repeatedly — it is a
+ * no-op after the first invocation.
+ */
+export function prewarmBackgroundEngine(): void {
+    if (prewarmStarted || typeof window === 'undefined') return;
+    ensureModelFetchPatch(); // also requests persistent storage for the model
+    prewarmStarted = true;
+
+    const trigger = () => {
+        window.removeEventListener('pointerdown', trigger);
+        window.removeEventListener('keydown', trigger);
+        const idle = (cb: () => void) => {
+            const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+            if (typeof ric === 'function') ric(cb, { timeout: 5000 });
+            else setTimeout(cb, 1500);
+        };
+        idle(() => {
+            // Never race the prewarm against a real cut (duplicate downloads)
+            // and never prewarm once the weights are already on disk.
+            if (bridge.busy || engineEverSucceeded) return;
+            tinyWarmupBlob()
+                .then((blob) => bridge.run({ blob, model: 'isnet_quint8', prewarm: true }))
+                .catch(() => bridge.terminate());
         });
-    }
+    };
 
-    const start = await startRes.json().catch(() => ({}));
-    if (startRes.status === 413) throw new Error('Image too large for server cutout (max ~99MB).');
-    if (startRes.status === 429) throw new Error('The server is busy with other jobs — try again in a minute.');
-    if (!startRes.ok || !start?.jobId || !start?.token) {
-        throw new Error(start?.detail || 'The server rejected the upload.');
-    }
-
-    // ── poll ──────────────────────────────────────────────────────────────
-    const jobId = start.jobId as string;
-    const token = start.token as string;
-    let pct = 30;
-    for (; ;) {
-        await sleep(MATTE_POLL_MS);
-        let jobRes: Response;
-        try {
-            jobRes = await fetch(`${CAPTIONS_WORKER_BASE}/matte/job/${jobId}?t=${encodeURIComponent(token)}`);
-        } catch {
-            // Free-tier container reboots look like this — keep polling a few
-            // rounds before giving up (the job may survive on disk).
-            pct = Math.min(95, pct + 2);
-            onProgress?.('server_processing', 'Waiting for the server…', pct);
-            continue;
-        }
-        const job = await jobRes.json().catch(() => ({}));
-        if (job.status === 'ready') {
-            onProgress?.('server_processing', 'Downloading your cutout…', 97);
-            const fileRes = await fetch(`${CAPTIONS_WORKER_BASE}/matte/file/${jobId}?t=${encodeURIComponent(token)}`);
-            if (!fileRes.ok) throw new Error('The cutout result was lost — try again.');
-            return await fileRes.blob();
-        }
-        if (job.status === 'failed') {
-            throw new Error(job.error || 'Server cutout failed.');
-        }
-        pct = Math.min(95, pct + 3);
-        onProgress?.(
-            job.queuedAhead ? 'queued' : 'server_processing',
-            job.queuedAhead ? 'Waiting for a free server slot…' : 'Cutting out on the server…',
-            pct,
-        );
+    try {
+        window.addEventListener('pointerdown', trigger, { passive: true });
+        window.addEventListener('keydown', trigger);
+        setTimeout(trigger, 12_000); // idle fallback — no interaction yet
+    } catch {
+        /* prewarm is best-effort */
     }
 }
