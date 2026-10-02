@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, faqJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Studio Teleprompter — Free Online Teleprompter with Voice Sync | CreatorKit',
+    title: 'Studio Teleprompter — Free Online Teleprompter with Voice Sync | CreatorsKit',
     description:
         'A free teleprompter for phone and desktop. Voice-activated scrolling, 52 fonts, eyeline spotlight, selfie mirror mode. No signup, works offline.',
     path: '/teleprompter',
@@ -52,7 +52,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Studio Teleprompter',
+        name: 'CreatorsKit Studio Teleprompter',
         description:
             'Free online teleprompter with voice-activated scrolling, 52 fonts, eyeline spotlight and selfie mirror mode. Works on phone and desktop, even offline.',
         path: '/teleprompter',

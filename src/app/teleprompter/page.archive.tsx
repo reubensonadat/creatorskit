@@ -32,7 +32,7 @@ import {
   ChevronDown,
   Pipette,
 } from 'lucide-react';
-import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import StudioToolsDropdown from '@/components/nav/SiteNav';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | '4:5' | '4:3';
@@ -168,10 +168,10 @@ Grab your headphones and let's jump right in!`,
 What if you could produce high-converting video content in half the time without hiring an expensive production team?
 
 [SOLUTION DEMO]
-Introducing CreatorKit — the all-in-one browser suite for modern storytellers. With zero subscriptions and instant client-side processing, you can edit, sync, and deliver faster than ever.
+Introducing CreatorsKit — the all-in-one browser suite for modern storytellers. With zero subscriptions and instant client-side processing, you can edit, sync, and deliver faster than ever.
 
 [CTA]
-Get started today for free at CreatorKit.win!`,
+Get started today for free at CreatorsKit.win!`,
   },
 ];
 
@@ -384,7 +384,7 @@ export default function TeleprompterPage() {
   // Core Prompter State
   const [script, setScript] = useState(
     `[HOOK - LOOK DIRECTLY AT THE LENS]
-Welcome to CreatorKit Pro Teleprompter!
+Welcome to CreatorsKit Pro Teleprompter!
 
 [HIGH-FIDELITY AUDIO RECORDING]
 Record crystal-clear voiceovers with real-time decibel monitoring right at the top of your screen.

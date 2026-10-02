@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { 
-  RefreshCw, 
-  ChevronLeft, 
-  Download, 
+import { useState, useRef, useEffect } from "react";
+import {
+  RefreshCw,
+  ChevronLeft,
+  Download,
   Columns,
   Archive
 } from "lucide-react";
 import Link from "next/link";
 import JSZip from "jszip";
+import { TactileScrubber } from "@/components/tactile-scrubber";
 import SpeederLoader from "@/components/SpeederLoader";
+import NextStepRow from "@/components/NextStepRow";
+import { takeHandoffImage, putHandoffImage } from "@/lib/tool-handoff";
 
 export default function CarouselSlicerPage() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -36,6 +39,17 @@ export default function CarouselSlicerPage() {
     };
     reader.readAsDataURL(file);
   };
+
+  // Cross-tool hand-off intake (§4): text-behind posters/cards → slice into a carousel.
+  useEffect(() => {
+    (async () => {
+      const rec = await takeHandoffImage("carousel-slicer");
+      if (rec && rec.blob.type.startsWith("image/")) {
+        loadImage(new File([rec.blob], rec.name ?? "poster.png", { type: rec.blob.type }));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sliceImage = () => {
     if (!image) return;
@@ -86,6 +100,20 @@ export default function CarouselSlicerPage() {
     setIsZipping(false);
   };
 
+  // §4 edges: carry slide 1 straight into the next tool (best-effort).
+  const sendFirstSliceTo = async (href: string) => {
+    if (!slices.length) return;
+    try {
+      const blob = await (await fetch(slices[0])).blob();
+      await putHandoffImage(href.replace(/^\//, ""), blob, {
+        sourceTool: "carousel-slicer",
+        name: "slide-1.png",
+      });
+    } catch {
+      /* best-effort — the target still opens */
+    }
+  };
+
   const reset = () => {
     setImage(null);
     setPreview(null);
@@ -100,7 +128,7 @@ export default function CarouselSlicerPage() {
         {/* Top Title Section */}
         <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#000", color: "#fff", fontFamily: "monospace" }}>
               SEAMLESS CAROUSEL SLICER
             </span>
             <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
@@ -135,7 +163,7 @@ export default function CarouselSlicerPage() {
               padding: "100px 40px",
               textAlign: "center",
               cursor: "pointer",
-              border: `4px dashed ${isDragging ? "#FFDD00" : "#000000"}`,
+              border: `4px dashed ${isDragging ? "#71717a" : "#000000"}`,
               background: "#ffffff",
               boxShadow: "6px 6px 0 #000000",
               transition: "all 0.2s ease",
@@ -150,11 +178,11 @@ export default function CarouselSlicerPage() {
                 alignItems: "center",
                 justifyContent: "center",
                 marginBottom: 20,
-                background: "#FFDD00",
+                background: "#000000",
                 boxShadow: "4px 4px 0 #000000",
               }}
             >
-              <Columns size={30} style={{ color: "#000" }} />
+              <Columns size={30} style={{ color: "#fff" }} />
             </div>
             <h3 style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
               Upload panoramas or banner layouts
@@ -178,9 +206,12 @@ export default function CarouselSlicerPage() {
         {/* Active layout editor */}
         {preview && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            
+
             {(isProcessing || isZipping) && (
-              <SpeederLoader message={isProcessing ? "Splitting Panorama" : "Generating ZIP Bundle"} />
+              <SpeederLoader
+                message={isProcessing ? "Splitting Panorama" : "Generating ZIP Bundle"}
+                state={isProcessing ? "shaping" : "composing"}
+              />
             )}
 
             {/* Main Preview Screen */}
@@ -218,25 +249,18 @@ export default function CarouselSlicerPage() {
               }}
             >
               <div style={{ flex: 1, minWidth: 260 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>
-                    Number of Slide Segments
-                  </label>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 900, fontFamily: "monospace", background: "#FFDD00", padding: "1px 8px", border: "1.5px solid #000" }}>
-                    {numSlides} SLIDES
-                  </span>
-                </div>
-                <input
-                  type="range"
+                <TactileScrubber
+                  label="Number of Slide Segments"
                   min={2}
                   max={10}
                   step={1}
                   value={numSlides}
-                  onChange={(e) => {
-                    setNumSlides(Number(e.target.value));
+                  onChange={(v) => {
+                    setNumSlides(v);
                     setSlices([]);
                   }}
-                  style={{ width: "100%", cursor: "pointer" }}
+                  formatValue={(v) => `${v} SLIDES`}
+                  showSteppers={false}
                 />
               </div>
 
@@ -252,7 +276,7 @@ export default function CarouselSlicerPage() {
                   className="brutalist-button brutalist-button-primary"
                   onClick={sliceImage}
                   disabled={isProcessing}
-                  style={{ padding: "10px 20px", fontSize: "0.8rem", background: "#22c55e", color: "#fff" }}
+                  style={{ padding: "10px 20px", fontSize: "0.8rem", background: "#000", color: "#fff" }}
                 >
                   Generate Slices ➔
                 </button>
@@ -341,6 +365,15 @@ export default function CarouselSlicerPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* §4: keep the workflow moving — slide 1 carries over */}
+                <NextStepRow
+                  currentHref="/carousel-slicer"
+                  heading="SLICES READY — KEEP GOING"
+                  onDownload={downloadZip}
+                  downloadLabel="ZIP"
+                  onBeforeNavigate={(href) => sendFirstSliceTo(href)}
+                />
               </div>
             )}
           </div>

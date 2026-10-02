@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Digital Bouquet Studio — Printable Personalized Flower Gift | CreatorKit',
+    title: 'Digital Bouquet Studio — Printable Personalized Flower Gift | CreatorsKit',
     description:
         'Craft a handcrafted digital flower bouquet with a personalized card and print it in real time. A thoughtful free printable gift.',
     path: '/bouquet',
@@ -48,7 +48,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Digital Bouquet Studio',
+        name: 'CreatorsKit Digital Bouquet Studio',
         description:
             'Free digital bouquet studio: arrange a handcrafted flower bouquet, write a personalized card, and print it as a gift in real time.',
         path: '/bouquet',

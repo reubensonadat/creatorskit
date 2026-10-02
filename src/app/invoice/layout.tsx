@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Free Invoice Generator — Creator & Freelancer Invoices | CreatorKit',
+    title: 'Free Invoice Generator — Creator & Freelancer Invoices | CreatorsKit',
     description:
         'Generate clean professional invoices for freelance and creator work. Custom line items, mobile money & bank details, printable PDF. Free, no signup.',
     path: '/invoice',
@@ -51,7 +51,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Invoice Generator',
+        name: 'CreatorsKit Invoice Generator',
         description:
             'Free invoice generator for freelancers and creators. Custom line items, mobile money and bank details, printable PDF invoices with no signup and no watermark.',
         path: '/invoice',

@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import NextStepRow from '@/components/NextStepRow';
+import { takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
   Pause,
@@ -199,6 +201,29 @@ export default function TextHighlighterPage() {
   const animStartTimeRef = useRef<number>(0);
 
   const selectedAspect = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
+
+  // Cross-tool intake (§4): transcript text handed off from Auto-Captions seeds the anchor phrase.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const text = await takeHandoffText('text-highlighter');
+      if (cancelled || !text) return;
+      // Headlines are clamped to 23 chars in the renderer — build the longest
+      // opening phrase from the transcript that still fits.
+      let phrase = '';
+      for (const w of text.split(/\s+/).filter(Boolean)) {
+        if ((phrase + ' ' + w).trim().length > 23) break;
+        phrase = (phrase + ' ' + w).trim();
+      }
+      if (!phrase) phrase = (text.split(/\s+/).filter(Boolean)[0] ?? '').slice(0, 23);
+      if (!phrase) return;
+      setAnchorPhrase(phrase);
+      setCuts(generateCutsForPhrase(phrase, 6));
+      setCurrentCutIndex(0);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync inputs when cut changes
   useEffect(() => {
@@ -624,7 +649,7 @@ export default function TextHighlighterPage() {
                     display: 'inline-block',
                     width: 9,
                     height: 9,
-                    background: isPlaying ? '#22c55e' : '#eab308',
+                    background: isPlaying ? '#22c55e' : '#a1a1aa',
                     border: '1.5px solid #000',
                     borderRadius: '50%',
                   }}
@@ -1138,6 +1163,11 @@ export default function TextHighlighterPage() {
               <Film size={18} />
               Export MP4 Video
             </button>
+
+            {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+            {!isExporting && (
+              <NextStepRow currentHref="/text-highlighter" heading="Video exported — keep going" />
+            )}
           </div>
         </div>
 

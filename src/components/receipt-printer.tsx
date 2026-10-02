@@ -2,7 +2,7 @@
 
 /**
  * ReceiptPrinter & DocumentPrinter — an animated physical printer for the
- * CreatorKit Business Suite. Supports both thermal receipts (zig-zag torn edge,
+ * CreatorsKit Business Suite. Supports both thermal receipts (zig-zag torn edge,
  * compact width) and full A4 documents (Invoices, Contracts, Letterheads) with
  * high-fidelity stepped/smooth paper feed animations.
  */

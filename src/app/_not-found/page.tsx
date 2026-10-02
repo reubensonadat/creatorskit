@@ -62,7 +62,7 @@ export default function NotFound() {
           onMouseEnter={(e) => { e.currentTarget.style.background = "#333"; e.currentTarget.style.borderColor = "#333"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "#000"; e.currentTarget.style.borderColor = "#000"; }}
         >
-          Return to CreatorKit
+          Return to CreatorsKit
         </Link>
       </div>
     </div>

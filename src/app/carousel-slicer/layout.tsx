@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Carousel Slicer — Split Wide Images into Seamless Posts | CreatorKit',
+    title: 'Carousel Slicer — Split Wide Images into Seamless Posts | CreatorsKit',
     description:
         'Slice wide panoramic graphics into perfectly seamless multi-slide Instagram and LinkedIn carousels. Free, instant, no signup.',
     path: '/carousel-slicer',
@@ -50,7 +50,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Carousel Slicer',
+        name: 'CreatorsKit Carousel Slicer',
         description:
             'Free tool that slices wide panoramic graphics into perfectly seamless multi-slide Instagram and LinkedIn carousel posts.',
         path: '/carousel-slicer',

@@ -205,7 +205,7 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                                         : `${docLabel(data.k)} ready`}
                             </ReceiptPrinter.Status>
                             <span className="rounded-[0.25rem] bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
-                                CreatorKit
+                                CreatorsKit
                             </span>
                         </ReceiptPrinter.Header>
                         <ReceiptPrinter.Screen>

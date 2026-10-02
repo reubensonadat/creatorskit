@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Text Match CUT — Word-Anchor Kinetic Typography Transitions | CreatorKit',
+    title: 'Text Match CUT — Word-Anchor Kinetic Typography Transitions | CreatorsKit',
     description:
         'Create word-anchor match cuts and kinetic typography transitions for short-form video. Free, in-browser, exports clean clips for TikTok & Shorts.',
     path: '/match-cut',
@@ -50,7 +50,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Text Match CUT',
+        name: 'CreatorsKit Text Match CUT',
         description:
             'Free kinetic typography tool: build word-anchor match cuts and rapid text transitions for short-form video directly in your browser.',
         path: '/match-cut',

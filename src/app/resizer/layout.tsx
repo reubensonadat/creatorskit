@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Social Platform Resizer — Free Batch Image Cropper & Formatter | CreatorKit',
+    title: 'Social Platform Resizer — Free Batch Image Cropper & Formatter | CreatorsKit',
     description:
         'One-click batch crop and resize images for YouTube 16:9, TikTok 9:16, Instagram, X and more. Free, fast, runs entirely in your browser.',
     path: '/resizer',
@@ -52,7 +52,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Social Platform Resizer',
+        name: 'CreatorsKit Social Platform Resizer',
         description:
             'Free batch image resizer with one-click presets for YouTube, TikTok, Instagram, X and more. Crops and formats images entirely in your browser.',
         path: '/resizer',

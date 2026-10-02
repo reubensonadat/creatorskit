@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Palette, RefreshCw, ChevronLeft } from "lucide-react";
 import Link from "next/link";
+import { putHandoffText } from "@/lib/tool-handoff";
 
 interface Swatch {
   hex: string;
@@ -118,6 +119,16 @@ export default function PaletteExtractorPage() {
     window.setTimeout(() => setCopied(""), 1400);
   };
 
+  /** Cross-tool hand-off (§4): ship the extracted hexes to Color Gradient Studio. */
+  const sendToGradient = async () => {
+    try {
+      await putHandoffText("color-gradient", palette.map((s) => s.hex).join(","), { sourceTool: "palette-extractor" });
+    } catch {
+      /* best-effort — the target still opens */
+    }
+    window.open("/color-gradient", "_blank");
+  };
+
   const cssPalette = palette
     .map((s, i) => `--palette-${i + 1}: ${s.hex};`)
     .join("\n");
@@ -129,7 +140,7 @@ export default function PaletteExtractorPage() {
         {/* Top Title Section */}
         <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#000", color: "#fff", fontFamily: "monospace" }}>
               PALETTE EXTRACTOR
             </span>
             <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
@@ -234,6 +245,13 @@ export default function PaletteExtractorPage() {
                     style={{ fontSize: "0.72rem", padding: "7px 12px" }}
                   >
                     {copied === "css" ? "Copied!" : "Copy CSS Palette"}
+                  </button>
+                  <button
+                    className="brutalist-button"
+                    onClick={() => void sendToGradient()}
+                    style={{ fontSize: "0.72rem", padding: "7px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Palette size={13} /> Find Gradients
                   </button>
                 </div>
               )}

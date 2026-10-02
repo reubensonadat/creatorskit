@@ -1,5 +1,5 @@
 /**
- * Google Fonts & Financial Typography Utilities for CreatorKit Invoice Generator
+ * Google Fonts & Financial Typography Utilities for CreatorsKit Invoice Generator
  * Uses canonical GOOGLE_FONTS_LIST from match-cut/google-fonts.
  */
 

@@ -25,6 +25,9 @@ import {
   type WatermarkOptions,
   type WatermarkPosition,
 } from "@/lib/watermark";
+import { TactileScrubber } from "@/components/tactile-scrubber";
+import NextStepRow from "@/components/NextStepRow";
+import { takeHandoffImage } from "@/lib/tool-handoff";
 
 type FitMode = "blur-fill" | "gradient" | "fill" | "contain";
 type OutFormat = "png" | "jpg" | "webp";
@@ -570,6 +573,18 @@ export default function ResizerPage() {
     handleFileUploadRef.current = handleFileUpload;
   }, [handleFileUpload]);
 
+  // Cross-tool hand-off intake (§4): match-cut / auto-captions pass the source
+  // FILE (video), watermark & friends pass images — feed straight into upload.
+  useEffect(() => {
+    (async () => {
+      const rec = await takeHandoffImage("resizer");
+      if (!rec) return;
+      const ext = rec.blob.type.startsWith("video/") ? "mp4" : "png";
+      const name = rec.name ?? `handoff-${Date.now()}.${ext}`;
+      handleFileUploadRef.current(new File([rec.blob], name, { type: rec.blob.type }));
+    })();
+  }, []);
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -1034,21 +1049,21 @@ export default function ResizerPage() {
                     </div>
                   </div>
 
-                  <input
-                    type="range"
-                    min="0"
+                  <TactileScrubber
+                    min={0}
                     max={videoDuration || 10}
-                    step="0.05"
+                    step={0.05}
                     value={videoCurrentTime}
-                    onChange={(e) => {
-                      const t = parseFloat(e.target.value);
+                    onChange={(t) => {
                       setVideoCurrentTime(t);
                       if (videoRef.current) {
                         videoRef.current.currentTime = t;
                         renderCanvas();
                       }
                     }}
-                    style={{ width: "100%", accentColor: "#FFE500", cursor: "pointer" }}
+                    showValueBadge={false}
+                    showSteppers={false}
+                    fillColor="#FFE500"
                   />
 
                   <button
@@ -1152,6 +1167,25 @@ export default function ResizerPage() {
                   </button>
                 )}
               </div>
+
+              {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+              {(isVideo ? renderedVideoUrl : downloaded) && (
+                <NextStepRow
+                  currentHref="/resizer"
+                  heading={isVideo ? "MP4 rendered — keep going" : "Image saved — keep going"}
+                  onDownload={
+                    isVideo
+                      ? () => {
+                        if (!renderedVideoUrl) return;
+                        const a = document.createElement("a");
+                        a.href = renderedVideoUrl;
+                        a.download = `${fileName}-${preset.id}-video.mp4`;
+                        a.click();
+                      }
+                      : downloadSingle
+                  }
+                />
+              )}
             </div>
 
             {/* ALL FORMATS — live preview strip (the whole point, visible at once) */}
@@ -1321,21 +1355,16 @@ export default function ResizerPage() {
 
               {/* Blur Intensity Slider (% of frame width — consistent across every format) */}
               {fit === "blur-fill" && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 4 }}>
-                  <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 800 }}>Blur Intensity:</span>
-                  <input
-                    type="range"
-                    min={0.8}
-                    max={8}
-                    step={0.2}
-                    value={blurPercent}
-                    onChange={(e) => setBlurPercent(Number(e.target.value))}
-                    style={{ flex: 1, accentColor: "#000", cursor: "pointer" }}
-                  />
-                  <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 900, width: 42, textAlign: "right" }}>
-                    {blurPercent.toFixed(1)}%
-                  </span>
-                </div>
+                <TactileScrubber
+                  label="Blur Intensity"
+                  min={0.8}
+                  max={8}
+                  step={0.2}
+                  value={blurPercent}
+                  onChange={(v) => setBlurPercent(v)}
+                  formatValue={(v) => `${v.toFixed(1)}%`}
+                  showSteppers={false}
+                />
               )}
 
               {/* Gradient Preset Swatches */}
@@ -1485,16 +1514,28 @@ export default function ResizerPage() {
                       </div>
                     </div>
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 800, width: 36 }}>Size</span>
-                        <input type="range" min={2} max={12} step={0.5} value={wmSize} onChange={(e) => setWmSize(Number(e.target.value))} style={{ flex: 1, accentColor: "#000" }} />
-                        <span style={{ fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 900, width: 30, textAlign: "right" }}>{wmSize}%</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 800, width: 36 }}>Fade</span>
-                        <input type="range" min={0.1} max={1} step={0.05} value={wmOpacity} onChange={(e) => setWmOpacity(Number(e.target.value))} style={{ flex: 1, accentColor: "#000" }} />
-                        <span style={{ fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 900, width: 30, textAlign: "right" }}>{Math.round(wmOpacity * 100)}%</span>
-                      </div>
+                      <TactileScrubber
+                        label="Size"
+                        min={2}
+                        max={12}
+                        step={0.5}
+                        value={wmSize}
+                        onChange={(v) => setWmSize(v)}
+                        formatValue={(v) => `${v}%`}
+                        height={12}
+                        showSteppers={false}
+                      />
+                      <TactileScrubber
+                        label="Fade"
+                        min={0.1}
+                        max={1}
+                        step={0.05}
+                        value={wmOpacity}
+                        onChange={(v) => setWmOpacity(v)}
+                        formatValue={(v) => `${Math.round(v * 100)}%`}
+                        height={12}
+                        showSteppers={false}
+                      />
                       <span style={{ fontSize: "0.6rem", fontFamily: "monospace", color: "#888", fontWeight: 700 }}>
                         Stamped onto every format, video frame & ZIP — remembered for next visit.
                       </span>
@@ -1537,19 +1578,16 @@ export default function ResizerPage() {
               {/* Lossy quality slider */}
               {format !== "png" && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 800 }}>Quality:</span>
-                  <input
-                    type="range"
+                  <TactileScrubber
+                    label="Quality"
                     min={0.5}
                     max={1}
                     step={0.02}
                     value={quality}
-                    onChange={(e) => setQuality(Number(e.target.value))}
-                    style={{ flex: 1, accentColor: "#000", cursor: "pointer" }}
+                    onChange={(v) => setQuality(v)}
+                    formatValue={(v) => `${Math.round(v * 100)}`}
+                    showSteppers={false}
                   />
-                  <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 900, width: 34, textAlign: "right" }}>
-                    {Math.round(quality * 100)}
-                  </span>
                 </div>
               )}
 

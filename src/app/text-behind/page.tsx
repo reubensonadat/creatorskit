@@ -17,11 +17,14 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Scissors, Download, SlidersHorizontal, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, Eye, LayoutTemplate, Home } from 'lucide-react';
+import { ImagePlus, Scissors, Download, SlidersHorizontal, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, Eye, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2 } from 'lucide-react';
 import Link from 'next/link';
 import NextImage from 'next/image';
-import { ALL_TOOLS } from '@/data/tools';
+import { ThinkingOrb } from 'thinking-orbs';
+import SiteNav from '@/components/nav/SiteNav';
 import { downloadBlob } from '@/lib/canvas-video-exporter';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { REMIX_ICONS_LIST, type IconDefinition } from '@/lib/remix-icons';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import {
@@ -35,6 +38,7 @@ import {
 } from '@/lib/background-removal';
 
 import { putHandoffImage, takeHandoffImage } from '@/lib/tool-handoff';
+import NextStepRow from '@/components/NextStepRow';
 
 /** Engine quality choice — same key as /background-replace so the two tools stay in sync. */
 const QUALITY_KEY = 'ck_bgrem_quality_v1';
@@ -229,7 +233,167 @@ const DEFAULT_TEXT_LAYER: TextLayer = {
     yPct: 0.4,
 };
 
+// ---------------------------------------------------------------------------
+// Advanced image editing — shape overlays (rect / line / light beam) + grain
+// ---------------------------------------------------------------------------
+
+type ShapeKind = 'rect' | 'line' | 'beam' | 'circle' | 'icon' | 'button';
+
+interface ShapeLayer {
+    id: string;
+    kind: ShapeKind;
+    xPct: number; // centre x (0-1)
+    yPct: number; // centre y (0-1)
+    wPct: number; // width / length as % of canvas width
+    hPct: number; // height / thickness as % of canvas height
+    rotationDeg: number;
+    fillColor: string; // body colour — rect fill · line colour · beam tint
+    fillOn: boolean; // solid body vs hollow (glow/border only)
+    strokeColor: string; // border / outline colour · button label colour
+    strokeW: number; // border width in ‰ of canvas width (0-30)
+    cornerPct: number; // corner radius as % of the shorter side (0-50)
+    opacity: number; // 0-1
+    glow: number; // 0-1 — additive bloom (lightsaber halo, neon frame)
+    blend: BlendMode;
+    depth: 'behind' | 'front'; // relative to the subject cutout
+    iconId?: string; // remix icon id (kind === 'icon')
+    label?: string; // centred text (kind === 'button') — e.g. "NEXT"
+}
+
+interface ShapeMetric {
+    cx: number;
+    cy: number;
+    w: number;
+    h: number;
+    rot: number;
+}
+
+const makeShape = (kind: ShapeKind, index: number): ShapeLayer => ({
+    id: `shape-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+    kind,
+    xPct: 0.5,
+    yPct: kind === 'button' ? 0.82 : 0.5,
+    wPct: kind === 'rect' || kind === 'circle' ? 40 : kind === 'icon' ? 14 : kind === 'button' ? 34 : 70,
+    hPct: kind === 'rect' ? 18 : kind === 'line' ? 0.7 : kind === 'beam' ? 4 : kind === 'icon' ? 14 : kind === 'button' ? 9 : 40,
+    rotationDeg: kind === 'beam' ? -24 : 0,
+    fillColor: kind === 'beam' ? '#7DD3FC' : kind === 'line' || kind === 'button' ? '#FFFFFF' : '#FFE500',
+    iconId: 'arrow-right',
+    label: kind === 'button' ? 'NEXT' : undefined,
+    fillOn: true,
+    strokeColor: '#000000',
+    strokeW: kind === 'button' ? 8 : 0,
+    cornerPct: kind === 'rect' ? 8 : kind === 'button' ? 18 : 50,
+    opacity: 1,
+    glow: kind === 'beam' ? 0.8 : 0,
+    blend: 'normal',
+    depth: kind === 'button' ? 'front' : 'behind',
+});
+
+interface GrainSettings {
+    enabled: boolean;
+    opacity: number; // 0-0.6
+    size: number; // 1-5 — speckle scale
+}
+
+const DEFAULT_GRAIN: GrainSettings = { enabled: false, opacity: 0.18, size: 2 };
+
+/** One undo step — everything the canvas composites, captured before a change. */
+interface UndoSnapshot {
+    layers: TextLayer[];
+    activeLayerId: string;
+    shapes: ShapeLayer[];
+    activeShapeId: string | null;
+    grain: GrainSettings;
+    bgDim: number;
+}
+
+/** Deterministic seeded PRNG — the grain tile is stable across redraws/exports. */
+const mulberry32 = (seed: number) => () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+const grainTileCache = new Map<number, HTMLCanvasElement>();
+
+/** Grey-noise tile — drawn with an `overlay` blend so it reads as film grain,
+ *  lifting the darks and dusting the lights instead of just dimming them. */
+const grainTile = (dotPx: number): HTMLCanvasElement | null => {
+    if (typeof document === 'undefined') return null;
+    const size = Math.max(1, Math.min(5, Math.round(dotPx)));
+    const cached = grainTileCache.get(size);
+    if (cached) return cached;
+    const T = document.createElement('canvas');
+    T.width = 128;
+    T.height = 128;
+    const tctx = T.getContext('2d');
+    if (!tctx) return null;
+    const rnd = mulberry32(0xc0ffee + size);
+    const img = tctx.createImageData(T.width, T.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const v = Math.round(rnd() * 255);
+        d[i] = v;
+        d[i + 1] = v;
+        d[i + 2] = v;
+        d[i + 3] = 255;
+    }
+    tctx.putImageData(img, 0, 0);
+    grainTileCache.set(size, T);
+    return T;
+};
+
+/** '#RRGGBB' + alpha → rgba() string (falls back to the raw input). */
+const withAlpha = (hex: string, a: number): string => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};
+
+/** Rounded-rect path via arcTo — identical on every engine (no roundRect dependency). */
+const pathRoundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+    const rr = Math.max(0, Math.min(r, Math.min(Math.abs(w), Math.abs(h)) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+    ctx.lineTo(x + rr, y + h);
+    ctx.arcTo(x, y + h, x, y + h - rr, rr);
+    ctx.lineTo(x, y + rr);
+    ctx.arcTo(x, y, x + rr, y, rr);
+    ctx.closePath();
+};
+
+/** Remix icon → canvas image cache (rendered per colour, decoded async). */
+const iconImageCache = new Map<string, HTMLImageElement>();
+
+const iconDefById = (id: string) => REMIX_ICONS_LIST.find((i) => i.id === id) ?? null;
+
+/** Returns the cached image once decoded; kicks off the decode and calls
+ *  onReady so the canvas repaints the moment the icon becomes drawable. */
+const loadIconImage = (def: IconDefinition, color: string, onReady: () => void): HTMLImageElement | null => {
+    if (typeof window === 'undefined') return null;
+    const key = `${def.id}|${color.toLowerCase()}`;
+    const cached = iconImageCache.get(key);
+    if (cached) return cached.complete && cached.naturalWidth > 0 ? cached : null;
+    const Comp = def.component as React.ComponentType<{ size?: number | string; color?: string }>;
+    try {
+        const markup = renderToStaticMarkup(<Comp size={512} color={color} />);
+        const img = new Image();
+        img.onload = onReady;
+        img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+        iconImageCache.set(key, img);
+    } catch { /* un-drawable icon — the placeholder frame stays */ }
+    return null;
+};
+
 const SETTINGS_KEY = 'ck_text_behind_v6';
+const OVERLAYS_KEY = 'ck_text_behind_overlays_v1';
 
 const TEXT_COLORS = ['#FFFFFF', '#000000', '#FFE500', '#FF4D4D', '#4DD2FF', '#00FF88', '#FF3399', '#111827'];
 
@@ -411,17 +575,8 @@ export default function TextBehindPage() {
      * 'sidebar' = full-screen controls. Never split-screen — the artwork is
      * either fully visible or the controls fully own the screen. */
     const [mobileStudioTab, setMobileStudioTab] = useState<'stage' | 'sidebar'>('stage');
-    /** CreatorKit tools navigation drawer (bouquet-style slide-out) */
-    const [toolsOpen, setToolsOpen] = useState(false);
-    const [toolSearch, setToolSearch] = useState('');
     /** Guard: require explicit confirmation before wiping the user's photos */
     const [confirmResetOpen, setConfirmResetOpen] = useState(false);
-
-    const filteredTools = useMemo(() => {
-        const q = toolSearch.trim().toLowerCase();
-        if (!q) return ALL_TOOLS;
-        return ALL_TOOLS.filter((t) => `${t.label} ${t.desc} ${t.hint}`.toLowerCase().includes(q));
-    }, [toolSearch]);
 
     // --- multiple text layers -----------------------------------------------
     const [layers, setLayers] = useState<TextLayer[]>([DEFAULT_TEXT_LAYER]);
@@ -436,11 +591,52 @@ export default function TextBehindPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeLayer.color]);
 
+    // --- undo (Ctrl+Z + floating button under the canvas) -------------------
+    /** Snapshots pushed BEFORE each change; capped so memory stays sane. */
+    const undoStackRef = useRef<UndoSnapshot[]>([]);
+    const [undoCount, setUndoCount] = useState(0);
+    const redoStackRef = useRef<UndoSnapshot[]>([]);
+    const [redoCount, setRedoCount] = useState(0);
+    const lastPushAtRef = useRef(0);
+    /** Always-fresh view of the editable state — what a snapshot captures. */
+    const undoStateRef = useRef<UndoSnapshot | null>(null);
+
+    const pushUndo = useCallback(() => {
+        const snap = undoStateRef.current;
+        if (!snap) return;
+        const stack = undoStackRef.current;
+        const last = stack[stack.length - 1];
+        // Skip no-op pushes (identical state objects) and coalesce rapid bursts (slider scrubs).
+        if (last && last.layers === snap.layers && last.shapes === snap.shapes && last.grain === snap.grain && last.bgDim === snap.bgDim) return;
+        const now = Date.now();
+        if (stack.length > 0 && now - lastPushAtRef.current < 450) return;
+        lastPushAtRef.current = now;
+        undoStackRef.current = [...stack.slice(-39), snap];
+        setUndoCount(undoStackRef.current.length);
+        // A new change invalidates the redo history.
+        if (redoStackRef.current.length > 0) {
+            redoStackRef.current = [];
+            setRedoCount(0);
+        }
+    }, []);
+
+    // --- icon layers (Remix set) ---------------------------------------------
+    /** Bumped when an icon image finishes decoding, so the canvas repaints. */
+    const [iconTick, setIconTick] = useState(0);
+    const handleIconReady = useCallback(() => setIconTick((t) => (t + 1) % 100000), []);
+    const [iconSearch, setIconSearch] = useState('');
+    const filteredShapeIcons = useMemo(() => {
+        const q = iconSearch.trim().toLowerCase();
+        if (!q) return REMIX_ICONS_LIST;
+        return REMIX_ICONS_LIST.filter((i) => i.name.toLowerCase().includes(q) || i.category.includes(q));
+    }, [iconSearch]);
+
     const patchActiveLayer = useCallback((patch: Partial<TextLayer>) => {
+        pushUndo();
         setLayers((prev) =>
             prev.map((l) => (l.id === activeLayerId ? { ...l, ...patch } : l))
         );
-    }, [activeLayerId]);
+    }, [activeLayerId, pushUndo]);
 
     const layer = activeLayer;
     const patchLayer = patchActiveLayer;
@@ -471,9 +667,114 @@ export default function TextBehindPage() {
     /** Background dim (0–0.85) — darkens the photo so the type pops. */
     const [bgDim, setBgDim] = useState(0);
 
+    // --- advanced image editing: shape overlays + film grain ----------------
+    const [shapes, setShapes] = useState<ShapeLayer[]>([]);
+    const [activeShapeId, setActiveShapeId] = useState<string | null>(null);
+    const [grain, setGrain] = useState<GrainSettings>(DEFAULT_GRAIN);
+    /** Collapsed by default — the advanced kit only appears when asked for. */
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+
+    const activeShape = shapes.find((s) => s.id === activeShapeId) ?? null;
+
+    const patchActiveShape = useCallback((patch: Partial<ShapeLayer>) => {
+        pushUndo();
+        setShapes((prev) => prev.map((s) => (s.id === activeShapeId ? { ...s, ...patch } : s)));
+    }, [activeShapeId, pushUndo]);
+
+    const addShape = (kind: ShapeKind) => {
+        pushUndo();
+        const s = makeShape(kind, shapes.length);
+        setShapes((prev) => [...prev, s]);
+        setActiveShapeId(s.id);
+        setAdvancedOpen(true);
+    };
+
+    const removeShape = (id: string) => {
+        pushUndo();
+        setShapes((prev) => prev.filter((s) => s.id !== id));
+        if (activeShapeId === id) setActiveShapeId(null);
+    };
+
+
+    /** Keep the snapshot source in sync with the last committed render. */
+    useEffect(() => {
+        undoStateRef.current = { layers, activeLayerId, shapes, activeShapeId, grain, bgDim };
+    }, [layers, activeLayerId, shapes, activeShapeId, grain, bgDim]);
+
+    const applySnapshot = (snap: UndoSnapshot) => {
+        setLayers(snap.layers);
+        setActiveLayerId(snap.activeLayerId);
+        setShapes(snap.shapes);
+        setActiveShapeId(snap.activeShapeId);
+        setGrain(snap.grain);
+        setBgDim(snap.bgDim);
+    };
+
+    const undo = useCallback(() => {
+        const stack = undoStackRef.current;
+        if (stack.length === 0) return;
+        const snap = stack[stack.length - 1];
+        undoStackRef.current = stack.slice(0, -1);
+        setUndoCount(undoStackRef.current.length);
+        lastPushAtRef.current = 0;
+        const current = undoStateRef.current;
+        if (current) {
+            redoStackRef.current = [...redoStackRef.current.slice(-39), current];
+            setRedoCount(redoStackRef.current.length);
+        }
+        applySnapshot(snap);
+    }, []);
+
+    const redo = useCallback(() => {
+        const rstack = redoStackRef.current;
+        if (rstack.length === 0) return;
+        const snap = rstack[rstack.length - 1];
+        redoStackRef.current = rstack.slice(0, -1);
+        setRedoCount(redoStackRef.current.length);
+        const current = undoStateRef.current;
+        if (current) {
+            undoStackRef.current = [...undoStackRef.current, current];
+            setUndoCount(undoStackRef.current.length);
+            lastPushAtRef.current = 0;
+        }
+        applySnapshot(snap);
+    }, []);
+
+    const patchGrain = useCallback(
+        (patch: Partial<GrainSettings>) => {
+            pushUndo();
+            setGrain((g) => ({ ...g, ...patch }));
+        },
+        [pushUndo]
+    );
+
+    // Ctrl/Cmd+Z undo · Ctrl/Cmd+Shift+Z or Ctrl+Y redo — never hijacks typing.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            const k = e.key.toLowerCase();
+            const isUndo = k === 'z' && !e.shiftKey;
+            const isRedo = (k === 'z' && e.shiftKey) || k === 'y';
+            if (!isUndo && !isRedo) return;
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            e.preventDefault();
+            if (isUndo) undo();
+            else redo();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [undo, redo]);
+
     /** Metrics for each text layer — powers multi-layer hit testing & dragging. */
     const metricsRef = useRef<Record<string, TextMetrics>>({});
-    const dragRef = useRef<{ active: boolean; layerId: string; movedPx: number; ox: number; oy: number } | null>(null);
+    /** Metrics for each shape overlay — same role as metricsRef, for shapes. */
+    const shapeMetricsRef = useRef<Record<string, ShapeMetric>>({});
+    const dragRef = useRef<
+        | { active: boolean; kind: 'text'; layerId: string; movedPx: number; ox: number; oy: number }
+        | { active: boolean; kind: 'shape'; shapeId: string; movedPx: number; ox: number; oy: number }
+        | null
+    >(null);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -530,6 +831,33 @@ export default function TextBehindPage() {
             localStorage.setItem('ck_text_behind_bgdim', String(bgDim));
         } catch { /* non-fatal */ }
     }, [bgDim]);
+
+    // --- advanced overlays (shapes + grain) persistence ----------------------
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(OVERLAYS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed.shapes)) {
+                    setShapes(
+                        parsed.shapes.map((item: Partial<ShapeLayer>, idx: number) => ({
+                            ...makeShape(item.kind ?? 'rect', idx),
+                            ...item,
+                        }))
+                    );
+                }
+                if (parsed.grain && typeof parsed.grain === 'object') {
+                    setGrain((g) => ({ ...g, ...parsed.grain }));
+                }
+            }
+        } catch { /* use defaults */ }
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(OVERLAYS_KEY, JSON.stringify({ shapes, grain }));
+        } catch { /* non-fatal */ }
+    }, [shapes, grain]);
 
     // Restore saved images from IndexedDB
     useEffect(() => {
@@ -681,6 +1009,7 @@ export default function TextBehindPage() {
 
     // --- multi-textbox management -------------------------------------------
     const handleAddTextBox = () => {
+        pushUndo();
         const nextNum = layers.length + 1;
         const newId = `box-${Date.now().toString(36)}`;
         const newLayer: TextLayer = {
@@ -697,6 +1026,7 @@ export default function TextBehindPage() {
     };
 
     const handleDuplicateActiveTextBox = () => {
+        pushUndo();
         const newId = `box-${Date.now().toString(36)}`;
         const duplicated: TextLayer = {
             ...activeLayer,
@@ -709,6 +1039,7 @@ export default function TextBehindPage() {
 
     const handleDeleteActiveTextBox = () => {
         if (layers.length <= 1) return;
+        pushUndo();
         const remaining = layers.filter((l) => l.id !== activeLayerId);
         setLayers(remaining);
         setActiveLayerId(remaining[0].id);
@@ -873,15 +1204,191 @@ export default function TextBehindPage() {
                 ctx.drawImage(cutoutImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
             };
 
-            // 1. Behind text layers
+            // Shape overlay renderer (advanced image editing) — every kind shares
+            // one model: fill (body) + border (outline) + glow + blend + rotation.
+            const drawShapeLayer = (s: ShapeLayer) => {
+                let w = Math.max(4, (s.wPct / 100) * W);
+                let h = Math.max(2, (s.hPct / 100) * H);
+                // TRUE circle (mobile ruling 2026-10-02): independent w/h would
+                // render an oval on any non-square canvas — clamp to the smaller axis.
+                if (s.kind === 'circle') {
+                    const d = Math.min(w, h);
+                    w = d;
+                    h = d;
+                }
+                const radius = (s.cornerPct / 100) * Math.min(w, h);
+                const lw = Math.max(1, (W / 1000) * Math.max(1, s.strokeW));
+                ctx.save();
+                ctx.translate(s.xPct * W, s.yPct * H);
+                ctx.rotate((s.rotationDeg * Math.PI) / 180);
+                ctx.globalCompositeOperation = asCompositeOp(s.blend);
+
+                // Body path for the current kind — rect/line share the rounded-rect
+                // (a line is a thin capsule), circle is an ellipse. Icons draw as images.
+                const traceBody = () => {
+                    if (s.kind === 'circle') {
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+                    } else {
+                        pathRoundRect(ctx, -w / 2, -h / 2, w, h, radius);
+                    }
+                };
+
+                if (s.kind === 'icon') {
+                    // Remix icon layer — rendered to an image and stamped at w × h.
+                    const def = iconDefById(s.iconId ?? 'arrow-right');
+                    const img = def ? loadIconImage(def, s.fillColor, handleIconReady) : null;
+                    if (s.glow > 0) {
+                        ctx.save();
+                        ctx.globalAlpha = s.opacity * 0.45 * (0.25 + s.glow);
+                        ctx.shadowColor = s.fillColor;
+                        ctx.shadowBlur = Math.min(w, h) * 0.35 * s.glow;
+                        ctx.fillStyle = s.fillColor;
+                        ctx.fillRect(-w / 2, -h / 2, w, h);
+                        ctx.restore();
+                    }
+                    ctx.globalAlpha = s.opacity;
+                    if (img) {
+                        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+                    } else {
+                        // Still decoding — dashed placeholder so the layer is never invisible
+                        ctx.strokeStyle = s.fillColor;
+                        ctx.lineWidth = Math.max(1.5, W / 700);
+                        ctx.setLineDash([w / 12, w / 16]);
+                        ctx.strokeRect(-w / 2, -h / 2, w, h);
+                        ctx.setLineDash([]);
+                    }
+                } else if (s.kind === 'beam') {
+                    // Lightsaber beam — stacked glow passes, fading body, white-hot core.
+                    const halo = (alpha: number, blur: number) => {
+                        ctx.save();
+                        ctx.globalAlpha = s.opacity * alpha * (0.25 + s.glow);
+                        ctx.shadowColor = s.fillColor;
+                        ctx.shadowBlur = blur;
+                        ctx.fillStyle = s.fillColor;
+                        traceBody();
+                        ctx.fill();
+                        ctx.restore();
+                    };
+                    if (s.glow > 0) {
+                        halo(0.1, h * 2.4);
+                        halo(0.16, h * 4.5);
+                        halo(0.2, h * 7.5);
+                    }
+                    if (s.fillOn) {
+                        const bodyFade = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+                        bodyFade.addColorStop(0, withAlpha(s.fillColor, 0));
+                        bodyFade.addColorStop(0.12, withAlpha(s.fillColor, 0.95));
+                        bodyFade.addColorStop(0.88, withAlpha(s.fillColor, 0.95));
+                        bodyFade.addColorStop(1, withAlpha(s.fillColor, 0));
+                        ctx.globalAlpha = s.opacity;
+                        ctx.fillStyle = bodyFade;
+                        traceBody();
+                        ctx.fill();
+
+                        const coreFade = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+                        coreFade.addColorStop(0, 'rgba(255,255,255,0)');
+                        coreFade.addColorStop(0.12, 'rgba(255,255,255,0.9)');
+                        coreFade.addColorStop(0.88, 'rgba(255,255,255,0.9)');
+                        coreFade.addColorStop(1, 'rgba(255,255,255,0)');
+                        ctx.globalAlpha = s.opacity * 0.85;
+                        ctx.fillStyle = coreFade;
+                        pathRoundRect(ctx, -w / 2 + w * 0.01, -h * 0.3, w * 0.98, h * 0.6, h * 0.3);
+                        ctx.fill();
+                    }
+                } else {
+                    // Rect, line, circle & arrow share one body model.
+                    if (s.glow > 0 && (s.fillOn || s.strokeW > 0)) {
+                        ctx.save();
+                        ctx.globalAlpha = s.opacity * 0.45 * (0.25 + s.glow);
+                        ctx.shadowBlur = h * 1.6 * s.glow;
+                        if (s.fillOn) {
+                            ctx.shadowColor = s.fillColor;
+                            ctx.fillStyle = s.fillColor;
+                            traceBody();
+                            ctx.fill();
+                        } else {
+                            ctx.shadowColor = s.strokeColor;
+                            ctx.strokeStyle = s.strokeColor;
+                            ctx.lineWidth = lw;
+                            traceBody();
+                            ctx.stroke();
+                        }
+                        ctx.restore();
+                    }
+                    if (s.fillOn) {
+                        ctx.globalAlpha = s.opacity;
+                        ctx.fillStyle = s.fillColor;
+                        traceBody();
+                        ctx.fill();
+                    }
+                }
+                // Border / outline — available on every shape kind.
+                if (s.strokeW > 0) {
+                    ctx.globalAlpha = s.opacity;
+                    ctx.strokeStyle = s.strokeColor;
+                    ctx.lineWidth = lw;
+                    traceBody();
+                    ctx.stroke();
+                }
+                // Button label — centred in the pill, auto-shrunk to fit, uses the
+                // border colour on a filled body (or the fill colour when hollow).
+                if (s.kind === 'button' && (s.label ?? '').trim()) {
+                    const label = (s.label ?? '').toUpperCase();
+                    ctx.globalAlpha = s.opacity;
+                    let fpx = h * 0.42;
+                    ctx.font = `900 ${fpx}px monospace`;
+                    const lsB = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+                    if ('letterSpacing' in ctx) lsB.letterSpacing = `${Math.max(0.5, fpx * 0.06)}px`;
+                    const twB = ctx.measureText(label).width;
+                    if (twB > w * 0.84) {
+                        fpx = Math.max(9, fpx * ((w * 0.84) / twB));
+                        ctx.font = `900 ${fpx}px monospace`;
+                        if ('letterSpacing' in ctx) lsB.letterSpacing = `${Math.max(0.5, fpx * 0.06)}px`;
+                    }
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = s.fillOn ? s.strokeColor : s.fillColor;
+                    ctx.fillText(label, 0, h * 0.02);
+                    if ('letterSpacing' in ctx) lsB.letterSpacing = '0px';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+                }
+                ctx.restore();
+                shapeMetricsRef.current[s.id] = { cx: s.xPct * W, cy: s.yPct * H, w, h, rot: (s.rotationDeg * Math.PI) / 180 };
+            };
+
+            // 1. Behind layers — text first, shapes sit above the behind-text
             metricsRef.current = {};
+            shapeMetricsRef.current = {};
             layers.filter((l) => l.depth === 'behind').forEach(drawSingleLayer);
+            shapes.filter((s) => s.depth === 'behind').forEach(drawShapeLayer);
 
             // 2. Cutout PNG
             drawCutout();
 
-            // 3. Front text layers
+            // 3. Front layers — shapes first, text stays on top
+            shapes.filter((s) => s.depth === 'front').forEach(drawShapeLayer);
             layers.filter((l) => l.depth === 'front').forEach(drawSingleLayer);
+
+            // 4. Film grain (advanced) — over photo, shapes, cutout and text alike
+            if (grain.enabled && grain.opacity > 0) {
+                const tile = grainTile(grain.size);
+                if (tile) {
+                    const pat = ctx.createPattern(tile, 'repeat');
+                    if (pat) {
+                        ctx.save();
+                        try {
+                            pat.setTransform(new DOMMatrix([grain.size, 0, 0, grain.size, 0, 0]));
+                        } catch { /* older engines: unscaled fine grain */ }
+                        ctx.globalCompositeOperation = 'overlay';
+                        ctx.globalAlpha = grain.opacity;
+                        ctx.fillStyle = pat;
+                        ctx.fillRect(0, 0, W, H);
+                        ctx.restore();
+                    }
+                }
+            }
 
             // Preview Overlays (Selection frames and snap lines)
             if (opts.preview) {
@@ -916,9 +1423,64 @@ export default function TextBehindPage() {
                     ctx.stroke();
                 }
                 ctx.restore();
+
+                // Shape frames — cyan to tell shapes apart from text layers. Every
+                // shape shows a faint outline so nothing gets lost on the canvas;
+                // the active one gets a bold solid frame, corner ticks and a label.
+                shapes.forEach((s) => {
+                    const m = shapeMetricsRef.current[s.id];
+                    if (!m) return;
+                    const isActive = s.id === activeShapeId;
+                    ctx.save();
+                    ctx.translate(m.cx, m.cy);
+                    ctx.rotate(m.rot);
+                    if (isActive) {
+                        ctx.strokeStyle = 'rgba(77, 210, 255, 0.95)';
+                        ctx.lineWidth = Math.max(2, W / 500);
+                        ctx.setLineDash([]);
+                        ctx.strokeRect(-m.w / 2, -m.h / 2, m.w, m.h);
+                        // Corner ticks — selection handles, slightly outside the frame
+                        const t = Math.max(8, Math.min(m.w, m.h) * 0.22);
+                        ctx.lineWidth = Math.max(3, W / 350);
+                        ctx.strokeStyle = 'rgba(77, 210, 255, 1)';
+                        ctx.beginPath();
+                        ([
+                            [-1, -1],
+                            [1, -1],
+                            [1, 1],
+                            [-1, 1],
+                        ] as const).forEach(([sx, sy]) => {
+                            const x0 = (sx * m.w) / 2;
+                            const y0 = (sy * m.h) / 2;
+                            ctx.moveTo(x0 - sx * t, y0);
+                            ctx.lineTo(x0, y0);
+                            ctx.lineTo(x0, y0 - sy * t);
+                        });
+                        ctx.stroke();
+                        // Label chip — "#2 BEAM", above the top-left corner
+                        const idx = shapes.findIndex((x) => x.id === s.id) + 1;
+                        const label = `#${idx} ${s.kind.toUpperCase()}`;
+                        const fontPx = Math.max(11, Math.round(W / 95));
+                        ctx.font = `900 ${fontPx}px monospace`;
+                        const tw = ctx.measureText(label).width;
+                        const pad = fontPx * 0.35;
+                        const lx = -m.w / 2;
+                        const ly = -m.h / 2 - fontPx - pad * 1.7;
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                        ctx.fillRect(lx, ly, tw + pad * 2, fontPx + pad);
+                        ctx.fillStyle = '#4DD2FF';
+                        ctx.fillText(label, lx + pad, ly + fontPx * 0.8 + pad * 0.1);
+                    } else {
+                        ctx.strokeStyle = 'rgba(77, 210, 255, 0.38)';
+                        ctx.lineWidth = Math.max(1, W / 1000);
+                        ctx.setLineDash([W / 200, W / 160]);
+                        ctx.strokeRect(-m.w / 2, -m.h / 2, m.w, m.h);
+                    }
+                    ctx.restore();
+                });
             }
         },
-        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim]
+        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim, shapes, activeShapeId, grain, iconTick, handleIconReady]
     );
 
     // Repaint on canvas changes
@@ -957,7 +1519,7 @@ export default function TextBehindPage() {
         };
     };
 
-    const hitTestLayers = (x: number, y: number): string | null => {
+    const hitTestLayers = (x: number, y: number, touch = false): string | null => {
         const front = layers.filter((l) => l.depth === 'front');
         const behind = layers.filter((l) => l.depth === 'behind');
         const ordered = [...front.slice().reverse(), ...behind.slice().reverse()];
@@ -971,9 +1533,31 @@ export default function TextBehindPage() {
             const sin = Math.sin(m.rot);
             const rx = dx * cos + dy * sin;
             const ry = -dx * sin + dy * cos;
-            const pad = m.fontPx * 0.35;
+            const pad = touch ? Math.max(m.fontPx * 0.35, 34) : m.fontPx * 0.35; // fat-finger grab zone on touch
             if (Math.abs(rx) <= m.w / 2 + pad && Math.abs(ry) <= m.h / 2 + pad) {
                 return l.id;
+            }
+        }
+        return null;
+    };
+
+    const hitTestShapes = (x: number, y: number, touch = false): string | null => {
+        const front = shapes.filter((s) => s.depth === 'front');
+        const behind = shapes.filter((s) => s.depth === 'behind');
+        const ordered = [...front.slice().reverse(), ...behind.slice().reverse()];
+
+        for (const s of ordered) {
+            const m = shapeMetricsRef.current[s.id];
+            if (!m) continue;
+            const dx = x - m.cx;
+            const dy = y - m.cy;
+            const cos = Math.cos(m.rot);
+            const sin = Math.sin(m.rot);
+            const rx = dx * cos + dy * sin;
+            const ry = -dx * sin + dy * cos;
+            const pad = touch ? Math.max(28, Math.min(m.w, m.h) * 0.45) : Math.max(8, Math.min(m.w, m.h) * 0.3); // fat-finger grab zone on touch
+            if (Math.abs(rx) <= m.w / 2 + pad && Math.abs(ry) <= m.h / 2 + pad) {
+                return s.id;
             }
         }
         return null;
@@ -982,14 +1566,27 @@ export default function TextBehindPage() {
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (!bgImage) return;
         const p = canvasPoint(e);
-        const hitId = hitTestLayers(p.x, p.y);
+
+        // Shapes win the click first — they are the props you just placed.
+        const shapeId = hitTestShapes(p.x, p.y, e.pointerType === 'touch');
+        if (shapeId) {
+            const sm = shapeMetricsRef.current[shapeId];
+            setActiveShapeId(shapeId);
+            if (!sm) return;
+            dragRef.current = { active: true, kind: 'shape', shapeId, movedPx: 0, ox: sm.cx - p.x, oy: sm.cy - p.y };
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older touch browsers */ }
+            return;
+        }
+        setActiveShapeId(null);
+
+        const hitId = hitTestLayers(p.x, p.y, e.pointerType === 'touch');
         if (!hitId) return;
 
         setActiveLayerId(hitId);
         const m = metricsRef.current[hitId];
         if (!m) return;
-        dragRef.current = { active: true, layerId: hitId, movedPx: 0, ox: m.cx - p.x, oy: m.cy - p.y };
-        e.currentTarget.setPointerCapture(e.pointerId);
+        dragRef.current = { active: true, kind: 'text', layerId: hitId, movedPx: 0, ox: m.cx - p.x, oy: m.cy - p.y };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older touch browsers */ }
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1001,21 +1598,113 @@ export default function TextBehindPage() {
             return;
         }
 
+        if (drag.movedPx === 0) pushUndo(); // snapshot once, at the start of a drag
         drag.movedPx += 1;
         const W = canvasRef.current!.width;
         const H = canvasRef.current!.height;
         let nx = (p.x + drag.ox) / W;
         let ny = (p.y + drag.oy) / H;
 
-        // Snap guides: center + thirds
+        // Spatial snapping — canvas centre/thirds first, then edge-to-edge
+        // contact ("magnetic" alignment) against the canvas frame and every
+        // other layer/shape on the board: sides kiss the image edge, a rect
+        // slides flush under a line of text, centres line up centre-to-centre.
+        // Dragging further than a tolerance past a snap releases it.
         const tol = 0.008;
+        const tolEdge = 0.012;
         let snapV: number | null = null;
         let snapH: number | null = null;
         for (const c of [0.5, 1 / 3, 2 / 3]) {
             if (Math.abs(nx - c) < tol) { nx = c; snapV = c; }
             if (Math.abs(ny - c) < tol) { ny = c; snapH = c; }
         }
+
+        // Half extents of the dragged item (rotation-aware AABB), normalised.
+        const selfIsShape = drag.kind === 'shape';
+        const selfM = selfIsShape ? shapeMetricsRef.current[drag.shapeId ?? ''] : metricsRef.current[drag.layerId ?? ''];
+        let selfW = 0;
+        let selfH = 0;
+        let selfRot = 0;
+        if (selfM) {
+            selfW = selfM.w;
+            selfH = selfM.h;
+            selfRot = selfM.rot;
+        } else if (selfIsShape) {
+            const s = shapes.find((x) => x.id === drag.shapeId);
+            if (s) {
+                selfW = (s.wPct / 100) * W;
+                selfH = (s.hPct / 100) * H;
+                selfRot = (s.rotationDeg * Math.PI) / 180;
+            }
+        }
+        const cAbs = Math.abs(Math.cos(selfRot));
+        const sAbs = Math.abs(Math.sin(selfRot));
+        const hw = (selfW * cAbs + selfH * sAbs) / 2 / W;
+        const hh = (selfW * sAbs + selfH * cAbs) / 2 / H;
+
+        // Candidate contact edges: canvas frame + every other layer/shape.
+        type SnapEdge = { at: number; guide: number; center?: boolean };
+        const edgesX: SnapEdge[] = [{ at: 0, guide: 0 }, { at: 1, guide: 1 }];
+        const edgesY: SnapEdge[] = [{ at: 0, guide: 0 }, { at: 1, guide: 1 }];
+        const aabbOf = (m: { cx: number; cy: number; w: number; h: number; rot: number }) => {
+            const c = Math.abs(Math.cos(m.rot));
+            const s = Math.abs(Math.sin(m.rot));
+            return {
+                l: (m.cx - (m.w * c + m.h * s) / 2) / W,
+                r: (m.cx + (m.w * c + m.h * s) / 2) / W,
+                t: (m.cy - (m.w * s + m.h * c) / 2) / H,
+                b: (m.cy + (m.w * s + m.h * c) / 2) / H,
+                cx: m.cx / W,
+                cy: m.cy / H,
+            };
+        };
+        layers.forEach((l) => {
+            if (!selfIsShape && l.id === drag.layerId) return;
+            const m = metricsRef.current[l.id];
+            if (!m) return;
+            const b = aabbOf(m);
+            edgesX.push({ at: b.l, guide: b.l }, { at: b.r, guide: b.r }, { at: b.cx, guide: b.cx, center: true });
+            edgesY.push({ at: b.t, guide: b.t }, { at: b.b, guide: b.b }, { at: b.cy, guide: b.cy, center: true });
+        });
+        shapes.forEach((s) => {
+            if (selfIsShape && s.id === drag.shapeId) return;
+            const m = shapeMetricsRef.current[s.id];
+            if (!m) return;
+            const b = aabbOf(m);
+            edgesX.push({ at: b.l, guide: b.l }, { at: b.r, guide: b.r }, { at: b.cx, guide: b.cx, center: true });
+            edgesY.push({ at: b.t, guide: b.t }, { at: b.b, guide: b.b }, { at: b.cy, guide: b.cy, center: true });
+        });
+        if (snapV === null) {
+            for (const e of edgesX) {
+                const asLeft = e.at + hw; // self's left edge lands on e.at
+                const asRight = e.at - hw; // self's right edge lands on e.at
+                if (e.center && Math.abs(nx - e.at) < tolEdge) { nx = e.at; snapV = e.guide; break; }
+                if (Math.abs(nx - asLeft) < tolEdge) { nx = asLeft; snapV = e.guide; break; }
+                if (Math.abs(nx - asRight) < tolEdge) { nx = asRight; snapV = e.guide; break; }
+            }
+        }
+        if (snapH === null) {
+            for (const e of edgesY) {
+                const asTop = e.at + hh; // self's top edge lands on e.at
+                const asBottom = e.at - hh; // self's bottom edge lands on e.at
+                if (e.center && Math.abs(ny - e.at) < tolEdge) { ny = e.at; snapH = e.guide; break; }
+                if (Math.abs(ny - asTop) < tolEdge) { ny = asTop; snapH = e.guide; break; }
+                if (Math.abs(ny - asBottom) < tolEdge) { ny = asBottom; snapH = e.guide; break; }
+            }
+        }
         setGuides((prev) => (prev.v === snapV && prev.h === snapH ? prev : { v: snapV, h: snapH }));
+
+        if (drag.kind === 'shape') {
+            setShapes((prev) =>
+                prev.map((s) =>
+                    s.id === drag.shapeId
+                        ? { ...s, xPct: Math.max(0, Math.min(1, nx)), yPct: Math.max(0, Math.min(1, ny)) }
+                        : s
+                )
+            );
+            return;
+        }
+
         setLayers((prev) =>
             prev.map((l) =>
                 l.id === drag.layerId
@@ -1093,6 +1782,63 @@ export default function TextBehindPage() {
         }
     };
 
+    /** Cross-tool: slice the clean canvas into seamless carousel slides (§4). */
+    const handleSendToCarouselSlicer = async () => {
+        if (!bgImage || sendingHandoff) return;
+        setSendingHandoff(true);
+        try {
+            await Promise.all(
+                layers.map((l) => ensurePosterFontReady(l.fontId, l.weight, l.italic))
+            );
+            const off = document.createElement('canvas');
+            off.width = canvasW;
+            off.height = canvasH;
+            const ctx = off.getContext('2d');
+            if (!ctx) throw new Error('Offscreen context failed');
+            drawSandwich(ctx, canvasW, canvasH, { preview: false });
+            const blob = await new Promise<Blob | null>((resolve) =>
+                off.toBlob(resolve, 'image/png')
+            );
+            if (!blob) throw new Error('Handoff render failed.');
+            await putHandoffImage('carousel-slicer', blob, { sourceTool: 'text-behind' });
+            setHandoffModalOpen(false);
+            window.open('/carousel-slicer', '_blank');
+        } catch (err) {
+            console.error('Failed to send to Carousel Slicer:', err);
+        } finally {
+            setSendingHandoff(false);
+        }
+    };
+
+    /** Cross-tool: reformat the clean canvas for every platform (§4). */
+    const handleSendToResizer = async () => {
+        if (!bgImage || sendingHandoff) return;
+        setSendingHandoff(true);
+        try {
+            await Promise.all(
+                layers.map((l) => ensurePosterFontReady(l.fontId, l.weight, l.italic))
+            );
+            const off = document.createElement('canvas');
+            off.width = canvasW;
+            off.height = canvasH;
+            const ctx = off.getContext('2d');
+            if (!ctx) throw new Error('Offscreen context failed');
+            drawSandwich(ctx, canvasW, canvasH, { preview: false });
+            const blob = await new Promise<Blob | null>((resolve) =>
+                off.toBlob(resolve, 'image/png')
+            );
+            if (!blob) throw new Error('Handoff render failed.');
+            await putHandoffImage('resizer', blob, { sourceTool: 'text-behind' });
+            setHandoffModalOpen(false);
+            window.open('/resizer', '_blank');
+        } catch (err) {
+            console.error('Failed to send to Resizer:', err);
+        } finally {
+            setSendingHandoff(false);
+        }
+    };
+
+
     const labelStyle: React.CSSProperties = {
         fontFamily: 'monospace',
         fontSize: '0.66rem',
@@ -1143,16 +1889,8 @@ export default function TextBehindPage() {
             >
                 {/* Clean Header — tools toggle + title, nothing else */}
                 <div className="text-behind-header" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 10, padding: '2px 0' }}>
-                    <button
-                        type="button"
-                        className="brutalist-button"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: '0.66rem' }}
-                        onClick={() => setToolsOpen(true)}
-                        title="Open CreatorKit Tools Menu"
-                    >
-                        <LayoutTemplate size={14} />
-                        <span>TOOLS</span>
-                    </button>
+                    {/* Searchable tool menu — single source of truth (src/components/nav/SiteNav.tsx) */}
+                    <SiteNav mode="floating" currentHref="/text-behind" theme="light" align="left" label="TOOLS" />
                     <h1 style={{ fontSize: '0.95rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '-0.02em', margin: 0, textTransform: 'uppercase' }}>
                         TEXT BEHIND IMAGE
                     </h1>
@@ -1357,27 +2095,17 @@ export default function TextBehindPage() {
                                                 zIndex: 25,
                                             }}
                                         >
-                                            {/* Shimmering Skeleton of the image */}
-                                            <div
-                                                className="ck-skeleton-box"
-                                                style={{
-                                                    width: Math.min(260, canvasW ? Math.round((canvasW / Math.max(canvasW, canvasH)) * 220) : 200),
-                                                    height: Math.min(260, canvasH ? Math.round((canvasH / Math.max(canvasW, canvasH)) * 220) : 200),
-                                                    backgroundColor: '#e5e7eb',
-                                                    border: '2px solid #000',
-                                                    boxShadow: '4px 4px 0 #000',
-                                                    borderRadius: 12,
-                                                    marginBottom: 16,
-                                                    position: 'relative',
-                                                    overflow: 'hidden',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}
-                                            >
-                                                <div className="ck-skeleton-shimmer" />
-                                                <Scissors size={32} style={{ color: '#000', zIndex: 2 }} />
-                                            </div>
+                                            {/* Thinking orb — connecting while fetching the AI engine, shaping while cutting the subject out */}
+                                            <ThinkingOrb
+                                                size={64}
+                                                style={{ marginBottom: 16 }}
+                                                state={
+                                                    (matte.message || '').toLowerCase().includes('fetch') ||
+                                                    (matte.message || '').toLowerCase().includes('download')
+                                                        ? 'connecting'
+                                                        : 'shaping'
+                                                }
+                                            />
 
                                             {/* Status & Progress Info */}
                                             <div style={{ textAlign: 'center', maxWidth: 320, width: '100%' }}>
@@ -1458,9 +2186,50 @@ export default function TextBehindPage() {
                         </div>
 
                         {bgImage && (
-                            <div className="text-behind-meta-strip" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 6px', flexShrink: 0 }}>
+                            <div className="text-behind-meta-strip" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 6px', flexShrink: 0, gap: 8 }}>
+                                {/* The size/active caption stays untouched — icons sit to its right */}
                                 <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#666' }}>
                                     {canvasW} × {canvasH}px · Active: #{layers.findIndex((l) => l.id === activeLayerId) + 1} ({activeLayer.depth.toUpperCase()})
+                                </span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <button
+                                        type="button"
+                                        onClick={undo}
+                                        disabled={undoCount === 0}
+                                        title="Undo (Ctrl+Z)"
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: '3px 7px',
+                                            background: undoCount > 0 ? '#fff' : '#f1f1f1',
+                                            border: '1.5px solid #000',
+                                            boxShadow: undoCount > 0 ? '2px 2px 0 #000' : 'none',
+                                            cursor: undoCount > 0 ? 'pointer' : 'default',
+                                            color: undoCount > 0 ? '#000' : '#9ca3af',
+                                        }}
+                                    >
+                                        <Undo2 size={14} />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={redo}
+                                        disabled={redoCount === 0}
+                                        title="Redo (Ctrl+Shift+Z)"
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: '3px 7px',
+                                            background: redoCount > 0 ? '#fff' : '#f1f1f1',
+                                            border: '1.5px solid #000',
+                                            boxShadow: redoCount > 0 ? '2px 2px 0 #000' : 'none',
+                                            cursor: redoCount > 0 ? 'pointer' : 'default',
+                                            color: redoCount > 0 ? '#000' : '#9ca3af',
+                                        }}
+                                    >
+                                        <Redo2 size={14} />
+                                    </button>
                                 </span>
                             </div>
                         )}
@@ -1557,7 +2326,10 @@ export default function TextBehindPage() {
                                             min={0}
                                             max={85}
                                             step={5}
-                                            onChange={(v) => setBgDim(v / 100)}
+                                            onChange={(v) => {
+                                                pushUndo();
+                                                setBgDim(v / 100);
+                                            }}
                                             formatValue={(v) => (v === 0 ? 'OFF' : `${v}%`)}
                                             presets={[
                                                 { label: 'OFF', value: 0 },
@@ -2461,9 +3233,453 @@ export default function TextBehindPage() {
                                 </div>
                                 {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}
                                 {exportNote && !exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{exportNote}</div>}
+
+                                {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+                                {exportNote && !exporting && (
+                                    <NextStepRow currentHref="/text-behind" heading="Poster saved — keep going" />
+                                )}
                                 {!cutoutImage && bgImage && (
                                     <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', marginTop: 6, lineHeight: 1.5 }}>
                                         No cutout uploaded — text renders on top of photo. Add a transparent PNG for the behind-subject effect.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 5. Advanced Image Editing — collapsed by default, keeps the core flow clean */}
+                            <div className="brutalist-card" style={{ padding: 14 }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setAdvancedOpen((o) => !o)}
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: 8,
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: 0,
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                    }}
+                                >
+                                    {sectionTitle(null, 'Advanced Image Editing')}
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {(shapes.length > 0 || grain.enabled) && (
+                                            <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, background: '#000', color: '#FFE500', padding: '2px 5px', border: '1px solid #000' }}>
+                                                {shapes.length + (grain.enabled ? 1 : 0)} ACTIVE
+                                            </span>
+                                        )}
+                                        <ChevronDown size={14} style={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                                    </span>
+                                </button>
+
+                                {advancedOpen && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                                        <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', lineHeight: 1.5 }}>
+                                            Rectangles, lines, light beams & film grain — extra layers you can place behind or in
+                                            front of the subject without leaving the tool. Click a shape on the canvas to drag it.
+                                        </div>
+
+                                        {/* Shape add row — chips wrap with their icons on narrow
+                                            screens (mobile ruling 2026-10-02), never squashed. */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(84px, 1fr))', gap: 6 }}>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('rect')}
+                                            >
+                                                <Square size={11} /> RECT
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('line')}
+                                            >
+                                                <Minus size={11} /> LINE
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('beam')}
+                                            >
+                                                <Slash size={11} /> BEAM
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('circle')}
+                                            >
+                                                <Circle size={11} /> CIRCLE
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('icon')}
+                                            >
+                                                <Star size={11} /> ICON
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('button')}
+                                                title="Button pill with editable label (NEXT, SWIPE, LINK IN BIO…)"
+                                            >
+                                                BTN
+                                            </button>
+                                        </div>
+
+                                        {/* Shape pills */}
+                                        {shapes.length > 0 && (
+                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                {shapes.map((s, index) => {
+                                                    const isActive = s.id === activeShapeId;
+                                                    const kindLabel = s.kind === 'rect' ? 'RECT' : s.kind === 'line' ? 'LINE' : s.kind === 'beam' ? 'BEAM' : s.kind === 'circle' ? 'CIRCLE' : s.kind === 'button' ? 'BUTTON' : 'ICON';
+                                                    return (
+                                                        <span key={s.id} style={{ display: 'inline-flex', alignItems: 'stretch', border: '2px solid #000', background: isActive ? '#4DD2FF' : '#fff' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActiveShapeId(isActive ? null : s.id)}
+                                                                style={{ padding: '5px 7px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 5 }}
+                                                            >
+                                                                <span style={{ opacity: 0.6 }}>#{index + 1}</span>
+                                                                {kindLabel}
+                                                                <span style={{ fontSize: '0.5rem', padding: '1px 4px', border: '1px solid #000', background: s.depth === 'behind' ? '#e0e7ff' : '#fef3c7' }}>
+                                                                    {s.depth === 'behind' ? 'BEHIND' : 'FRONT'}
+                                                                </span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeShape(s.id)}
+                                                                title="Delete shape"
+                                                                style={{ padding: '0 6px', background: 'none', border: 'none', borderLeft: '1.5px solid #000', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                                            >
+                                                                <X size={10} />
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Active shape inspector */}
+                                        {activeShape && (
+                                            <div style={{ border: '2px solid #000', background: '#fafafa', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.66rem' }}>
+                                                        {activeShape.kind === 'rect' ? 'RECTANGLE' : activeShape.kind === 'line' ? 'LINE' : activeShape.kind === 'beam' ? 'LIGHT BEAM' : activeShape.kind === 'circle' ? 'CIRCLE' : activeShape.kind === 'button' ? 'BUTTON' : 'ICON'}
+                                                    </span>
+                                                    <div style={{ display: 'flex', border: '1.5px solid #000' }}>
+                                                        {(['behind', 'front'] as const).map((d) => (
+                                                            <button
+                                                                key={d}
+                                                                type="button"
+                                                                onClick={() => patchActiveShape({ depth: d })}
+                                                                style={{
+                                                                    padding: '3px 7px',
+                                                                    border: 'none',
+                                                                    fontSize: '0.55rem',
+                                                                    fontFamily: 'monospace',
+                                                                    fontWeight: 900,
+                                                                    cursor: 'pointer',
+                                                                    background: activeShape.depth === d ? '#000' : '#fff',
+                                                                    color: activeShape.depth === d ? '#FFE500' : '#000',
+                                                                }}
+                                                            >
+                                                                {d === 'behind' ? 'BEHIND SUBJECT' : 'FRONT'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>COLOR</span>
+                                                    {TEXT_COLORS.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            onClick={() => patchActiveShape({ fillColor: c })}
+                                                            style={{ width: 20, height: 20, background: c, border: activeShape.fillColor === c ? '2px solid #000' : '1px solid #888', cursor: 'pointer', padding: 0 }}
+                                                        />
+                                                    ))}
+                                                    <input
+                                                        type="color"
+                                                        value={activeShape.fillColor}
+                                                        onChange={(e) => patchActiveShape({ fillColor: e.target.value })}
+                                                        style={{ width: 30, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
+                                                    />
+                                                </div>
+
+                                                {/* Button label editor (kind === 'button') */}
+                                                {activeShape.kind === 'button' && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>BUTTON LABEL</span>
+                                                        <input
+                                                            type="text"
+                                                            value={activeShape.label ?? ''}
+                                                            onChange={(e) => patchActiveShape({ label: e.target.value })}
+                                                            placeholder="NEXT · SWIPE · LINK IN BIO"
+                                                            maxLength={24}
+                                                            style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, textTransform: 'uppercase', background: '#fff' }}
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* Icon picker — Remix Icon library (searchable) */}
+                                                {activeShape.kind === 'icon' && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                        <input
+                                                            type="text"
+                                                            value={iconSearch}
+                                                            onChange={(e) => setIconSearch(e.target.value)}
+                                                            placeholder="Search icons — arrow, star, play..."
+                                                            style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 800, background: '#fff' }}
+                                                        />
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4, maxHeight: 150, overflowY: 'auto', border: '1.5px solid #000', background: '#fff', padding: 5 }}>
+                                                            {filteredShapeIcons.length === 0 ? (
+                                                                <span style={{ gridColumn: '1 / -1', fontSize: '0.58rem', fontFamily: 'monospace', color: '#777', textAlign: 'center', padding: '8px 0' }}>
+                                                                    No icons match "{iconSearch}"
+                                                                </span>
+                                                            ) : (
+                                                                filteredShapeIcons.map((ic) => {
+                                                                    const Ic = ic.component as React.ComponentType<{ size?: number | string; color?: string }>;
+                                                                    const active = activeShape.iconId === ic.id;
+                                                                    return (
+                                                                        <button
+                                                                            key={ic.id}
+                                                                            type="button"
+                                                                            title={ic.name}
+                                                                            onClick={() => patchActiveShape({ iconId: ic.id })}
+                                                                            style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', border: active ? '1.5px solid #000' : '1px solid #ddd', background: active ? '#000' : '#fff', cursor: 'pointer', padding: 0 }}
+                                                                        >
+                                                                            <Ic size={15} color={active ? '#FFE500' : '#000'} />
+                                                                        </button>
+                                                                    );
+                                                                })
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {activeShape.kind === 'circle' ? (
+                                                    // TRUE circle (mobile ruling 2026-10-02) — one DIAMETER
+                                                    // control drives both axes so it can never go oval.
+                                                    <TactileScrubber
+                                                        label="DIAMETER"
+                                                        value={activeShape.wPct}
+                                                        min={2}
+                                                        max={100}
+                                                        step={1}
+                                                        onChange={(v) => patchActiveShape({ wPct: v, hPct: v })}
+                                                        formatValue={(v) => `${Math.round(v)}%`}
+                                                        showSteppers={false}
+                                                        width="100%"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <TactileScrubber
+                                                            label={activeShape.kind === 'icon' ? 'SIZE' : activeShape.kind === 'rect' ? 'WIDTH' : 'LENGTH'}
+                                                            value={activeShape.wPct}
+                                                            min={2}
+                                                            max={100}
+                                                            step={1}
+                                                            onChange={(v) => patchActiveShape({ wPct: v })}
+                                                            formatValue={(v) => `${Math.round(v)}%`}
+                                                            showSteppers={false}
+                                                            width="100%"
+                                                        />
+                                                        <TactileScrubber
+                                                            label={activeShape.kind === 'rect' || activeShape.kind === 'icon' ? 'HEIGHT' : 'THICKNESS'}
+                                                            value={activeShape.hPct}
+                                                            min={activeShape.kind === 'rect' || activeShape.kind === 'icon' ? 2 : 0.2}
+                                                            max={activeShape.kind === 'rect' || activeShape.kind === 'icon' ? 100 : 20}
+                                                            step={activeShape.kind === 'rect' || activeShape.kind === 'icon' ? 1 : 0.2}
+                                                            onChange={(v) => patchActiveShape({ hPct: v })}
+                                                            formatValue={(v) => `${v.toFixed(1)}%`}
+                                                            showSteppers={false}
+                                                            width="100%"
+                                                        />
+                                                    </>
+                                                )}
+                                                {/* Rotation — scrubber plus a direct angle input for exact degrees */}
+                                                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <TactileScrubber
+                                                            label="ROTATION"
+                                                            value={Math.round(activeShape.rotationDeg)}
+                                                            min={0}
+                                                            max={360}
+                                                            step={1}
+                                                            onChange={(v) => patchActiveShape({ rotationDeg: v })}
+                                                            formatValue={(v) => `${v}°`}
+                                                            presets={[{ label: '0°', value: 0 }, { label: '45°', value: 45 }, { label: '90°', value: 90 }, { label: '135°', value: 135 }, { label: '180°', value: 180 }]}
+                                                            showSteppers={false}
+                                                            width="100%"
+                                                        />
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, paddingBottom: 5 }}>
+                                                        <input
+                                                            type="number"
+                                                            min={-360}
+                                                            max={360}
+                                                            step={1}
+                                                            value={Math.round(activeShape.rotationDeg)}
+                                                            onChange={(e) => {
+                                                                const raw = parseFloat(e.target.value);
+                                                                if (Number.isFinite(raw)) patchActiveShape({ rotationDeg: ((raw % 360) + 360) % 360 });
+                                                            }}
+                                                            title="Type an exact angle"
+                                                            style={{ width: 56, padding: '4px 5px', border: '1.5px solid #000', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.66rem', background: '#fff', color: '#000' }}
+                                                        />
+                                                        <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>°</span>
+                                                    </div>
+                                                </div>
+                                                <TactileScrubber
+                                                    label="OPACITY"
+                                                    value={Math.round(activeShape.opacity * 100)}
+                                                    min={5}
+                                                    max={100}
+                                                    step={5}
+                                                    onChange={(v) => patchActiveShape({ opacity: v / 100 })}
+                                                    formatValue={(v) => `${v}%`}
+                                                    showSteppers={false}
+                                                    width="100%"
+                                                />
+                                                <TactileScrubber
+                                                    label="GLOW"
+                                                    value={Math.round(activeShape.glow * 100)}
+                                                    min={0}
+                                                    max={100}
+                                                    step={5}
+                                                    onChange={(v) => patchActiveShape({ glow: v / 100 })}
+                                                    formatValue={(v) => (v === 0 ? 'OFF' : `${v}%`)}
+                                                    showSteppers={false}
+                                                    width="100%"
+                                                />
+
+                                                {/* Fill type — every kind: rect fill · line body · beam streak */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>
+                                                        {activeShape.kind === 'beam' ? 'BEAM BODY' : activeShape.kind === 'icon' ? 'ICON COLOR' : 'FILL'}
+                                                    </span>
+                                                    {([true, false] as const).map((on) => (
+                                                        <button
+                                                            key={String(on)}
+                                                            type="button"
+                                                            onClick={() => patchActiveShape({ fillOn: on })}
+                                                            style={{ padding: '3px 8px', border: '1.5px solid #000', background: activeShape.fillOn === on ? '#000' : '#fff', color: activeShape.fillOn === on ? '#fff' : '#000', fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                                                        >
+                                                            {on ? 'SOLID' : 'HOLLOW'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {(activeShape.kind === 'rect' || activeShape.kind === 'line') && (
+                                                    <TactileScrubber
+                                                        label="CORNER ROUNDING"
+                                                        value={activeShape.cornerPct}
+                                                        min={0}
+                                                        max={50}
+                                                        step={1}
+                                                        onChange={(v) => patchActiveShape({ cornerPct: v })}
+                                                        formatValue={(v) => (v === 0 ? 'SHARP' : `${v}%`)}
+                                                        showSteppers={false}
+                                                        width="100%"
+                                                    />
+                                                )}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>BORDER</span>
+                                                    <input
+                                                        type="color"
+                                                        value={activeShape.strokeColor}
+                                                        onChange={(e) => patchActiveShape({ strokeColor: e.target.value })}
+                                                        style={{ width: 30, height: 24, border: '2px solid #000', padding: 0, cursor: 'pointer', background: 'none' }}
+                                                    />
+                                                </div>
+                                                <TactileScrubber
+                                                    label="BORDER WIDTH"
+                                                    value={activeShape.strokeW}
+                                                    min={0}
+                                                    max={30}
+                                                    step={1}
+                                                    onChange={(v) => patchActiveShape({ strokeW: v })}
+                                                    formatValue={(v) => (v === 0 ? 'OFF' : `${(v / 10).toFixed(1)}%`)}
+                                                    showSteppers={false}
+                                                    width="100%"
+                                                />
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>BLEND</span>
+                                                    {(['normal', 'multiply', 'overlay', 'screen'] as const).map((b) => (
+                                                        <button
+                                                            key={b}
+                                                            type="button"
+                                                            onClick={() => patchActiveShape({ blend: b })}
+                                                            style={{ padding: '3px 7px', border: '1.5px solid #000', background: activeShape.blend === b ? '#000' : '#fff', color: activeShape.blend === b ? '#FFE500' : '#000', fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}
+                                                        >
+                                                            {b}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeShape(activeShape.id)}
+                                                    style={{ padding: '5px 8px', border: '1.5px solid #000', background: '#fff', cursor: 'pointer', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                >
+                                                    <Trash2 size={11} /> DELETE SHAPE
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Film grain overlay */}
+                                        <div style={{ borderTop: '1.5px solid #eee', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                            {sectionTitle(<Layers size={13} />, 'Film Grain Overlay')}
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                {([false, true] as const).map((on) => (
+                                                    <button
+                                                        key={String(on)}
+                                                        type="button"
+                                                        onClick={() => patchGrain({ enabled: on })}
+                                                        style={{ padding: '4px 10px', border: '1.5px solid #000', background: grain.enabled === on ? '#000' : '#fff', color: grain.enabled === on ? '#FFE500' : '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                                                    >
+                                                        {on ? 'ON' : 'OFF'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {grain.enabled && (
+                                                <>
+                                                    <TactileScrubber
+                                                        label="INTENSITY"
+                                                        value={Math.round(grain.opacity * 100)}
+                                                        min={2}
+                                                        max={60}
+                                                        step={2}
+                                                        onChange={(v) => patchGrain({ opacity: v / 100 })}
+                                                        formatValue={(v) => `${v}%`}
+                                                        showSteppers={false}
+                                                        width="100%"
+                                                    />
+                                                    <TactileScrubber
+                                                        label="GRAIN SIZE"
+                                                        value={grain.size}
+                                                        min={1}
+                                                        max={5}
+                                                        step={1}
+                                                        onChange={(v) => patchGrain({ size: v })}
+                                                        formatValue={(v) => (v <= 1 ? 'FINE' : v === 2 ? 'STANDARD' : v === 3 ? 'COARSE' : 'CHUNKY')}
+                                                        presets={[{ label: 'FINE', value: 1 }, { label: 'STD', value: 2 }, { label: 'COARSE', value: 4 }]}
+                                                        showSteppers={false}
+                                                        width="100%"
+                                                    />
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -2494,58 +3710,6 @@ export default function TextBehindPage() {
                 )}
             </button>
 
-            {/* ── CreatorKit Tools Navigation Drawer (bouquet-style slide-out) ── */}
-            {toolsOpen && (
-                <>
-                    <div className="text-behind-tools-backdrop" onClick={() => setToolsOpen(false)} />
-                    <aside className="text-behind-tools-drawer">
-                        <div className="text-behind-tools-head">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 900, letterSpacing: '0.04em' }}>
-                                    CREATORKIT TOOLS
-                                </span>
-                                <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', padding: '2px 6px', background: '#000', color: '#fff', fontWeight: 700 }}>
-                                    {ALL_TOOLS.length}
-                                </span>
-                            </div>
-                            <button type="button" onClick={() => setToolsOpen(false)} title="Close drawer">
-                                <X size={14} />
-                            </button>
-                        </div>
-                        <div className="text-behind-tools-search">
-                            <Link href="/" onClick={() => setToolsOpen(false)} className="text-behind-tools-home">
-                                <Home size={14} />
-                                <span>CREATORKIT HOME</span>
-                                <span style={{ fontSize: '0.55rem', color: '#d4d4d4' }}>HUB</span>
-                            </Link>
-                            <div style={{ position: 'relative' }}>
-                                <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#a3a3a3' }} />
-                                <input
-                                    type="text"
-                                    value={toolSearch}
-                                    onChange={(e) => setToolSearch(e.target.value)}
-                                    placeholder="Filter tools..."
-                                    className="text-behind-tools-input"
-                                />
-                            </div>
-                        </div>
-                        <div className="text-behind-tools-list">
-                            {filteredTools.map((tool) => (
-                                <Link
-                                    key={tool.href}
-                                    href={tool.href}
-                                    onClick={() => setToolsOpen(false)}
-                                    className={`text-behind-tool-item${tool.href === '/text-behind' ? ' active' : ''}`}
-                                >
-                                    <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 }}>{tool.label}</span>
-                                    <span style={{ fontSize: '0.55rem' }}>{tool.desc}</span>
-                                    <span className="text-behind-tool-hint">{tool.hint}</span>
-                                </Link>
-                            ))}
-                        </div>
-                    </aside>
-                </>
-            )}
 
             {/* Cross-Tool Handoff Format Choice Modal */}
             {handoffModalOpen && (
@@ -2624,7 +3788,8 @@ export default function TextBehindPage() {
                                     alignItems: 'center',
                                     gap: 8,
                                     textAlign: 'center',
-                                    background: canvasW >= canvasH ? '#FFE500' : '#fff',
+                                    background: canvasW >= canvasH ? '#000' : '#fff',
+                                    color: canvasW >= canvasH ? '#fff' : '#000',
                                     border: '2px solid #000',
                                     cursor: sendingHandoff ? 'wait' : 'pointer',
                                 }}
@@ -2637,7 +3802,7 @@ export default function TextBehindPage() {
                                     YouTube Mobile & Desktop Video Feed
                                 </span>
                                 {canvasW >= canvasH && (
-                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#FFE500', padding: '2px 6px' }}>
+                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
                                         ★ MATCHES RATIO
                                     </span>
                                 )}
@@ -2655,7 +3820,8 @@ export default function TextBehindPage() {
                                     alignItems: 'center',
                                     gap: 8,
                                     textAlign: 'center',
-                                    background: canvasW < canvasH ? '#FFE500' : '#fff',
+                                    background: canvasW < canvasH ? '#000' : '#fff',
+                                    color: canvasW < canvasH ? '#fff' : '#000',
                                     border: '2px solid #000',
                                     cursor: sendingHandoff ? 'wait' : 'pointer',
                                 }}
@@ -2668,10 +3834,64 @@ export default function TextBehindPage() {
                                     YouTube Shorts Shelf & Player
                                 </span>
                                 {canvasW < canvasH && (
-                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#FFE500', padding: '2px 6px' }}>
+                                    <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
                                         ★ MATCHES RATIO
                                     </span>
                                 )}
+                            </button>
+
+                            {/* Option 3: Carousel Slicer hand-off (§4) */}
+                            <button
+                                className="brutalist-button"
+                                disabled={sendingHandoff}
+                                onClick={() => void handleSendToCarouselSlicer()}
+                                style={{
+                                    gridColumn: '1 / -1',
+                                    padding: '14px 10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    textAlign: 'center',
+                                    background: '#fff',
+                                    border: '2px solid #000',
+                                    cursor: sendingHandoff ? 'wait' : 'pointer',
+                                }}
+                            >
+                                <span style={{ fontSize: '1.4rem' }}>🪟</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                                    Slice Into Carousel Slides
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: '#444', lineHeight: 1.3 }}>
+                                    Instagram & LinkedIn multi-slide post (no download needed)
+                                </span>
+                            </button>
+
+                            {/* Option 4: Resizer hand-off (§4) */}
+                            <button
+                                className="brutalist-button"
+                                disabled={sendingHandoff}
+                                onClick={() => void handleSendToResizer()}
+                                style={{
+                                    gridColumn: '1 / -1',
+                                    padding: '14px 10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    textAlign: 'center',
+                                    background: '#fff',
+                                    border: '2px solid #000',
+                                    cursor: sendingHandoff ? 'wait' : 'pointer',
+                                }}
+                            >
+                                <span style={{ fontSize: '1.4rem' }}>📐</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                                    Reformat For Every Platform
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: '#444', lineHeight: 1.3 }}>
+                                    TikTok 9:16, IG 4:5, X & YouTube — auto batch (no download needed)
+                                </span>
                             </button>
                         </div>
 
@@ -2712,132 +3932,6 @@ export default function TextBehindPage() {
                 @keyframes ckPulse {
                     0%, 100% { opacity: 1; }
                     50% { opacity: 0.85; }
-                }
-                /* ── CreatorKit tools navigation drawer (bouquet-style slide-out) ── */
-                .text-behind-tools-backdrop {
-                    position: fixed;
-                    inset: 0;
-                    background: rgba(0, 0, 0, 0.4);
-                    z-index: 70;
-                }
-                .text-behind-tools-drawer {
-                    position: fixed;
-                    top: 0;
-                    bottom: 0;
-                    left: 0;
-                    width: min(340px, 100vw);
-                    background: #fff;
-                    border-right: 2px solid #000;
-                    z-index: 71;
-                    display: flex;
-                    flex-direction: column;
-                    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.25);
-                    animation: ckToolsSlideIn 0.2s ease-out;
-                }
-                @keyframes ckToolsSlideIn {
-                    from { transform: translateX(-100%); }
-                    to { transform: translateX(0); }
-                }
-                .text-behind-tools-head {
-                    height: 44px;
-                    padding: 0 12px;
-                    background: #fafafa;
-                    border-bottom: 2px solid #000;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    flex-shrink: 0;
-                }
-                .text-behind-tools-head > button {
-                    width: 28px;
-                    height: 28px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: #fff;
-                    border: 1.5px solid #000;
-                    cursor: pointer;
-                }
-                .text-behind-tools-search {
-                    padding: 12px;
-                    border-bottom: 2px solid #000;
-                    background: #fafafa;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                    flex-shrink: 0;
-                }
-                .text-behind-tools-home {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    justify-content: space-between;
-                    padding: 8px 10px;
-                    background: #000;
-                    color: #fff;
-                    border: 1.5px solid #000;
-                    font-family: monospace;
-                    font-size: 0.68rem;
-                    font-weight: 900;
-                    letter-spacing: 0.05em;
-                    box-shadow: 2px 2px 0 #000;
-                    text-decoration: none;
-                }
-                .text-behind-tools-input {
-                    width: 100%;
-                    padding: 8px 10px 8px 30px;
-                    border: 1.5px solid #000;
-                    background: #fff;
-                    font-family: monospace;
-                    font-size: 0.72rem;
-                    outline: none;
-                    box-sizing: border-box;
-                }
-                .text-behind-tools-list {
-                    flex: 1;
-                    min-height: 0;
-                    overflow-y: auto;
-                    padding: 12px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 6px;
-                }
-                .text-behind-tool-item {
-                    display: grid;
-                    grid-template-columns: 1fr auto;
-                    grid-template-areas: 'label hint' 'desc hint';
-                    column-gap: 8px;
-                    padding: 10px;
-                    border: 2px solid #e7e5e4;
-                    background: #fff;
-                    text-decoration: none;
-                    color: #000;
-                    align-items: center;
-                }
-                .text-behind-tool-item span:nth-child(1) { grid-area: label; }
-                .text-behind-tool-item span:nth-child(2) { grid-area: desc; color: #78716c; line-height: 1.3; }
-                .text-behind-tool-item:hover { border-color: #000; background: #fafafa; }
-                .text-behind-tool-item.active {
-                    background: #000;
-                    color: #fff;
-                    border-color: #000;
-                    box-shadow: 2px 2px 0 #000;
-                }
-                .text-behind-tool-item.active span:nth-child(2) { color: #d4d4d4; }
-                .text-behind-tool-hint {
-                    grid-area: hint;
-                    font-family: monospace;
-                    font-size: 0.55rem;
-                    font-weight: 700;
-                    padding: 3px 6px;
-                    background: #f5f5f4;
-                    color: #57534e;
-                    align-self: start;
-                    white-space: nowrap;
-                }
-                .text-behind-tool-item.active .text-behind-tool-hint {
-                    background: #fff;
-                    color: #000;
                 }
                 @media (min-width: 981px) {
                     .text-behind-desktop-cards {

@@ -123,6 +123,12 @@ We do NOT build a perfect tool and launch. We iterate in tiny, deliberate steps:
 
 ## 💰 Monetization Strategy
 
+> ⚠️ **SUPERSEDED (2026-10-01)** — the "ads only, never charge anything" stance below is a trap
+> (failure mode #6: the Free Utility Trap — loved to death). The current business model lives in
+> **`docs/BUSINESS_MODEL_PLAN.md`**: free on-device tools forever, freemium Pro + AI credits for
+> server-cost features, Creator Passport lock-in, and the Benchmarks data engine.
+> The section below is kept for historical context only.
+
 > **The tools are free. Forever. No paywalls, no watermarks, no sign-ups.**
 > Revenue comes from people visiting — not from charging them.
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Video Grabber — Save Video & Audio Files to Your Device | CreatorKit',
+    title: 'Video Grabber — Save Video & Audio Files to Your Device | CreatorsKit',
     description:
         'Paste any video or audio link, watch one short ad, and save the file straight to your device. Free, no sketchy downloads, works on mobile.',
     path: '/video-grabber',
@@ -49,7 +49,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Video Grabber',
+        name: 'CreatorsKit Video Grabber',
         description:
             'Free link-based media saver: paste a video or audio link, watch one short ad, and the file saves straight to your device — no sketchy installers.',
         path: '/video-grabber',

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { putHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
   Pause,
@@ -36,7 +37,8 @@ import {
   Wand2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import StudioToolsDropdown from '@/components/nav/SiteNav';
+import { TactileScrubber } from '@/components/tactile-scrubber';
 import { GOOGLE_FONTS_LIST } from '../match-cut/google-fonts';
 import {
   embedMetadataIntoMediaBlob,
@@ -183,10 +185,10 @@ Grab your headphones and let's jump right in!`,
 What if you could produce high-converting video content in half the time without hiring an expensive production team?
 
 [SOLUTION DEMO]
-Introducing CreatorKit — the all-in-one browser suite for modern storytellers. With zero subscriptions and instant client-side processing, you can edit, sync, and deliver faster than ever.
+Introducing CreatorsKit — the all-in-one browser suite for modern storytellers. With zero subscriptions and instant client-side processing, you can edit, sync, and deliver faster than ever.
 
 [CTA]
-Get started today for free at CreatorKit.win!`,
+Get started today for free at CreatorsKit.win!`,
   },
 ];
 
@@ -309,7 +311,7 @@ export default function TeleprompterPage() {
   // Core Prompter State
   const [script, setScript] = useState(
     `[HOOK - LOOK DIRECTLY AT THE LENS]
-Welcome to CreatorKit Pro Teleprompter!
+Welcome to CreatorsKit Pro Teleprompter!
 
 [HIGH-FIDELITY AUDIO RECORDING]
 Record crystal-clear voiceovers with real-time decibel monitoring right at the top of your screen.
@@ -3593,21 +3595,20 @@ Control your speed, adjust your font size, and download your voice recording in 
                           <span>Set Your Reading Pace</span>
                           <span style={{ color: '#000' }}>{manualWpm} WPM</span>
                         </div>
-                        <input
-                          type="range"
+                        <TactileScrubber
                           min={80}
                           max={220}
                           step={5}
                           value={manualWpm}
-                          onChange={(e) => {
-                            const wpm = parseInt(e.target.value, 10);
+                          onChange={(wpm) => {
                             setManualWpm(wpm);
                             setLearnedWpmDisplay(wpm);
                             learnedWpmRef.current = wpm;
                             localStorage.setItem('creatorKit_manualWpm', wpm.toString());
                             voiceEngineRef.current?.setPace?.(wpm);
                           }}
-                          style={{ width: '100%', accentColor: '#000', cursor: 'pointer' }}
+                          showValueBadge={false}
+                          showSteppers={false}
                         />
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 800, color: '#666', marginTop: 2 }}>
                           <span>🐢 80</span>
@@ -3650,21 +3651,16 @@ Control your speed, adjust your font size, and download your voice recording in 
                       </div>
 
                       {/* Silence Auto-Pause Sensitivity */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>PAUSE FREEZE TIME:</span>
-                          <span>{autoPauseThresholdMs}ms</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="400"
-                          max="1500"
-                          step="50"
-                          value={autoPauseThresholdMs}
-                          onChange={(e) => setAutoPauseThresholdMs(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: '#000' }}
-                        />
-                      </div>
+                      <TactileScrubber
+                        label="Pause Freeze Time"
+                        min={400}
+                        max={1500}
+                        step={50}
+                        value={autoPauseThresholdMs}
+                        onChange={(v) => setAutoPauseThresholdMs(v)}
+                        formatValue={(v) => `${v}ms`}
+                        showSteppers={false}
+                      />
                     </div>
                   </>
                 )}
@@ -3745,57 +3741,42 @@ Control your speed, adjust your font size, and download your voice recording in 
 
                       {/* Width Slider */}
                       {widthUnit === 'ch' && (
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                            <span>CHARACTER COLUMN WIDTH:</span>
-                            <span style={{ color: '#d97706' }}>{columnCharWidth} characters</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="15"
-                            max="80"
-                            step="1"
-                            value={columnCharWidth}
-                            onChange={(e) => setColumnCharWidth(parseInt(e.target.value))}
-                            style={{ width: '100%', accentColor: '#000' }}
-                          />
-                        </div>
+                        <TactileScrubber
+                          label="Character Column Width"
+                          min={15}
+                          max={80}
+                          step={1}
+                          value={columnCharWidth}
+                          onChange={(v) => setColumnCharWidth(v)}
+                          formatValue={(v) => `${v} characters`}
+                          showSteppers={false}
+                        />
                       )}
 
                       {widthUnit === '%' && (
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                            <span>PERCENTAGE COLUMN WIDTH:</span>
-                            <span style={{ color: '#d97706' }}>{columnPercentWidth}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="20"
-                            max="100"
-                            step="2"
-                            value={columnPercentWidth}
-                            onChange={(e) => setColumnPercentWidth(parseInt(e.target.value))}
-                            style={{ width: '100%', accentColor: '#000' }}
-                          />
-                        </div>
+                        <TactileScrubber
+                          label="Percentage Column Width"
+                          min={20}
+                          max={100}
+                          step={2}
+                          value={columnPercentWidth}
+                          onChange={(v) => setColumnPercentWidth(v)}
+                          formatValue={(v) => `${v}%`}
+                          showSteppers={false}
+                        />
                       )}
 
                       {widthUnit === 'px' && (
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                            <span>PIXEL COLUMN WIDTH:</span>
-                            <span style={{ color: '#d97706' }}>{columnPixelWidth}px</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="240"
-                            max="1200"
-                            step="20"
-                            value={columnPixelWidth}
-                            onChange={(e) => setColumnPixelWidth(parseInt(e.target.value))}
-                            style={{ width: '100%', accentColor: '#000' }}
-                          />
-                        </div>
+                        <TactileScrubber
+                          label="Pixel Column Width"
+                          min={240}
+                          max={1200}
+                          step={20}
+                          value={columnPixelWidth}
+                          onChange={(v) => setColumnPixelWidth(v)}
+                          formatValue={(v) => `${v}px`}
+                          showSteppers={false}
+                        />
                       )}
 
                       {/* Alignment & Eyeline */}
@@ -3826,21 +3807,16 @@ Control your speed, adjust your font size, and download your voice recording in 
                           </div>
                         </div>
 
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                            <span>EYELINE HORIZON HEIGHT:</span>
-                            <span>{eyelinePercent}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="15"
-                            max="65"
-                            step="1"
-                            value={eyelinePercent}
-                            onChange={(e) => setEyelinePercent(parseInt(e.target.value))}
-                            style={{ width: '100%', accentColor: '#000' }}
-                          />
-                        </div>
+                        <TactileScrubber
+                          label="Eyeline Horizon Height"
+                          min={15}
+                          max={65}
+                          step={1}
+                          value={eyelinePercent}
+                          onChange={(v) => setEyelinePercent(v)}
+                          formatValue={(v) => `${v}%`}
+                          showSteppers={false}
+                        />
                       </div>
                     </div>
                   </>
@@ -3955,21 +3931,16 @@ Control your speed, adjust your font size, and download your voice recording in 
                 {activeSidebarTab === 'fonts' && (
                   <>
                     <div className="brutalist-card" style={{ padding: 12, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, marginBottom: 4 }}>
-                          <span>FONT SIZE:</span>
-                          <span>{fontSize}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="20"
-                          max="96"
-                          step="2"
-                          value={fontSize}
-                          onChange={(e) => setFontSize(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: '#000' }}
-                        />
-                      </div>
+                      <TactileScrubber
+                        label="Font Size"
+                        min={20}
+                        max={96}
+                        step={2}
+                        value={fontSize}
+                        onChange={(v) => setFontSize(v)}
+                        formatValue={(v) => `${v}px`}
+                        showSteppers={false}
+                      />
 
                       <div>
                         <label style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: 4 }}>
@@ -4169,6 +4140,25 @@ Control your speed, adjust your font size, and download your voice recording in 
                 resize: 'vertical',
               }}
             />
+
+            {/* §4 edge: "the script I just rehearsed = the caption script" */}
+            <button
+              type="button"
+              className="brutalist-button"
+              style={{ marginTop: 10, width: '100%', padding: '10px 14px', fontSize: '0.74rem', justifyContent: 'center' }}
+              disabled={!script.trim()}
+              onClick={async () => {
+                if (!script.trim()) return;
+                try {
+                  await putHandoffText('auto-captions', script, { sourceTool: 'teleprompter' });
+                  window.open('/auto-captions', '_blank');
+                } catch (err) {
+                  console.error('Script hand-off failed:', err);
+                }
+              }}
+            >
+              SEND TO AUTO CAPTIONS →
+            </button>
 
             {/* Stage Direction / Cues Quick Helper */}
             <div style={{ background: '#f4f4f5', padding: '10px 12px', borderRadius: 6, border: '1.5px solid #e4e4e7', display: 'flex', flexDirection: 'column', gap: 6 }}>

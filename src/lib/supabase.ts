@@ -395,7 +395,7 @@ export function mapRowToBlogPost(row: DatabasePostRow): BlogPost {
     youtubeEmbedUrl: row.youtube_embed_url,
     instagramUrl: row.instagram_url,
     videoCredit: row.video_credit,
-    author: row.author || { name: 'CreatorKit Research Lab', role: 'Viral Strategy' },
+    author: row.author || { name: 'CreatorsKit Research Lab', role: 'Viral Strategy' },
     tags: row.tags || [],
     category: row.category || 'General',
     pillColor: row.pill_color || { bg: '#FFE500', text: '#000000' },

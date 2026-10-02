@@ -16,6 +16,8 @@ import {
   Search
 } from "lucide-react";
 import Link from "next/link";
+import { TactileScrubber } from "@/components/tactile-scrubber";
+import { putHandoffImage, takeHandoffText } from "@/lib/tool-handoff";
 
 interface ColorCombo {
   id: number;
@@ -229,6 +231,24 @@ export default function ColorGradientPage() {
       setBaseColor(hslToHex(hue, 60, 50));
     }
   }, [searchQuery]);
+
+  // Cross-tool intake (§4): hexes handed off from Palette Extractor become the base color.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const text = await takeHandoffText("color-gradient");
+      if (cancelled || !text) return;
+      const first = text
+        .split(",")
+        .map((t) => t.trim())
+        .find((t) => /^#[0-9a-fA-F]{6}$/.test(t));
+      if (first) {
+        setBaseColor(first.toUpperCase());
+        setSearchQuery(first.toUpperCase());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Dynamic Generator Engine based on baseColor HSL physics
   const combos = useMemo<ColorCombo[]>(() => {
@@ -495,6 +515,52 @@ export default function ColorGradientPage() {
     link.click();
   };
 
+  /** Cross-tool hand-off (§4): render the current art (combo gradient or mesh) to a PNG blob. */
+  const renderHandoffBlob = async (): Promise<Blob | null> => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1440;
+    canvas.height = 1440;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    if (activeTab === "mesh") {
+      // Same composition as exportMeshGradient, at hand-off resolution.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 1440, 1440);
+      nodes.forEach((node) => {
+        const gradX = (node.x / 100) * 1440;
+        const gradY = (node.y / 100) * 1440;
+        const radius = (warpSize / 100) * 1440 * 1.5;
+        const gradient = ctx.createRadialGradient(gradX, gradY, 0, gradX, gradY, radius);
+        gradient.addColorStop(0, node.color);
+        gradient.addColorStop(1, "transparent");
+        ctx.fillStyle = gradient;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(0, 0, 1440, 1440);
+      });
+      ctx.globalAlpha = 1.0;
+    } else {
+      const gradient = ctx.createLinearGradient(0, 0, 1440, 1440);
+      gradient.addColorStop(0, selectedCombo.primaryHex);
+      gradient.addColorStop(1, selectedCombo.secondaryHex);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 1440, 1440);
+    }
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  };
+
+  const sendGradientTo = async (tool: "quote-card" | "watermark") => {
+    try {
+      const blob = await renderHandoffBlob();
+      if (blob) {
+        await putHandoffImage(tool, blob, { sourceTool: "color-gradient", name: "gradient.png" });
+      }
+    } catch {
+      /* best-effort — the target still opens */
+    }
+    window.open(`/${tool}`, "_blank");
+  };
+
   return (
     <div className="tool-page-padding" style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
       <div className="grid-bg" />
@@ -504,7 +570,7 @@ export default function ColorGradientPage() {
         {/* Top Title Section */}
         <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#000", color: "#fff", fontFamily: "monospace" }}>
               COLOR & GRADIENT STUDIO
             </span>
             <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
@@ -525,7 +591,7 @@ export default function ColorGradientPage() {
               flex: 1,
               padding: "10px 16px",
               background: activeTab === "combinations" ? "#000000" : "#ffffff",
-              color: activeTab === "combinations" ? "#FFE500" : "#000000",
+              color: activeTab === "combinations" ? "#ffffff" : "#000000",
               fontWeight: 900,
               fontSize: "0.82rem",
               fontFamily: "monospace",
@@ -543,7 +609,7 @@ export default function ColorGradientPage() {
               flex: 1,
               padding: "10px 16px",
               background: activeTab === "mesh" ? "#000000" : "#ffffff",
-              color: activeTab === "mesh" ? "#FFE500" : "#000000",
+              color: activeTab === "mesh" ? "#ffffff" : "#000000",
               fontWeight: 900,
               fontSize: "0.82rem",
               fontFamily: "monospace",
@@ -720,6 +786,23 @@ export default function ColorGradientPage() {
                   <p style={{ fontSize: "0.72rem", opacity: 0.6, lineHeight: 1.5 }}>
                     Contrast ratio measures readability. Standards recommend at least 4.5:1 for body copy.
                   </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                  <button
+                    className="brutalist-button"
+                    onClick={() => void sendGradientTo("quote-card")}
+                    style={{ flex: 1, padding: "8px 10px", fontSize: "0.7rem", background: "#fff", color: "#000", gap: 5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Wand2 size={13} /> Quote Card BG
+                  </button>
+                  <button
+                    className="brutalist-button"
+                    onClick={() => void sendGradientTo("watermark")}
+                    style={{ flex: 1, padding: "8px 10px", fontSize: "0.7rem", background: "#fff", color: "#000", gap: 5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Wand2 size={13} /> Watermark BG
+                  </button>
                 </div>
               </div>
 
@@ -899,58 +982,43 @@ export default function ColorGradientPage() {
             <div className="brutalist-card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "#ffffff", padding: 20, border: "3px solid #000", boxShadow: "6px 6px 0 #000" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <h2 style={{ fontSize: "1.1rem", fontWeight: 900, textTransform: "uppercase", margin: 0 }}>Mesh Controls</h2>
-                <span style={{ fontSize: "0.68rem", fontWeight: 900, background: "#FFDD00", padding: "2px 8px", border: "1.5px solid #000", fontFamily: "monospace" }}>
+                <span style={{ fontSize: "0.68rem", fontWeight: 900, background: "#000", color: "#fff", padding: "2px 8px", border: "1.5px solid #000", fontFamily: "monospace" }}>
                   {nodes.length} PINS
                 </span>
               </div>
 
               {/* Slider Controls */}
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Blur Warp Size</label>
-                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{warpSize}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    value={warpSize}
-                    onChange={(e) => setWarpSize(Number(e.target.value))}
-                    style={{ width: "100%", cursor: "pointer" }}
-                  />
-                </div>
+                <TactileScrubber
+                  label="Blur Warp Size"
+                  min={30}
+                  max={100}
+                  value={warpSize}
+                  onChange={(v) => setWarpSize(v)}
+                  formatValue={(v) => `${v}%`}
+                  showSteppers={false}
+                />
 
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Blur Diffusion</label>
-                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{warpAmount}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    value={warpAmount}
-                    onChange={(e) => setWarpAmount(Number(e.target.value))}
-                    style={{ width: "100%", cursor: "pointer" }}
-                  />
-                </div>
+                <TactileScrubber
+                  label="Blur Diffusion"
+                  min={10}
+                  max={100}
+                  value={warpAmount}
+                  onChange={(v) => setWarpAmount(v)}
+                  formatValue={(v) => `${v}px`}
+                  showSteppers={false}
+                />
 
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <label style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>Film Grain Noise</label>
-                    <span style={{ fontSize: "0.74rem", fontWeight: 900, fontFamily: "monospace" }}>{Math.round(noiseOpacity * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={0.5}
-                    step={0.01}
-                    value={noiseOpacity}
-                    onChange={(e) => setNoiseOpacity(Number(e.target.value))}
-                    style={{ width: "100%", cursor: "pointer" }}
-                  />
-                </div>
+                <TactileScrubber
+                  label="Film Grain Noise"
+                  min={0}
+                  max={0.5}
+                  step={0.01}
+                  value={noiseOpacity}
+                  onChange={(v) => setNoiseOpacity(v)}
+                  formatValue={(v) => `${Math.round(v * 100)}%`}
+                  showSteppers={false}
+                />
               </div>
 
               <div style={{ height: 1, background: "#000", margin: "4px 0" }} />
@@ -1043,6 +1111,24 @@ export default function ColorGradientPage() {
                 >
                   <Download size={15} />
                   Download PNG
+                </button>
+              </div>
+
+              {/* Cross-tool hand-off (§4): ship this mesh to the next tool */}
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <button
+                  className="brutalist-button"
+                  onClick={() => void sendGradientTo("quote-card")}
+                  style={{ flex: 1, padding: "9px 0", fontSize: "0.74rem", gap: 5 }}
+                >
+                  <Wand2 size={14} /> Quote Card
+                </button>
+                <button
+                  className="brutalist-button"
+                  onClick={() => void sendGradientTo("watermark")}
+                  style={{ flex: 1, padding: "9px 0", fontSize: "0.74rem", gap: 5 }}
+                >
+                  <Wand2 size={14} /> Watermark
                 </button>
               </div>
             </div>

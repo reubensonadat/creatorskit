@@ -1,5 +1,5 @@
 /**
- * Subtitle Formatter for CreatorKit
+ * Subtitle Formatter for CreatorsKit
  * =================================
  * Converts timestamped transcription cues into WebVTT (.vtt), SubRip (.srt),
  * and plain text formats, with browser 1-click download utilities.

@@ -1,8 +1,8 @@
 /**
- * Teleprompter Script-to-Audio Forced Aligner for CreatorKit
+ * Teleprompter Script-to-Audio Forced Aligner for CreatorsKit
  * ==========================================================
  * Aligns ground-truth teleprompter scripts with raw audio-detected speech timestamps
- * using CreatorKit's proprietary Voice Matching Engine (isFuzzyMatch & phonetic normalizations).
+ * using CreatorsKit's proprietary Voice Matching Engine (isFuzzyMatch & phonetic normalizations).
  * 
  * Strict Synchronization Rules:
  * 1. ZERO guessing during lead-in silence: Script words are strictly anchored to the first

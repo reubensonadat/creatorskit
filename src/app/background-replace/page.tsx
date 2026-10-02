@@ -1,5 +1,7 @@
 'use client';
 
+import { ThinkingOrb } from 'thinking-orbs';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -14,6 +16,7 @@ import {
     LayoutGrid,
     AlertTriangle,
     CheckCircle2,
+    Droplets,
 } from 'lucide-react';
 import {
     removeBackgroundBrowser,
@@ -156,7 +159,7 @@ export default function BackgroundRemoverPage() {
             if (prev) URL.revokeObjectURL(prev);
             return null;
         });
-        setStatusText(engine === 'server' ? 'Connecting to CreatorKit Server…' : 'Preparing…');
+        setStatusText(engine === 'server' ? 'Connecting to CreatorsKit Server…' : 'Preparing…');
         setPercent(0);
 
         const onProgress: MatteProgress = (stage, message, pct) => {
@@ -264,6 +267,13 @@ export default function BackgroundRemoverPage() {
         window.open('/thumbnail-lab', '_blank');
     };
 
+    // §4 edge: stamp the cutout before publishing (batch watermark tool)
+    const sendToWatermark = async () => {
+        if (!cutoutBlob) return;
+        await putHandoffImage('watermark', cutoutBlob, { sourceTool: 'background-remover' });
+        window.open('/watermark', '_blank');
+    };
+
     const hasResult = cutoutUrl !== null;
     const shownUrl = preview === 'cutout' ? cutoutUrl : originalUrl;
 
@@ -279,8 +289,8 @@ export default function BackgroundRemoverPage() {
                         fontWeight: 900,
                         padding: '4px 10px',
                         border: '2px solid #000',
-                        background: '#FFDD00',
-                        color: '#000',
+                        background: '#000',
+                        color: '#fff',
                         fontFamily: 'monospace',
                     }}
                 >
@@ -460,8 +470,18 @@ export default function BackgroundRemoverPage() {
                                             gap: 4,
                                         }}
                                     >
-                                        <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
-                                            {statusText} ({percent}%)
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <ThinkingOrb
+                                                size={20}
+                                                state={
+                                                    statusText.toLowerCase().includes('fetch') || statusText.toLowerCase().includes('download')
+                                                        ? 'connecting'
+                                                        : 'shaping'
+                                                }
+                                            />
+                                            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>
+                                                {statusText} ({percent}%)
+                                            </div>
                                         </div>
                                         <div style={{ height: 6, background: '#fff', border: '1px solid #000' }}>
                                             <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, percent))}%`, background: '#FFE500', transition: 'width 0.25s ease' }} />
@@ -613,6 +633,14 @@ export default function BackgroundRemoverPage() {
                         style={{ justifyContent: 'center', opacity: !originalFile || busy ? 0.5 : 1, cursor: !originalFile || busy ? 'not-allowed' : 'pointer' }}
                     >
                         <LayoutGrid size={14} /> THUMBNAIL LAB <ArrowRight size={13} />
+                    </button>
+                    <button
+                        onClick={sendToWatermark}
+                        disabled={!hasResult || busy}
+                        className="brutalist-button"
+                        style={{ justifyContent: 'center', opacity: !hasResult || busy ? 0.5 : 1, cursor: !hasResult || busy ? 'not-allowed' : 'pointer' }}
+                    >
+                        <Droplets size={14} /> BATCH WATERMARK <ArrowRight size={13} />
                     </button>
                     <p style={{ fontSize: '0.64rem', color: '#888', margin: 0, fontFamily: 'monospace', fontWeight: 700 }}>
                         HAND-OFFS SKIP THE DOWNLOAD → RE-UPLOAD ROUND TRIP

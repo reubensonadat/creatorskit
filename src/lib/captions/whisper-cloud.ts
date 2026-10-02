@@ -1,7 +1,7 @@
 /**
  * Cloud Whisper & BYOK (Bring Your Own Key) Transcription Client
  * ==============================================================
- * Connects CreatorKit to high-speed cloud transcription engines:
+ * Connects CreatorsKit to high-speed cloud transcription engines:
  * - Groq Whisper-large-v3 (<1 second verbatim transcription, generous free tier)
  * - OpenAI Whisper-1
  * - Gemini 2.5 Flash

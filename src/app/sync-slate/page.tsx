@@ -1423,7 +1423,7 @@ export default function ProductionSyncSlatePage() {
                           fontWeight: 900,
                           border: '1px solid #000',
                           borderRadius: 2,
-                          background: t.status === st ? (st === 'GOOD' ? '#22c55e' : st === 'NG' ? '#ef4444' : '#eab308') : '#fff',
+                          background: t.status === st ? (st === 'GOOD' ? '#22c55e' : st === 'NG' ? '#ef4444' : '#71717a') : '#fff',
                           color: t.status === st ? '#fff' : '#000',
                           cursor: 'pointer',
                         }}

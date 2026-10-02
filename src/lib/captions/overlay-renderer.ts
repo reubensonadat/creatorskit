@@ -1,5 +1,5 @@
 /**
- * Video Overlay Renderer for CreatorKit Auto Captions
+ * Video Overlay Renderer for CreatorsKit Auto Captions
  * ====================================================
  * Renders animated, timestamped kinetic captions directly onto an HTML5 Canvas
  * and exports as a green-key MP4 (deterministic WebCodecs H.264 via the shared
@@ -20,7 +20,7 @@
  * Special Rules:
  * - Bracket stage cues like [HOOK], [SILENCE], [PAUSE 3s] are strictly filtered out
  * - During silence / dead-air, NOTHING is rendered (100% transparent canvas)
- * - Zero excessive emojis. Clean brutalist design matching CreatorKit Studio.
+ * - Zero excessive emojis. Clean brutalist design matching CreatorsKit Studio.
  */
 
 import { SubtitleCue, cleanStageDirections } from './vtt-formatter';

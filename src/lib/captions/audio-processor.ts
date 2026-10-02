@@ -1,5 +1,5 @@
 /**
- * Client-Side Audio Processor for CreatorKit Whisper Engine
+ * Client-Side Audio Processor for CreatorsKit Whisper Engine
  * ========================================================
  * Decodes any audio/video file directly in the browser and resamples it to
  * 16,000 Hz Mono Float32Array (Whisper's native input).

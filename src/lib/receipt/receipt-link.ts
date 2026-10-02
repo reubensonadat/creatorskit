@@ -1,5 +1,5 @@
 /**
- * Shareable receipt links for the CreatorKit Business Suite.
+ * Shareable receipt links for the CreatorsKit Business Suite.
  *
  * A creator builds a receipt in /business?tab=receipt and shares a link of the
  * form `/receipt?r=<payload>`. The payload is a compact JSON object with short
@@ -63,7 +63,7 @@ export type ReceiptPayload = {
     // ── Branding ─────────────────────────────────────────────
     /** Optional logo as a data URL (skipped when too large for a URL) */
     lg?: string;
-    /** "Powered by CreatorKit" badge on the printed document: 1 = on (default), 0 = off */
+    /** "Powered by CreatorsKit" badge on the printed document: 1 = on (default), 0 = off */
     br?: 0 | 1;
     // ── Document kind ─────────────────────────────────────────
     /** Which business-suite document this payload represents (client view adapts title/labels) */

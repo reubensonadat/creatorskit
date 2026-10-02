@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { decodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
 import { getReceiptByShortId } from '@/lib/supabase';
@@ -65,5 +66,41 @@ export default function ShortLinkClientView() {
         );
     }
 
-    return <ClientDocumentPrinter data={data} />;
+    return (
+        <div style={{ minHeight: '100vh', background: '#09090b' }}>
+            <ClientDocumentPrinter data={data} />
+            {/* Stage 0 growth loop (docs/BUSINESS_MODEL_PLAN.md §8): every
+                shared invoice/receipt/agreement advertises the free suite. */}
+            <footer
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    padding: '22px 16px 28px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.05em',
+                    color: '#a1a1aa',
+                    textTransform: 'uppercase',
+                }}
+            >
+                <span>Made with</span>
+                <Link
+                    href="/"
+                    style={{
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        textDecoration: 'none',
+                        border: '1.5px solid #ffffff',
+                        padding: '3px 8px',
+                    }}
+                >
+                    CreatorsKit
+                </Link>
+                <span>— free creator tools</span>
+            </footer>
+        </div>
+    );
 }

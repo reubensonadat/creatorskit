@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, faqJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Thumbnail Lab & Split-Tester — Free YouTube Thumbnail CTR Tester | CreatorKit',
+    title: 'Thumbnail Lab & Split-Tester — Free YouTube Thumbnail CTR Tester | CreatorsKit',
     description:
         'Test YouTube thumbnails before you publish. Simulate real feeds, 3-second glance tests, mobile Shorts shelves and A/B split CTR benchmarking. Free.',
     path: '/thumbnail-lab',
@@ -53,7 +53,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Thumbnail Lab & Split-Tester',
+        name: 'CreatorsKit Thumbnail Lab & Split-Tester',
         description:
             'Free YouTube thumbnail tester: preview designs inside a simulated feed, run 3-second glance tests and split-test variants to pick the highest-CTR cover.',
         path: '/thumbnail-lab',

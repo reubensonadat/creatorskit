@@ -1,8 +1,12 @@
 'use client';
 
+import { ThinkingOrb } from 'thinking-orbs';
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { CassettePlayer } from '@/components/CassettePlayer';
+import NextStepRow from '@/components/NextStepRow';
+import { takeHandoffText, putHandoffText, putHandoffImage } from '@/lib/tool-handoff';
 import { processAudioForWhisper } from '@/lib/captions/audio-processor';
 import {
     type WhisperProgress,
@@ -733,6 +737,14 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
     // Teleprompter Script Sync State
     const [teleprompterScript, setTeleprompterScript] = useState<string | null>(null);
     const [scriptAligned, setScriptAligned] = useState(false);
+
+    // Teleprompter hand-off (§4): consume-once script text on mount —
+    // "the script I just rehearsed = the caption script"
+    useEffect(() => {
+        takeHandoffText('auto-captions').then((text) => {
+            if (text && text.trim().length > 0) setTeleprompterScript(text);
+        });
+    }, []);
 
     // Overlay Live Player State
     const overlayAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -2228,7 +2240,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         type="button"
                         style={brutChip(transcriptionEngine === 'server')}
                         onClick={() => setTranscriptionEngine('server')}
-                        title="Transcribe on CreatorKit's free server — works on any device, handles files the browser can't decode. Falls back to your browser automatically if the server is busy."
+                        title="Transcribe on CreatorsKit's free server — works on any device, handles files the browser can't decode. Falls back to your browser automatically if the server is busy."
                     >
                         Server · Free ★
                     </button>
@@ -2723,6 +2735,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         gap: 12,
                     }}
                 >
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <ThinkingOrb size={64} state="listening" />
+                    </div>
                     <BrutProgress
                         percent={progress.stage === 'complete' ? 100 : displayPercent}
                         label={progress.message || 'GENERATING CAPTIONS...'}
@@ -2782,7 +2797,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                             display: 'inline-block',
                                             width: 9,
                                             height: 9,
-                                            background: cues.length > 0 ? '#22c55e' : '#eab308',
+                                            background: cues.length > 0 ? '#22c55e' : '#a1a1aa',
                                             border: '1.5px solid #000',
                                             borderRadius: '50%',
                                             flexShrink: 0,
@@ -3923,6 +3938,31 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                     </button>
                                 ))}
                             </div>
+
+                            {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+                            {cues.length > 0 && (
+                                <NextStepRow
+                                    currentHref="/auto-captions"
+                                    heading="Subtitles ready — keep going"
+                                    onDownload={handleDownloadSrt}
+                                    downloadLabel="SRT"
+                                    onBeforeNavigate={(href) => {
+                                        // §4 edge: ship the transcript text to the text tools
+                                        if (href === '/text-highlighter' || href === '/match-cut') {
+                                            return putHandoffText(href.slice(1), cues.map((c) => c.text).join('\n'), {
+                                                sourceTool: 'auto-captions',
+                                            });
+                                        }
+                                        // §4 edge: pass the source FILE (video only) to resizer v2
+                                        if (href === '/resizer' && file && file.type.startsWith('video')) {
+                                            return putHandoffImage('resizer', file, {
+                                                sourceTool: 'auto-captions',
+                                                name: file.name,
+                                            });
+                                        }
+                                    }}
+                                />
+                            )}
 
                             <button
                                 type="button"

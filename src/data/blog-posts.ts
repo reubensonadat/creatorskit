@@ -69,7 +69,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '8 min read',
     author: {
-      name: 'CreatorKit Africa Business Lab',
+      name: 'CreatorsKit Africa Business Lab',
       role: 'African Creator Monetization & Legal Ops',
     },
     tags: ['Ghana', 'Nigeria', 'Brand Deals', 'Invoices', 'Contracts', 'Monetization'],
@@ -100,7 +100,7 @@ export const BLOG_POSTS: BlogPost[] = [
           ],
           quote: {
             text: 'Views are vanity. Likes are ego. Cleared invoices in your bank account or MoMo wallet are what keep your lights on.',
-            speaker: 'CreatorKit Africa Business Lab',
+            speaker: 'CreatorsKit Africa Business Lab',
           },
           keyInsight: 'If you want to be a full-time creator in Africa, your real job is running a media business. Content is your top-of-funnel marketing; brand deals, invoices, and contracts are your payroll.',
         },
@@ -112,10 +112,10 @@ export const BLOG_POSTS: BlogPost[] = [
             'How do most amateur creators invoice a brand sponsor in Ghana or Nigeria? They finish the video, send a WhatsApp message with their bank account number or MTN MoMo number, and text: "Boss, I have posted it. Please send the money."',
             'What happens next? The brand ignores the text for 3 weeks, passes it through 4 different accounting staff, and tells you: "We are waiting on management approval."',
             'Corporate marketing managers and agency executives operate on paper. They need an official **Itemized Invoice with Tax (WHT) calculations, PO numbers, bank routing or MoMo merchant details, and payment due dates** so their finance department can legally cut a cheque or process the transfer.',
-            'When you send a branded, serialized CreatorKit invoice with an official deposit receipt, you instantly transform from "random content boy/girl" into an accredited creative vendor who must be paid on time.',
+            'When you send a branded, serialized CreatorsKit invoice with an official deposit receipt, you instantly transform from "random content boy/girl" into an accredited creative vendor who must be paid on time.',
           ],
           table: {
-            headers: ['Amateur WhatsApp Pitch', 'CreatorKit Business Standard'],
+            headers: ['Amateur WhatsApp Pitch', 'CreatorsKit Business Standard'],
             rows: [
               ['"Send 5,000 Cedis to my MoMo number: 024XXXXXXX"', 'Official PDF Invoice with GHS / MoMo Merchant QR & Issue Date'],
               ['"Please pay me ₦1,500,000 to GTBank"', 'Itemized Deliverable Breakdown (Shoot + Edit + 60-Day Ad Rights)'],
@@ -131,13 +131,13 @@ export const BLOG_POSTS: BlogPost[] = [
           paragraphs: [
             'In Ghana and Nigeria, brands frequently pay a creator ₦200,000 or 2,000 GHS for a 30-second TikTok review—and then take that creator’s face, download the video, and run it as a sponsored Instagram ad or put it on national billboards for the next 12 months, generating tens of millions in revenue.',
             'Without a clear written agreement, the creator has legally surrendered their entire likeness for peanuts.',
-            'That is why CreatorKit built the **Business Suite** specifically for creators: so you can generate professional contracts, specify exactly how long the brand can use your footage (e.g. 30 days vs. 1 year), and charge an additional licensing fee for paid ads.',
+            'That is why CreatorsKit built the **Business Suite** specifically for creators: so you can generate professional contracts, specify exactly how long the brand can use your footage (e.g. 30 days vs. 1 year), and charge an additional licensing fee for paid ads.',
           ],
         },
       ],
       actionableChecklist: [
         'Never film a brand campaign without an agreed 50% upfront deposit.',
-        'Always send an official itemized invoice generated in CreatorKit Business Suite (supporting GHS, NGN, USD).',
+        'Always send an official itemized invoice generated in CreatorsKit Business Suite (supporting GHS, NGN, USD).',
         'Include your specific payment channel: MTN MoMo, Telecel Cash, Bank Wire, or Paystack.',
         'Limit brand ad usage rights to 30 or 90 days unless they pay a commercial licensing multiplier.',
       ],
@@ -168,7 +168,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '7 min read',
     author: {
-      name: 'CreatorKit Africa Business Lab',
+      name: 'CreatorsKit Africa Business Lab',
       role: 'African Creator Monetization & Legal Ops',
     },
     tags: ['Audience Trust', 'Ethics', 'Brand Deals', 'Reputation', 'Ghana', 'Nigeria'],
@@ -196,7 +196,7 @@ export const BLOG_POSTS: BlogPost[] = [
           ],
           quote: {
             text: 'Your audience’s trust is not for sale. The moment you trade credibility for a quick payout, you stop being a trusted creator and become a disposable billboard.',
-            speaker: 'CreatorKit Ethics & Reputation Manifesto',
+            speaker: 'CreatorsKit Ethics & Reputation Manifesto',
           },
           keyInsight: 'Enterprise brands pay top dollar to creators with clean, trustworthy track records. Protecting your audience’s trust is the highest-ROI investment you can make.',
         },
@@ -207,14 +207,14 @@ export const BLOG_POSTS: BlogPost[] = [
           paragraphs: [
             'Before accepting any brand deal, ask yourself one question: **"Would I recommend this exact product to my mother, my sibling, or my closest friend if I wasn’t getting paid?"**',
             'If the answer is no, decline the deal immediately.',
-            'When you say no to bad brands, you protect the authority that makes good brands want to hire you. Use **CreatorKit Business Suite** to create professional media kits and pitch legitimate companies (Fintech, Telecom, Consumer Goods, SaaS) that your audience will actually thank you for introducing.',
+            'When you say no to bad brands, you protect the authority that makes good brands want to hire you. Use **CreatorsKit Business Suite** to create professional media kits and pitch legitimate companies (Fintech, Telecom, Consumer Goods, SaaS) that your audience will actually thank you for introducing.',
           ],
         },
       ],
       actionableChecklist: [
         'Always test a product personally for at least 7 days before agreeing to review it.',
         'Never promote unregulated forex schemes, unlicensed loan apps, or dubious health cures.',
-        'Use CreatorKit Invoices to work with verified enterprise clients and corporate agencies.',
+        'Use CreatorsKit Invoices to work with verified enterprise clients and corporate agencies.',
       ],
       relatedTools: [
         {
@@ -243,7 +243,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '7 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['Storytelling', 'Dopamine Loop', 'Psychology', 'Retention'],
@@ -271,14 +271,14 @@ export const BLOG_POSTS: BlogPost[] = [
           ],
           quote: {
             text: 'Dopamine is the molecule of craving. If you answer all questions before opening the next loop, the brain has no reason to stay.',
-            speaker: 'CreatorKit Storytelling Manifesto',
+            speaker: 'CreatorsKit Storytelling Manifesto',
           },
         },
       ],
       actionableChecklist: [
         'Establish emotional stakes (character + risk + urgency) in your first 4 seconds.',
         'Plant a clear, single Big Question before second 8.',
-        'Use CreatorKit Teleprompter with [STAKES], [QUESTION], and [HEADFAKE] markers.',
+        'Use CreatorsKit Teleprompter with [STAKES], [QUESTION], and [HEADFAKE] markers.',
       ],
       relatedTools: [
         {
@@ -307,7 +307,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '6 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['Storytelling', 'Hooks', 'Shorts', 'Retention'],
@@ -374,7 +374,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '6 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['Curiosity', 'Storytelling', 'Retention', 'Packaging'],
@@ -402,7 +402,7 @@ export const BLOG_POSTS: BlogPost[] = [
       ],
       actionableChecklist: [
         'Ensure your Big Question is planted before second 8 of the video.',
-        'Test your question clarity in CreatorKit Thumbnail Lab.',
+        'Test your question clarity in CreatorsKit Thumbnail Lab.',
       ],
       relatedTools: [
         {
@@ -431,7 +431,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '6 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['Storytelling', 'Plot Twists', 'Contrast', 'Retention'],
@@ -459,7 +459,7 @@ export const BLOG_POSTS: BlogPost[] = [
       ],
       actionableChecklist: [
         'Pinpoint your Headfake: Where is the sharp 90-degree twist in your script?',
-        'Use CreatorKit Text Match CUT to flash the revelation word on screen.',
+        'Use CreatorsKit Text Match CUT to flash the revelation word on screen.',
       ],
       relatedTools: [
         {
@@ -488,7 +488,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '7 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['Retention', 'Pacing', 'Teleprompter', 'Video Editing'],
@@ -501,7 +501,7 @@ export const BLOG_POSTS: BlogPost[] = [
       whatYoullLearn: [
         'The Cascading Rehook: Dealing the next hand before the player can walk away.',
         'The Shingle Overlap Principle: Opening Loop #2 inside the resolution of Loop #1.',
-        'CreatorKit Studio Teleprompter bracket template for cascading pacing.',
+        'CreatorsKit Studio Teleprompter bracket template for cascading pacing.',
       ],
       sections: [
         {
@@ -526,7 +526,7 @@ export const BLOG_POSTS: BlogPost[] = [
       actionableChecklist: [
         'Eliminate dead pauses between narrative beats.',
         'Open Loop #2 before concluding Loop #1.',
-        'Paste your script into CreatorKit Teleprompter with bracket delivery cues.',
+        'Paste your script into CreatorsKit Teleprompter with bracket delivery cues.',
       ],
       relatedTools: [
         {
@@ -549,7 +549,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '8 min read',
     author: {
-      name: 'CreatorKit Business Lab',
+      name: 'CreatorsKit Business Lab',
       role: 'Sponsorship Valuation & Legal Operations',
     },
     tags: ['Brand Deals', 'Invoices', 'Monetization', 'Pricing'],
@@ -575,13 +575,13 @@ export const BLOG_POSTS: BlogPost[] = [
           ],
           quote: {
             text: 'Brands don’t pay creators for their subscriber count. They pay for the asset they can amplify across paid media channels.',
-            speaker: 'CreatorKit Business Valuation Framework',
+            speaker: 'CreatorsKit Business Valuation Framework',
           },
           keyInsight: 'Your organic audience is the testing ground. The real revenue is charging for the right to use that high-converting footage in paid advertisements.',
         },
       ],
       actionableChecklist: [
-        'Itemize Production Fee, Organic Posting, and Paid Usage separately on CreatorKit Invoices.',
+        'Itemize Production Fee, Organic Posting, and Paid Usage separately on CreatorsKit Invoices.',
       ],
       relatedTools: [
         {
@@ -604,7 +604,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '7 min read',
     author: {
-      name: 'CreatorKit Business Lab',
+      name: 'CreatorsKit Business Lab',
       role: 'Sponsorship Valuation & Legal Operations',
     },
     tags: ['Invoices', 'Contracts', 'Brand Deals', 'Business'],
@@ -630,7 +630,7 @@ export const BLOG_POSTS: BlogPost[] = [
         },
       ],
       actionableChecklist: [
-        'Issue an instant deposit receipt using CreatorKit Receipt Printer.',
+        'Issue an instant deposit receipt using CreatorsKit Receipt Printer.',
       ],
       relatedTools: [
         {
@@ -653,7 +653,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '8 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Packaging, Thumbnails & CTR Optimization',
     },
     tags: ['Thumbnails', 'MrBeast', 'CTR', 'Packaging'],
@@ -665,7 +665,7 @@ export const BLOG_POSTS: BlogPost[] = [
     content: {
       whatYoullLearn: [
         'The 3-Element Visual Rule: Subject + Conflict + Context (Zero Clutter).',
-        'Passing the 0.8-second 100px mobile glance test in CreatorKit Thumbnail Lab.',
+        'Passing the 0.8-second 100px mobile glance test in CreatorsKit Thumbnail Lab.',
         'Why oversaturated faces outperform realistic studio lighting by 4.2% CTR.',
       ],
       sections: [
@@ -679,7 +679,7 @@ export const BLOG_POSTS: BlogPost[] = [
         },
       ],
       actionableChecklist: [
-        'Test your graphics scaled down to 100px width in CreatorKit Thumbnail Lab.',
+        'Test your graphics scaled down to 100px width in CreatorsKit Thumbnail Lab.',
       ],
       relatedTools: [
         {
@@ -702,7 +702,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '8 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Algorithmic Distribution & Short-Form Systems',
     },
     tags: ['TikTok Algorithm', 'Shorts', 'Growth', 'Retention'],
@@ -752,7 +752,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '7 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Algorithmic Distribution & Short-Form Systems',
     },
     tags: ['Looping', 'TikTok Algorithm', 'Scriptwriting', 'Shorts'],
@@ -794,7 +794,7 @@ export const BLOG_POSTS: BlogPost[] = [
   {
     slug: 'veritasium-why-he-still-gets-views-formula',
     title: 'The Illusion of Clarity: Why 99% of "Good" Videos Fail (And The Veritasium Formula)',
-    subtitle: 'A CreatorKit deep dive into the psychology of cognitive dissonance, paradoxical packaging, and the Hollywood A/B plot engine behind 100M+ views.',
+    subtitle: 'A CreatorsKit deep dive into the psychology of cognitive dissonance, paradoxical packaging, and the Hollywood A/B plot engine behind 100M+ views.',
     excerpt: 'Most creators spend 40 hours animating videos that flatline at 2,000 views. They blame the YouTube algorithm. But 13 years ago, a physics PhD accidentally uncovered the reason why traditional "clear" educational content is cognitive poison.',
     youtubeId: 'QHhJ8_TJeNo',
     youtubeEmbedUrl: 'https://www.youtube.com/embed/QHhJ8_TJeNo?si=ulN5UqtMYJZrLNP6',
@@ -807,7 +807,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: 'August 29, 2026',
     readTime: '9 min read',
     author: {
-      name: 'CreatorKit Research Lab',
+      name: 'CreatorsKit Research Lab',
       role: 'Viral Storytelling & Audience Retention',
     },
     tags: ['YouTube Growth', 'Viral Formula', 'Storytelling', 'Retention'],

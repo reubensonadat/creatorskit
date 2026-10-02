@@ -1,5 +1,5 @@
 /**
- * CreatorKit Server Transcription Client (our own Render worker — FREE)
+ * CreatorsKit Server Transcription Client (our own Render worker — FREE)
  * ====================================================================
  * Calls the auto-captions module on workers/ (video-worker-xwv9.onrender.com):
  *
@@ -168,7 +168,7 @@ async function runServerAttempt(args: {
     const attemptLabel = totalAttempts > 1 ? ` (Attempt ${attempt})` : '';
 
     // ── ticket + upload ─────────────────────────────────────────────────
-    onProgress?.({ stage: 'loading_model', message: 'Connecting to CreatorKit Server…' + attemptLabel, percent: 15 });
+    onProgress?.({ stage: 'loading_model', message: 'Connecting to CreatorsKit Server…' + attemptLabel, percent: 15 });
     const ticket = await requestUploadTicket();
 
     onProgress?.({ stage: 'loading_model', message: 'Uploading audio to the server…' + attemptLabel, percent: 25 });

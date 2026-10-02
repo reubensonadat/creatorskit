@@ -501,7 +501,7 @@ export function CassettePlayer({
             aria-label={`${trackTitle} audio player`}
             {...sectionProps}
             className={cn(
-                'grid w-full place-items-center overflow-hidden rounded-[18px] bg-transparent text-[#25211d] [--label-bg:#ffffff] [--label-border:rgba(0,0,0,0.12)] [--label-catalogue:rgba(0,0,0,0.55)] [--label-ink:#18181b] [--label-kicker:rgba(0,0,0,0.7)] [--label-stripe-one:#FFE500] [--label-stripe-two:#18181b] [--label-stripe-three:#FFE500] [--progress-thumb-border:#000000] [--reel-teeth-stroke:#11100f] [--reel-teeth:#1b1a18] [container-type:inline-size]',
+                'grid w-full place-items-center overflow-hidden rounded-[18px] bg-transparent text-[#25211d] [--label-bg:#ffffff] [--label-border:rgba(0,0,0,0.12)] [--label-catalogue:rgba(0,0,0,0.55)] [--label-ink:#18181b] [--label-kicker:rgba(0,0,0,0.7)] [--label-stripe-one:#a1a1aa] [--label-stripe-two:#18181b] [--label-stripe-three:#a1a1aa] [--progress-thumb-border:#000000] [--reel-teeth-stroke:#11100f] [--reel-teeth:#1b1a18] [container-type:inline-size]',
                 className
             )}
         >
@@ -573,14 +573,14 @@ export function CassettePlayer({
 
                         {/* ─── Center Window with Stripes & Spools ─── */}
                         <div className="relative mt-4 h-[34%] max-[560px]:mt-1 max-[560px]:h-[24%]">
-                            {/* 3 Color Stripes: CreatorKit Yellow / Black / CreatorKit Yellow */}
+                            {/* 3 Monochrome Stripes: zinc / black / zinc */}
                             <div
                                 aria-hidden="true"
                                 className="absolute -inset-x-1 top-1/2 grid h-[58%] -translate-y-1/2 grid-rows-3 gap-y-1 max-[560px]:gap-y-0.5"
                             >
-                                <span className="bg-[#FFE500]" />
+                                <span className="bg-[#a1a1aa]" />
                                 <span className="bg-[#18181b]" />
-                                <span className="bg-[#FFE500]" />
+                                <span className="bg-[#a1a1aa]" />
                             </div>
 
                             {/* Center Clear Acrylic Oval Window */}
@@ -621,7 +621,7 @@ export function CassettePlayer({
                                 step={0.05}
                                 stepDelta={1}
                                 height={10}
-                                fillColor="#FFE500"
+                                fillColor="#18181b"
                                 showSteppers={false}
                                 showValueBadge={false}
                                 onChange={(val) => seek(val)}
@@ -660,7 +660,7 @@ export function CassettePlayer({
                             aria-label={isPlaying ? `Pause ${trackTitle}` : `Play ${trackTitle}`}
                             className={cn(
                                 BUTTON_CLASSES,
-                                'w-[clamp(30px,8.2cqw,43px)] border-2 border-black bg-[#FFE500] shadow-[0_3px_8px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.4)] hover:bg-[#ebd300] active:translate-y-0.5'
+                                'w-[clamp(30px,8.2cqw,43px)] border-2 border-black bg-[#f5f5f4] shadow-[0_3px_8px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.4)] hover:bg-[#e7e5e4] active:translate-y-0.5'
                             )}
                             onClick={togglePlayback}
                             type="button"

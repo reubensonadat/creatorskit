@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Batch Watermark — Free Bulk Photo Protection Tool | CreatorKit',
+    title: 'Batch Watermark — Free Bulk Photo Protection Tool | CreatorsKit',
     description:
         'Batch-apply logo stamps and copyright marks across images in bulk. Protect your photos from content theft. Free, private, in your browser.',
     path: '/watermark',
@@ -52,7 +52,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Batch Watermark',
+        name: 'CreatorsKit Batch Watermark',
         description:
             'Free bulk watermarking tool. Batch-apply logo stamps and copyright marks across all your images to protect photos from content theft.',
         path: '/watermark',

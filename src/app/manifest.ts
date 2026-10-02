@@ -2,13 +2,14 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'CreatorKit — Creator Production Suite',
-    short_name: 'CreatorKit',
-    description: 'All-in-one brutalist production tools, 3D studio space planner, teleprompter, sync slate, and creator utilities.',
+    name: 'CreatorsKit — Creator Production Suite',
+    short_name: 'CreatorsKit',
+    description:
+      'All-in-one brutalist production tools for creators — teleprompter, auto captions, thumbnails, invoices & more. Free, instant, in your browser.',
     start_url: '/',
     display: 'standalone',
     background_color: '#090D16',
-    theme_color: '#FFE500',
+    theme_color: '#000000',
     orientation: 'any',
     icons: [
       {
@@ -26,10 +27,10 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: '3D Space Planner',
-        short_name: 'Space Planner',
-        description: 'Design & pre-visualize your studio space in 3D',
-        url: '/space-planner',
+        name: 'Business & Legal Suite',
+        short_name: 'Business',
+        description: 'Invoices, receipts, contracts & letterheads for creators',
+        url: '/business',
         icons: [{ src: '/logo.png', sizes: '192x192' }],
       },
       {

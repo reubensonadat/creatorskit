@@ -57,7 +57,7 @@ export type ReceiptDocumentProps = {
     maxItems?: number;
     /** URL encoded into the scannable QR code (the Supabase short link). */
     qrUrl?: string;
-    /** Show the "Powered by CreatorKit" badge. Default true. */
+    /** Show the "Powered by CreatorsKit" badge. Default true. */
     showBranding?: boolean;
     /** Document kind — adapts title/labels for shared invoices, agreements & letterheads. Default: receipt. */
     docKind?: 'invoice' | 'receipt' | 'agreement' | 'letterhead';
@@ -299,7 +299,7 @@ export default function ReceiptDocument({
                 Thank you!
             </div>
             <div style={{ textAlign: 'center', fontSize: 9, opacity: MUTED_OPACITY, marginTop: 2 }}>
-                {data.creatorEmail}{showBranding ? ' · Powered by CreatorKit' : ''}
+                {data.creatorEmail}{showBranding ? ' · Powered by CreatorsKit' : ''}
             </div>
         </div>
     );

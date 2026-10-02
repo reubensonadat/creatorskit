@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import AdBanner from '@/components/AdBanner';
-import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import StudioToolsDropdown from '@/components/nav/SiteNav';
 import MediaStagePlayer from '@/components/MediaStagePlayer';
 import { Film, X } from 'lucide-react';
 import {

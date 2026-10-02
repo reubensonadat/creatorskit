@@ -10,7 +10,7 @@ import {
 } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Text Behind Image — Put Text Behind Your Subject Free | CreatorKit',
+    title: 'Text Behind Image — Put Text Behind Your Subject Free | CreatorsKit',
     description:
         'Put text behind any photo subject in seconds. Free on-device AI background remover, giant poster type sandwich, background dim, 360° rotation. No signup.',
     path: '/text-behind',

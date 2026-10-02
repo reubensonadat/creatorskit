@@ -1,40 +1,23 @@
 "use client";
 
-import React from "react";
+import { ThinkingOrb, type OrbState } from "thinking-orbs";
 
 interface SpeederLoaderProps {
   message?: string;
+  /** Which orb animation to show — see https://libraries.dev/orbs.html */
+  state?: OrbState;
 }
 
-export default function SpeederLoader({ message = "PROCESSING ASSET" }: SpeederLoaderProps) {
+export default function SpeederLoader({ message = "PROCESSING ASSET", state = "working" }: SpeederLoaderProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%", margin: "24px 0" }}>
-      <div className="speeder-container">
-        <div className="speeder-loader">
-          <span>
-            <span />
-            <span />
-            <span />
-            <span />
-          </span>
-          <div className="speeder-base">
-            <span />
-            <div className="speeder-face" />
-          </div>
-        </div>
-        <div className="longfazers">
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-      </div>
-      <div 
-        style={{ 
-          fontFamily: "monospace", 
-          fontWeight: 900, 
-          fontSize: "0.85rem", 
-          letterSpacing: "0.15em", 
+      <ThinkingOrb state={state} size={64} />
+      <div
+        style={{
+          fontFamily: "monospace",
+          fontWeight: 900,
+          fontSize: "0.85rem",
+          letterSpacing: "0.15em",
           textTransform: "uppercase",
           color: "#000",
           background: "#fff",

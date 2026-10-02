@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, LayoutGrid, Menu, X } from "lucide-react";
-import { ALL_TOOLS } from "@/data/tools";
+import { SiteNavList, SITE_TOOL_COUNT } from "@/components/nav/SiteNav";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -195,69 +195,10 @@ export default function Navbar() {
                 <div style={{ fontSize: "0.62rem", fontWeight: 900, color: "#666666", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "monospace", padding: "8px 12px", borderBottom: "1px solid #e5e5e5", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>ALL TOOLS</span>
                   <span style={{ background: "#000000", color: "#ffffff", fontSize: "0.62rem", fontWeight: 900, padding: "1px 6px" }}>
-                    {ALL_TOOLS.length}
+                    {SITE_TOOL_COUNT}
                   </span>
                 </div>
-                {ALL_TOOLS.map((tool) => {
-                  const isActive = pathname === tool.href;
-                  const isExt = tool.isExternal && (tool.externalUrl || tool.href).startsWith('http');
-                  const target = tool.externalUrl || tool.href;
-
-                  if (isExt) {
-                    return (
-                      <a
-                        key={tool.label}
-                        href={target}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setMenuOpen(false)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          padding: "8px 12px",
-                          textDecoration: "none",
-                          transition: "background 0.1s",
-                          color: "#000000",
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#f4f4f5"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      >
-                        <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{tool.label}</span>
-                        <span style={{ fontSize: "0.58rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: "#71717a" }}>
-                          {tool.hint} ↗
-                        </span>
-                      </a>
-                    );
-                  }
-
-                  return (
-                    <Link
-                      key={tool.href}
-                      href={tool.href}
-                      onClick={() => setMenuOpen(false)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        padding: "8px 12px",
-                        textDecoration: "none",
-                        transition: "background 0.1s",
-                        background: isActive ? "#000000" : "transparent",
-                        color: isActive ? "#ffffff" : "#000000",
-                      }}
-                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f4f4f5"; }}
-                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                    >
-                      <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{tool.label}</span>
-                      <span style={{ fontSize: "0.58rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.06em", color: isActive ? "#a1a1aa" : "#71717a" }}>
-                        {tool.hint}
-                      </span>
-                    </Link>
-                  );
-                })}
+                <SiteNavList currentHref={pathname} onNavigate={() => setMenuOpen(false)} />
               </div>
             )}
           </div>
@@ -324,7 +265,7 @@ export default function Navbar() {
             <img src="/logo.png" alt="CK" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
           <span style={{ fontWeight: 800, fontSize: "0.95rem", letterSpacing: "-0.03em", color: "#09090b" }}>
-            CreatorKit<span style={{ color: "#71717a", fontWeight: 500, fontSize: "0.8rem", marginLeft: 4 }}>studio</span>
+            CreatorsKit<span style={{ color: "#71717a", fontWeight: 500, fontSize: "0.8rem", marginLeft: 4 }}>studio</span>
           </span>
         </Link>
 
@@ -385,73 +326,9 @@ export default function Navbar() {
               </div>
 
               <div style={{ fontSize: "0.6rem", fontWeight: 900, color: "#888", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", marginBottom: 12 }}>
-                ALL TOOLS ({ALL_TOOLS.length})
+                ALL TOOLS ({SITE_TOOL_COUNT})
               </div>
-              {ALL_TOOLS.map((tool) => {
-                const isActive = pathname === tool.href;
-                const isExt = tool.isExternal && (tool.externalUrl || tool.href).startsWith('http');
-                const target = tool.externalUrl || tool.href;
-
-                if (isExt) {
-                  return (
-                    <a
-                      key={tool.label}
-                      href={target}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setMobileMenuOpen(false)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        padding: "12px 14px",
-                        textDecoration: "none",
-                        borderBottom: "1px solid #f0f0f0",
-                        color: "#000",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>{tool.label}</div>
-                        <div style={{ fontSize: "0.65rem", fontFamily: "monospace", color: "#888", marginTop: 2 }}>
-                          {tool.hint} · EXTERNAL ↗
-                        </div>
-                      </div>
-                    </a>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={tool.href}
-                    href={tool.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "12px 14px",
-                      textDecoration: "none",
-                      borderBottom: "1px solid #f0f0f0",
-                      background: isActive ? "#000" : "transparent",
-                      color: isActive ? "#fff" : "#000",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.9rem", fontWeight: 700 }}>{tool.label}</div>
-                      <div style={{ fontSize: "0.65rem", fontFamily: "monospace", color: isActive ? "#999" : "#888", marginTop: 2 }}>
-                        {tool.hint}
-                      </div>
-                    </div>
-                    {tool.badge && (
-                      <span style={{ fontSize: "0.55rem", fontFamily: "monospace", fontWeight: 900, background: isActive ? "#FFE500" : "#000", color: isActive ? "#000" : "#fff", padding: "2px 6px" }}>
-                        {tool.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
+              <SiteNavList variant="roomy" currentHref={pathname} onNavigate={() => setMobileMenuOpen(false)} />
             </div>
           )}
         </div>

@@ -10,7 +10,7 @@ import {
 } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Background Remover — Free One-Click Transparent PNG Cutout | CreatorKit',
+    title: 'Background Remover — Free One-Click Transparent PNG Cutout | CreatorsKit',
     description:
         'Remove image backgrounds free in seconds. On-device AI keeps photos 100% private, transparent PNG cutouts, edge refinement, instant hand-off to poster tools.',
     path: '/background-replace',
@@ -70,7 +70,7 @@ const lds = [
     softwareAppJsonLd({
         name: 'Background Remover & Cutout',
         description:
-            'Free one-click background remover that runs on your device. Turns any photo into a transparent PNG cutout with edge refinement, then hands off to other CreatorKit tools.',
+            'Free one-click background remover that runs on your device. Turns any photo into a transparent PNG cutout with edge refinement, then hands off to other CreatorsKit tools.',
         path: '/background-replace',
         featureList: [
             'One-click background removal',

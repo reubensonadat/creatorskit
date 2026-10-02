@@ -3,64 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import {
-  ChevronLeft,
-  Layers,
-  Scissors,
-  MonitorPlay,
-  Images,
-  Quote,
-  Maximize2,
-  Palette,
-  FileImage,
-  Droplets,
-  Eraser,
-  AudioLines,
-  Paintbrush,
-  Ruler,
-  Highlighter,
-  Film,
-  Sun,
-  Zap,
-  X,
-  PanelLeftOpen,
-  FileText,
-  Flower2,
-  Video,
-} from "lucide-react";
+import { ChevronLeft, X, PanelLeftOpen } from "lucide-react";
 
-import { ALL_TOOLS } from "@/data/tools";
-
-const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
-  "/business": FileText,
-  "/invoice": FileText,
-  "/receipt": FileText,
-  "/agreement": FileText,
-  "/background-replace": Eraser,
-  "/carousel-slicer": Images,
-  "/color-gradient": Paintbrush,
-  "/compressor": FileImage,
-  "/exposure-monitor": Sun,
-  "/match-cut": Scissors,
-  "/palette-extractor": Palette,
-  "/resizer": Maximize2,
-  "/space-planner": Ruler,
-  "/sync-slate": Film,
-  "/teleprompter": MonitorPlay,
-  "/captions": AudioLines,
-  "/auto-captions": AudioLines,
-  "/overlay": Video,
-  "/text-behind": Layers,
-  "/text-highlighter": Highlighter,
-  "/thumbnail-lab": Images,
-  "/watermark": Droplets,
-  "/bouquet": Flower2,
-  "/video-grabber": Video,
-};
+import { SiteNavList, findTool } from "@/components/nav/SiteNav";
 
 export default function ToolLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const currentTool = ALL_TOOLS.find((t) => pathname === t.href);
+  const currentTool = findTool(pathname);
   const [hovered, setHovered] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sideAdOpen, setSideAdOpen] = useState(false);
@@ -138,8 +87,8 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
           style={{
             fontSize: "0.7rem",
             padding: "6px 14px",
-            background: "#FFE500",
-            color: "#000",
+            background: "#000000",
+            color: "#ffffff",
             border: "2px solid #000",
             boxShadow: "2px 2px 0 #000",
             fontWeight: 900,
@@ -185,56 +134,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             )}
           </div>
           <div style={{ padding: hovered ? "6px 8px" : "6px 7px" }}>
-            {ALL_TOOLS.map((tool) => {
-              const isActive = pathname === tool.href;
-              const Icon = TOOL_ICONS[tool.href] || Layers;
-              return (
-                <Link
-                  key={tool.href}
-                  href={tool.href}
-                  title={tool.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: hovered ? 10 : 0,
-                    padding: hovered ? "8px 10px" : "0",
-                    width: hovered ? "100%" : "36px",
-                    height: hovered ? "auto" : "36px",
-                    margin: hovered ? "0 0 3px 0" : "0 auto 4px auto",
-                    textDecoration: "none",
-                    background: isActive ? "#000000" : "transparent",
-                    color: isActive ? "#FFE500" : "#444",
-                    fontWeight: isActive ? 900 : 600,
-                    fontSize: "0.78rem",
-                    justifyContent: hovered ? "flex-start" : "center",
-                    borderRadius: 4,
-                    transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = "#f4f4f5";
-                      e.currentTarget.style.color = "#000";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = "#444";
-                    }
-                  }}
-                >
-                  <Icon size={16} style={{ flexShrink: 0 }} />
-                  {hovered && (
-                    <>
-                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tool.label}</span>
-                      <span style={{ marginLeft: "auto", fontSize: "0.52rem", fontFamily: "monospace", opacity: 0.7, flexShrink: 0 }}>
-                        {tool.hint}
-                      </span>
-                    </>
-                  )}
-                </Link>
-              );
-            })}
+            <SiteNavList variant="rail" expanded={hovered} currentHref={pathname} />
           </div>
         </aside>
 
@@ -287,38 +187,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             </button>
           </div>
           <div style={{ padding: "6px 8px" }}>
-            {ALL_TOOLS.map((tool) => {
-              const isActive = pathname === tool.href;
-              const Icon = TOOL_ICONS[tool.href] || Layers;
-              return (
-                <Link
-                  key={tool.href}
-                  href={tool.href}
-                  title={tool.label}
-                  onClick={() => setMobileSidebarOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 12px",
-                    width: "100%",
-                    textDecoration: "none",
-                    background: isActive ? "#000000" : "transparent",
-                    color: isActive ? "#FFE500" : "#444",
-                    fontWeight: isActive ? 900 : 600,
-                    fontSize: "0.82rem",
-                    borderRadius: 4,
-                    marginBottom: 2,
-                  }}
-                >
-                  <Icon size={16} style={{ flexShrink: 0 }} />
-                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tool.label}</span>
-                  <span style={{ marginLeft: "auto", fontSize: "0.52rem", fontFamily: "monospace", opacity: 0.7, flexShrink: 0 }}>
-                    {tool.hint}
-                  </span>
-                </Link>
-              );
-            })}
+            <SiteNavList variant="drawer" currentHref={pathname} onNavigate={() => setMobileSidebarOpen(false)} />
           </div>
         </aside>
 

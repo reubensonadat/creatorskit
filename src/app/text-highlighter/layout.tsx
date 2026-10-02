@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Text Highlighter — Animated Caption Highlights for Videos | CreatorKit',
+    title: 'Text Highlighter — Animated Caption Highlights for Videos | CreatorsKit',
     description:
         'Add cinematic animated text highlights, marker sweeps, circle callouts and boxes to videos. Viral caption styles free, straight in your browser.',
     path: '/text-highlighter',
@@ -51,7 +51,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Text Highlighter',
+        name: 'CreatorsKit Text Highlighter',
         description:
             'Free animated text highlighter for videos: marker sweeps, circle and box callouts, paper textures and viral caption emphasis styles — all in your browser.',
         path: '/text-highlighter',

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, faqJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Auto Captions — Free Subtitle Generator for Videos | CreatorKit',
+    title: 'Auto Captions — Free Subtitle Generator for Videos | CreatorsKit',
     description:
         'Generate accurate timestamped subtitles for free. Studio-grade captions with SRT/VTT export and word styling, processed privately in your browser.',
     path: '/auto-captions',
@@ -52,7 +52,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Auto Captions',
+        name: 'CreatorsKit Auto Captions',
         description:
             'Free automatic caption and subtitle generator. Accurate timestamped captions with SRT/VTT export and styling, processed privately inside your browser.',
         path: '/auto-captions',

@@ -44,7 +44,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
             title,
             description,
             url: canonicalUrl,
-            siteName: 'CreatorKit',
+            siteName: 'CreatorsKit',
             images: [
                 {
                     url: `${SITE_BASE_URL}/assets/bouquet/flowers/rose-pink.webp`,
@@ -146,7 +146,7 @@ export default async function BouquetPage({ params, searchParams }: Props) {
         },
         provider: {
             '@type': 'Organization',
-            name: 'CreatorKit',
+            name: 'CreatorsKit',
             url: SITE_BASE_URL,
         },
     };

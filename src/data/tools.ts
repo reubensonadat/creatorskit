@@ -1,16 +1,34 @@
+/**
+ * src/data/tools.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SINGLE SOURCE OF TRUTH for every tool route in CreatorsKit.
+ * Navigation chrome, home grid, sitemap and hand-offs all derive from this file.
+ * No other component may keep a hardcoded route list (see
+ * docs/TOOL_INTEGRATION_PLAN.md §3).
+ */
+
+export type ToolChrome = 'embedded' | 'fullscreen';
+export type ToolStatus = 'live' | 'beta' | 'archived';
+
 export interface ToolItem {
   label: string;
   href: string;
   hint: string;
   desc: string;
+  category?: 'business' | 'studio' | 'motion' | 'audio' | 'utility' | 'directory' | 'archived';
+  chrome: ToolChrome;
+  status: ToolStatus;
+  /** lucide icon name — resolved in one place by SiteNav */
+  icon: string;
+  /** hrefs this tool can hand its output to (docs/TOOL_INTEGRATION_PLAN.md §4) */
+  handoffs?: string[];
   isFlagship?: boolean;
   isExternal?: boolean;
-  category?: 'business' | 'studio' | 'motion' | 'audio' | 'utility' | 'directory' | 'archived';
   externalUrl?: string;
   badge?: string;
 }
 
-// ─── 1. IN-HOUSE CREATORKIT TOOLS (100% Local · Zero Daily Maintenance) ─────
+// ─── 1. IN-HOUSE TOOLS (100% local · zero daily maintenance) ─────────────────
 export const NATIVE_TOOLS: ToolItem[] = [
   {
     label: 'Creator Business & Legal Suite',
@@ -19,6 +37,9 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Influencer brand deal invoices (MoMo/Bank), sponsorship agreements, payment receipts & pitch letterheads',
     isFlagship: true,
     category: 'business',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'FileText',
     badge: 'NEW FLAGSHIP',
   },
   {
@@ -28,6 +49,9 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Simulate YouTube feeds, 3-second rapid glance tests, mobile Shorts shelves & CTR benchmarking',
     isFlagship: true,
     category: 'utility',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'Images',
     badge: 'GROWTH',
   },
   {
@@ -37,6 +61,11 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Grandma-simple mobile mode, voice sync, 52 Google Fonts, eyeline spotlight & selfie camera mirror',
     isFlagship: true,
     category: 'studio',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'MonitorPlay',
+    // §4: "the script I just rehearsed = the caption script"
+    handoffs: ['/auto-captions'],
     badge: 'ESSENTIAL',
   },
   {
@@ -46,6 +75,11 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Cinematic animated marker sweeps, circle callouts, boxes & paper textures for viral videos',
     isFlagship: true,
     category: 'motion',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Highlighter',
+    // §4: reformat the rendered video for every platform
+    handoffs: ['/resizer'],
     badge: 'POPULAR',
   },
   {
@@ -55,6 +89,11 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Word-anchor kinetic typography match cuts & rapid visual transitions for short-form video',
     isFlagship: true,
     category: 'motion',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Scissors',
+    // §4: reformat the rendered video for every platform
+    handoffs: ['/resizer'],
     badge: 'POPULAR',
   },
   {
@@ -64,6 +103,10 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Generate subtitles for free. Fast, accurate, timestamped captions & subtitle export.',
     isFlagship: true,
     category: 'studio',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'AudioLines',
+    handoffs: ['/text-highlighter', '/match-cut', '/resizer'],
     badge: 'NEW',
   },
   {
@@ -73,17 +116,22 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Craft a handcrafted flower bouquet with a personalized card and print it in real-time',
     isFlagship: true,
     category: 'studio',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'Flower2',
     badge: 'NEW',
   },
-
   {
-    label: 'Image & Video Compressor',
+    label: 'Compress & Convert',
     href: '/compressor',
-    hint: 'SAVE MOBILE DATA',
-    desc: 'Fast in-browser WebP & JPEG compression to save expensive mobile data on uploads',
+    hint: 'PDF ⇄ IMAGES · SAVE DATA',
+    desc: 'Convert PDFs to images, images to PDF, or squeeze into WebP/JPG — with size estimates before you commit. 100% on-device',
     isFlagship: false,
     category: 'utility',
-    badge: 'DATA SAVER',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'FileImage',
+    handoffs: ['/resizer'],
   },
   {
     label: 'Social Platform Resizer',
@@ -92,6 +140,10 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Instant 1-click batch crop and aspect ratio formatting for YouTube 16:9, TikTok 9:16, IG & X',
     isFlagship: false,
     category: 'utility',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Maximize2',
+    handoffs: ['/compressor'],
   },
   {
     label: 'Batch Watermark & Protection',
@@ -100,6 +152,10 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Batch apply logo stamps and copyright marks across images in bulk to prevent content theft',
     isFlagship: false,
     category: 'utility',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Droplets',
+    handoffs: ['/compressor', '/resizer'],
   },
   {
     label: 'Carousel Slicer',
@@ -108,6 +164,10 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Slice wide panoramic graphics into seamless multi-slide Instagram & LinkedIn posts',
     isFlagship: false,
     category: 'utility',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Images',
+    handoffs: ['/compressor', '/resizer'],
   },
   {
     label: 'Video Grabber',
@@ -116,9 +176,12 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Paste any video or audio link, watch one short ad, and save the file straight to your device',
     isFlagship: true,
     category: 'utility',
+    chrome: 'fullscreen',
+    status: 'beta',
+    icon: 'Video',
     // YouTube currently bot-walls our server IP → grabber paused (see
     // docs/VIDEO_GRABBER_HANDOFF.md §8). Keep it visible but labeled so
-    // visitors don't think the tool is broken; restore 'POWERFUL' when
+    // visitors don't think the tool is broken; restore 'live' when
     // the VPS/residential route ships.
     badge: 'IN DEVELOPMENT',
   },
@@ -129,6 +192,24 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Type-behind-subject posters — on-device or server cutout, giant type sandwich, background dim & exports',
     isFlagship: true,
     category: 'studio',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'Layers',
+    handoffs: ['/thumbnail-lab', '/carousel-slicer', '/resizer'],
+    badge: 'NEW',
+  },
+  {
+    label: 'Quote Card Studio',
+    href: '/quote-card',
+    hint: 'INSTAGRAM & FACEBOOK QUOTES',
+    desc: 'Design quote cards for Instagram & Facebook — per-card photos, background colours, batch upload, multi-card deck ZIP export. No AI, 100% on-device',
+    isFlagship: false,
+    category: 'studio',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'Quote',
+    // Owner ruling 2026-10-02: text-behind's interface, minus the AI model.
+    handoffs: ['/text-behind', '/carousel-slicer', '/resizer'],
     badge: 'NEW',
   },
   {
@@ -138,11 +219,72 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Remove any photo background on your device or our server — transparent PNG in seconds, hand-off to other tools',
     isFlagship: false,
     category: 'utility',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Eraser',
+    handoffs: ['/text-behind', '/thumbnail-lab', '/watermark'],
+    badge: 'NEW',
+  },
+  // ── Promoted orphans (owner ruling 2026-10-02 — docs/TOOL_INTEGRATION_PLAN.md §5) ──
+  {
+    label: 'Color Palette Extractor',
+    href: '/palette-extractor',
+    hint: 'PULL BRAND COLORS',
+    desc: 'Drop any photo and pull its exact color palette — HEX codes ready to copy, feeds the gradient studio',
+    isFlagship: false,
+    category: 'utility',
+    chrome: 'embedded',
+    status: 'beta',
+    icon: 'Palette',
+    handoffs: ['/color-gradient'],
+    badge: 'NEW',
+  },
+  {
+    label: 'Sync Slate & Clapper',
+    href: '/sync-slate',
+    hint: 'MULTI-TAKE AUDIO SYNC',
+    desc: 'Film-style sync slate with mic levels and take logging — pair it with the teleprompter on shoot day',
+    isFlagship: false,
+    category: 'studio',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Film',
+    handoffs: ['/teleprompter'],
+  },
+  {
+    label: 'Gradient & Palette Studio',
+    href: '/color-gradient',
+    hint: 'TEST ON A REAL PAGE',
+    desc: 'Build beautiful, usable palettes and gradients — then test them live on a real website preview',
+    isFlagship: false,
+    category: 'utility',
+    chrome: 'embedded',
+    status: 'beta',
+    icon: 'Paintbrush',
+    handoffs: ['/text-behind', '/watermark'],
     badge: 'NEW',
   },
 ];
 
-// ─── 2. CURATED EXTERNAL TOOLS (Routed Through 4-Sector Ad Bridge) ───────────
+// ─── 2. HIDDEN ROUTES (rendered but not listed — hub sub-pages, folds, archives) ──
+export const HIDDEN_TOOLS: ToolItem[] = [
+  // Refresh-proof URL for the Auto Captions overlay deck: renders the captions
+  // app with initialDeck="overlay" so reloading keeps you in the overlay studio
+  // (session persists in IndexedDB). Linked from inside auto-captions.
+  {
+    label: 'Caption Overlay Studio (deck)',
+    href: '/overlay',
+    hint: 'OVERLAY DECK',
+    desc: 'Standalone URL for the Auto Captions overlay deck — refresh without losing your workspace',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Video',
+  },
+  // (Space Planner was fully removed 2026-10-02 — route deleted, /space-planner
+  // 301s to / in next.config.ts. Post-mortem: docs/BUSINESS_MODEL_PLAN.md.)
+];
+
+// ─── 3. CURATED EXTERNAL TOOLS (routed through the ad bridge) ────────────────
 export const CURATED_DIRECTORY: ToolItem[] = [
   {
     label: 'AI Voiceover & Speech Dubbing',
@@ -152,6 +294,9 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://elevenlabs.io',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
   {
@@ -162,6 +307,9 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://dynamo.castos.com/quote-cards',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
   {
@@ -172,6 +320,9 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://vocalremover.org',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
   {
@@ -182,6 +333,9 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://freesound.org',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
   {
@@ -192,6 +346,9 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://freshluts.com',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
   {
@@ -202,8 +359,25 @@ export const CURATED_DIRECTORY: ToolItem[] = [
     isExternal: true,
     externalUrl: 'https://www.pexels.com/videos',
     category: 'directory',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ExternalLink',
     badge: 'EXTERNAL',
   },
 ];
 
 export const ALL_TOOLS: ToolItem[] = [...NATIVE_TOOLS, ...CURATED_DIRECTORY];
+
+/** Everything the app can render, including hidden/archived routes. */
+export const EVERY_TOOL: ToolItem[] = [...NATIVE_TOOLS, ...HIDDEN_TOOLS, ...CURATED_DIRECTORY];
+
+/**
+ * pathname → chrome map for ClientLayout. Derived here so no component ever
+ * hardcodes a route list again. Unknown routes default to the marketing bar.
+ */
+export const TOOL_CHROME: Record<string, ToolChrome> = Object.fromEntries(
+  EVERY_TOOL.map((t) => [t.href, t.chrome]),
+);
+
+/** Tools visible in nav/home grids: live + beta, never archived. */
+export const VISIBLE_TOOLS: ToolItem[] = ALL_TOOLS.filter((t) => t.status !== 'archived');

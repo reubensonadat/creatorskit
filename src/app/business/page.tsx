@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { exportDocumentAsImage } from '@/lib/export-document-image';
-import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import StudioToolsDropdown from '@/components/nav/SiteNav';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import { encodeReceipt, type ReceiptPayload } from '@/lib/receipt/receipt-link';
 import ReceiptDocument, { type ReceiptDocumentData } from '@/components/receipt-document';
@@ -100,7 +100,7 @@ function BusinessSuiteContent() {
   const [signatureFont, setSignatureFont] = useState('Caveat');
   const [primaryColor, setPrimaryColor] = useState('#162a45');
   const [accentColor, setAccentColor] = useState('#e15b3c');
-  // ─── BRANDING TOGGLE (Powered by CreatorKit badge on printed documents) ──
+  // ─── BRANDING TOGGLE (Powered by CreatorsKit badge on printed documents) ──
   const [brandingOn, setBrandingOn] = useState(true);
   // ─── COLLAPSIBLE BUILDER SECTIONS ─────────────────────────────────────
   // Every layer starts OFF — open only what you need, so the builder never
@@ -982,10 +982,10 @@ function BusinessSuiteContent() {
 
           {/* Quick Actions (Badge, Currency, Copy Link, WhatsApp, Print) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {/* CreatorKit badge toggle — controls branding on all printed documents */}
+            {/* CreatorsKit badge toggle — controls branding on all printed documents */}
             <button
               onClick={() => setBrandingOn((v) => !v)}
-              title="Show or hide the 'Powered by CreatorKit' badge on printed documents"
+              title="Show or hide the 'Powered by CreatorsKit' badge on printed documents"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1216,7 +1216,7 @@ function BusinessSuiteContent() {
                             { id: 'navy', title: 'Bold Navy', desc: 'East Repair · Terracotta line & signature' },
                             { id: 'ledger', title: 'Ledger Grid', desc: 'INV24 · Black bar header & grid lines' },
                             { id: 'slate', title: 'Executive Slate', desc: 'Invoice Fly · Dark frame & serif title' },
-                            { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorKit · Modern deposit layout' },
+                            { id: 'brutalist', title: 'Studio Brutalist', desc: 'CreatorsKit · Modern deposit layout' },
                           ].map((tpl) => {
                             const isCurrent = invoiceTemplate === tpl.id;
                             return (
@@ -2704,7 +2704,7 @@ function BusinessSuiteContent() {
                         : 'Document ready'}
                   </ReceiptPrinter.Status>
                   <span className="rounded-[0.25rem] bg-zinc-50 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-zinc-950">
-                    CreatorKit
+                    CreatorsKit
                   </span>
                 </ReceiptPrinter.Header>
                 <ReceiptPrinter.Screen>

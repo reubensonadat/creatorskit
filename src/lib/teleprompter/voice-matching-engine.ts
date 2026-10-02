@@ -1,5 +1,5 @@
 /**
- * Voice Matching Engine for CreatorKit Studio Teleprompter
+ * Voice Matching Engine for CreatorsKit Studio Teleprompter
  * ========================================================
  * Optimized for Ghanaian English accents & West African speech patterns.
  *

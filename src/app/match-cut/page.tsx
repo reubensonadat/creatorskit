@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import NextStepRow from '@/components/NextStepRow';
+import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
   Pause,
@@ -355,6 +357,29 @@ export default function TextMatchCutStudioPage() {
     };
   }, [isPlaying, cutsPerSecond, cuts.length, soundEffect, soundVolume, animationMode, highlightDuration, redraw]);
 
+  // Cross-tool intake (§4): transcript text handed off from Auto-Captions seeds the anchor phrase.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const text = await takeHandoffText('match-cut');
+      if (cancelled || !text) return;
+      // Headlines are clamped to 23 chars in the renderer — build the longest
+      // opening phrase from the transcript that still fits.
+      let phrase = '';
+      for (const w of text.split(/\s+/).filter(Boolean)) {
+        if ((phrase + ' ' + w).trim().length > 23) break;
+        phrase = (phrase + ' ' + w).trim();
+      }
+      if (!phrase) phrase = (text.split(/\s+/).filter(Boolean)[0] ?? '').slice(0, 23);
+      if (!phrase) return;
+      setAnchorPhrase(phrase);
+      setCuts(generateCutsForPhrase(phrase, 8, anchorPosition));
+      setCurrentCutIndex(0);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load Curated Topic Preset
   const handleLoadPreset = (presetId: string) => {
     const p = PRESET_TOPICS.find((t) => t.id === presetId);
@@ -496,6 +521,8 @@ export default function TextMatchCutStudioPage() {
     }
   };
 
+  const [lastVideoBlob, setLastVideoBlob] = useState<Blob | null>(null);
+
   // Export High-Definition Video via deterministic WebCodecs encoding.
   // Every frame is rendered exactly once with an explicit timestamp — no
   // real-time MediaRecorder capture, so no dropped frames, no stutter, and a
@@ -588,6 +615,8 @@ export default function TextMatchCutStudioPage() {
           .replace(/(^-|-$)/g, '') || 'match-cut';
       const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
       downloadBlob(result.blob, `match-cut-${cleanAnchor}.${ext}`);
+      // Keep the render around so the NEXT → row can hand the FILE to resizer (§4).
+      setLastVideoBlob(result.blob);
 
       setExportProgress(null);
       setIsPlaying(true);
@@ -711,7 +740,7 @@ export default function TextMatchCutStudioPage() {
                     display: 'inline-block',
                     width: 9,
                     height: 9,
-                    background: isPlaying ? '#22c55e' : '#eab308',
+                    background: isPlaying ? '#22c55e' : '#a1a1aa',
                     border: '1.5px solid #000',
                     borderRadius: '50%',
                   }}
@@ -1244,6 +1273,22 @@ export default function TextMatchCutStudioPage() {
               PNG Sequence (ZIP)
             </button>
           </div>
+
+          {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+          {!isExporting && (
+            <NextStepRow
+              currentHref="/match-cut"
+              heading="Video exported — keep going"
+              onBeforeNavigate={(href) => {
+                if (href === '/resizer' && lastVideoBlob) {
+                  return putHandoffImage('resizer', lastVideoBlob, {
+                    sourceTool: 'match-cut',
+                    name: `match-cut-${Date.now()}.mp4`,
+                  });
+                }
+              }}
+            />
+          )}
         </div>
 
         {/* Right Column: Control Sidebar */}

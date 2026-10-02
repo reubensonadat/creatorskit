@@ -10,7 +10,7 @@ import type { Metadata } from 'next';
 // (https://creatorskit.pages.dev) serves the same app but every canonical
 // URL, sitemap entry and JSON-LD node points here so signals consolidate.
 export const SITE_BASE_URL = 'https://creatorskit.win';
-export const SITE_NAME = 'CreatorKit';
+export const SITE_NAME = 'CreatorsKit';
 export const SITE_TAGLINE = 'Tools for Creators who ship';
 
 /**

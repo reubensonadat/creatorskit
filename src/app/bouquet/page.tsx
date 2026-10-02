@@ -18,7 +18,7 @@ import {
   ReceiptPrinter,
   ReceiptPrinterStage,
 } from '@/components/receipt-printer';
-import { ALL_TOOLS } from '@/data/tools';
+import SiteNav from '@/components/nav/SiteNav';
 import { saveBouquetToDatabase } from '@/lib/supabase';
 import {
   Shuffle,
@@ -31,9 +31,6 @@ import {
   RotateCcw,
   Plus,
   Minus,
-  X,
-  Search,
-  Home,
   LayoutTemplate,
   Sparkles,
   Volume2,
@@ -55,9 +52,6 @@ type CardPlacement = 'right' | 'left' | 'bottom' | 'top';
 export type GiftFormat = 'both' | 'flower' | 'card';
 
 export default function BouquetStudioPage() {
-  // Navigation & Drawer states
-  const [toolsSidebarOpen, setToolsSidebarOpen] = useState(false);
-  const [toolSearch, setToolSearch] = useState('');
 
   // Soundscape Preset State & Audio Preview
   const [selectedSoundPreset, setSelectedSoundPreset] = useState<string>('music-box');
@@ -321,17 +315,6 @@ export default function BouquetStudioPage() {
     return FLOWERS.filter((f) => f.flowerSize === flowerCategory);
   }, [flowerCategory]);
 
-  // Filtered tools for the navigation drawer
-  const filteredTools = useMemo(() => {
-    if (!toolSearch.trim()) return ALL_TOOLS;
-    const q = toolSearch.toLowerCase();
-    return ALL_TOOLS.filter(
-      (t) =>
-        t.label.toLowerCase().includes(q) ||
-        t.hint.toLowerCase().includes(q) ||
-        t.desc.toLowerCase().includes(q)
-    );
-  }, [toolSearch]);
 
   // Physical shuffle handler: alters seed so flowers physically swap slots and drift naturally
   const handleAutoShuffle = () => {
@@ -1020,21 +1003,14 @@ export default function BouquetStudioPage() {
             <Link
               href="/"
               className="px-2 sm:px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1"
-              title="Return to CreatorKit Home"
+              title="Return to CreatorsKit Home"
             >
               <span>‹</span>
               <span className="hidden sm:inline">HOME</span>
             </Link>
 
-            <button
-              type="button"
-              onClick={() => setToolsSidebarOpen(true)}
-              className="px-2 sm:px-2.5 py-1 bg-white hover:bg-stone-100 border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[1.5px_1.5px_0_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1"
-              title="Open CreatorKit Tools Menu"
-            >
-              <LayoutTemplate size={13} />
-              <span className="hidden sm:inline">TOOLS</span>
-            </button>
+            {/* Searchable tool menu — single source of truth (src/components/nav/SiteNav.tsx) */}
+            <SiteNav mode="floating" currentHref="/bouquet" theme="light" align="left" label="TOOLS" />
 
             <span className="font-mono text-xs font-black uppercase tracking-wider hidden lg:inline text-black pl-1 border-l-2 border-stone-200">
               DIGITAL BOUQUET
@@ -2705,104 +2681,6 @@ export default function BouquetStudioPage() {
           )}
         </div>
 
-        {/* ── TOOLS NAVIGATION SLIDE-OUT DRAWER ── */}
-        {toolsSidebarOpen && (
-          <>
-            {/* Backdrop */}
-            <div
-              onClick={() => setToolsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/40 z-50 transition-opacity backdrop-blur-xs"
-            />
-
-            {/* Slide-out Panel */}
-            <aside className="fixed top-0 bottom-0 left-0 w-full max-w-[340px] bg-white border-r-2 border-black z-50 flex flex-col shadow-2xl animate-in slide-in-from-left duration-200">
-              {/* Header */}
-              <div className="h-14 px-4 bg-stone-50 border-b-2 border-black flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-black uppercase tracking-wider">
-                    CREATORKIT TOOLS
-                  </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 bg-black text-white font-bold">
-                    {ALL_TOOLS.length}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setToolsSidebarOpen(false)}
-                  className="w-7 h-7 flex items-center justify-center bg-white hover:bg-stone-100 border border-black font-mono text-xs font-bold cursor-pointer"
-                  title="Close drawer"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* Quick Home Link & Search */}
-              <div className="p-3 border-b-2 border-black bg-stone-50 flex flex-col gap-2 shrink-0">
-                <Link
-                  href="/"
-                  onClick={() => setToolsSidebarOpen(false)}
-                  className="flex items-center justify-between px-3 py-2 bg-black text-white border border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] hover:bg-neutral-800 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Home size={14} />
-                    <span>CREATORKIT HOME</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-stone-300">HUB</span>
-                </Link>
-
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input
-                    type="text"
-                    value={toolSearch}
-                    onChange={(e) => setToolSearch(e.target.value)}
-                    placeholder="Filter tools..."
-                    className="w-full pl-8 pr-2.5 py-1.5 border border-black bg-white font-mono text-xs outline-none focus:ring-1 focus:ring-black"
-                  />
-                </div>
-              </div>
-
-              {/* Tools List */}
-              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5 select-text">
-                {filteredTools.map((tool) => {
-                  const isActive = tool.href === '/bouquet';
-                  return (
-                    <Link
-                      key={tool.href}
-                      href={tool.href}
-                      onClick={() => setToolsSidebarOpen(false)}
-                      className={`flex items-center justify-between p-2.5 border-2 transition-all ${
-                        isActive
-                          ? 'bg-black text-white border-black shadow-[2px_2px_0_#000]'
-                          : 'bg-white hover:bg-stone-50 text-black border-stone-200 hover:border-black'
-                      }`}
-                    >
-                      <div className="flex flex-col min-w-0 pr-2">
-                        <span className="font-mono text-xs font-bold truncate">
-                          {tool.label}
-                        </span>
-                        <span
-                          className={`text-[9px] line-clamp-1 ${
-                            isActive ? 'text-stone-300' : 'text-stone-500'
-                          }`}
-                        >
-                          {tool.desc}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[9px] font-mono font-bold px-1.5 py-0.5 shrink-0 ${
-                          isActive ? 'bg-white text-black' : 'bg-stone-100 text-stone-700'
-                        }`}
-                      >
-                        {tool.hint}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </aside>
-          </>
-        )}
 
 
       </div>

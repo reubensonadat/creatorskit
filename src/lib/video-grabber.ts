@@ -1,5 +1,5 @@
 /**
- * CreatorKit · Video Grabber — client library
+ * CreatorsKit · Video Grabber — client library
  * Talks to the Supabase Edge Function supervisor (ad-gated downloads).
  */
 

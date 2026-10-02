@@ -79,7 +79,7 @@ export interface InvoiceData {
 
 interface InvoiceTemplateProps {
   data: InvoiceData;
-  /** Show the "Powered by CreatorKit" badge. Default true. */
+  /** Show the "Powered by CreatorsKit" badge. Default true. */
   showBranding?: boolean;
 }
 
@@ -349,7 +349,7 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
         <div>Thank you for your business.</div>
         {showBranding && (
           <div style={{ fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Powered by CreatorKit
+            Powered by CreatorsKit
           </div>
         )}
       </div>
@@ -548,7 +548,7 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
       {/* Footer */}
       {showBranding && (
         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, textAlign: 'center', fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>
@@ -710,7 +710,7 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
       {/* Footer */}
       {showBranding && (
         <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 10, textAlign: 'center', fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>
@@ -857,7 +857,7 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
       {/* Footer */}
       {showBranding && (
         <div style={{ borderTop: '1px solid #000', paddingTop: 8, textAlign: 'center', fontSize: '9px', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>

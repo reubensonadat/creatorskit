@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
-import { Camera, Download, RefreshCw, ChevronLeft } from "lucide-react";
+import { Camera, Download, RefreshCw, Droplets, Trash2, Save, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 import {
   drawWatermark,
@@ -11,6 +11,9 @@ import {
   type WatermarkMode,
   type WatermarkPosition,
 } from "@/lib/watermark";
+import { putHandoffImage, takeHandoffImage } from "@/lib/tool-handoff";
+import { TactileScrubber } from "@/components/tactile-scrubber";
+import NextStepRow from "@/components/NextStepRow";
 
 interface Item {
   id: string;
@@ -18,13 +21,41 @@ interface Item {
   img: HTMLImageElement;
 }
 
-// loadImageFromFile + watermark rendering now live in @/lib/watermark (shared
-// with the Social Platform Resizer so branding is identical across tools).
+interface SavedLogo {
+  name: string;
+  dataUrl: string;
+}
+
+interface SavedSettings {
+  mode: WatermarkMode;
+  text: string;
+  textColor: string;
+  sizePct: number;
+  opacity: number;
+  position: WatermarkPosition;
+  format: "png" | "jpg";
+  lastLogoName?: string;
+  lastLogoDataUrl?: string;
+}
+
+// Watermark v2 (docs/TOOL_INTEGRATION_PLAN.md §8): local logo library +
+// settings/position memory + true batch WYSIWYG — beat Canva's copy-paste
+// flow. Everything persists locally; nothing leaves the device.
+const SETTINGS_KEY = "ck_wm_settings_v1";
+const LOGO_LIB_KEY = "ck_wm_logos_v1";
+
+const loadImageFromDataUrl = (dataUrl: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("logo load failed"));
+    img.src = dataUrl;
+  });
 
 export default function WatermarkPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [mode, setMode] = useState<WatermarkMode>("text");
-  const [text, setText] = useState("@creatorkit");
+  const [text, setText] = useState("@creatorskit");
   const [textColor, setTextColor] = useState("#ffffff");
   const [sizePct, setSizePct] = useState(5);
   const [opacity, setOpacity] = useState(0.8);
@@ -35,16 +66,112 @@ export default function WatermarkPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [doneLabel, setDoneLabel] = useState("");
-  const [results, setResults] = useState<{ name: string; url: string }[]>([]);
+  const [results, setResults] = useState<{ name: string; url: string; blob: Blob }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [logoLib, setLogoLib] = useState<SavedLogo[]>([]);
+  const [libNote, setLibNote] = useState("");
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const zipBlobRef = useRef<Blob | null>(null);
 
-  const addFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const flashLibNote = (msg: string) => {
+    setLibNote(msg);
+    window.setTimeout(() => setLibNote(""), 1800);
+  };
+
+  // ── Restore saved settings + logo library, then consume any pending
+  //    cross-tool hand-off image (e.g. a cutout from background-replace).
+  useEffect(() => {
+    try {
+      const savedLib = JSON.parse(window.localStorage.getItem(LOGO_LIB_KEY) ?? "[]");
+      if (Array.isArray(savedLib)) {
+        setLogoLib(savedLib.filter((l) => l && typeof l.dataUrl === "string" && typeof l.name === "string"));
+      }
+      const raw = window.localStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        const s = JSON.parse(raw) as SavedSettings;
+        if (s.mode === "text" || s.mode === "logo") setMode(s.mode);
+        if (typeof s.text === "string") setText(s.text);
+        if (typeof s.textColor === "string") setTextColor(s.textColor);
+        if (typeof s.sizePct === "number") setSizePct(s.sizePct);
+        if (typeof s.opacity === "number") setOpacity(s.opacity);
+        if (typeof s.position === "string") setPosition(s.position as WatermarkPosition);
+        if (s.format === "png" || s.format === "jpg") setFormat(s.format);
+        if (s.lastLogoDataUrl) {
+          setLogoName(s.lastLogoName ?? "logo");
+          loadImageFromDataUrl(s.lastLogoDataUrl).then(setLogo).catch(() => setLogo(null));
+        }
+      }
+    } catch {
+      /* corrupted storage — start fresh */
+    }
+    (async () => {
+      const rec = await takeHandoffImage("watermark");
+      if (rec && rec.blob.type.startsWith("image/")) {
+        try {
+          const img = await loadImageFromFile(new File([rec.blob], rec.name ?? "handoff.png", { type: rec.blob.type }));
+          setItems([
+            {
+              id: `${Date.now()}-handoff`,
+              name: (rec.name ?? "handoff").replace(/\.[^.]+$/, ""),
+              img,
+            },
+          ]);
+        } catch {
+          /* skip unreadable hand-off */
+        }
+      }
+    })();
+  }, []);
+
+  // Settings memory — every change is remembered for the next visit.
+  useEffect(() => {
+    const s: SavedSettings = { mode, text, textColor, sizePct, opacity, position, format };
+    const logoSrc = logo?.src;
+    if (mode === "logo" && logoSrc && logoSrc.startsWith("data:")) {
+      s.lastLogoName = logoName;
+      s.lastLogoDataUrl = logoSrc;
+    }
+    try {
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    } catch {
+      /* quota — non-fatal */
+    }
+  }, [mode, text, textColor, sizePct, opacity, position, format, logo, logoName]);
+
+  // Logo library persistence.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LOGO_LIB_KEY, JSON.stringify(logoLib));
+    } catch {
+      /* quota — non-fatal */
+    }
+  }, [logoLib]);
+
+  // ── WYSIWYG: live preview of the watermark exactly as it will be stamped.
+  useEffect(() => {
+    const canvas = previewRef.current;
+    const first = items[0];
+    if (!canvas || !first) return;
+    const maxW = 720;
+    const scale = Math.min(1, maxW / first.img.naturalWidth);
+    canvas.width = Math.round(first.img.naturalWidth * scale);
+    canvas.height = Math.round(first.img.naturalHeight * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(first.img, 0, 0, canvas.width, canvas.height);
+    drawWatermark(ctx, canvas.width, canvas.height, { mode, text, textColor, logo, sizePct, opacity, position });
+  }, [items, mode, text, textColor, logo, sizePct, opacity, position]);
+
+  const addFiles = async (files: FileList | File[] | null) => {
+    if (!files) return;
+    const list = Array.from(files);
+    if (list.length === 0) return;
     const loaded: Item[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of list) {
       if (!file.type.startsWith("image/")) continue;
       try {
         const img = await loadImageFromFile(file);
@@ -55,13 +182,47 @@ export default function WatermarkPage() {
     }
     setItems((prev) => [...prev, ...loaded]);
     setResults([]);
+    zipBlobRef.current = null;
   };
 
   const pickLogo = async (file: File | undefined) => {
     if (!file) return;
-    const img = await loadImageFromFile(file);
-    setLogo(img);
-    setLogoName(file.name);
+    try {
+      const img = await loadImageFromFile(file);
+      setLogo(img);
+      setLogoName(file.name.replace(/\.[^.]+$/, ""));
+      setMode("logo");
+    } catch {
+      flashLibNote("Could not read that logo.");
+    }
+  };
+
+  const saveLogoToLib = () => {
+    const src = logo?.src;
+    if (!src || !src.startsWith("data:")) {
+      flashLibNote("Pick a logo PNG first.");
+      return;
+    }
+    setLogoLib((prev) => {
+      const next = prev.filter((l) => l.dataUrl !== src);
+      next.unshift({ name: logoName || "logo", dataUrl: src });
+      return next.slice(0, 12);
+    });
+    flashLibNote("Logo saved to library.");
+  };
+
+  const applyLibLogo = (l: SavedLogo) => {
+    loadImageFromDataUrl(l.dataUrl)
+      .then((img) => {
+        setLogo(img);
+        setLogoName(l.name);
+        setMode("logo");
+      })
+      .catch(() => flashLibNote("Could not load that logo."));
+  };
+
+  const deleteLibLogo = (dataUrl: string) => {
+    setLogoLib((prev) => prev.filter((l) => l.dataUrl !== dataUrl));
   };
 
   const drawWatermarked = (item: Item): Promise<Blob> =>
@@ -77,10 +238,8 @@ export default function WatermarkPage() {
         return;
       }
       ctx.drawImage(item.img, 0, 0);
-
       // Shared engine — identical output to the Social Platform Resizer
       drawWatermark(ctx, W, H, { mode, text, textColor, logo, sizePct, opacity, position });
-
       canvas.toBlob(
         (blob) => resolve(blob ?? new Blob()),
         format === "png" ? "image/png" : "image/jpeg",
@@ -93,21 +252,21 @@ export default function WatermarkPage() {
     setBusy(true);
     setProgress(0);
     setDoneLabel("");
-    const out: { name: string; url: string }[] = [];
+    const out: { name: string; url: string; blob: Blob }[] = [];
     const zipped = new JSZip();
     const ext = format === "png" ? "png" : "jpg";
     for (let i = 0; i < items.length; i++) {
       const blob = await drawWatermarked(items[i]);
       const name = `${items[i].name}-watermarked.${ext}`;
       zipped.file(name, blob);
-      const url = URL.createObjectURL(blob);
-      out.push({ name, url });
+      out.push({ name, url: URL.createObjectURL(blob), blob });
       setProgress(i + 1);
     }
     setResults(out);
 
     if (zip) {
       const zblob = await zipped.generateAsync({ type: "blob" });
+      zipBlobRef.current = zblob;
       const url = URL.createObjectURL(zblob);
       const a = document.createElement("a");
       a.href = url;
@@ -119,27 +278,58 @@ export default function WatermarkPage() {
     setBusy(false);
   };
 
+  const downloadZipAgain = () => {
+    const z = zipBlobRef.current;
+    if (!z) return;
+    const url = URL.createObjectURL(z);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `watermarked-${items.length}-images.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const reset = () => {
+    setItems([]);
+    setResults([]);
+    setDoneLabel("");
+    setProgress(0);
+    zipBlobRef.current = null;
+  };
+
+  // §4 edges: carry the first stamped image straight into the next tool.
+  const handoffFirst = async (href: string) => {
+    const first = results[0];
+    if (!first) return;
+    await putHandoffImage(href.replace(/^\//, ""), first.blob, {
+      sourceTool: "watermark",
+      name: first.name,
+    });
+  };
+
+  const label = { fontSize: "0.66rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.04em", textTransform: "uppercase" as const };
+
   return (
-    <div className="tool-page-padding" style={{ position: "relative", minHeight: "100vh", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
+    <div className="tool-page-padding" style={{ position: "relative", minHeight: "100vh", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
       <div className="grid-bg" />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 24px 96px", position: "relative", zIndex: 1 }}>
         {/* Top Title Section */}
         <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
+            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#000", color: "#fff", fontFamily: "monospace" }}>
               BATCH WATERMARK PRO
             </span>
             <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
-              STAMP HANDLES & LOGOS · BULK ZIP EXPORT · CLIENT-SIDE
+              LOGO LIBRARY · POSITION MEMORY · LIVE PREVIEW · 100% LOCAL
             </span>
           </div>
           <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
-            Batch Watermark
+            Batch Watermark & Protection
           </h1>
         </div>
 
-        {/* Upload */}
-        {items.length === 0 ? (
+        {/* Upload Zone */}
+        {!items.length ? (
           <div
             onDragEnter={() => setIsDragging(true)}
             onDragLeave={() => setIsDragging(false)}
@@ -160,31 +350,17 @@ export default function WatermarkPage() {
               padding: "100px 40px",
               textAlign: "center",
               cursor: "pointer",
-              border: `4px dashed ${isDragging ? "var(--accent)" : "#000000"}`,
-              background: isDragging ? "rgba(94, 155, 198, 0.02)" : "#ffffff",
+              border: `4px dashed ${isDragging ? "#000" : "#000000"}`,
+              background: isDragging ? "#f4f4f5" : "#ffffff",
               transition: "all 0.2s ease",
             }}
           >
-            <div
-              style={{
-                width: 72,
-                height: 72,
-                border: "3px solid #000000",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 24,
-                background: "#ffffff",
-                boxShadow: "4px 4px 0 #000000",
-              }}
-            >
-              <Camera size={32} style={{ color: "#000" }} />
+            <div style={{ width: 64, height: 64, border: "3px solid #000", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, background: "#fff", boxShadow: "4px 4px 0 #000" }}>
+              <Camera size={30} style={{ color: "#000" }} />
             </div>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
-              Add images to watermark
-            </h3>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", maxWidth: 440, lineHeight: 1.6, fontWeight: 500 }}>
-              Select multiple — originals are never modified
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8, color: "#000" }}>Drop images to watermark in bulk</h3>
+            <p style={{ fontSize: "0.88rem", color: "#666", maxWidth: 440, lineHeight: 1.6, fontWeight: 500 }}>
+              JPG · PNG · WEBP — batch stamp your logo or handle, keep thieves away. Your settings, logo library and position are remembered.
             </p>
             <input
               ref={fileRef}
@@ -199,59 +375,90 @@ export default function WatermarkPage() {
             />
           </div>
         ) : (
-          <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Settings */}
-            <div className="brutalist-card" style={{ padding: 24, gap: 16 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label className="ctrl-label">Watermark Type</label>
-                  <div style={{ display: "flex", border: "2px solid #000", background: "#fff" }}>
-                    {(["text", "logo"] as WatermarkMode[]).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setMode(m)}
-                        style={{
-                          padding: "7px 14px",
-                          border: "none",
-                          borderRight: m === "text" ? "2px solid #000" : "none",
-                          background: mode === m ? "var(--accent)" : "#fff",
-                          color: mode === m ? "#fff" : "#000",
-                          fontWeight: 800,
-                          fontSize: "0.72rem",
-                          fontFamily: "monospace",
-                          textTransform: "uppercase",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* WYSIWYG live preview */}
+            <div className="brutalist-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ ...label, color: "#000", display: "flex", alignItems: "center", gap: 6 }}>
+                <Droplets size={14} /> LIVE PREVIEW — WHAT GETS STAMPED
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", background: "#09090b", padding: 12, border: "2px solid #000" }}>
+                <canvas ref={previewRef} style={{ maxWidth: "100%", maxHeight: 380, objectFit: "contain", display: "block" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+                  {items.length} IMAGE{items.length > 1 ? "S" : ""} QUEUED — PREVIEW SHOWS THE FIRST ONE
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="brutalist-button" onClick={reset} style={{ fontSize: "0.74rem", padding: "7px 12px" }}>
+                    <RefreshCw size={13} style={{ transform: "none" }} /> RESET
+                  </button>
+                  <button className="brutalist-button" onClick={() => fileRef.current?.click()} style={{ fontSize: "0.74rem", padding: "7px 12px" }}>
+                    <Camera size={13} style={{ transform: "none" }} /> ADD MORE
+                  </button>
                 </div>
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </div>
 
-                {mode === "text" ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 220 }}>
-                    <label className="ctrl-label">Handle / Name</label>
-                    <input
-                      value={text}
-                      onChange={(e) => setText(e.target.value)}
-                      style={{
-                        border: "2px solid #000",
-                        background: "#fff",
-                        padding: "7px 10px",
-                        fontSize: "0.85rem",
-                        fontFamily: "monospace",
-                        outline: "none",
-                        color: "#000",
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label className="ctrl-label">Logo Image</label>
-                    <button className="brutalist-button" onClick={() => logoInputRef.current?.click()} style={{ fontSize: "0.74rem", padding: "7px 12px" }}>
-                      {logoName ? `Logo: ${logoName.slice(0, 24)}` : "Choose logo…"}
+            {/* Controls */}
+            <div className="brutalist-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Mode */}
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["text", "logo"] as WatermarkMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    style={{
+                      flex: 1,
+                      padding: "10px 12px",
+                      border: "2px solid #000",
+                      background: mode === m ? "#000" : "#fff",
+                      color: mode === m ? "#fff" : "#000",
+                      fontWeight: 900,
+                      fontFamily: "monospace",
+                      fontSize: "0.74rem",
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {m === "text" ? "TEXT HANDLE" : "LOGO"}
+                  </button>
+                ))}
+              </div>
+
+              {mode === "text" ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="@yourhandle"
+                    style={{ flex: 1, minWidth: 200, padding: "10px 12px", border: "2px solid #000", fontWeight: 800, fontFamily: "monospace", fontSize: "0.9rem" }}
+                  />
+                  <input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} style={{ width: 46, height: 42, border: "2px solid #000", background: "#fff", cursor: "pointer" }} />
+                  {["#ffffff", "#000000", "#FFE500"].map((c) => (
+                    <button key={c} onClick={() => setTextColor(c)} style={{ width: 34, height: 34, background: c, border: `2px solid ${textColor === c ? "#000" : "#bbb"}`, cursor: "pointer" }} title={c} />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button className="brutalist-button" onClick={() => logoInputRef.current?.click()} style={{ fontSize: "0.74rem", padding: "8px 12px" }}>
+                      <ImageIcon size={13} style={{ transform: "none" }} /> {logo ? `LOGO: ${logoName}` : "PICK LOGO PNG"}
                     </button>
+                    <button className="brutalist-button" onClick={saveLogoToLib} style={{ fontSize: "0.74rem", padding: "8px 12px" }}>
+                      <Save size={13} style={{ transform: "none" }} /> SAVE TO LIBRARY
+                    </button>
+                    {libNote && <span style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>{libNote}</span>}
                     <input
                       ref={logoInputRef}
                       type="file"
@@ -263,89 +470,43 @@ export default function WatermarkPage() {
                       }}
                     />
                   </div>
-                )}
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label className="ctrl-label">Format</label>
-                  <div style={{ display: "flex", border: "2px solid #000", background: "#fff" }}>
-                    {(["png", "jpg"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setFormat(f)}
-                        style={{
-                          padding: "7px 12px",
-                          border: "none",
-                          borderRight: f === "png" ? "2px solid #000" : "none",
-                          background: format === f ? "var(--accent)" : "#fff",
-                          color: format === f ? "#fff" : "#000",
-                          fontWeight: 800,
-                          fontSize: "0.72rem",
-                          fontFamily: "monospace",
-                          textTransform: "uppercase",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div className="slider-row">
-                  <label>Watermark Size ({sizePct}% of height)</label>
-                  <div className="slider-content" style={{ boxShadow: "none", border: "2px solid #000" }}>
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={2}
-                        max={15}
-                        step={1}
-                        value={sizePct}
-                        onChange={(e) => setSizePct(Number(e.target.value))}
-                        className="custom-slider"
-                      />
+                  {/* Logo library — saved locally, one tap to re-apply */}
+                  {logoLib.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ ...label, color: "#666" }}>LOGO LIBRARY:</span>
+                      {logoLib.map((l) => (
+                        <span key={l.name + l.dataUrl.slice(-16)} style={{ display: "inline-flex", border: "2px solid #000", background: "#fff" }}>
+                          <button onClick={() => applyLibLogo(l)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "monospace", fontWeight: 800, fontSize: "0.7rem" }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={l.dataUrl} alt={l.name} style={{ height: 22, maxWidth: 70, objectFit: "contain" }} />
+                            {l.name.slice(0, 12)}
+                          </button>
+                          <button onClick={() => deleteLibLogo(l.dataUrl)} style={{ border: "none", borderLeft: "2px solid #000", background: "#000", color: "#fff", cursor: "pointer", padding: "0 6px" }} title="Remove">
+                            <Trash2 size={12} />
+                          </button>
+                        </span>
+                      ))}
                     </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{sizePct}%</span>
-                  </div>
+                  )}
                 </div>
-                <div className="slider-row">
-                  <label>Opacity ({Math.round(opacity * 100)}%)</label>
-                  <div className="slider-content" style={{ boxShadow: "none", border: "2px solid #000" }}>
-                    <div className="slider-wrapper">
-                      <input
-                        type="range"
-                        min={0.1}
-                        max={1}
-                        step={0.05}
-                        value={opacity}
-                        onChange={(e) => setOpacity(Number(e.target.value))}
-                        className="custom-slider"
-                      />
-                    </div>
-                    <div className="slider-divider" />
-                    <span className="slider-value">{Math.round(opacity * 100)}%</span>
-                  </div>
-                </div>
-              </div>
+              )}
 
+              {/* Position grid — remembered across visits */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label className="ctrl-label">Position</label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4, maxWidth: 220 }}>
+                <span style={{ ...label, color: "#666" }}>POSITION (REMEMBERED)</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 44px)", gap: 4 }}>
                   {WATERMARK_POSITIONS.map((p) => (
                     <button
                       key={p.key}
                       onClick={() => setPosition(p.key)}
                       style={{
-                        padding: "7px 0",
-                        border: "2px solid #000",
-                        background: position === p.key ? "var(--accent)" : "#fff",
+                        height: 36,
+                        border: `2px solid ${position === p.key ? "#000" : "#bbb"}`,
+                        background: position === p.key ? "#000" : "#fff",
                         color: position === p.key ? "#fff" : "#000",
-                        fontWeight: 800,
-                        fontSize: "0.62rem",
                         fontFamily: "monospace",
+                        fontWeight: 900,
+                        fontSize: "0.66rem",
                         cursor: "pointer",
                       }}
                     >
@@ -353,106 +514,100 @@ export default function WatermarkPage() {
                     </button>
                   ))}
                 </div>
-                {mode === "text" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <label className="ctrl-label" style={{ fontSize: "0.66rem" }}>Color</label>
-                    <input
-                      type="color"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      style={{ width: 40, height: 26, border: "2px solid #000", background: "#fff", padding: 2, cursor: "pointer" }}
-                    />
-                  </div>
-                )}
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  className="brutalist-button brutalist-button-primary"
-                  disabled={busy || (mode === "text" && !text.trim()) || (mode === "logo" && !logo)}
-                  onClick={() => runBatch(true)}
-                  style={{ fontSize: "0.8rem", padding: "10px 18px" }}
-                >
-                  {busy ? (
-                    <>
-                      <RefreshCw size={14} style={{ marginRight: 6, animation: "dotLabelPulse 1s ease-in-out infinite" }} />
-                      Watermarking… {progress}/{items.length}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} style={{ marginRight: 6 }} />
-                      Watermark All + ZIP ({items.length})
-                    </>
-                  )}
-                </button>
-                <button
-                  className="brutalist-button"
-                  disabled={busy}
-                  onClick={() => runBatch(false)}
-                  style={{ fontSize: "0.8rem", padding: "10px 18px" }}
-                >
-                  Preview Only
-                </button>
-                <button
-                  className="brutalist-button"
-                  onClick={() => {
-                    setItems([]);
-                    setResults([]);
-                  }}
-                  style={{ fontSize: "0.8rem", padding: "10px 18px" }}
-                >
-                  Clear all
-                </button>
+              <TactileScrubber
+                label="Size"
+                min={2}
+                max={15}
+                step={0.5}
+                value={sizePct}
+                onChange={setSizePct}
+                formatValue={(v) => `${v}%`}
+              />
+              <TactileScrubber
+                label="Opacity"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={opacity}
+                onChange={setOpacity}
+                formatValue={(v) => `${Math.round(v * 100)}%`}
+              />
+
+              {/* Output format */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ ...label, color: "#666" }}>FORMAT:</span>
+                {(["png", "jpg"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFormat(f)}
+                    style={{
+                      padding: "6px 14px",
+                      border: "2px solid #000",
+                      background: format === f ? "#000" : "#fff",
+                      color: format === f ? "#fff" : "#000",
+                      fontFamily: "monospace",
+                      fontWeight: 900,
+                      fontSize: "0.72rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {f.toUpperCase()}
+                  </button>
+                ))}
               </div>
 
-              {doneLabel && (
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    border: "2px solid #2f9e44",
-                    background: "#f0fdf4",
-                    color: "#166534",
-                    fontSize: "0.8rem",
-                    fontWeight: 800,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {doneLabel}
+              {/* Batch actions */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="brutalist-button" disabled={busy} onClick={() => runBatch(false)} style={{ flex: 1, justifyContent: "center", minWidth: 200, cursor: busy ? "wait" : "pointer" }}>
+                  <Download size={14} /> STAMP {items.length} IMAGE{items.length > 1 ? "S" : ""}
+                </button>
+                <button className="brutalist-button" disabled={busy} onClick={() => runBatch(true)} style={{ flex: 1, justifyContent: "center", minWidth: 200, cursor: busy ? "wait" : "pointer" }}>
+                  <Download size={14} /> STAMP + ZIP
+                </button>
+              </div>
+              {busy && (
+                <div style={{ height: 10, border: "2px solid #000", background: "#fff" }}>
+                  <div style={{ height: "100%", width: `${(progress / items.length) * 100}%`, background: "#000", transition: "width 0.15s ease" }} />
                 </div>
               )}
+              {doneLabel && <div style={{ fontSize: "0.76rem", fontFamily: "monospace", fontWeight: 800, color: "#000" }}>{doneLabel}</div>}
             </div>
 
             {/* Results */}
             {results.length > 0 && (
-              <div>
-                <div style={{ fontSize: "0.78rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase", marginBottom: 12 }}>
-                  Watermarked images ({results.length})
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+              <div className="brutalist-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+                <span style={{ ...label, color: "#000" }}>STAMPED ({results.length})</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
                   {results.map((r) => (
-                    <a
-                      key={r.name}
-                      href={r.url}
-                      download={r.name}
-                      style={{ textDecoration: "none", color: "inherit", display: "block" }}
-                    >
-                      <div className="brutalist-card" style={{ padding: 10, gap: 8, alignItems: "center" }}>
-                        <img
-                          src={r.url}
-                          alt={r.name}
-                          style={{ width: "100%", aspectRatio: "1/1", objectFit: "cover", border: "2px solid #000", background: "#fff" }}
-                        />
-                        <span style={{ fontSize: "0.68rem", fontWeight: 800, fontFamily: "monospace", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
-                          {r.name}
-                        </span>
-                      </div>
+                    <a key={r.name} href={r.url} download={r.name} style={{ border: "2px solid #000", background: "#fff", textDecoration: "none" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={r.url} alt={r.name} style={{ width: "100%", height: 120, objectFit: "cover", display: "block", borderBottom: "2px solid #000" }} />
+                      <span style={{ display: "block", padding: "6px 8px", fontSize: "0.64rem", fontFamily: "monospace", fontWeight: 800, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {r.name}
+                      </span>
                     </a>
                   ))}
                 </div>
+                {/* §4: keep the workflow moving — first stamped image carries over */}
+                <NextStepRow
+                  currentHref="/watermark"
+                  heading="STAMPED — KEEP GOING"
+                  onDownload={zipBlobRef.current ? downloadZipAgain : undefined}
+                  downloadLabel="ZIP"
+                  onBeforeNavigate={(href) => handoffFirst(href)}
+                />
               </div>
             )}
           </div>
         )}
+
+        <div style={{ marginTop: 28, textAlign: "center" }}>
+          <Link href="/" className="brutalist-button" style={{ fontSize: "0.78rem", padding: "8px 16px", textDecoration: "none" }}>
+            ‹ ALL TOOLS
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -387,7 +387,7 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
         </div>
         {showBranding && (
           <div style={{ fontFamily: 'monospace', fontSize: '9px', textTransform: 'uppercase' }}>
-            Powered by CreatorKit
+            Powered by CreatorsKit
           </div>
         )}
         <div style={{ fontWeight: 600 }}>Page 1 of 1</div>
@@ -679,7 +679,7 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
         }}
       >
         <div>
-          {showBranding && <span>Powered by CreatorKit</span>}
+          {showBranding && <span>Powered by CreatorsKit</span>}
         </div>
         <div style={{ fontWeight: 600 }}>1</div>
       </div>
@@ -869,7 +869,7 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
             letterSpacing: '0.05em',
           }}
         >
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>

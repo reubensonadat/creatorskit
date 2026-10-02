@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
+import { Liquid } from 'liquid-gooey';
 
 export interface TactileScrubberPreset {
   label: string;
@@ -21,6 +22,7 @@ export interface TactileScrubberProps {
   width?: number | string;
   height?: number;
   fillColor?: string;
+  trackBackground?: React.CSSProperties['background'];
   showSteppers?: boolean;
   showValueBadge?: boolean;
   className?: string;
@@ -41,12 +43,14 @@ export function TactileScrubber({
   width = '100%',
   height = 15,
   fillColor = '#FFE500',
+  trackBackground,
   showSteppers = true,
   showValueBadge = true,
   className,
   style,
 }: TactileScrubberProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const delta = stepDelta || step || (max - min) / 10;
 
@@ -77,11 +81,13 @@ export function TactileScrubber({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    setDragging(true);
     updateFromClientX(e.clientX);
     const onMouseMove = (moveEvent: MouseEvent) => {
       updateFromClientX(moveEvent.clientX);
     };
     const onMouseUp = () => {
+      setDragging(false);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
@@ -91,12 +97,14 @@ export function TactileScrubber({
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 0) return;
+    setDragging(true);
     updateFromClientX(e.touches[0].clientX);
     const onTouchMove = (moveEvent: TouchEvent) => {
       if (moveEvent.touches.length === 0) return;
       updateFromClientX(moveEvent.touches[0].clientX);
     };
     const onTouchEnd = () => {
+      setDragging(false);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
     };
@@ -107,10 +115,10 @@ export function TactileScrubber({
   const displayString = formatValue
     ? formatValue(value)
     : step && step >= 1
-    ? `${Math.round(value)}`
-    : typeof value === 'number'
-    ? value.toFixed(2)
-    : `${value}`;
+      ? `${Math.round(value)}`
+      : typeof value === 'number'
+        ? value.toFixed(2)
+        : `${value}`;
 
   const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
 
@@ -264,10 +272,10 @@ export function TactileScrubber({
               position: 'relative',
               flex: 1,
               height,
-              background: '#e5e7eb',
+              background: trackBackground || '#e5e7eb',
               border: '1.5px solid #000',
               borderRadius: 3,
-              cursor: 'ew-resize',
+              cursor: dragging ? 'grabbing' : 'grab',
               overflow: 'hidden',
               userSelect: 'none',
             }}
@@ -282,7 +290,8 @@ export function TactileScrubber({
                 bottom: 0,
                 width: `${pct}%`,
                 background: fillColor,
-                borderRight: pct > 0 && pct < 100 ? '1.5px solid #000' : 'none',
+                borderRight:
+                  fillColor !== 'transparent' && pct > 0 && pct < 100 ? '1.5px solid #000' : 'none',
               }}
             />
 
@@ -303,6 +312,35 @@ export function TactileScrubber({
               <div style={{ width: 1, height: Math.max(4, height - 6), background: '#000' }} />
               <div style={{ width: 1, height: Math.max(4, height - 6), background: '#000' }} />
             </div>
+
+            {/* Water thumb — heavy-syrup chase, velocity stretch and droplet tail read as a
+                rippling bead of liquid; waviness keeps the boundary undulating like water */}
+            <Liquid
+              fill="#fff"
+              blur={7}
+              contrast={13}
+              waviness={2.5}
+              wavinessFreq={0.025}
+              shadow="0 2px 5px rgba(0,0,0,0.28)"
+              style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+            >
+              <Liquid.Item effect="move" move={{ springiness: 0.3, wobble: 0.55, stretch: 0.6, trail: 0.78 }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: `${pct}%`,
+                    width: Math.max(10, height - 4),
+                    height: Math.max(10, height - 4),
+                    transform: 'translate(-50%, -50%)',
+                    borderRadius: '50%',
+                    border: '1.5px solid #000',
+                    background: 'transparent',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </Liquid.Item>
+            </Liquid>
           </div>
 
           {showSteppers && (

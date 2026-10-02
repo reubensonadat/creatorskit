@@ -37,10 +37,10 @@ export default function PwaInstallPrompt() {
         navigator.serviceWorker
           .register('/sw.js')
           .then((reg) => {
-            console.log('CreatorKit ServiceWorker registered:', reg.scope);
+            console.log('CreatorsKit ServiceWorker registered:', reg.scope);
           })
           .catch((err) => {
-            console.warn('CreatorKit ServiceWorker registration error:', err);
+            console.warn('CreatorsKit ServiceWorker registration error:', err);
           });
       }
     }
@@ -116,12 +116,12 @@ export default function PwaInstallPrompt() {
         <div className="bg-white border-2 border-black shadow-[5px_5px_0_#000] p-3 text-black">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-black flex items-center justify-center border border-black flex-shrink-0 relative overflow-hidden">
-              <Image src="/logo.png" alt="CreatorKit" width={36} height={36} className="object-contain" />
+              <Image src="/logo.png" alt="CreatorsKit" width={36} height={36} className="object-contain" />
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-black text-xs uppercase tracking-wider">Install CreatorKit</span>
+                <span className="font-black text-xs uppercase tracking-wider">Install CreatorsKit</span>
                 <span className="px-1 py-0.2 bg-[#FFE500] border border-black text-[9px] font-bold">PWA</span>
               </div>
               <p className="text-[10.5px] text-stone-600 leading-snug mt-0.5">
@@ -194,7 +194,7 @@ export default function PwaInstallPrompt() {
                   3
                 </span>
                 <p className="leading-tight">
-                  Tap <strong className="font-bold text-black">Add</strong> in the top right corner. CreatorKit will appear directly on your home screen!
+                  Tap <strong className="font-bold text-black">Add</strong> in the top right corner. CreatorsKit will appear directly on your home screen!
                 </p>
               </div>
             </div>

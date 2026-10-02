@@ -26,13 +26,15 @@ export interface HandoffImageRecord {
     blob: Blob;
     format?: 'longform' | 'shorts';
     sourceTool?: string;
+    /** suggested filename for the receiving tool (e.g. video hand-offs) */
+    name?: string;
     timestamp?: number;
 }
 
 export async function putHandoffImage(
     tool: string,
     blob: Blob,
-    options?: { format?: 'longform' | 'shorts'; sourceTool?: string }
+    options?: { format?: 'longform' | 'shorts'; sourceTool?: string; name?: string }
 ): Promise<void> {
     const db = await openDb();
     try {
@@ -42,6 +44,7 @@ export async function putHandoffImage(
                 blob,
                 format: options?.format,
                 sourceTool: options?.sourceTool,
+                name: options?.name,
                 timestamp: Date.now(),
             };
             tx.objectStore(STORE).put(data, tool);
@@ -56,11 +59,11 @@ export async function putHandoffImage(
 /** Reads and DELETES the pending hand-off for this tool (consume-once). */
 export async function takeHandoffImage(
     tool: string
-): Promise<{ blob: Blob; format?: 'longform' | 'shorts' } | null> {
+): Promise<{ blob: Blob; format?: 'longform' | 'shorts'; name?: string } | null> {
     try {
         const db = await openDb();
         try {
-            return await new Promise<{ blob: Blob; format?: 'longform' | 'shorts' } | null>((resolve) => {
+            return await new Promise<{ blob: Blob; format?: 'longform' | 'shorts'; name?: string } | null>((resolve) => {
                 const tx = db.transaction(STORE, 'readwrite');
                 const store = tx.objectStore(STORE);
                 const get = store.get(tool);
@@ -74,7 +77,7 @@ export async function takeHandoffImage(
                     if (res instanceof Blob) {
                         resolve({ blob: res });
                     } else if (res.blob instanceof Blob) {
-                        resolve({ blob: res.blob, format: res.format });
+                        resolve({ blob: res.blob, format: res.format, name: res.name });
                     } else {
                         resolve(null);
                     }
@@ -84,6 +87,27 @@ export async function takeHandoffImage(
         } finally {
             db.close();
         }
+    } catch {
+        return null;
+    }
+}
+
+// ── Text hand-offs (e.g. teleprompter script → auto-captions) ─────────────────
+
+export async function putHandoffText(
+    tool: string,
+    text: string,
+    options?: { sourceTool?: string }
+): Promise<void> {
+    await putHandoffImage(tool, new Blob([text], { type: 'text/plain' }), options);
+}
+
+/** Reads and DELETES the pending text hand-off for this tool (consume-once). */
+export async function takeHandoffText(tool: string): Promise<string | null> {
+    const rec = await takeHandoffImage(tool);
+    if (!rec) return null;
+    try {
+        return await rec.blob.text();
     } catch {
         return null;
     }

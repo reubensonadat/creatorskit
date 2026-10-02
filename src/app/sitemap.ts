@@ -23,6 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
         // Unified theme, separate pages → two shots at the same queries.
         entry('/background-replace', 0.95, 'daily'),
         entry('/text-behind', 0.95, 'daily'),
+        entry('/quote-card', 0.8, 'daily'),
 
         // ── Everyday creator business tools ─────────────────────────────────
         entry('/business', 0.9, 'daily'),
@@ -40,6 +41,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/resizer', 0.75, 'weekly'),
         entry('/watermark', 0.75, 'weekly'),
         entry('/carousel-slicer', 0.7, 'weekly'),
+
+        // ── Promoted orphans (docs/TOOL_INTEGRATION_PLAN.md §5) ─────────────
+        entry('/palette-extractor', 0.65, 'weekly'),
+        entry('/sync-slate', 0.6, 'monthly'),
+        entry('/color-gradient', 0.6, 'weekly'),
+
         entry('/blog', 0.7, 'daily'),
 
         // ── Secondary / in development ──────────────────────────────────────

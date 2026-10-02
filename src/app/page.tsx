@@ -248,7 +248,7 @@ export default function Home() {
         <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 10, height: 10, background: "#000000" }} />
           <h2 style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
-            CreatorKit In-House Tools
+            CreatorsKit In-House Tools
           </h2>
         </div>
 

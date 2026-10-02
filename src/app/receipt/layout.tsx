@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Receipt Maker — Free Printable Receipt Generator | CreatorKit',
+    title: 'Receipt Maker — Free Printable Receipt Generator | CreatorsKit',
     description:
         'Create clean printable receipts in seconds. Itemized sales and payment receipts, thermal-printer friendly, printable or PDF. Free with no signup.',
     path: '/receipt',
@@ -51,7 +51,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Receipt Maker',
+        name: 'CreatorsKit Receipt Maker',
         description:
             'Free printable receipt generator. Itemized sales and payment receipts with a thermal-printer friendly layout — printable straight from your browser.',
         path: '/receipt',

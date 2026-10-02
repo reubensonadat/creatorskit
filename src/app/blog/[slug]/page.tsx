@@ -36,10 +36,10 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = (await fetchPostBySlugFromDatabase(slug)) || BLOG_POSTS.find((p) => p.slug === slug);
-  if (!post) return { title: 'Post Not Found — CreatorKit' };
+  if (!post) return { title: 'Post Not Found — CreatorsKit' };
 
   return {
-    title: `${post.title} — CreatorKit Research`,
+    title: `${post.title} — CreatorsKit Research`,
     description: post.excerpt,
     openGraph: {
       title: post.title,
@@ -541,7 +541,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 READY TO CREATE?
               </span>
               <h4 style={{ fontSize: '1.2rem', fontWeight: 900, margin: '0 0 6px' }}>
-                Practice This In CreatorKit Studio
+                Practice This In CreatorsKit Studio
               </h4>
               <p style={{ color: '#a1a1aa', fontSize: '0.82rem', margin: 0 }}>
                 Use Studio Teleprompter with bracket stage cues or test titles in Thumbnail Lab.

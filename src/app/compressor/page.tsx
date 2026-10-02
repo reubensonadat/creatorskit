@@ -1,633 +1,733 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { 
-  RefreshCw, 
-  ChevronLeft, 
-  Image as ImageIcon,
-  Download,
-  FolderDown
-} from "lucide-react";
-import Link from "next/link";
-import SpeederLoader from "@/components/SpeederLoader";
-import ExportButton from "@/components/ExportButton";
-import JSZip from "jszip";
+/**
+ * COMPRESS & CONVERT — the format hub (docs/TOOL_INTEGRATION_PLAN.md §9).
+ *
+ * Conversion matrix, all on-device:
+ *   PDF  → PNG / JPG / WebP   (pdfjs-dist, lazy — renders every page)
+ *   IMG/SVG → PNG / JPG / WebP (Canvas)
+ *   IMG/SVG → PDF              (pdf-lib, lazy)
+ *
+ * Rules from the plan: engines never sit in the page bundle (dynamic import
+ * on first use) · estimated output size BEFORE committing · batch 5+ with
+ * per-file progress · everything stays on-device.
+ */
 
-interface CompressedResult {
-  dataUrl: string;
-  size: number;
-  width: number;
-  height: number;
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image as ImageIcon, Download, FolderDown, X, FileText, Zap } from "lucide-react";
+import NextStepRow from "@/components/NextStepRow";
+import { putHandoffImage, takeHandoffImage } from "@/lib/tool-handoff";
+
+type TargetFmt = "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "application/pdf";
+
+interface OutFile {
+    name: string;
+    blob: Blob;
 }
 
-interface BatchItem {
-  id: number;
-  name: string;
-  dataUrl: string;
-  size: number;
-  result?: { dataUrl: string; size: number };
+type ItemKind = "image" | "pdf" | "svg";
+
+interface Item {
+    id: string;
+    file: File;
+    kind: ItemKind;
+    /** page count for PDFs (filled lazily by the estimator) */
+    pages?: number;
+    /** estimated total output bytes for the CURRENT settings signature */
+    est?: number;
+    estFor?: string;
+    outs?: OutFile[];
+    busy?: boolean;
+    status?: string;
+    error?: string;
+}
+
+const EXT: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/avif": "avif",
+    "application/pdf": "pdf",
+};
+
+function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${Math.round(bytes)} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function baseName(name: string): string {
+    const i = name.lastIndexOf(".");
+    return i > 0 ? name.slice(0, i) : name;
+}
+
+/** Decode any image (incl. SVG) to an HTMLImageElement. */
+function loadImageEl(src: File | Blob | string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const url = typeof src === "string" ? src : URL.createObjectURL(src);
+        const img = new Image();
+        img.onload = () => {
+            if (typeof src !== "string") URL.revokeObjectURL(url);
+            resolve(img);
+        };
+        img.onerror = () => {
+            if (typeof src !== "string") URL.revokeObjectURL(url);
+            reject(new Error("Could not decode image"));
+        };
+        img.src = url;
+    });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, fmt: TargetFmt, quality: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error(`Your browser can't encode ${fmt}`))),
+            fmt,
+            fmt === "image/png" || fmt === "application/pdf" ? undefined : quality
+        );
+    });
+}
+
+/** Rasterize a decoded image to the target format blob. */
+async function rasterize(
+    img: HTMLImageElement,
+    fmt: TargetFmt,
+    quality: number
+): Promise<{ blob: Blob; width: number; height: number }> {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, img.naturalWidth || 1024);
+    canvas.height = Math.max(1, img.naturalHeight || 1024);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context failed");
+    if (fmt === "image/jpeg") {
+        ctx.fillStyle = "#FFFFFF"; // JPG has no alpha — flatten onto white
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { blob: await canvasToBlob(canvas, fmt, quality), width: canvas.width, height: canvas.height };
+}
+
+/** pdfjs-dist — lazy-loaded, worker served from /public (v-matched copy). */
+async function getPdfjs() {
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    return pdfjs;
+}
+
+/** Render every page of a PDF to image blobs at the given scale. */
+async function pdfToImages(file: File, fmt: TargetFmt, quality: number, scale: number): Promise<OutFile[]> {
+    const pdfjs = await getPdfjs();
+    const data = new Uint8Array(await file.arrayBuffer());
+    const doc = await pdfjs.getDocument({ data }).promise;
+    const outs: OutFile[] = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+        const page = await doc.getPage(p);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas context failed");
+        if (fmt === "image/jpeg") {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        await page.render({ canvas, viewport }).promise;
+        const blob = await canvasToBlob(canvas, fmt, quality);
+        outs.push({ name: `${baseName(file.name)}-p${String(p).padStart(2, "0")}.${EXT[fmt]}`, blob });
+    }
+    return outs;
+}
+
+/** pdf-lib — lazy-loaded. Embeds PNG/JPG natively; anything else rasterizes to PNG first. */
+async function imageToPdf(file: File, kind: ItemKind): Promise<OutFile> {
+    const { PDFDocument } = await import("pdf-lib");
+    const pdf = await PDFDocument.create();
+    const type = file.type || (kind === "svg" ? "image/svg+xml" : "");
+
+    let embedded;
+    if (type === "image/png") {
+        embedded = await pdf.embedPng(await file.arrayBuffer());
+    } else if (type === "image/jpeg" || type === "image/jpg") {
+        embedded = await pdf.embedJpg(await file.arrayBuffer());
+    } else {
+        // webp / svg / gif … → rasterize to PNG, then embed
+        const img = await loadImageEl(file);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, img.naturalWidth || 1024);
+        canvas.height = Math.max(1, img.naturalHeight || 1024);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas context failed");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/png");
+        embedded = await pdf.embedPng(dataUrl);
+    }
+    const page = pdf.addPage([embedded.width, embedded.height]);
+    page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+    const bytes = await pdf.save();
+    return {
+        name: `${baseName(file.name)}.pdf`,
+        blob: new Blob([bytes as unknown as BlobPart], { type: "application/pdf" }),
+    };
 }
 
 export default function CompressorPage() {
-  const [original, setOriginal] = useState<{ dataUrl: string; size: number; name: string } | null>(null);
-  const [compressed, setCompressed] = useState<CompressedResult | null>(null);
-  const [quality, setQuality] = useState(0.8);
-  const [format, setFormat] = useState<"image/jpeg" | "image/webp">("image/jpeg");
-  const [isDragging, setIsDragging] = useState(false);
-  const [sliderPos, setSliderPos] = useState(50);
-  const [isCompressing, setIsCompressing] = useState(false);
-  const [batch, setBatch] = useState<BatchItem[]>([]);
+    const [items, setItems] = useState<Item[]>([]);
+    const [target, setTarget] = useState<TargetFmt>("image/webp");
+    const [quality, setQuality] = useState(0.8);
+    const [pdfScale, setPdfScale] = useState(1.5);
+    const [isDragging, setIsDragging] = useState(false);
+    const [converting, setConverting] = useState(false);
+    const [note, setNote] = useState("");
 
-  const fileRef = useRef<HTMLInputElement>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
 
-  const compressToDataUrl = useCallback(
-    (dataUrl: string, q: number, fmt: string): Promise<{ dataUrl: string; size: number }> =>
-      new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext("2d")!;
-          ctx.drawImage(img, 0, 0);
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) return reject(new Error("Encoding failed"));
-              const reader = new FileReader();
-              reader.onload = (e) => resolve({ dataUrl: e.target!.result as string, size: blob.size });
-              reader.readAsDataURL(blob);
-            },
-            fmt,
-            q
-          );
-        };
-        img.onerror = () => reject(new Error("Decode failed"));
-        img.src = dataUrl;
-      }),
-    []
-  );
-
-  const compress = useCallback(
-    (dataUrl: string, q: number, fmt: string) => {
-      setIsCompressing(true);
-      const img = new Image();
-      img.onload = () => {
-        compressToDataUrl(dataUrl, q, fmt)
-          .then((r) =>
-            setCompressed({
-              ...r,
-              width: img.naturalWidth,
-              height: img.naturalHeight,
-            })
-          )
-          .catch(() => setIsCompressing(false))
-          .finally(() => setIsCompressing(false));
-      };
-      img.onerror = () => setIsCompressing(false);
-      img.src = dataUrl;
-    },
-    [compressToDataUrl]
-  );
-
-  const runBatch = async (items: BatchItem[]) => {
-    setIsCompressing(true);
-    for (const item of items) {
-      try {
-        const result = await compressToDataUrl(item.dataUrl, quality, format);
-        setBatch((prev) => prev.map((i) => (i.id === item.id ? { ...i, result } : i)));
-      } catch {
-        // keep item without result on failure
-      }
-    }
-    setIsCompressing(false);
-  };
-
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target!.result as string;
-      setOriginal({ dataUrl, size: file.size, name: file.name });
-      setCompressed(null);
-      compress(dataUrl, quality, format);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleFiles = (files: FileList | File[]) => {
-    const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
-    if (images.length === 1) {
-      handleFile(images[0]);
-      return;
-    }
-    const items: BatchItem[] = images.map((f, i) => ({
-      id: Date.now() + i,
-      name: f.name,
-      dataUrl: "",
-      size: f.size,
-    }));
-    let pending = items.length;
-    items.forEach((item, i) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        item.dataUrl = e.target!.result as string;
-        pending -= 1;
-        if (pending === 0) {
-          setBatch(items);
-          setOriginal(null);
-          runBatch(items);
+    /** AVIF encoding support — feature-detected once (plan: "± AVIF where supported"). */
+    const avifSupported = useMemo(() => {
+        if (typeof document === "undefined") return false;
+        try {
+            const c = document.createElement("canvas");
+            c.width = 2;
+            c.height = 2;
+            return c.toDataURL("image/avif").startsWith("data:image/avif");
+        } catch {
+            return false;
         }
-      };
-      reader.readAsDataURL(images[i]);
-    });
-  };
+    }, []);
 
-  const handleQualityChange = (q: number) => {
-    setQuality(q);
-    if (original) compress(original.dataUrl, q, format);
-  };
+    const settingsKey = `${target}|${quality}|${pdfScale}`;
+    const hasPdf = items.some((i) => i.kind === "pdf");
 
-  const handleFormatChange = (fmt: "image/jpeg" | "image/webp") => {
-    setFormat(fmt);
-    if (original) compress(original.dataUrl, quality, fmt);
-  };
+    const targets: { fmt: TargetFmt; label: string }[] = [
+        { fmt: "image/webp", label: "WEBP" },
+        { fmt: "image/jpeg", label: "JPG" },
+        { fmt: "image/png", label: "PNG" },
+        ...(avifSupported ? [{ fmt: "image/avif" as TargetFmt, label: "AVIF" }] : []),
+        { fmt: "application/pdf", label: "PDF" },
+    ];
 
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
-  };
-
-  const savings =
-    original && compressed
-      ? Math.round((1 - compressed.size / original.size) * 100)
-      : 0;
-
-  const downloadFormat = (exportFmt: "image/png" | "image/jpeg" | "image/webp") => {
-    if (!original) return;
-    
-    // If WebP or JPEG matches compressed output, export it directly
-    if (exportFmt === "image/webp" && format === "image/webp" && compressed) {
-      triggerDownload(compressed.dataUrl, "webp");
-      return;
-    }
-    if (exportFmt === "image/jpeg" && format === "image/jpeg" && compressed) {
-      triggerDownload(compressed.dataUrl, "jpg");
-      return;
-    }
-
-    // Otherwise recalculate dynamically for the download format
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0);
-      const ext = exportFmt === "image/png" ? "png" : exportFmt === "image/webp" ? "webp" : "jpg";
-      const dataUrl = canvas.toDataURL(exportFmt, exportFmt === "image/png" ? undefined : quality);
-      triggerDownload(dataUrl, ext);
+    const classify = (file: File): ItemKind | null => {
+        const name = file.name.toLowerCase();
+        if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+        if (file.type === "image/svg+xml" || name.endsWith(".svg")) return "svg";
+        if (file.type.startsWith("image/")) return "image";
+        return null;
     };
-    img.src = original.dataUrl;
-  };
 
-  const triggerDownload = (url: string, ext: string) => {
-    if (!original) return;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = original.name.replace(/\.[^.]+$/, "") + `-optimized.${ext}`;
-    a.click();
-  };
+    const addFiles = useCallback((files: FileList | File[] | null) => {
+        if (!files) return;
+        const next: Item[] = [];
+        for (const f of Array.from(files)) {
+            const kind = classify(f);
+            if (!kind) continue;
+            next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file: f, kind });
+        }
+        if (next.length === 0) return;
+        setItems((prev) => [...prev, ...next]);
+        setNote("");
+    }, []);
 
-  const reset = () => {
-    setOriginal(null);
-    setCompressed(null);
-    setSliderPos(50);
-    setBatch([]);
-  };
+    // Cross-tool intake (§4): an image handed off from watermark / carousel-slicer / resizer lands in the queue.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const rec = await takeHandoffImage("compressor");
+            if (cancelled || !rec || !rec.blob.type.startsWith("image/")) return;
+            addFiles([new File([rec.blob], rec.name ?? "handoff-image", { type: rec.blob.type })]);
+        })();
+        return () => { cancelled = true; };
+    }, [addFiles]);
 
-  const downloadOne = (item: BatchItem) => {
-    if (!item.result) return;
-    const ext = format === "image/jpeg" ? "jpg" : "webp";
-    const a = document.createElement("a");
-    a.href = item.result.dataUrl;
-    a.download = item.name.replace(/\.[^.]+$/, "") + `-optimized.${ext}`;
-    a.click();
-  };
+    const removeItem = (id: string) => setItems((prev) => prev.filter((i) => i.id !== id));
 
-  const downloadAllZip = async () => {
-    const zip = new JSZip();
-    batch.forEach((item) => {
-      if (!item.result) return;
-      const ext = format === "image/jpeg" ? "jpg" : "webp";
-      zip.file(item.name.replace(/\.[^.]+$/, "") + `-optimized.${ext}`, item.result.dataUrl.split(",")[1], { base64: true });
-    });
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `compressed-batch-${batch.length}-images.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    const clearAll = () => {
+        setItems([]);
+        setNote("");
+    };
 
-  const batchDone = batch.filter((i) => i.result).length;
+    const patchItem = (id: string, patch: Partial<Item>) =>
+        setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
 
-  const batchSavings =
-    batch.filter((i) => i.result).reduce((acc, i) => acc + (1 - i.result!.size / i.size) * 100, 0) /
-    Math.max(1, batchDone);
+    /** Rough output-size estimate for one item under the current settings. */
+    const estimateItem = async (item: Item): Promise<{ est: number; pages?: number }> => {
+        if (target === "application/pdf") {
+            if (item.kind === "pdf") return { est: item.file.size }; // passthrough copy
+            // rasterize → embed: PDF adds ~1-3% wrapper around a PNG of the pixels
+            const img = await loadImageEl(item.file);
+            const { blob } = await rasterize(img, "image/png", quality);
+            return { est: Math.round(blob.size * 1.02) };
+        }
+        if (item.kind === "pdf") {
+            // render page 1 at half scale, extrapolate over the page count
+            const pdfjs = await getPdfjs();
+            const data = new Uint8Array(await item.file.arrayBuffer());
+            const doc = await pdfjs.getDocument({ data }).promise;
+            const page = await doc.getPage(1);
+            const viewport = page.getViewport({ scale: pdfScale * 0.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error("Canvas context failed");
+            await page.render({ canvas, viewport }).promise;
+            const one = await canvasToBlob(canvas, target, quality);
+            return { est: one.size * doc.numPages, pages: doc.numPages };
+        }
+        const img = await loadImageEl(item.file);
+        const { blob } = await rasterize(img, target, quality);
+        return { est: blob.size };
+    };
 
-  return (
-    <div className="tool-page-padding" style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column", overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
-      <div className="grid-bg" />
+    /** Debounced: keep every item's estimate fresh for the current settings. */
+    useEffect(() => {
+        if (items.length === 0) return;
+        let cancelled = false;
+        const t = setTimeout(async () => {
+            for (const item of items) {
+                if (cancelled) return;
+                if (item.estFor === settingsKey && item.est !== undefined) continue;
+                try {
+                    const { est, pages } = await estimateItem(item);
+                    if (cancelled) return;
+                    patchItem(item.id, { est, estFor: settingsKey, pages, error: undefined });
+                } catch {
+                    if (cancelled) return;
+                    patchItem(item.id, { est: undefined, estFor: settingsKey, error: "Could not read file" });
+                }
+            }
+        }, 300);
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [items.map((i) => i.id).join(","), settingsKey]);
 
-      <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Top Title Section */}
-        <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#FFDD00", color: "#000", fontFamily: "monospace" }}>
-              IMAGE COMPRESSOR PRO
-            </span>
-            <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
-              CLIENT-SIDE JPEG & WEBP OPTIMIZATION · ZERO UPLOAD
-            </span>
-          </div>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
-            Image Compressor Pro
-          </h1>
-        </div>
+    const convertItem = async (item: Item): Promise<OutFile[]> => {
+        if (target === "application/pdf") {
+            if (item.kind === "pdf") return [{ name: item.file.name, blob: item.file }];
+            return [await imageToPdf(item.file, item.kind)];
+        }
+        if (item.kind === "pdf") {
+            return await pdfToImages(item.file, target, quality, pdfScale);
+        }
+        const img = await loadImageEl(item.file);
+        const { blob } = await rasterize(img, target, quality);
+        return [{ name: `${baseName(item.file.name)}.${EXT[target]}`, blob }];
+    };
 
-        {/* Drop Zone */}
-        {!original && batch.length === 0 && (
-          <div
-            onDragEnter={() => setIsDragging(true)}
-            onDragLeave={() => setIsDragging(false)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDragging(false);
-              handleFiles(e.dataTransfer.files);
-            }}
-            onClick={() => fileRef.current?.click()}
-            className="brutalist-card"
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "100px 40px",
-              textAlign: "center",
-              cursor: "pointer",
-              border: `4px dashed ${isDragging ? "var(--accent)" : "#000000"}`,
-              background: isDragging ? "rgba(37, 99, 235, 0.02)" : "#ffffff",
-              transition: "all 0.2s ease",
-            }}
-          >
-            <div
-              style={{
-                width: 72,
-                height: 72,
-                border: "3px solid #000000",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 24,
-                background: "#ffffff",
-                boxShadow: "4px 4px 0 #000000",
-              }}
-            >
-              <ImageIcon size={32} style={{ color: "#000" }} />
-            </div>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
-              Drag your files here
-            </h3>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", maxWidth: 400, lineHeight: 1.6, fontWeight: 500 }}>
-              PNG, JPG, and WebP support. One image opens the single-compare view —
-              drop several to batch compress them all at once.
-            </p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              style={{ display: "none" }}
-              onChange={(e) => {
-                handleFiles(e.target.files ?? []);
-                e.currentTarget.value = "";
-              }}
-            />
-          </div>
-        )}
+    const convertAll = async () => {
+        if (items.length === 0 || converting) return;
+        setConverting(true);
+        setNote("");
+        let ok = 0;
+        let failed = 0;
+        let outFiles = 0;
+        try {
+            for (const item of items) {
+                patchItem(item.id, { busy: true, status: "Working…", error: undefined, outs: undefined });
+                try {
+                    const outs = await convertItem(item);
+                    outFiles += outs.length;
+                    ok++;
+                    patchItem(item.id, {
+                        busy: false,
+                        status: outs.length > 1 ? `${outs.length} files ready` : "Ready",
+                        outs,
+                    });
+                } catch (err) {
+                    failed++;
+                    patchItem(item.id, {
+                        busy: false,
+                        status: undefined,
+                        error: err instanceof Error ? err.message : "Conversion failed",
+                    });
+                }
+            }
+            setNote(`${ok} converted · ${outFiles} files${failed ? ` · ${failed} failed` : ""}.`);
+        } finally {
+            setConverting(false);
+        }
+    };
 
-        {/* Batch Results */}
-        {batch.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {isCompressing && <SpeederLoader message={`Compressing batch — ${batchDone}/${batch.length}`} />}
-            <div className="brutalist-card" style={{ padding: 20, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: "1rem", color: "#000" }}>
-                  Batch Compress — {batchDone}/{batch.length} done
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-hint)", fontWeight: 700, fontFamily: "monospace", marginTop: 4 }}>
-                  {format === "image/jpeg" ? "JPEG" : "WebP"} · {Math.round(quality * 100)}% quality · avg {batchSavings.toFixed(0)}% saved
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="brutalist-button" onClick={() => fileRef.current?.click()} style={{ fontSize: "0.76rem", padding: "9px 14px" }}>
-                  Add more…
-                </button>
-                <button className="brutalist-button brutalist-button-red" onClick={reset} style={{ fontSize: "0.76rem", padding: "9px 14px" }}>
-                  <RefreshCw size={14} style={{ marginRight: 4 }} /> New batch
-                </button>
-                <button
-                  className="brutalist-button brutalist-button-primary"
-                  onClick={downloadAllZip}
-                  disabled={batchDone === 0}
-                  style={{ fontSize: "0.76rem", padding: "9px 14px" }}
-                >
-                  <FolderDown size={14} style={{ marginRight: 4 }} /> Download all (.zip)
-                </button>
-              </div>
-            </div>
+    const downloadBlob = (blob: Blob, name: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    };
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 20 }}>
-              {batch.map((item) => {
-                const saved = item.result ? Math.round((1 - item.result.size / item.size) * 100) : 0;
-                return (
-                  <div key={item.id} className="brutalist-card" style={{ padding: 14, gap: 12 }}>
-                    <div style={{ position: "relative", border: "2px solid #000", background: "#fff", overflow: "hidden" }}>
-                      {item.dataUrl ? (
-                        <img src={item.dataUrl} alt={item.name} style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }} />
-                      ) : (
-                        <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 800, color: "var(--text-hint)" }}>
-                          Decoding…
-                        </div>
-                      )}
-                      {item.result && (
-                        <span style={{ position: "absolute", top: 8, right: 8, padding: "4px 8px", border: "2px solid #000", background: saved >= 0 ? "#10b981" : "#fff", color: saved >= 0 ? "#fff" : "#000", fontSize: "0.68rem", fontWeight: 900, fontFamily: "monospace" }}>
-                          {saved >= 0 ? `−${saved}%` : "+0%"}
+    const downloadItem = (item: Item) => {
+        if (!item.outs || item.outs.length === 0) return;
+        if (item.outs.length === 1) {
+            downloadBlob(item.outs[0].blob, item.outs[0].name);
+            return;
+        }
+        downloadAll([{ name: baseName(item.file.name), outs: item.outs }]);
+    };
+
+    const downloadAll = async (source?: { name: string; outs: OutFile[] }[]) => {
+        const ready = (source ?? items)
+            .filter((i) => "outs" in i && i.outs && i.outs.length > 0)
+            .map((i) => ({ name: baseName((i as Item).file.name), outs: (i as Item).outs! }));
+        if (ready.length === 0) return;
+        if (ready.length === 1 && ready[0].outs.length === 1) {
+            downloadBlob(ready[0].outs[0].blob, ready[0].outs[0].name);
+            return;
+        }
+        setNote("Zipping…");
+        try {
+            const JSZip = (await import("jszip")).default; // lazy per §7 — never in the page bundle
+            const zip = new JSZip();
+            for (const r of ready) {
+                if (r.outs.length === 1) {
+                    zip.file(r.outs[0].name, r.outs[0].blob);
+                } else {
+                    const folder = zip.folder(r.name) ?? zip;
+                    r.outs.forEach((o) => folder.file(o.name, o.blob));
+                }
+            }
+            const blob = await zip.generateAsync({ type: "blob" });
+            downloadBlob(blob, `creatorskit-convert-${ready.length}-files.zip`);
+            setNote("ZIP saved.");
+        } catch {
+            setNote("ZIP failed — try downloading files individually.");
+        }
+    };
+
+    const totalIn = items.reduce((a, i) => a + i.file.size, 0);
+    const estTotal = items.reduce((a, i) => a + (i.est ?? 0), 0);
+    const readyCount = items.filter((i) => i.outs && i.outs.length > 0).length;
+    const savings = totalIn > 0 && estTotal > 0 ? Math.round((1 - estTotal / totalIn) * 100) : 0;
+
+    /** Cross-tool hand-off (§4): stash the FIRST converted output for the next tool. */
+    const handoffFirst = async (href: string) => {
+        const out = items.find((i) => i.outs && i.outs.length > 0)?.outs?.[0];
+        if (!out) return;
+        try {
+            await putHandoffImage(href.replace(/^\//, ""), out.blob, { sourceTool: "compressor", name: out.name });
+        } catch {
+            /* best-effort — the target tool still opens */
+        }
+    };
+
+    return (
+        <div className="tool-page-padding" style={{ position: "relative", minHeight: "calc(100vh - 60px)", display: "flex", flexDirection: "column", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
+            <div className="grid-bg" />
+
+            <div style={{ maxWidth: 1100, width: "100%", margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column" }}>
+                {/* Title */}
+                <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 900, padding: "3px 8px", border: "2px solid #000", background: "#000", color: "#fff", fontFamily: "monospace" }}>
+                            COMPRESS & CONVERT
                         </span>
-                      )}
+                        <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+                            PDF ⇄ PNG ⇄ JPG ⇄ WEBP · SIZE ESTIMATES BEFORE YOU COMMIT · ZERO UPLOAD
+                        </span>
                     </div>
-                    <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.name}>
-                      {item.name}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 700, color: "var(--text-hint)" }}>
-                      <span>{formatBytes(item.size)}</span>
-                      <span>{item.result ? formatBytes(item.result.size) : "…"}</span>
-                    </div>
-                    <button
-                      className="brutalist-button"
-                      onClick={() => downloadOne(item)}
-                      disabled={!item.result}
-                      style={{ width: "100%", justifyContent: "center", fontSize: "0.74rem", padding: "8px 12px" }}
-                    >
-                      <Download size={13} style={{ marginRight: 4 }} />
-                      {item.result ? "Download" : "Waiting…"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Result Editor */}
-        {original && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            
-            {isCompressing && (
-              <SpeederLoader message="Compiling assets" />
-            )}
-
-            {/* Viewport Frame */}
-            <div
-              className="checkerboard"
-              style={{
-                border: "4px solid #000000",
-                position: "relative",
-                aspectRatio: "16/9",
-                background: "#ffffff",
-                boxShadow: "6px 6px 0 #000000",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 16,
-              }}
-            >
-              {/* Original preview */}
-              <img
-                src={original.dataUrl}
-                alt="Original"
-                style={{
-                  position: "absolute",
-                  maxWidth: "100%",
-                  maxHeight: "90%",
-                  objectFit: "contain",
-                  border: "3px solid #000000",
-                  boxShadow: "3px 3px 0 #000000",
-                }}
-              />
-              {/* Compressed preview overlay */}
-              {compressed && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    clipPath: `inset(0 ${100 - sliderPos}% 0 0)`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <img
-                    src={compressed.dataUrl}
-                    alt="Compressed"
-                    style={{
-                      maxWidth: "100%",
-                      maxHeight: "90%",
-                      objectFit: "contain",
-                      border: "3px solid #000000",
-                      boxShadow: "3px 3px 0 #000000",
-                    }}
-                  />
-                </div>
-              )}
-              {/* Visual Split Control */}
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={sliderPos}
-                onChange={(e) => setSliderPos(Number(e.target.value))}
-                className="custom-slider"
-                style={{
-                  position: "absolute",
-                  bottom: 24,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: "70%",
-                  zIndex: 10,
-                }}
-              />
-              {/* Floating comparative stats labels */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 16,
-                  left: 16,
-                  padding: "6px 12px",
-                  border: "3px solid #000000",
-                  background: "#ffffff",
-                  fontSize: "0.78rem",
-                  fontWeight: 900,
-                  color: "#000000",
-                  boxShadow: "3px 3px 0 #000000",
-                  fontFamily: "monospace",
-                }}
-              >
-                ORIGINAL: {formatBytes(original.size)}
-              </div>
-              {compressed && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 16,
-                    right: 16,
-                    padding: "6px 12px",
-                    border: "3px solid #000000",
-                    background: "#ffffff",
-                    fontSize: "0.78rem",
-                    fontWeight: 900,
-                    color: savings > 0 ? "#10b981" : "#000000",
-                    boxShadow: "3px 3px 0 #000000",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  COMPRESSED: {formatBytes(compressed.size)} ({savings}% SAVED)
-                </div>
-              )}
-            </div>
-
-            {/* Split controls */}
-            <div className="tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
-              {/* Compression adjustment */}
-              <div
-                className="brutalist-card"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                  padding: 20,
-                  border: "3px solid #000",
-                  boxShadow: "6px 6px 0 #000",
-                  background: "#fff",
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <label style={{ fontSize: "0.75rem", fontWeight: 900, fontFamily: "monospace", textTransform: "uppercase" }}>
-                      Quality Level
-                    </label>
-                    <span style={{ fontSize: "0.8rem", fontWeight: 900, fontFamily: "monospace", background: "#FFDD00", padding: "1px 8px", border: "1.5px solid #000" }}>
-                      {Math.round(quality * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={1}
-                    step={0.01}
-                    value={quality}
-                    onChange={(e) => handleQualityChange(Number(e.target.value))}
-                    style={{ width: "100%", cursor: "pointer" }}
-                  />
+                    <h1 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.03em", margin: 0, textTransform: "uppercase" }}>
+                        Compress & Convert
+                    </h1>
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "#444", maxWidth: 640 }}>
+                        Turn PDFs into images, images into PDFs, or squeeze everything into WebP/JPG — right in your
+                        browser. Batch as many files as you want; the estimated output size is shown before anything is saved.
+                    </p>
                 </div>
 
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: "0.75rem", fontFamily: "monospace", fontWeight: 900, textTransform: "uppercase" }}>
-                    Export Format
-                  </label>
-                  <div style={{ display: "flex", border: "2px solid #000", background: "#fff" }}>
-                    {(["image/jpeg", "image/webp"] as const).map((fmt) => (
-                      <button
-                        key={fmt}
-                        onClick={() => handleFormatChange(fmt)}
-                        style={{
-                          flex: 1,
-                          padding: "8px",
-                          border: "none",
-                          borderRight: fmt === "image/jpeg" ? "2px solid #000" : "none",
-                          background: format === fmt ? "#000" : "#fff",
-                          color: format === fmt ? "#fff" : "#000",
-                          cursor: "pointer",
-                          fontWeight: 900,
-                          fontSize: "0.75rem",
-                          fontFamily: "monospace",
-                          textTransform: "uppercase",
+                {/* Drop zone */}
+                {items.length === 0 ? (
+                    <div
+                        onDragEnter={() => setIsDragging(true)}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDragging(false);
+                            addFiles(e.dataTransfer.files);
                         }}
-                      >
-                        {fmt === "image/jpeg" ? "JPEG" : "WebP"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                        onClick={() => fileRef.current?.click()}
+                        className="brutalist-card"
+                        style={{
+                            flex: 1,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "80px 40px",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            border: `4px dashed ${isDragging ? "var(--accent)" : "#000000"}`,
+                            background: isDragging ? "rgba(37, 99, 235, 0.02)" : "#ffffff",
+                            transition: "all 0.2s ease",
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: 72,
+                                height: 72,
+                                border: "3px solid #000000",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                marginBottom: 24,
+                                background: "#ffffff",
+                                boxShadow: "4px 4px 0 #000000",
+                            }}
+                        >
+                            <ImageIcon size={32} style={{ color: "#000" }} />
+                        </div>
+                        <h3 style={{ fontSize: "1.25rem", fontWeight: 900, marginBottom: 8, color: "#000000" }}>
+                            Drop images or PDFs here
+                        </h3>
+                        <p style={{ fontSize: "0.85rem", color: "#555", margin: 0 }}>
+                            PNG · JPG · WebP · SVG · PDF — batch friendly, unlimited count
+                        </p>
+                        <p style={{ fontSize: "0.72rem", color: "#888", margin: "10px 0 0", fontFamily: "monospace" }}>
+                            100% ON-DEVICE · YOUR FILES NEVER LEAVE THIS TAB
+                        </p>
+                    </div>
+                ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+                        {/* Settings */}
+                        <div className="brutalist-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.05em" }}>
+                                    CONVERT TO
+                                </span>
+                                {targets.map((t) => {
+                                    const disabled =
+                                        (t.fmt === "application/pdf" && items.length > 0 && items.every((i) => i.kind === "pdf")) ||
+                                        t.fmt === target;
+                                    return (
+                                        <button
+                                            key={t.fmt}
+                                            type="button"
+                                            className="brutalist-button"
+                                            disabled={disabled}
+                                            onClick={() => setTarget(t.fmt)}
+                                            style={{
+                                                padding: "6px 12px",
+                                                fontSize: "0.7rem",
+                                                fontFamily: "monospace",
+                                                fontWeight: 900,
+                                                background: target === t.fmt ? "#000" : "#fff",
+                                                color: target === t.fmt ? "#fff" : "#000",
+                                            }}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
 
-              {/* Status Board */}
-              <div
-                className="brutalist-card"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                }}
-              >
-                {[
-                  { label: "Original Size", value: formatBytes(original.size), color: "var(--text-muted)" },
-                  {
-                    label: "Target Size",
-                    value: compressed ? formatBytes(compressed.size) : "Calculating...",
-                    color: "var(--text-primary)",
-                  },
-                  {
-                    label: "Space Optimized",
-                    value: compressed ? `${savings}%` : "0%",
-                    color: savings > 0 ? "#10b981" : "var(--text-muted)",
-                  },
-                  {
-                    label: "Image Bounds",
-                    value: compressed ? `${compressed.width} × ${compressed.height} px` : "—",
-                    color: "var(--text-muted)",
-                  },
-                ].map((stat) => (
-                  <div key={stat.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.85rem", color: "var(--text-hint)", fontWeight: 800, fontFamily: "monospace" }}>{stat.label}</span>
-                    <span style={{ fontSize: "0.95rem", fontWeight: 900, color: stat.color, fontFamily: "monospace" }}>
-                      {stat.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+                            {(target === "image/jpeg" || target === "image/webp" || target === "image/avif") && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.05em" }}>
+                                        QUALITY
+                                    </span>
+                                    <input
+                                        type="range"
+                                        min={30}
+                                        max={95}
+                                        value={Math.round(quality * 100)}
+                                        onChange={(e) => setQuality(Number(e.target.value) / 100)}
+                                        style={{ flex: 1, minWidth: 160, accentColor: "#000" }}
+                                    />
+                                    <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800 }}>
+                                        {Math.round(quality * 100)}%
+                                    </span>
+                                </div>
+                            )}
 
-            {/* Bottom Actions */}
-            <div style={{ display: "flex", gap: 20, justifyContent: "space-between", alignItems: "flex-end" }}>
-              <button className="brutalist-button brutalist-button-red" onClick={reset}>
-                <RefreshCw size={16} style={{ marginRight: 2 }} /> New Image
-              </button>
-              
-              <ExportButton 
-                onExportPNG={() => downloadFormat("image/png")}
-                onExportJPEG={() => downloadFormat("image/jpeg")}
-                onExportWebP={() => downloadFormat("image/webp")}
-              />
+                            {hasPdf && target !== "application/pdf" && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.05em" }}>
+                                        PDF RENDER SCALE
+                                    </span>
+                                    {[
+                                        [1, "1× SHARP"],
+                                        [1.5, "1.5× CRISP"],
+                                        [2, "2× PRINT"],
+                                    ].map(([s, label]) => (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            className="brutalist-button"
+                                            onClick={() => setPdfScale(s as number)}
+                                            style={{
+                                                padding: "5px 10px",
+                                                fontSize: "0.66rem",
+                                                fontFamily: "monospace",
+                                                fontWeight: 900,
+                                                background: pdfScale === s ? "#000" : "#fff",
+                                                color: pdfScale === s ? "#fff" : "#000",
+                                            }}
+                                        >
+                                            {label as string}
+                                        </button>
+                                    ))}
+                                    <span style={{ fontSize: "0.66rem", color: "#666", fontFamily: "monospace" }}>
+                                        every PDF page becomes its own image
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* File list */}
+                        <div className="brutalist-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, maxHeight: "42vh", overflowY: "auto" }}>
+                            {items.map((item) => {
+                                const estDelta =
+                                    item.est !== undefined && item.est > 0
+                                        ? Math.round((1 - item.est / item.file.size) * 100)
+                                        : null;
+                                return (
+                                    <div
+                                        key={item.id}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 10,
+                                            padding: "8px 10px",
+                                            border: "2px solid #000",
+                                            background: item.error ? "#fee2e2" : "#fafafa",
+                                            flexWrap: "wrap",
+                                        }}
+                                    >
+                                        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 2, fontSize: "0.78rem", fontWeight: 700 }}>
+                                            {item.kind === "pdf" ? <FileText size={15} /> : <ImageIcon size={15} />}
+                                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                {item.file.name}
+                                            </span>
+                                            {item.kind === "pdf" && item.pages ? (
+                                                <span style={{ fontSize: "0.64rem", color: "#666", fontFamily: "monospace" }}>· {item.pages} PAGES</span>
+                                            ) : null}
+                                        </span>
+                                        <span style={{ fontSize: "0.68rem", fontFamily: "monospace", color: "#555", flex: 1 }}>
+                                            {formatBytes(item.file.size)} →{" "}
+                                            {item.busy ? (
+                                                "…"
+                                            ) : item.error ? (
+                                                <span style={{ color: "#b91c1c" }}>{item.error}</span>
+                                            ) : item.est !== undefined ? (
+                                                <span style={{ fontWeight: 800, color: estDelta && estDelta > 0 ? "#059669" : "#b45309" }}>
+                                                    ≈ {formatBytes(item.est)}
+                                                    {estDelta !== null ? ` (${estDelta > 0 ? "−" : "+"}${Math.abs(estDelta)}%)` : ""}
+                                                </span>
+                                            ) : (
+                                                "estimating…"
+                                            )}
+                                        </span>
+                                        {item.outs && item.outs.length > 0 && !item.busy ? (
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                onClick={() => downloadItem(item)}
+                                                style={{ padding: "4px 10px", fontSize: "0.64rem", display: "flex", alignItems: "center", gap: 5 }}
+                                            >
+                                                <Download size={13} /> {item.outs.length > 1 ? `${item.outs.length} FILES` : "SAVE"}
+                                            </button>
+                                        ) : (
+                                            <span style={{ fontSize: "0.64rem", fontFamily: "monospace", color: item.busy ? "#000" : "#999", minWidth: 60 }}>
+                                                {item.busy ? item.status ?? "…" : item.status ?? ""}
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => removeItem(item.id)}
+                                            title="Remove"
+                                            style={{ border: "none", background: "none", cursor: "pointer", display: "flex", padding: 2, color: "#000" }}
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                            <button
+                                type="button"
+                                onClick={() => fileRef.current?.click()}
+                                className="brutalist-button"
+                                style={{ padding: "6px 12px", fontSize: "0.68rem", alignSelf: "flex-start" }}
+                            >
+                                + ADD MORE FILES
+                            </button>
+                        </div>
+
+                        {/* Stats + actions */}
+                        <div className="brutalist-card" style={{ padding: 16, display: "flex", gap: 20, justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                                {[
+                                    [`${items.length}`, "FILES QUEUED"],
+                                    [formatBytes(totalIn), "TOTAL IN"],
+                                    [`≈ ${formatBytes(estTotal)}`, "ESTIMATED OUT"],
+                                    [`${savings > 0 ? "−" : ""}${Math.abs(savings)}%`, "EST. SAVINGS"],
+                                ].map(([v, l]) => (
+                                    <div key={l} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                        <span style={{ fontSize: "1.15rem", fontWeight: 900, fontFamily: "monospace" }}>{v}</span>
+                                        <span style={{ fontSize: "0.6rem", fontFamily: "monospace", color: "#666", letterSpacing: "0.05em" }}>{l}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                {note && (
+                                    <span style={{ fontSize: "0.68rem", fontFamily: "monospace", color: "#444" }}>{note}</span>
+                                )}
+                                <button type="button" className="brutalist-button" onClick={clearAll} disabled={converting} style={{ padding: "9px 14px", fontSize: "0.72rem" }}>
+                                    CLEAR
+                                </button>
+                                <button
+                                    type="button"
+                                    className="brutalist-button"
+                                    disabled={readyCount === 0 || converting}
+                                    onClick={() => void downloadAll()}
+                                    style={{ padding: "9px 14px", fontSize: "0.72rem", display: "flex", alignItems: "center", gap: 6 }}
+                                >
+                                    <FolderDown size={15} /> DOWNLOAD ALL {readyCount > 0 ? `(${readyCount})` : ""}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="brutalist-button brutalist-button-primary"
+                                    disabled={converting || items.length === 0}
+                                    onClick={() => void convertAll()}
+                                    style={{ padding: "9px 16px", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 6 }}
+                                >
+                                    <Zap size={15} /> {converting ? "CONVERTING…" : `CONVERT ${items.length} FILE${items.length === 1 ? "" : "S"}`}
+                                </button>
+                            </div>
+                        </div>
+
+                        {readyCount > 0 && (
+                            <NextStepRow
+                                currentHref="/compressor"
+                                heading="CONVERTED — KEEP GOING"
+                                onDownload={() => void downloadAll()}
+                                downloadLabel="ZIP"
+                                onBeforeNavigate={(href) => handoffFirst(href)}
+                            />
+                        )}
+
+                        <p style={{ fontSize: "0.68rem", color: "#888", fontFamily: "monospace", margin: 0, textAlign: "center" }}>
+                            ESTIMATES ARE COMPUTED LOCALLY BY RENDERING EACH FILE — EXACT BYTES APPEAR AFTER CONVERSION ·
+                            PDF ENGINE (pdf.js) & PDF WRITER (pdf-lib) LOAD ONLY WHEN FIRST NEEDED
+                        </p>
+                    </div>
+                )}
+
+                <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,.pdf,.svg"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                        addFiles(e.target.files);
+                        e.currentTarget.value = "";
+                    }}
+                />
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 }

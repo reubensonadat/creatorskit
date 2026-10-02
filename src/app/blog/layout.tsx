@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { toolMetadata, buildKeywords, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'CreatorKit Blog — Creator Growth, Tools & Monetization Guides',
+    title: 'CreatorsKit Blog — Creator Growth, Tools & Monetization Guides',
     description:
         'Practical guides for creators: growing on YouTube and TikTok, monetization, invoicing brands, thumbnails, captions and the business of content.',
     path: '/blog',

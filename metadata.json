@@ -1,6 +1,8 @@
 {
-  "name": "3D Space Planner",
-  "description": "Professional 3D studio space planner for creators, filmmakers, and podcasters with optical camera simulation, lighting design, and production blueprint PDF exports.",
-  "requestFramePermissions": ["camera", "microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "CreatorsKit",
+  "description": "All-in-one brutalist creator production suite — teleprompter, auto captions, text-behind posters, invoices and creator utilities. Free, instant, in-browser.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }

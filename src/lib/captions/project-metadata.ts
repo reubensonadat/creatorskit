@@ -1,15 +1,15 @@
 /**
- * CreatorKit Project Metadata & Media Embedding Engine
+ * CreatorsKit Project Metadata & Media Embedding Engine
  * =====================================================
  * Implements the "Magic Trick":
  * 1. Embeds teleprompter scripts, cues, and studio project settings directly
  *    into recorded video/audio media blobs as a trailing container chunk.
  *    Media decoders (HTML5 <video>/<audio>, Web Audio API, VLC, Premiere) ignore
- *    trailing data past frame clusters, while CreatorKit reads the embedded JSON
+ *    trailing data past frame clusters, while CreatorsKit reads the embedded JSON
  *    instantly on drag & drop or file selection.
  * 2. Manages zero-loss 1-Click Handoff between Teleprompter and Auto Captions
  *    using high-capacity IndexedDB, completely eliminating fragile localStorage size limits.
- * 3. Exports & parses unified .ckcaptions and .json CreatorKit project archives.
+ * 3. Exports & parses unified .ckcaptions and .json CreatorsKit project archives.
  */
 
 import { SubtitleCue } from './vtt-formatter';
@@ -64,7 +64,7 @@ export async function embedMetadataIntoMediaBlob(
 }
 
 /**
- * Inspects a dropped or selected File/Blob to extract embedded CreatorKit script metadata.
+ * Inspects a dropped or selected File/Blob to extract embedded CreatorsKit script metadata.
  * Reads the trailing 256KB of the file where the magic marker resides.
  */
 export async function extractMetadataFromMediaBlob(

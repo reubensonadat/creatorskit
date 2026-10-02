@@ -86,7 +86,7 @@ function AdminPostEditor() {
       ],
       quote: {
         text: 'A memorable, high-impact quote summarizing the core philosophy.',
-        speaker: 'CreatorKit Research Lab',
+        speaker: 'CreatorsKit Research Lab',
       },
       keyInsight: 'The single most important takeaway the reader must remember.',
     },
@@ -190,7 +190,7 @@ function AdminPostEditor() {
       instagramUrl: instagramUrl.trim() || undefined,
       videoCredit: videoChannel || videoTitle ? { channel: videoChannel, title: videoTitle, url: videoUrl } : undefined,
       author: {
-        name: 'CreatorKit Research Lab',
+        name: 'CreatorsKit Research Lab',
         role: 'Viral Storytelling & Creator Monetization',
       },
       tags,
@@ -368,7 +368,7 @@ function AdminPostEditor() {
                 type="text"
                 value={subtitle}
                 onChange={(e) => setSubtitle(e.target.value)}
-                placeholder="A CreatorKit deep dive into the business models and psychology of modern monetization..."
+                placeholder="A CreatorsKit deep dive into the business models and psychology of modern monetization..."
                 style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #000', fontSize: '0.88rem', fontWeight: 600, outline: 'none' }}
               />
             </div>

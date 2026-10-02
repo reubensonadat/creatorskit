@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, faqJsonLd, jsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Creator Business & Legal Suite — Free Influencer Invoices & Contracts | CreatorKit',
+    title: 'Creator Business & Legal Suite — Free Influencer Invoices & Contracts | CreatorsKit',
     description:
         'Free influencer brand-deal invoices, sponsorship agreements, payment receipts and pitch letterheads. Mobile money ready, printable, no signup.',
     path: '/business',
@@ -59,7 +59,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorKit Business & Legal Suite',
+        name: 'CreatorsKit Business & Legal Suite',
         description:
             'Free suite of creator business documents: brand-deal invoices, sponsorship agreements, payment receipts and pitch letterheads. Mobile-money ready and printable.',
         path: '/business',

@@ -1,5 +1,5 @@
 /**
- * Whisper Web Worker for CreatorKit
+ * Whisper Web Worker for CreatorsKit
  * =================================
  * Runs @huggingface/transformers in a dedicated worker thread with WebGPU or WebAssembly.
  * 100% Client-Side. $0 Server Cost.

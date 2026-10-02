@@ -192,7 +192,7 @@ export function CreativePitchLetterhead({ data, showBranding = true }: Letterhea
       {/* Footer */}
       {showBranding && (
         <div style={{ marginTop: 36, paddingTop: 12, borderTop: '1px solid #f3f4f6', textAlign: 'center', fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>
@@ -293,7 +293,7 @@ export function ExecutiveProposalLetterhead({ data, showBranding = true }: Lette
 
       {showBranding && (
         <div style={{ marginTop: 32, paddingTop: 10, borderTop: '1px solid #f3f4f6', textAlign: 'center', fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-          Powered by CreatorKit
+          Powered by CreatorsKit
         </div>
       )}
     </div>

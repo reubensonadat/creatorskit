@@ -1,5 +1,7 @@
 'use client';
 
+import { ThinkingOrb } from 'thinking-orbs';
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { takeHandoffImage } from '@/lib/tool-handoff';
@@ -42,10 +44,8 @@ import {
   Timer,
   Edit3,
   Check,
-  PanelLeftOpen,
   Link2,
 } from 'lucide-react';
-import { ALL_TOOLS } from '@/data/tools';
 import { fetchCompetitorsFromDatabase, saveCompetitorToDatabase } from '@/lib/supabase';
 import { formatTimeAgo } from '@/lib/date-utils';
 
@@ -100,7 +100,7 @@ export interface YouTubeShortItem {
   isCandidate?: boolean;
 }
 
-import StudioToolsDropdown from '@/components/StudioToolsDropdown';
+import SiteNav from '@/components/nav/SiteNav';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 
 export const PRESET_CATEGORIES = [
@@ -212,7 +212,6 @@ export default function ThumbnailLabPage() {
   const [mobileFeedTab, setMobileFeedTab] = useState<'home' | 'shorts' | 'subscriptions' | 'you'>('home');
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
-  const [toolsSidebarOpen, setToolsSidebarOpen] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
@@ -476,7 +475,7 @@ export default function ThumbnailLabPage() {
                 const cachedStr = localStorage.getItem(CACHE_KEY);
                 const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
                 localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, longform: next }));
-              } catch {}
+              } catch { }
             }
             return next;
           });
@@ -500,7 +499,7 @@ export default function ThumbnailLabPage() {
                 const cachedStr = localStorage.getItem(CACHE_KEY);
                 const cached = cachedStr ? JSON.parse(cachedStr) : { longform: [], shorts: [] };
                 localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cached, shorts: next }));
-              } catch {}
+              } catch { }
             }
             return next;
           });
@@ -561,7 +560,7 @@ export default function ThumbnailLabPage() {
               longform: cached.longform || [],
               shorts: [newShort, ...(cached.shorts || []).filter((i: any) => i.id !== newShort.id)],
             }));
-          } catch {}
+          } catch { }
         }
 
         const saveRes = await saveCompetitorToDatabase({
@@ -609,7 +608,7 @@ export default function ThumbnailLabPage() {
               longform: [newLong, ...(cached.longform || []).filter((i: any) => i.id !== newLong.id)],
               shorts: cached.shorts || [],
             }));
-          } catch {}
+          } catch { }
         }
 
         const saveRes = await saveCompetitorToDatabase({
@@ -827,7 +826,7 @@ export default function ThumbnailLabPage() {
   };
 
   // ── Cross-tool hand-off ──────────────────────────────────────────────────
-  // Other CreatorKit tools (e.g. text-behind "OPEN IN THUMBNAIL LAB") send
+  // Other CreatorsKit tools (e.g. text-behind "OPEN IN THUMBNAIL LAB") send
   // their canvas via src/lib/tool-handoff.ts — consume it once on mount.
   useEffect(() => {
     let cancelled = false;
@@ -942,31 +941,8 @@ Tested on YouTube Simulator.`;
         }}
       >
         <div className="fs-header-left" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {/* Standard Sidebar Drawer Toggle Button */}
-          <button
-            onClick={() => setToolsSidebarOpen((v) => !v)}
-            aria-label={toolsSidebarOpen ? 'Close tools navigation' : 'Open tools navigation'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 28,
-              height: 28,
-              background: toolsSidebarOpen ? '#FFE500' : '#27272a',
-              color: toolsSidebarOpen ? '#000000' : '#ffffff',
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              fontWeight: 900,
-              borderRadius: 3,
-              border: '1.5px solid #000',
-              boxShadow: '1.5px 1.5px 0 #000',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-            title="Tools Navigation"
-          >
-            <PanelLeftOpen size={15} />
-          </button>
+          {/* Searchable tool menu — single source of truth (src/components/nav/SiteNav.tsx) */}
+          <SiteNav mode="floating" currentHref="/thumbnail-lab" theme="dark" align="left" />
 
           {/* Standard Home Back Button */}
           <Link
@@ -1822,191 +1798,191 @@ Tested on YouTube Simulator.`;
                 {/* Scrollable feed area — only the feed scrolls; header & bottom nav stay pinned (YouTube native) */}
                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }} className="no-scrollbar">
                   {mobileFeedTab === 'home' && (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {longformFeed.map((video, idx) => {
-                    const isCandidate = video.isCandidate;
-                    return (
-                      <React.Fragment key={video.id + idx}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            marginBottom: 20,
-                            position: 'relative',
-                            border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none',
-                            cursor: isCandidate ? 'pointer' : 'default',
-                          }}
-                          onClick={() => {
-                            if (isCandidate) {
-                              setActiveSidebarTab('candidates');
-                              if (isMobileScreen) setMobileActiveView('variations');
-                            }
-                          }}
-                        >
-                          <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', background: '#1c1c1c', overflow: 'hidden' }}>
-                            <img
-                              src={video.imageUrl}
-                              alt={video.title}
-                              onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_16_9; }}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }}
-                            />
-                            {showDurationBadge && (
-                              <div style={{ position: 'absolute', bottom: 6, right: 6, background: video.isLive ? '#cc0000' : 'rgba(0,0,0,0.85)', color: '#ffffff', fontSize: '0.68rem', fontWeight: 700, padding: '2px 4px', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                {video.isLive && <Radio size={10} />}
-                                {video.duration}
-                              </div>
-                            )}
-                            {isCandidate && showCandidateBadge && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: 6,
-                                  left: 6,
-                                  background: '#FFE500',
-                                  color: '#000',
-                                  fontFamily: 'monospace',
-                                  fontWeight: 900,
-                                  fontSize: '0.6rem',
-                                  padding: '2px 6px',
-                                  borderRadius: 2,
-                                  border: '1px solid #000',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  boxShadow: '1.5px 1.5px 0 #000',
-                                }}
-                              >
-                                <Edit3 size={10} /> YOUR VIDEO (CLICK TO EDIT)
-                              </div>
-                            )}
-                          </div>
-
-                          <div style={{ display: 'flex', padding: '10px 12px 0', gap: 12 }}>
-                            <img
-                              src={video.channelAvatar}
-                              alt={video.channelName}
-                              referrerPolicy="no-referrer"
-                              onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(video.channelName)}`; }}
-                              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.92rem', fontWeight: 600, lineHeight: 1.35, color: '#ffffff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                {video.title}
-                              </div>
-                              <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span>{video.channelName}</span>
-                                {video.verified && <span style={{ fontSize: '0.6rem' }}>✓</span>}
-                              </div>
-                              <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 1 }}>{video.views} • {formatTimeAgo(video.publishedAt || video.timeAgo)}</div>
-                            </div>
-                            <MoreVertical size={18} color="#aaaaaa" style={{ flexShrink: 0, marginTop: 2 }} />
-                          </div>
-                        </div>
-
-                        {/* Native YouTube Shorts Shelf Embedded on Home Feed */}
-                        {idx === 0 && shortsFeed.length > 0 && (
-                          <div style={{ padding: '16px 12px 20px', borderTop: '6px solid #1c1c1c', borderBottom: '6px solid #1c1c1c', marginBottom: 20 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ width: 22, height: 26, background: '#ff0000', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Zap size={15} color="#ffffff" />
-                                </div>
-                                <span style={{ fontWeight: 800, fontSize: '1.08rem', color: '#ffffff', letterSpacing: '-0.02em' }}>Shorts</span>
-                              </div>
-                              <MoreVertical size={18} color="#aaaaaa" style={{ cursor: 'pointer' }} />
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                              {shortsFeed.slice(0, 4).map((short, sIdx) => (
-                                <div
-                                  key={short.id + sIdx}
-                                  style={{
-                                    position: 'relative',
-                                    borderRadius: 12,
-                                    overflow: 'hidden',
-                                    background: '#1c1c1c',
-                                    aspectRatio: '9/16',
-                                    border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none',
-                                    cursor: short.isCandidate ? 'pointer' : 'default',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                  }}
-                                  onClick={() => {
-                                    if (short.isCandidate) {
-                                      setActiveSidebarTab('candidates');
-                                      if (isMobileScreen) setMobileActiveView('variations');
-                                    }
-                                  }}
-                                >
-                                  <img
-                                    src={getShortsCoverUrl(short.imageUrl, short.id)}
-                                    alt={short.title}
-                                    referrerPolicy="no-referrer"
-                                    onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${short.id}/maxresdefault.jpg`; }}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                  />
-                                  <div style={{ position: 'absolute', top: 6, right: 6 }}>
-                                    <MoreVertical size={16} color="#ffffff" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.8))' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {longformFeed.map((video, idx) => {
+                        const isCandidate = video.isCandidate;
+                        return (
+                          <React.Fragment key={video.id + idx}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                marginBottom: 20,
+                                position: 'relative',
+                                border: revealHighlight && isCandidate ? '2px solid #FFE500' : 'none',
+                                cursor: isCandidate ? 'pointer' : 'default',
+                              }}
+                              onClick={() => {
+                                if (isCandidate) {
+                                  setActiveSidebarTab('candidates');
+                                  if (isMobileScreen) setMobileActiveView('variations');
+                                }
+                              }}
+                            >
+                              <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', background: '#1c1c1c', overflow: 'hidden' }}>
+                                <img
+                                  src={video.imageUrl}
+                                  alt={video.title}
+                                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_THUMB_16_9; }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', aspectRatio: '16/9', display: 'block' }}
+                                />
+                                {showDurationBadge && (
+                                  <div style={{ position: 'absolute', bottom: 6, right: 6, background: video.isLive ? '#cc0000' : 'rgba(0,0,0,0.85)', color: '#ffffff', fontSize: '0.68rem', fontWeight: 700, padding: '2px 4px', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    {video.isLive && <Radio size={10} />}
+                                    {video.duration}
                                   </div>
-                                  {short.isCandidate && showCandidateBadge && (
+                                )}
+                                {isCandidate && showCandidateBadge && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      top: 6,
+                                      left: 6,
+                                      background: '#FFE500',
+                                      color: '#000',
+                                      fontFamily: 'monospace',
+                                      fontWeight: 900,
+                                      fontSize: '0.6rem',
+                                      padding: '2px 6px',
+                                      borderRadius: 2,
+                                      border: '1px solid #000',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      boxShadow: '1.5px 1.5px 0 #000',
+                                    }}
+                                  >
+                                    <Edit3 size={10} /> YOUR VIDEO (CLICK TO EDIT)
+                                  </div>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', padding: '10px 12px 0', gap: 12 }}>
+                                <img
+                                  src={video.channelAvatar}
+                                  alt={video.channelName}
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => { e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(video.channelName)}`; }}
+                                  style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.92rem', fontWeight: 600, lineHeight: 1.35, color: '#ffffff', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {video.title}
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span>{video.channelName}</span>
+                                    {video.verified && <span style={{ fontSize: '0.6rem' }}>✓</span>}
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: '#aaaaaa', marginTop: 1 }}>{video.views} • {formatTimeAgo(video.publishedAt || video.timeAgo)}</div>
+                                </div>
+                                <MoreVertical size={18} color="#aaaaaa" style={{ flexShrink: 0, marginTop: 2 }} />
+                              </div>
+                            </div>
+
+                            {/* Native YouTube Shorts Shelf Embedded on Home Feed */}
+                            {idx === 0 && shortsFeed.length > 0 && (
+                              <div style={{ padding: '16px 12px 20px', borderTop: '6px solid #1c1c1c', borderBottom: '6px solid #1c1c1c', marginBottom: 20 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ width: 22, height: 26, background: '#ff0000', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <Zap size={15} color="#ffffff" />
+                                    </div>
+                                    <span style={{ fontWeight: 800, fontSize: '1.08rem', color: '#ffffff', letterSpacing: '-0.02em' }}>Shorts</span>
+                                  </div>
+                                  <MoreVertical size={18} color="#aaaaaa" style={{ cursor: 'pointer' }} />
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                                  {shortsFeed.slice(0, 4).map((short, sIdx) => (
                                     <div
+                                      key={short.id + sIdx}
                                       style={{
-                                        position: 'absolute',
-                                        top: 6,
-                                        left: 6,
-                                        background: '#FFE500',
-                                        color: '#000',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 900,
-                                        fontSize: '0.55rem',
-                                        padding: '2px 5px',
-                                        borderRadius: 2,
-                                        border: '1px solid #000',
+                                        position: 'relative',
+                                        borderRadius: 12,
+                                        overflow: 'hidden',
+                                        background: '#1c1c1c',
+                                        aspectRatio: '9/16',
+                                        border: revealHighlight && short.isCandidate ? '2px solid #FFE500' : 'none',
+                                        cursor: short.isCandidate ? 'pointer' : 'default',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                      }}
+                                      onClick={() => {
+                                        if (short.isCandidate) {
+                                          setActiveSidebarTab('candidates');
+                                          if (isMobileScreen) setMobileActiveView('variations');
+                                        }
                                       }}
                                     >
-                                      YOUR SHORT
+                                      <img
+                                        src={getShortsCoverUrl(short.imageUrl, short.id)}
+                                        alt={short.title}
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${short.id}/maxresdefault.jpg`; }}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                      />
+                                      <div style={{ position: 'absolute', top: 6, right: 6 }}>
+                                        <MoreVertical size={16} color="#ffffff" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.8))' }} />
+                                      </div>
+                                      {short.isCandidate && showCandidateBadge && (
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            top: 6,
+                                            left: 6,
+                                            background: '#FFE500',
+                                            color: '#000',
+                                            fontFamily: 'monospace',
+                                            fontWeight: 900,
+                                            fontSize: '0.55rem',
+                                            padding: '2px 5px',
+                                            borderRadius: 2,
+                                            border: '1px solid #000',
+                                          }}
+                                        >
+                                          YOUR SHORT
+                                        </div>
+                                      )}
+                                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '24px 8px 8px', background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)', color: '#fff' }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, lineHeight: 1.25, color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                          {short.title}
+                                        </div>
+                                        <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.8)', marginTop: 3, fontWeight: 500 }}>{short.views}</div>
+                                      </div>
                                     </div>
-                                  )}
-                                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '24px 8px 8px', background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)', color: '#fff' }}>
-                                    <div style={{ fontSize: '0.8rem', fontWeight: 700, lineHeight: 1.25, color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                      {short.title}
-                                    </div>
-                                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.8)', marginTop: 3, fontWeight: 500 }}>{short.views}</div>
-                                  </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
 
-                  {/* Load More Button in Mobile Home Feed */}
-                  <div style={{ padding: '20px 12px 32px', display: 'flex', justifyContent: 'center' }}>
-                    <button
-                      onClick={handleLoadMoreCompetitors}
-                      disabled={isLoadingMore}
-                      style={{
-                        padding: '10px 20px',
-                        background: '#18181b',
-                        color: '#FFE500',
-                        border: '1.5px solid #FFE500',
-                        borderRadius: 4,
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.76rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        boxShadow: '2.5px 2.5px 0 #000',
-                      }}
-                    >
-                      {isLoadingMore ? <Activity size={14} className="animate-spin" /> : <Plus size={14} />}
-                      {isLoadingMore ? 'FETCHING FROM DATABASE...' : 'LOAD MORE COMPETITORS'}
-                    </button>
-                  </div>
-                  </div>
+                      {/* Load More Button in Mobile Home Feed */}
+                      <div style={{ padding: '20px 12px 32px', display: 'flex', justifyContent: 'center' }}>
+                        <button
+                          onClick={handleLoadMoreCompetitors}
+                          disabled={isLoadingMore}
+                          style={{
+                            padding: '10px 20px',
+                            background: '#18181b',
+                            color: '#FFE500',
+                            border: '1.5px solid #FFE500',
+                            borderRadius: 4,
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.76rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            boxShadow: '2.5px 2.5px 0 #000',
+                          }}
+                        >
+                          {isLoadingMore ? <ThinkingOrb size={20} state="searching" /> : <Plus size={14} />}
+                          {isLoadingMore ? 'FETCHING FROM DATABASE...' : 'LOAD MORE COMPETITORS'}
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {/* Shorts tab: the Shorts shelf lives here, inside the Shorts section (native YouTube) */}
@@ -2190,7 +2166,7 @@ Tested on YouTube Simulator.`;
                       boxShadow: '3px 3px 0 #000',
                     }}
                   >
-                    {isLoadingMore ? <Activity size={15} className="animate-spin" /> : <Plus size={15} />}
+                    {isLoadingMore ? <ThinkingOrb size={20} state="searching" /> : <Plus size={15} />}
                     {isLoadingMore ? 'FETCHING FROM DATABASE...' : 'LOAD MORE COMPETITORS'}
                   </button>
                 </div>
@@ -2721,119 +2697,6 @@ Tested on YouTube Simulator.`;
         </aside>
       </div>
 
-      {/* ── Tools Navigation Sidebar Drawer Overlay ── */}
-      {toolsSidebarOpen && (
-        <div
-          onClick={() => setToolsSidebarOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 9900,
-          }}
-        />
-      )}
-
-      {/* ── Tools Navigation Sidebar Drawer ── */}
-      <aside
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: toolsSidebarOpen ? 0 : '-300px',
-          width: 280,
-          bottom: 0,
-          background: '#141416',
-          borderRight: '2px solid #000',
-          display: 'flex',
-          flexDirection: 'column',
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          transition: 'left 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
-          zIndex: 9901,
-          boxShadow: toolsSidebarOpen ? '6px 0 25px rgba(0,0,0,0.9)' : 'none',
-        }}
-      >
-        <div
-          style={{
-            padding: '12px 16px',
-            borderBottom: '2px solid #27272a',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: '#09090b',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-          }}
-        >
-          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#FFE500', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'monospace' }}>
-            TOOLS NAVIGATION
-          </div>
-          <button
-            onClick={() => setToolsSidebarOpen(false)}
-            aria-label="Close tools navigation"
-            style={{
-              background: '#27272a',
-              border: '1px solid #3f3f46',
-              borderRadius: 3,
-              cursor: 'pointer',
-              color: '#fff',
-              padding: '3px 6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {ALL_TOOLS.map((tool) => {
-            const isActive = tool.href === '/thumbnail-lab';
-            return (
-              <Link
-                key={tool.href}
-                href={tool.href}
-                onClick={() => setToolsSidebarOpen(false)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '9px 12px',
-                  borderRadius: 4,
-                  textDecoration: 'none',
-                  background: isActive ? '#FFE500' : 'transparent',
-                  color: isActive ? '#000000' : '#e4e4e7',
-                  fontWeight: isActive ? 900 : 700,
-                  fontSize: '0.78rem',
-                  fontFamily: 'monospace',
-                  border: isActive ? '1.5px solid #000' : '1.5px solid transparent',
-                  boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                  transition: 'all 0.1s ease',
-                }}
-              >
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.label}</span>
-                <span
-                  style={{
-                    fontSize: '0.55rem',
-                    padding: '2px 6px',
-                    borderRadius: 3,
-                    background: isActive ? '#000000' : '#27272a',
-                    color: isActive ? '#FFE500' : '#a1a1aa',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {tool.hint}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </aside>
     </div>
   );
 }
