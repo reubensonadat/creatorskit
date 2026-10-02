@@ -15,8 +15,7 @@ import {
   LayoutGrid,
   Stamp,
 } from "lucide-react";
-import JSZip from "jszip";
-import { exportCanvasVideoToMp4, downloadBlob } from "@/lib/canvas-video-exporter";
+import { exportCanvasVideoToMp4, downloadBlob, seekVideo, decodeAudioFromFile } from "@/lib/canvas-video-exporter";
 import {
   drawWatermark,
   loadImageFromFile,
@@ -28,6 +27,7 @@ import {
 import { TactileScrubber } from "@/components/tactile-scrubber";
 import NextStepRow from "@/components/NextStepRow";
 import { takeHandoffImage } from "@/lib/tool-handoff";
+import { loadAssets, loadState, saveAssets, saveState } from "@/lib/local-memory";
 
 type FitMode = "blur-fill" | "gradient" | "fill" | "contain";
 type OutFormat = "png" | "jpg" | "webp";
@@ -227,56 +227,8 @@ function drawSafeZoneOverlay(ctx: CanvasRenderingContext2D, W: number, H: number
   ctx.restore();
 }
 
-/** Seeks a video and resolves once the frame is actually decodable. */
-function seekVideo(video: HTMLVideoElement, t: number): Promise<void> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      video.removeEventListener("seeked", finish);
-      resolve();
-    };
-    video.addEventListener("seeked", finish);
-    const clamped = Math.min(Math.max(0, t), Math.max(0, (video.duration || 0) - 0.02));
-    if (Math.abs(video.currentTime - clamped) < 0.001) {
-      requestAnimationFrame(() => requestAnimationFrame(finish));
-      return;
-    }
-    video.currentTime = clamped;
-    setTimeout(finish, 800); // safety net for stubborn streams
-  });
-}
-
-/** Decodes the audio track of the source file (best effort — null when silent/unsupported). */
-async function decodeAudioFromFile(file: File | null, startSec: number, endSec: number): Promise<AudioBuffer | null> {
-  if (!file) return null;
-  try {
-    const AC: typeof AudioContext =
-      window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
-    const ac = new AC();
-    const raw = await file.arrayBuffer();
-    const decoded = await ac.decodeAudioData(raw);
-    void ac.close();
-    return sliceAudioBuffer(decoded, startSec, endSec);
-  } catch {
-    return null;
-  }
-}
-
-function sliceAudioBuffer(buf: AudioBuffer, start: number, end: number): AudioBuffer {
-  const sr = buf.sampleRate;
-  const s = Math.max(0, Math.floor(start * sr));
-  const e = Math.min(buf.length, Math.ceil(end * sr));
-  if (s === 0 && e === buf.length) return buf;
-  const len = Math.max(1, e - s);
-  const out = new AudioBuffer({ length: len, numberOfChannels: buf.numberOfChannels, sampleRate: sr });
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    out.copyToChannel(buf.getChannelData(ch).subarray(s, e), ch);
-  }
-  return out;
-}
+// seekVideo + decodeAudioFromFile live in src/lib/canvas-video-exporter.ts
+// (promoted there in Phase 7.2 so batch watermark shares the exact pipeline).
 
 export default function ResizerPage() {
   // Media State (Image or Video)
@@ -336,6 +288,7 @@ export default function ResizerPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const hydratedRef = useRef(false);
   const animFrameRef = useRef<number | null>(null);
   const isMouseDownRef = useRef(false);
   const dragStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -543,6 +496,8 @@ export default function ResizerPage() {
     const isVid = f.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(f.name);
     setIsVideo(isVid);
     setSourceFile(f);
+    // Phase 7.1 — remember the last source file (IndexedDB, on-device only).
+    void saveAssets("resizer", "Format Resizer", [{ slot: "0", blob: f, name: f.name }]);
 
     if (isVid) {
       const url = URL.createObjectURL(f);
@@ -573,10 +528,43 @@ export default function ResizerPage() {
     handleFileUploadRef.current = handleFileUpload;
   }, [handleFileUpload]);
 
-  // Cross-tool hand-off intake (§4): match-cut / auto-captions pass the source
-  // FILE (video), watermark & friends pass images — feed straight into upload.
+  // Phase 7.1 — restore the last source file + formatting presets from local
+  // memory (on-device only). A pending §4 hand-off (match-cut / auto-captions
+  // pass the source FILE as video; watermark & friends pass images) still
+  // wins over the restore. Transform (zoom/pan) is session-only by design —
+  // handleFileUpload resets it, so it is deliberately not persisted.
   useEffect(() => {
     (async () => {
+      try {
+        const saved = await loadState<{
+          presetId: string;
+          fit: FitMode;
+          gradientId: string;
+          letterbox: string;
+          blurPercent: number;
+          format: OutFormat;
+          quality: number;
+        }>("resizer");
+        if (saved) {
+          const p = PLATFORMS.find((x) => x.id === saved.state.presetId);
+          if (p) setPreset(p);
+          setFit(saved.state.fit);
+          const g = GRADIENT_PRESETS.find((x) => x.id === saved.state.gradientId);
+          if (g) setActiveGradient(g);
+          setLetterbox(saved.state.letterbox);
+          setBlurPercent(saved.state.blurPercent);
+          setFormat(saved.state.format);
+          setQuality(saved.state.quality);
+        }
+        const stored = await loadAssets("resizer");
+        const mem = stored[0];
+        if (mem) {
+          handleFileUploadRef.current(new File([mem.blob], mem.name ?? "source", { type: mem.blob.type }));
+        }
+      } catch {
+        /* private mode / unavailable — memory is optional */
+      }
+      hydratedRef.current = true;
       const rec = await takeHandoffImage("resizer");
       if (!rec) return;
       const ext = rec.blob.type.startsWith("video/") ? "mp4" : "png";
@@ -584,6 +572,20 @@ export default function ResizerPage() {
       handleFileUploadRef.current(new File([rec.blob], name, { type: rec.blob.type }));
     })();
   }, []);
+
+  // Phase 7.1 — the formatting presets survive app close (state store).
+  useEffect(() => {
+    if (!hydratedRef.current) return; // never fire before the restore lands
+    void saveState("resizer", "Format Resizer", {
+      presetId: preset.id,
+      fit,
+      gradientId: activeGradient.id,
+      letterbox,
+      blurPercent,
+      format,
+      quality,
+    });
+  }, [preset, fit, activeGradient, letterbox, blurPercent, format, quality]);
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -684,6 +686,7 @@ export default function ResizerPage() {
 
     setIsZipping(true);
     try {
+      const JSZip = (await import("jszip")).default; // lazy per §7 — never in the page bundle
       const zip = new JSZip();
       const { w: sW, h: sH } = getMediaDimensions();
       const compose = currentCompose();
@@ -766,7 +769,7 @@ export default function ResizerPage() {
                 PHOTO & VIDEO FORMATTER
               </span>
             </div>
-            <p style={{ fontSize: "0.82rem", color: "#666", marginTop: 6, marginBottom: 0, lineHeight: 1.5 }}>
+            <p className="resizer-header-desc" style={{ fontSize: "0.82rem", color: "#666", marginTop: 6, marginBottom: 0, lineHeight: 1.5 }}>
               <strong style={{ color: "#000" }}>One master asset → every platform's exact frame.</strong> Frame the
               crop once with pan & zoom, then export all 9 formats (TikTok, Reels, Shorts, IG, YouTube, X, Pinterest,
               LinkedIn) in a single ZIP — with safe-zone guides, blur/gradient padding and your brand watermark baked in.
@@ -800,12 +803,12 @@ export default function ResizerPage() {
         </div>
 
         {/* Main Workspace Layout */}
-        <div className="tool-inner-grid" style={{ display: "grid", gridTemplateColumns: "minmax(400px, 1.3fr) 380px", gap: 20, alignItems: "start" }}>
+        <div className="tool-inner-grid resizer-workspace-grid" style={{ display: "grid", gridTemplateColumns: "minmax(400px, 1.3fr) 380px", gap: 20, alignItems: "start" }}>
           {/* Left Column: Device Stage Preview + Actions */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Canvas Monitor Card */}
             <div className="brutalist-card" style={{ padding: 18, background: "#fff", gap: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #000", paddingBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div className="resizer-monitor-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #000", paddingBottom: 10, flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {isVideo ? <Film size={18} /> : <ImageIcon size={18} />}
                   <span style={{ fontWeight: 900, fontFamily: "monospace", fontSize: "0.84rem" }}>
@@ -846,7 +849,7 @@ export default function ResizerPage() {
                       Safe Zones: {showSafeZones ? "ON" : "OFF"}
                     </button>
                   )}
-                  <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
+                  <span className="resizer-src-info" style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
                     {sourceInfo}
                   </span>
                 </div>
@@ -854,6 +857,7 @@ export default function ResizerPage() {
 
               {/* Device Viewport Stage (drop target) */}
               <div
+                className="resizer-stage"
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsDraggingOver(true);
@@ -975,6 +979,7 @@ export default function ResizerPage() {
                     const delta = e.deltaY < 0 ? 0.08 : -0.08;
                     setZoomScale((z) => Math.max(0.4, Math.min(3.0, Number((z + delta).toFixed(2)))));
                   }}
+                  className="resizer-canvas"
                   style={{
                     maxHeight: "440px",
                     maxWidth: "100%",
@@ -1077,6 +1082,7 @@ export default function ResizerPage() {
 
               {/* Sub-hint */}
               <div
+                className="resizer-drag-hint"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -1098,7 +1104,7 @@ export default function ResizerPage() {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10 }}>
+              <div className="resizer-action-buttons" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10 }}>
                 {isVideo ? (
                   !renderingVideo ? (
                     <button
@@ -1234,6 +1240,7 @@ export default function ResizerPage() {
                         ref={(el) => {
                           thumbsRef.current[i] = el;
                         }}
+                        className="resizer-thumb-canvas"
                         style={{
                           height: 110,
                           width: "auto",
@@ -1316,11 +1323,10 @@ export default function ResizerPage() {
               </div>
             </div>
 
-            {/* Resize Mode & Background Settings */}
-            <div className="brutalist-card" style={{ padding: 14, background: "#fff", gap: 10 }}>
+            <div className="brutalist-card" style={{ padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: "0.75rem", fontFamily: "monospace", fontWeight: 900 }}>
-                  FILL & BACKGROUND EFFECT
+                  FILL &amp; BACKGROUND EFFECT
                 </span>
               </div>
 
@@ -1355,16 +1361,18 @@ export default function ResizerPage() {
 
               {/* Blur Intensity Slider (% of frame width — consistent across every format) */}
               {fit === "blur-fill" && (
-                <TactileScrubber
-                  label="Blur Intensity"
-                  min={0.8}
-                  max={8}
-                  step={0.2}
-                  value={blurPercent}
-                  onChange={(v) => setBlurPercent(v)}
-                  formatValue={(v) => `${v.toFixed(1)}%`}
-                  showSteppers={false}
-                />
+                <div style={{ paddingTop: 4 }}>
+                  <TactileScrubber
+                    label="Blur Intensity"
+                    min={0.8}
+                    max={8}
+                    step={0.2}
+                    value={blurPercent}
+                    onChange={(v) => setBlurPercent(v)}
+                    formatValue={(v) => `${v.toFixed(1)}%`}
+                    showSteppers={false}
+                  />
+                </div>
               )}
 
               {/* Gradient Preset Swatches */}
@@ -1407,8 +1415,10 @@ export default function ResizerPage() {
             </div>
 
             {/* Brand Watermark — same engine as the Batch Watermark tool, baked into every export */}
-            <div className="brutalist-card" style={{ padding: 14, background: "#fff", gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="brutalist-card" style={{ padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}>
+
+              {/* ── Header row ── */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.75rem", fontFamily: "monospace", fontWeight: 900 }}>
                   <Stamp size={14} />
                   BRAND WATERMARK
@@ -1416,14 +1426,15 @@ export default function ResizerPage() {
                 <button
                   onClick={() => setWmEnabled((v) => !v)}
                   style={{
-                    padding: "3px 8px",
-                    fontSize: "0.68rem",
+                    padding: "4px 12px",
+                    fontSize: "0.7rem",
                     fontFamily: "monospace",
                     fontWeight: 900,
-                    border: "1.5px solid #000",
-                    background: wmEnabled ? "#FFE500" : "#fff",
-                    color: "#000",
+                    border: "2px solid #000",
+                    background: wmEnabled ? "#000" : "#fff",
+                    color: wmEnabled ? "#FFE500" : "#000",
                     cursor: "pointer",
+                    letterSpacing: "0.05em",
                   }}
                 >
                   {wmEnabled ? "ON" : "OFF"}
@@ -1432,6 +1443,7 @@ export default function ResizerPage() {
 
               {wmEnabled && (
                 <>
+                  {/* ── Group 1: Mode toggle ── */}
                   <div style={{ display: "flex", border: "2px solid #000", background: "#fff" }}>
                     {(["text", "logo"] as WatermarkMode[]).map((m, idx) => (
                       <button
@@ -1439,7 +1451,7 @@ export default function ResizerPage() {
                         onClick={() => setWmMode(m)}
                         style={{
                           flex: 1,
-                          padding: "7px 2px",
+                          padding: "9px 2px",
                           border: "none",
                           borderRight: idx === 0 ? "2px solid #000" : "none",
                           background: wmMode === m ? "#000" : "#fff",
@@ -1456,25 +1468,29 @@ export default function ResizerPage() {
                     ))}
                   </div>
 
+                  {/* ── Divider ── */}
+                  <div style={{ borderTop: "1.5px dashed #d4d4d8", margin: "14px 0" }} />
+
+                  {/* ── Group 2: Text / Logo input ── */}
                   {wmMode === "text" ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         value={wmText}
                         onChange={(e) => setWmText(e.target.value)}
                         placeholder="@yourhandle"
-                        style={{ flex: 1, border: "2px solid #000", background: "#fff", padding: "6px 8px", fontSize: "0.78rem", fontFamily: "monospace", outline: "none", color: "#000" }}
+                        style={{ flex: 1, border: "2px solid #000", background: "#fff", padding: "8px 10px", fontSize: "0.78rem", fontFamily: "monospace", outline: "none", color: "#000" }}
                       />
                       <input
                         type="color"
                         value={wmColor}
                         onChange={(e) => setWmColor(e.target.value)}
-                        style={{ width: 40, height: 30, border: "2px solid #000", cursor: "pointer" }}
+                        style={{ width: 40, height: 36, border: "2px solid #000", cursor: "pointer" }}
                         title="Watermark color"
                       />
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <button onClick={() => wmLogoInputRef.current?.click()} className="brutalist-button" style={{ fontSize: "0.7rem", padding: "6px 10px", justifyContent: "center" }}>
+                      <button onClick={() => wmLogoInputRef.current?.click()} className="brutalist-button" style={{ fontSize: "0.7rem", padding: "8px 10px", justifyContent: "center" }}>
                         {wmLogoName ? `Logo: ${wmLogoName.slice(0, 22)}` : "Choose logo…"}
                       </button>
                       <input
@@ -1490,16 +1506,21 @@ export default function ResizerPage() {
                     </div>
                   )}
 
-                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  {/* ── Divider ── */}
+                  <div style={{ borderTop: "1.5px dashed #d4d4d8", margin: "14px 0" }} />
+
+                  {/* ── Group 3: Position + Size + Fade ── */}
+                  <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    {/* Position grid */}
                     <div>
-                      <div style={{ fontSize: "0.62rem", fontFamily: "monospace", fontWeight: 900, marginBottom: 4 }}>POSITION</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, width: 108 }}>
+                      <div style={{ fontSize: "0.6rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.06em", color: "#666", marginBottom: 6 }}>POSITION</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4, width: 108 }}>
                         {WATERMARK_POSITIONS.map((p) => (
                           <button
                             key={p.key}
                             onClick={() => setWmPosition(p.key)}
                             style={{
-                              padding: "5px 0",
+                              padding: "6px 0",
                               border: `1.5px solid ${wmPosition === p.key ? "#000" : "#d4d4d8"}`,
                               background: wmPosition === p.key ? "#FFE500" : "#fff",
                               fontWeight: 900,
@@ -1513,7 +1534,10 @@ export default function ResizerPage() {
                         ))}
                       </div>
                     </div>
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+
+                    {/* Size + Fade scrubbers */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ fontSize: "0.6rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.06em", color: "#666", marginBottom: 2 }}>SIZE &amp; FADE</div>
                       <TactileScrubber
                         label="Size"
                         min={2}
@@ -1536,10 +1560,14 @@ export default function ResizerPage() {
                         height={12}
                         showSteppers={false}
                       />
-                      <span style={{ fontSize: "0.6rem", fontFamily: "monospace", color: "#888", fontWeight: 700 }}>
-                        Stamped onto every format, video frame & ZIP — remembered for next visit.
-                      </span>
                     </div>
+                  </div>
+
+                  {/* ── Footer note ── */}
+                  <div style={{ marginTop: 14, padding: "8px 10px", background: "#f4f4f5", borderLeft: "3px solid #000" }}>
+                    <span style={{ fontSize: "0.6rem", fontFamily: "monospace", color: "#555", fontWeight: 700 }}>
+                      Stamped onto every format, video frame &amp; ZIP — remembered for next visit.
+                    </span>
                   </div>
                 </>
               )}

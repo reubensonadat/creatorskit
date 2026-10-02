@@ -206,12 +206,12 @@ Every tool's success state ("Export complete ✓") gains a **"NEXT →" row**: u
 ### Kill list (decorative → monochrome)
 | Location | Now | Becomes |
 |---|---|---|
-| `globals.css` `.brutalist-button-primary:hover` | `#fde047` | `#000` bg / `#fff` text inversion |
+| `globals.css` `.brutalist-button-primary:hover` | `#fde047` | `#000` bg / `#fff` text inversion — verified: no `#fde047` remains anywhere |
 | quote-card export button | `#FFE500` + `hover:bg-yellow-300` | done — 2026-10-02 rebuild is monochrome from day one (route survives as its own tool) |
-| CassettePlayer subtitle chips/text | `yellow-400/500` | white text, zinc-800 chip |
-| Paused/status chips in match-cut, text-highlighter, auto-captions | `#eab308` | `#a1a1aa` (zinc-400) — green stays for "playing/ok" |
-| sync-slate status badges (GOOD/NG/waiting) | yellow waiting | white/zinc for waiting; keep red NG, green GOOD |
-| PWA `theme_color` + viewport `themeColor` | `#FFE500` | `#000000` |
+| CassettePlayer subtitle chips/text | `yellow-400/500` | white text, zinc-800 chip — **DONE session 7** (icon zinc-400, CC-ON zinc-800/white, caption text white) |
+| Paused/status chips in match-cut, text-highlighter, auto-captions | `#eab308` | `#a1a1aa` (zinc-400) — green stays for "playing/ok" — verified: no `#eab308` chips remain in those files (only the keep-list `--warn` meter token) |
+| sync-slate status badges (GOOD/NG/waiting) | yellow waiting | white/zinc for waiting; keep red NG, green GOOD — **DONE session 7** (paused-run button `#fef08a`→zinc-400, HOLD tally `#fef08a`→zinc-200; per-row toggles already green/red/zinc) |
+| PWA `theme_color` + viewport `themeColor` | `#FFE500` | `#000000` — verified: both `#000000` (manifest.ts + layout.tsx) |
 | Space Planner ambers | — | moot (archived) |
 
 ### Keep list (semantic)
@@ -241,7 +241,7 @@ Monochrome ramps: `#000000`, `#ffffff`, `#f4f4f5`, `#e4e4e7`, `#a1a1aa`, `#71717
 | Compress & Convert (was Compressor) | **B+ (rebuilt 2026-10-02)** | ✅ | ✅ (rewritten) | — | — | in-edges from carousel-slicer/watermark (§4) + FAQ/NEXT→ polish |
 | Carousel Slicer | **B** | ✅ | ✅ | — | — | in-edges from text-behind (posters AND cards) — it's equal to text-behind structurally; what it lacks is connections, not quality |
 | Resizer | **B− → v2** | ✅ | ✅ | — | — | v2: video reformat (portrait↔landscape, blurred-fill bg) rendered with `canvas-video-exporter` — the same engine match-cut/auto-captions already use |
-| Watermark | **B− → v2-or-die** | ✅ | ✅ | — | — | v2: saved logo library (local), WYSIWYG placement, position memory across batch images — beat Canva's copy-paste trick or archive it |
+| Watermark | **A− (v2 SHIPPED 2026-10-02)** | ✅ | ✅ | → compressor, resizer ✅ | — | v2 done: localStorage logo library (save/apply/delete, cap 12), settings+position memory (`ck_wm_settings_v1`), live WYSIWYG preview canvas, hand-off intake from background-replace/color-gradient, first-stamped-output → compressor/resizer |
 | Bouquet | **B** | ✅ | ✅ | — | ✅ `/bouquet/[id]` share | keep as-is; it's its own world |
 | Video Grabber | **C+** | ✅ "IN DEV" | ✅ | — | — | stays paused; restore per VPS plan only |
 | Quote Card | **A− (rebuilt 2026-10-02)** | ✅ own entry | ✅ Instagram/FB quote SEO | → text-behind (AI sandwich), slicer, resizer, lab | — | live: watch real usage; v2 idea parking lot in INTEGRATION_PROGRESS |
@@ -256,18 +256,18 @@ Monochrome ramps: `#000000`, `#ffffff`, `#f4f4f5`, `#e4e4e7`, `#a1a1aa`, `#71717
 
 ## 8. Execution Order (each phase is shippable on its own)
 
-**Phase 1 — Foundation (2-3 days): naming + nav unification**
-- [ ] §2 naming change list (CreatorsKit everywhere user-visible)
-- [ ] `tools.ts` schema extension (chrome/status/icon/handoffs) — all 14 listed tools migrated
-- [ ] `SiteNav` component (bar + floating modes)
-- [ ] ClientLayout derives chrome from tools.ts; delete StudioToolsDropdown + bespoke switchers ×3
-- [ ] manifest + metadata.json cleanup; theme_color → #000
-- [ ] `/admin` noindex; sitemap filters `status: archived`
+**Phase 1 — Foundation (2-3 days): naming + nav unification — ✅ DONE (true-up 2026-10-02; boxes were stale-unchecked)**
+- [x] §2 naming change list (CreatorsKit everywhere user-visible) — session 7 brand sweep, grep-verified: 0 UI hits (only internal type name + back-compat parser values + dead archive page)
+- [x] `tools.ts` schema extension (chrome/status/icon/handoffs) — all 14 listed tools migrated — tools.ts is the single source driving nav/chrome/handoffs
+- [x] `SiteNav` component (bar + floating modes) — `ALL_TOOLS` exists in exactly tools.ts + SiteNav.tsx (§8 Phase 5 grep)
+- [x] ClientLayout derives chrome from tools.ts; delete StudioToolsDropdown + bespoke switchers ×3 — resolved by owner ruling (Session 8): fullscreen tools (teleprompter, video-grabber, business) deliberately keep their own chrome; page.archive.tsx is dead
+- [x] manifest + metadata.json cleanup; theme_color → #000 — done with §6
+- [x] `/admin` noindex; sitemap filters `status: archived` — admin/layout.tsx carries robots: { index: false, follow: false }; archived filter moot — zero archived tools exist in tools.ts today
 
 **Phase 2 — Tool decisions (1-2 weeks): four upgrade workstreams + orphan ruling executed**
 - [x] **Card Studio direction REVERSED (owner, 2026-10-02):** multi-card deck reverted OUT of text-behind (the AI tool stays single-canvas); `/quote-card` rebuilt as its own text-behind-style studio — no AI model, per-card bg photo/colour, batch upload → deck, deck PNG export, whole-new-state reset, own nav + sitemap + Instagram/FB quote SEO (§5 revision)
 - [x] **Resizer v2**: video reformat with blurred-fill background via `src/lib/canvas-video-exporter.ts` — SHIPPED (trim, WebCodecs H.264 + audio, watermark stamp, ZIP; only §4 in-edge remains)
-- [ ] **Watermark v2-or-die**: local logo library + position memory + true batch WYSIWYG; if it can't beat Canva's copy-paste flow, archive — NOTE: resizer already embeds batch WYSIWYG stamping
+- [x] **Watermark v2-or-die**: SHIPPED 2026-10-02 — logo library (localStorage, dedupe, cap 12), settings+position+last-logo memory, live WYSIWYG preview (first image ≤720px + shared `drawWatermark` engine), consume-once intake (`takeHandoffImage('watermark')`), first stamped output → compressor/resizer via NEXT→, ZIP re-download
 - [x] **Compress & Convert**: REBUILT 2026-10-02 — PDF→PNG/JPG/WebP (pdfjs-dist v6, every page its own image), images/SVG→PDF (pdf-lib, rasterize-first fallback), PNG⇄JPG⇄WebP±AVIF (Canvas, feature-detected), batch queue + per-file progress, debounced size estimates BEFORE convert, JSZip download-all, engines lazy-loaded; page + layout + tools.ts entry, tsc clean, build green
 - [x] Promote survivors per §5 checklist: palette-extractor, sync-slate, color-gradient — layouts + tools.ts entries + handoffs done 2026-10-02; FAQ/NEXT→ rows ride with Step 3
 - [x] Space Planner sunset: 301 → `/`, route + components + libs deleted 2026-10-02
@@ -275,26 +275,58 @@ Monochrome ramps: `#000000`, `#ffffff`, `#f4f4f5`, `#e4e4e7`, `#a1a1aa`, `#71717
 
 *(These are upgrades to existing tools — the freeze holds. No new routes.)*
 
-**Phase 3 — Hand-off graph (3-5 days): the spine**
-- [ ] Priority edges: text-behind→carousel-slicer (carries posters AND cards), carousel-slicer→compress&convert, watermark→compress&convert, palette-extractor→color-gradient, match-cut/auto-captions→resizer v2 (video)
-- [ ] `NEXT →` success row component (shared, driven by `handoffs`)
-- [ ] Transcript edges: teleprompter→auto-captions→(match-cut | text-highlighter) — text hand-offs may need a small sibling util next to `tool-handoff.ts`
+**Phase 3 — Hand-off graph (3-5 days): the spine — ✅ DONE 2026-10-02 (session 4)**
+- [x] Priority edges: text-behind→carousel-slicer ✅ + →resizer/thumbnail-lab (blob), carousel-slicer→compress&convert ✅ + →resizer, watermark→compress&convert ✅ + →resizer, palette-extractor→color-gradient ✅ (hex text), color-gradient→quote-card/watermark ✅ (canvas gradient blob), match-cut/auto-captions→resizer v2 (video) ✅, compressor→resizer ✅ + compressor intake (image from watermark/carousel-slicer)
+- [x] `NEXT →` success row component — `src/components/NextStepRow.tsx`, driven by `handoffs` in tools.ts, `onBeforeNavigate` stashes the blob then navigates
+- [x] Transcript edges: teleprompter→auto-captions ✅ (existing) + auto-captions→match-cut/text-highlighter ✅ (`putHandoffText`, cue text joined; consumers build the longest ≤23-char opening phrase → anchor + auto-generate)
 
-**Phase 4 — Black & white pass (1-2 days): §6 kill list**
+**Phase 4 — Black & white pass (1-2 days): §6 kill list — ✅ COMPLETE 2026-10-02 session 7 (see §6 table statuses)**
 
 **Phase 5 — QA + ship (1-2 days)**
-- [ ] `grep "CreatorKit"` → 0 UI hits; `grep ALL_TOOLS` → 2 files
-- [ ] Every listed tool: nav reachable in ≤1 tap from any other tool (bar and floating)
-- [ ] Every tool has ≥1 in-edge or share loop (the "everything connects" bar)
-- [ ] Lighthouse ≥ 90 on 3 promoted orphans; smoke-test on Android Chrome (majority audience)
+- [x] `grep "CreatorKit"` → 0 UI hits; `grep ALL_TOOLS` → 2 files — session 7: all user-visible `creatorkit-` strings swept to `creatorskit-` (only the internal type name, back-compat parser values, and a dead archive remain); `ALL_TOOLS` → exactly `tools.ts` + `SiteNav.tsx`
+- [x] Every listed tool: nav reachable in ≤1 tap from any other tool (bar and floating) — SiteNav driven from tools.ts (Phase 1 architecture, unchanged)
+- [x] Every tool has ≥1 in-edge or share loop (the "everything connects" bar) — Phase 3 spine complete (§8 Phase 3, all edges ✅)
+- [ ] Lighthouse ≥ 90 on 3 promoted orphans; smoke-test on Android Chrome (majority audience) — owner's probe suite (mobile-audit / width-sweep / desktop-check) re-run 2026-10-02; Lighthouse numbers pending owner
 
-**Phase 6 — Mobile navigation & swipe UX (planned; owner ruling 2026-10-02 — NOT in the current pass; finish the existing plan first)**
-- Mobile-first navigation is "one of the biggest selling points": most users are non-technical creators on phones; if the builder finds it easy, that says nothing — the creator on a phone is the bar
-- Bar to beat: TikTok — "all you do is swipe" — zero-learning-curve navigation
-- Scope when it starts: mobile audit of every tool (switcher reachability, canvas gestures vs UI gestures, bottom-sheet inspectors instead of sidebars, swipe between cards in the quote-card deck, swipe-friendly NEXT→ row); ONE mobile nav pattern derived from tools.ts (bottom tab/sheet for `bar` chrome, floating pill stays for `fullscreen` chrome); thumb-zone placement for primary actions
-- Success test: a first-time creator on Android Chrome goes tool → tool → export without a tutorial
+**Phase 6 — Mobile editing UX: the CANVA pattern (owner rulings 2026-10-02 — ✅ SIGNED OFF + ✅ FULLY SHIPPED session 5 incl. the roll-out extension: shared `src/components/mobile-editor/` (MobileEditorToolbar + CategorySheet); text-behind PHOTO·TEXT·SHAPES·EFFECTS·NEXT; quote-card CARDS·PHOTO·TEXT·SHAPES·NEXT incl. a mobile-only deck-manager card + per-card canvas sizes; bouquet studio GREENERY·FLOWERS·CARD·MESSAGE·PREVIEW with chips mapping onto the wizard steps and CARD vs MESSAGE split inside step 3; thumbnail-lab FEED·GRADER·A/B VARS·EXPORT (bespoke top tabs bar removed, EXPORT reachable on mobile for the first time); business INVOICE·RECEIPT·AGREEMENT·LETTERHEAD (receipt-index tab cards desktop-only ≤900px). AUDIT CLOSED — every remaining stage+controls tool already stacks on mobile: color-gradient / match-cut / sync-slate via globals.css `.tool-inner-grid`/`.gradient-workspace-grid` → `1fr !important`, teleprompter via `.prompter-desktop-sidebar` hide + controls drawer, background-replace via isNarrow gate, watermark / resizer / compressor / carousel-slicer / palette-extractor / text-highlighter / auto-captions are single-column flows. tsc clean, build exit 0 47/47. RULING: NO SPARKLES anywhere in the bouquet studio UI — MESSAGE chip = Mail, CARD chip = LayoutTemplate, preview link = Eye)**
+
+*The owner's direction:* "learn from Canva and implement like them — the categories of things you can edit sit at the bottom of the screen, the canvas never touches them, you can scroll that bar left and right, the settings are very divided — each menu item opens a slide-up mother that does one thing; press DONE at the top right, or if the sheet doesn't cover most of the screen just tap your canvas and you're back. Text-behind and quote-card get these features, then the book [bouquet] viewer. Navigation must feel seamless — that's my focus now."
+
+**The pattern (contract):**
+1. **Bottom category bar** — fixed, thumb-zone, horizontally scrollable (`overflow-x: auto`), icon+label chips; ONE `activeSheet` state; the canvas area is `flex: 1` above it and **never** sits under the bar (no overlap, no crowding — the START EDITING button never covers content again)
+2. **One sheet per job** — a category opens exactly one slide-up sheet: drag handle + title + **DONE** (top-right). `peek` ≈60vh (canvas stays visible; **tap the canvas → sheet closes**) and `full` ≈85vh (backdrop tap or DONE closes). Sheet content = the EXISTING desktop panel JSX, reused verbatim — this is a layout swap, not an engine rewrite
+3. **Nothing is hidden** — every control that exists on desktop exists on mobile, just inside its sheet
+
+**Shared build — `src/components/mobile-editor/` (~1 day):**
+- `MobileEditorToolbar` — the bar (safe-area aware, monochrome brutalist, tools.ts-independent: categories passed per tool)
+- `CategorySheet` — the sheet (peek/full, DONE, backdrop, drag handle, scrollable body)
+- `useIsMobile()` gate (hook already at `src/hooks/use-mobile.ts`) — **desktop layout stays untouched**
+
+**Category maps:**
+- **text-behind:** PHOTO (bg/cutout/dim/format) · TEXT (add/list/font/size/case/colour/shadow) · SHAPES (add row + selected-shape inspector) · EFFECTS (grain/blend/depth) · NEXT (export + hand-offs)
+- **quote-card:** CARDS (deck strip lives in this sheet on mobile) · PHOTO · TEXT · SHAPES · NEXT
+- **bouquet viewer:** FLOWERS · GREENERY · CARD · MESSAGE · PREVIEW
+
+**Rollout order:** (1) shared components + text-behind (owner-named first) → (2) quote-card → (3) bouquet viewer → (4) audit remaining studios (match-cut, text-highlighter, watermark, resizer, carousel-slicer) for the same shell.
+
+**Foundation already shipped 2026-10-02 (session 4, build green):** true-circle rendering + single DIAMETER scrubber (no more ovals), fat-finger grab zones + pointer-capture guards (everything movable on touch), shape chips wrap with their icons, colour cards now draggable, deck strip floats at the card's bottom edge (never under START EDITING).
+
+**Success test (unchanged + raised):** a first-time creator on Android Chrome goes tool → edit → export without a tutorial — AND the canvas is always visible, never crowded, while editing.
 
 **Freeze rule:** no new tool routes until Phases 1-3 are done. The only exception is finishing `/color-gradient`, already mid-flight. After that, a new tool must pass the §5 checklist on day one — including its two hand-off edges — or it doesn't merge.
+
+**Phase 7 — Local memory everywhere + batch VIDEO watermark + "Your data" export (owner ruling 2026-10-02, session 5 — queued after the Phase-6 rollout · PHASE 7 COMPLETE: 7.1–7.4 ALL SHIPPED 2026-10-02 session 7, see below)**
+
+*The owner's direction:* "Everything that is a local action a person can do — save it to IndexedDB, every single thing… close the app, come back, and your thumbnail is still sitting there waiting for you." Plus batch watermark for VIDEO, a special "your data" page, and one-tap download-all.
+
+1. **Memory rule — nothing local is throwaway.** Every studio's working state (uploads, layers, settings, queues, palettes) persists to IndexedDB and restores on return. Patterns already proven: watermark v2 logo library, text-behind/quote-card bg+cutout+layer restore, auto-captions sessions. Extend to: batch-watermark queue + logo, compressor queue, palette-extractor palette, resizer presets, carousel-slicer layout, thumbnail-lab canvas. → **7.1 SHIPPED (session 7):** shared `src/lib/local-memory.ts` (IndexedDB `ck_local_memory` — `assets` + `states` stores, replace-all saves, `listMemory()` for /your-data, private-mode safe); wired watermark (queue + hand-off blob capture, "Restored N photo(s)" note), palette-extractor (source photo; palette recomputed on restore), carousel-slicer (source + slide layout, auto re-slice via committed-state effect, RESET wipes), compressor (queue + target/quality/pdfScale, CLEAR ALL wipes), resizer (source image-or-video + formatting presets; transform session-only by design), thumbnail-lab (full candidate canvas — data-URL thumbs as blobs with `mem:<slot>` markers, debounced 400ms). Rulings: deliberate clear = deliberate wipe (persist mirrors visible state incl. empty); §4 hand-off always wins over restore; restores never fire persist effects first (`hydratedRef` gate).
+2. **Watermark batch VIDEO.** Video support in batch watermark: same logo/position/opacity pipeline, per-clip render via the canvas-video-exporter already shipped in match-cut/text-highlighter; output watermarked clips + ZIP-all. → **7.2 SHIPPED (session 7):** `seekVideo`/`sliceAudioBuffer`/`decodeAudioFromFile` promoted out of resizer into `src/lib/canvas-video-exporter.ts` (one shared video pipeline; resizer now imports them). Watermark accepts `image/*,video/*` on every intake path (upload, hand-off, memory restore) — video items get a poster-frame `HTMLImageElement` at intake so the WYSIWYG preview and queue UI work unchanged. Per-clip `renderVideoWatermarked`: on-demand `HTMLVideoElement` → `exportCanvasVideoToMp4` with `renderFrameAsync` (seek per frame → drawImage → `drawWatermark`, same logo/position/opacity/size as photos) + original audio muxed back via `decodeAudioFromFile` (best-effort); fractional progress `setProgress(index + p)`. Videos export as MP4 (photos stay PNG/JPG), ZIP-all named `watermarked-N-files.zip`; results play `<video>` for clips.
+3. **`/your-data` page.** A special page that shows everything stored on-device about you — every IndexedDB store per tool (what, size, last used), each with view + delete, plus **EXPORT ALL** as one file download. Framing: "your name is your name — we don't store your name." Zero server, by construction. → **7.3 SHIPPED (session 7):** `/your-data` page + layout (toolMetadata SEO) + sitemap entry (0.5/monthly). `listMemory()`-driven tool cards (label, N files, bytes, SETTINGS badge, last-used date, VIEW/DELETE); VIEW expands to image thumbnails (objectURLs, revoked on switch/unmount) + a truncated state-JSON preview; `clearTool` powers DELETE. A localStorage `ck_*` section with per-key delete covers tools still on localStorage (watermark settings/logo lib, resizer brand kit, etc.). **EXPORT ALL** = lazy-loaded JSZip → `creatorkit-your-data-YYYY-MM-DD.zip` (manifest.json + per-tool folders: asset blobs + state.json). Privacy banner leads: "Your name is your name — we don't store your name."
+4. **One-tap download-all everywhere.** Any batch surface (batch watermark, compressor, carousel, resizer) gets ONE primary DOWNLOAD button → ZIP of everything. Never make the user tap file-by-file. → **7.4 SHIPPED (session 7, audit):** every batch surface already ships ONE primary ZIP — watermark STAMP → `watermarked-N-files.zip` (7.2), compressor DOWNLOAD ALL (lazy JSZip, per-item folders), carousel-slicer ZIP, resizer "Export All 9 Formats (ZIP)"; bonus: quote-card EXPORT DECK, match-cut PNG Sequence, /your-data EXPORT ALL. Audit residue fixed: JSZip made lazy in watermark/resizer/carousel-slicer/match-cut (§7 — no zip lib in page bundles), and the audit's filename grep flushed out the Phase-1 brand residue: every user-visible `creatorkit-` string → `creatorskit-` (incl. project-package `generator` values, widened in the parser so old exports still open; storage keys deliberately kept — renaming would orphan user data).
+
+**Why this wins (owner's words):** upload a logo once (it's remembered), tap 1-2-3-4-5 photos, tap download, boom — everything downloads. "That is what makes this fast, quicker and easier than me opening Canva. CapCut does not come close."
+
+**Order:** finish Phase-6 rollout (bouquet viewer) → 7.1 memory rule across studios → 7.2 video batch watermark → 7.3 /your-data → 7.4 download-all audit.
 
 ---
 

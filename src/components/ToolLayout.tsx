@@ -150,7 +150,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
               right: 0,
               bottom: 0,
               background: "rgba(0,0,0,0.3)",
-              zIndex: 45,
+              zIndex: 240,
             }}
           />
         )}
@@ -171,7 +171,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             overflowY: "auto",
             overflowX: "hidden",
             transition: "left 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-            zIndex: 46,
+            zIndex: 241,
           }}
         >
           <div style={{ padding: "12px 12px 8px", borderBottom: "1.5px solid #eee", display: "flex", alignItems: "center", justifyContent: "space-between" }}>

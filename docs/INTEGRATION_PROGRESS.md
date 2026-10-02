@@ -102,11 +102,221 @@ Build after session 2: compiles + 47/47 pages ✓; standalone copy hit the KNOWN
 | Quote-card | **OWN tool at `/quote-card`** (owner revision 2026-10-02, supersedes the fold): text-behind fork minus AI, per-card bg photo/colour, batch upload → deck, hand-off → text-behind for AI sandwich. Instagram/Facebook quote positioning. Not fighting Canva — free + instant + easy |
 | Exposure-monitor | Scrapped |
 | `/overlay` | KEPT — refresh-proof URL for captions overlay deck (`initialDeck="overlay"`) |
-| Watermark | One chance: v2 beats Canva's copy-paste or it's archived |
+| Watermark | v2 SHIPPED 2026-10-02 (logo library + position memory + WYSIWYG + hand-offs) — passed its one chance |
 | Compressor | Becomes Compress & Convert (batches, PDF/SVG/WebP). ImageMagick = dev machine only |
 | Storage | Zero server-side user data. Local-first (IndexedDB). Cloud sync only for paying Pro (future) |
 | Monetization | Stage-gated: launch + validation gates BEFORE any pricing page/Stripe (`docs/BUSINESS_MODEL_PLAN.md` §8). Invoice/receipt share links = launch wedge + "Made with CreatorsKit" footer |
 | Design | Monochrome; yellow only where it encodes measurement (meters, IRE). `#FFE500` theme colors already → `#000000` |
 | Freeze | No new tools. Everything ahead upgrades/connects existing routes |
 | Yellow accents | Kill decorative; keep semantic (dB meters, IRE scale, --warn token) |
-| Mobile UX | TikTok-level swipe simplicity = "one of the biggest selling points". PLANNED as Phase 6 (plan §8) — do NOT start before the current plan finishes (owner 2026-10-02) |
+| Mobile UX | Phase 6 FULLY SHIPPED incl. roll-out extension (2026-10-02, session 5): shared `src/components/mobile-editor/` (MobileEditorToolbar + CategorySheet); text-behind (PHOTO·TEXT·SHAPES·EFFECTS·NEXT), quote-card (CARDS·PHOTO·TEXT·SHAPES·NEXT + mobile-only deck-manager card, per-card canvas sizes), bouquet (GREENERY·FLOWERS·CARD·MESSAGE·PREVIEW, chips map to wizard steps), thumbnail-lab (FEED·GRADER·A/B VARS·EXPORT, bespoke top bar removed, EXPORT reachable on mobile for the first time), business (INVOICE·RECEIPT·AGREEMENT·LETTERHEAD bottom bar, tab cards desktop-only). AUDIT CLOSED: all remaining tools already stack (globals.css `1fr !important` rules / isNarrow gates / single-column flows). NO sparkles in bouquet studio UI (owner ruling) |
+| Local memory | Phase 7.1 SHIPPED (2026-10-02, session 7): shared `src/lib/local-memory.ts` (IndexedDB `ck_local_memory`: assets + states stores, replace-all saves, `listMemory()` for /your-data, private-mode safe) + SIX tools wired — watermark queue, palette-extractor source, carousel-slicer source + slide layout (auto re-slice), compressor queue + settings, resizer source + formatting presets, thumbnail-lab full candidate canvas (`mem:<slot>` blob markers, debounced). Rulings: deliberate clear = wipe; §4 hand-off wins over restore; `hydratedRef` gates persist effects. 7.2 + 7.3 SHIPPED same session: batch watermark takes `image/*,video/*` (video helpers promoted into canvas-video-exporter and shared with resizer; per-clip MP4 pipeline + ZIP-all) and `/your-data` transparency page (view/delete/export-all ZIP, sitemap'd). 7.4 audit SHIPPED same session (every batch surface already one-tap ZIP; JSZip made lazy in watermark/resizer/carousel/match-cut; Phase-1 brand sweep: all user-visible `creatorkit-` names → `creatorskit-`, back-compat parser widening). PHASE 7 COMPLETE. |
+
+---
+
+## Step 2c — Session 4 (2026-10-02, later): §4.2 hand-off graph CLOSED + watermark v2 + mobile foundation fixes
+
+**Verification:** `npx tsc --noEmit` clean for every touched file · `npm run build` **exit 0, 47/47 pages** (one known Windows EBUSY retry on `.next\standalone` copyfile — not code) · postbuild strip-ort-wasm clean.
+
+**Hand-off edges shipped (Phase 3 ✅ CLOSED):**
+- text-behind → resizer (clean-canvas blob; Option-4 "Reformat For Every Platform" modal button; modal chips monochromed)
+- quote-card → resizer (same pattern; + consumer `takeHandoffImage('quote-card')` → card background)
+- background-replace → watermark (BATCH WATERMARK button; badge monochrome)
+- **watermark v2 (FULL REBUILD ~520 lines):** logo library `ck_wm_logos_v1` (save/apply/delete, dedupe, cap 12) · settings+position+last-logo memory `ck_wm_settings_v1` · live WYSIWYG preview (first image ≤720px + shared `drawWatermark`) · intake from background-replace/color-gradient · first stamped output → compressor/resizer · ZIP re-download · §7 scorecard → **A−**
+- carousel-slicer → compressor/resizer (`sendFirstSliceTo` + NEXT→ row; badge/dropzone/generate button monochromed)
+- compressor → resizer (`handoffFirst` first output blob) + compressor INTAKE (image handoffs from watermark/carousel-slicer land in the queue) + NEXT→ row + badge monochrome
+- palette-extractor → color-gradient ("Find Gradients" button ships hexes via `putHandoffText`) + badge monochrome
+- color-gradient → quote-card/watermark (`renderHandoffBlob`: selected combo → 1440² linear-gradient PNG or the mesh composition; buttons in BOTH tabs) + badge/pins-badge/tab-chips monochromed (#FFE500 → #fff)
+- auto-captions → text-highlighter/match-cut (NEXT→ `onBeforeNavigate` text branches, cue text joined `\n`)
+- text-highlighter + match-cut consumers: `takeHandoffText` → longest ≤23-char opening phrase → `setAnchorPhrase` + `generateCutsForPhrase` (fresh cuts on load)
+
+**Dep prune:** `three` + `@types/three` removed (grep-verified 0 imports in src) — 7 packages gone.
+
+**Mobile foundation fixes (owner bug reports, shipped same session):**
+- **Circle is now a TRUE circle** in text-behind + quote-card: `drawShapeLayer` clamps to the smaller axis (independent wPct/hPct rendered an oval on any non-square canvas); circle inspector shows ONE **DIAMETER** scrubber driving both axes
+- **Everything movable on touch:** fat-finger grab zones (`hitTestLayers/hitTestShapes` take a `touch` flag — bigger pads for `pointerType === 'touch'`), `setPointerCapture` guarded for old browsers, and **colour cards are now draggable** in quote-card (the pointer guards blocked no-photo cards even though repaint allowed them)
+- **Shape chips wrap:** add-shape rows `repeat(6,1fr)` → `repeat(auto-fit, minmax(84px,1fr))` — icons intact, no more squashed single line
+- **Deck strip (1 2 3 4):** floats at the card's bottom edge inside the canvas viewport (absolute, bottom 10, centred chip) — never crowds the header, never under START EDITING (first relocation below the canvas landed under the sticky button; final position per owner feedback)
+
+**Open (owner's new focus):** Phase 6 Canva-pattern spec written into plan §8 — bottom category bar + slide-up sheets (DONE / tap-canvas-close) for text-behind, quote-card, bouquet viewer. **Awaiting owner sign-off, then implementation.**
+
+---
+
+## Step 2c — Session 5 (2026-10-02, evening): Phase 6 Canva pattern SHIPPED (3 studios) + Phase 7 written into plan
+
+**Verification:** filtered `npx tsc --noEmit` clean (text-behind / quote-card / bouquet / mobile-editor) · `npm run build` **exit 0, 47/47 pages** · postbuild strip-ort-wasm clean.
+
+**Phase 6 shipped (desktop layouts untouched in all three — 980px CSS gates / md: prefixes):**
+- **Shared shell:** `src/components/mobile-editor/MobileEditorToolbar.tsx` (fixed bottom h-scroll category bar, z-60, safe-area, toggle-on-re-tap, host-CSS-gated visibility → SSR-safe) + `CategorySheet.tsx` (generic slide-up sheet: peek 60vh w/ transparent tap-canvas backdrop vs full 85vh dimmed, drag handle + title + DONE, Esc — the shell for the remaining studios)
+- **text-behind** PHOTO·TEXT·SHAPES·EFFECTS·NEXT: the existing desktop controls column restyled (≤980px) into the fixed bottom sheet via `data-ck-cat` attributes + `[data-ck-cat~=]` selectors — zero JSX duplication; the Advanced card splits SHAPES (`.ck-cat-shapeui`) vs EFFECTS (`.ck-cat-grain`); `ckSheetUp` 220ms animation; viewport bottom padding reserves the toolbar lane
+- **quote-card** CARDS·PHOTO·TEXT·SHAPES·NEXT: same surgery + a mobile-only CARDS deck-manager card (`data-ck-cat="cards"` — switch/delete/add reusing deck state; hidden ≥981px so desktop visuals unchanged)
+- **bouquet studio** GREENERY·FLOWERS·CARD·MESSAGE·PREVIEW: chips map onto the wizard steps (greenery→1, flowers→2, card/message→3 split via `.ck-bq-card`/`.ck-bq-message` @media ≤767px, preview→4); `useIsMobile` turns the `<aside>` into a fixed 85vh sheet (z-80) + dimmed backdrop (z-70); DONE in the sheet header; the stage keeps 100% of the screen with paddingBottom 84
+- **Owner rulings folded in:** NO SPARKLES in the bouquet studio (MESSAGE chip = Mail, CARD chip = LayoutTemplate, "PREVIEW RECIPIENT PAGE" link = Eye)
+- **Quote-card deck: per-card canvas size (owner ruling, same evening):** every `CardDeckItem` now carries its own `format {w,h}` — **+ ADD CARD inherits the ACTIVE card's effective size** (the photo's dimensions, or the SIZE chip for colour cards), so a 16:9 / 9:16 deck stays that way instead of snapping back to the default; switching/deleting restores each card's own format; multi-photo intake stamps every new card with its own photo's dimensions; deck ZIP export renders each card at its own size (state swap per card + working card restored after); persisted decks load with a 4:5 fallback for pre-format saves. Verified: tsc clean, build exit 0 47/47
+
+**Phase 7 written into plan §8** (owner direction, queued): everything-local → IndexedDB memory per studio; batch watermark VIDEO; `/your-data` page (view/delete/export-all, zero server); one-tap download-all (ZIP) on every batch surface.
+
+**Phase 6 roll-out extension SHIPPED (same session, owner "proceed with all that"):**
+- **thumbnail-lab:** bespoke top tabs bar replaced by the shared bottom bar — FEED (Radio) · GRADER (Activity) · A/B VARS (Layout) · EXPORT (UploadCloud); `mobileActiveView` union extended with `'export'` so the export panel renders on mobile for the first time; feed column + grader sidebar get `paddingBottom 84` when mobile so nothing hides under the bar
+- **business:** bottom bar INVOICE (FileText) · RECEIPT (Receipt) · AGREEMENT (ShieldCheck) · LETTERHEAD (Award) switches `activeTab`; the receipt-index tab card grid (`ck-tab-grid`) hides ≤900px; the bar (`ck-mobile-nav ck-noprint`) hides ≥901px and never prints; the existing 96px mobile page padding reserves the lane
+- **Audit verdict — nothing left to convert:** color-gradient / match-cut / sync-slate already stack via globals.css `.tool-inner-grid` / `.gradient-workspace-grid` → `1fr !important` (beats inline grids); teleprompter already hides `prompter-desktop-sidebar` on mobile + has a controls drawer; background-replace has an isNarrow gate; watermark / resizer / compressor / carousel-slicer / palette-extractor / text-highlighter / auto-captions are single-column flows
+- Verified: filtered tsc clean (thumbnail-lab / business) · `npm run build` exit 0, 47/47 pages
+
+**Next:** Phase 7.1 — IndexedDB memory rule across every studio (working state, uploads, logos survive app close), then 7.2 batch watermark VIDEO → 7.3 `/your-data` → 7.4 one-tap download-all; plus the Phase 1/4/5 residue (CreatorKit→CreatorsKit sweep, B&W kill list, QA greps).
+
+---
+
+## Step 2d — Session 6 (2026-10-02): MOBILE RIGHT-SIDE CUTOFF FIXED EVERYWHERE (measured, not eyeballed)
+
+**Owner bug report:** every tool page except /business was cut off on the right half on phones; /business perfect.
+
+**Method — headless measurement, not guessing:** `scratch/mobile-audit.mjs` + probes (puppeteer-core + system Edge, 390×844, 21 routes) flag every element whose right edge crosses the viewport while NOT living inside an intended `overflow-x:auto` strip / fixed bar / invisible export node. `scratch/desktop-check.mjs` guards 1280px.
+
+**Root cause (why /business worked but tools didn't):** /business grids are `repeat(auto-fit, minmax(min(100%, Npx), 1fr))` — capped by container. Tool pages collapsed their grids to plain `1fr !important`, but `1fr` = `minmax(auto, 1fr)` — the track still grows to the largest child's **min-content**, and `overflow-x:hidden` (html/body/tool-page-padding) then CLIPS it:
+- match-cut + text-highlighter: preview `<canvas>` (intrinsic 1080/1920, `width:auto`) inside a shrink-to-fit flex card → 515-537px columns (+141-163px cut)
+- resizer: 9-thumb strip (canvas `height:110px;width:auto` → ~210px each) → 1111px row (+723px cut; its own overflow-x:auto never engaged because the track fed it a full-width parent)
+- sync-slate: 3.6rem mono timecode (~375px nowrap) + 96px lip-sync dial in one space-between row (+142-174px cut)
+- False positives confirmed OK: bouquet 840px A4 node (opacity:0 z-9999 export only), thumbnail-lab category strip + text-behind demo posters + mobile-editor toolbar (all real scroll strips)
+
+**Fixes (all inside the existing `@media (max-width:768px)` block — desktop untouched):**
+1. grids → `minmax(0,1fr) !important` + `> * { min-width:0; max-width:100% }` (matchcut-workspace-grid, tool-inner-grid, resizer/gradient variants)
+2. canvas chain: `.tool-canvas-frame`/`.tool-canvas-viewport` `width:100%; min-width:0` + canvas `max-width:100%; height:auto; margin:0 auto` (aspect preserved by attr ratio + max-height 38vh)
+3. `.tool-transport-bar` nowrap→wrap (play/sound row + centered speed row; sound chip +121px was clipped)
+4. sync-slate: `.syncslate-tc-row` class added (timecode 2.2rem, dial wraps) — page.tsx edit
+5. resizer polish (owner feedback): canvas max-height 38vw→56vh (was unreadably ~150px), monitor header stacks tidily (`.resizer-monitor-head`, `.resizer-src-info` ellipsis) — page.tsx edits
+6. export/download buttons compact one-per-line (`.tool-export-grid`/`.resizer-action-buttons`: 0.7rem, 8-10px pad, nowrap) — owner feedback "1 line 1 line"
+
+**Verification:** 21/21 routes ✅ at 390px AND 1280px (desktop-check strips scroll-strips). tsc: only pre-existing unrelated errors (remotion types, teleprompter archive). Audit scripts stay in scratch/ for future layout QA.
+
+---
+
+## Step 2e — Session 7 (2026-10-02): Phase 7.1 LOCAL MEMORY SHIPPED — nothing local is throwaway
+
+**Owner direction (plan §8):** "close the app, come back, and your thumbnail is still sitting there waiting for you."
+
+**Shipped:**
+- **`src/lib/local-memory.ts` (NEW):** one shared IndexedDB home — DB `ck_local_memory` v1, `assets` store (keyPath `key` = `tool:slot`; records carry tool/slot/label/name/blob/updatedAt) + `states` store (keyPath `tool`, JSON state). `saveAssets` = replace-all semantics (a deliberate clear is an empty-array write); `clearTool` = the /your-data delete; `listMemory()` groups per tool for the /your-data page. Best-effort try/catch everywhere (private-mode safe).
+- **Wiring pattern (proven on watermark, repeated everywhere):** capture the blob on EVERY intake path (upload + §4 hand-off) → restore in the mount IIFE BEFORE the hand-off consumption (hand-off wins) → `hydratedRef` gates the persist effects so a restore can never be mistaken for a wipe → persists mirror the visible state INCLUDING empty (deliberate clear wipes memory).
+- **watermark:** queue restored with a "Restored N photo(s) from your last visit" note + blob captured on hand-off intake; settings + logo library were already on localStorage.
+- **palette-extractor:** last source photo persists; palette recomputed on restore (deterministic quantization — no state store needed).
+- **carousel-slicer:** source blob + slide layout (`saveState`); restore decodes → setNumSlides/setPreview/setImage → auto re-slice via a committed-state `autoSliceRef` effect (sliceImage reads render scope — a direct call would slice with stale state); RESET wipes memory.
+- **compressor:** whole queue (Items carry their File) + target/quality/pdfScale restored; CLEAR ALL / removing every file wipes memory (mirror-empty ruling).
+- **resizer:** source file (image OR video) persisted at the single `handleFileUpload` choke point + formatting presets (platform/fit/gradient/letterbox/blur/format/quality) in the state store; transform (zoom/pan) session-only BY DESIGN — handleFileUpload resets it, so persisting it would fight the restore; brand watermark kit already on localStorage.
+- **thumbnail-lab:** the full canvas survives — both candidate arrays + active ids + contentFormat; data-URL thumbs stashed as blobs with `mem:<slot>` markers in the state (JSON stays small), debounced 400ms; restore revives markers via FileReader; §4 hand-off still appends on top.
+
+**Verification:** filtered tsc clean (local-memory + all six wired pages) · `npm run build` exit 0, 47/47 pages · postbuild strip-ort-wasm clean.
+
+**Next:** Phase 7.2 batch watermark VIDEO (canvas-video-exporter pipeline) → 7.3 `/your-data` (listMemory-driven) → 7.4 one-tap download-all; plus the Phase 1/4/5 residue (CreatorKit→CreatorsKit sweep, B&W kill list, QA greps).
+
+---
+
+## Step 2e — Session 7, continued (2026-10-02): Phase 7.2 VIDEO batch watermark + 7.3 `/your-data` SHIPPED
+
+**7.2 — batch watermark VIDEO:**
+- `src/lib/canvas-video-exporter.ts`: `seekVideo` (seeked-listener + 800ms safety net), `sliceAudioBuffer`, `decodeAudioFromFile` (widened to `File | Blob | null`) promoted out of resizer's page-local helpers → ONE shared video pipeline; resizer refactored to import them (behavior unchanged).
+- `src/app/watermark/page.tsx`: every intake path (upload, hand-off, memory restore) branches on type via module-level `loadVideoItem(file)` — decodes the clip, grabs a poster-frame canvas → `HTMLImageElement`, so ALL existing UI (WYSIWYG preview, queue grid, logo/position/opacity scrubbers) works unchanged; `Item.isVideo` + `Film` badge in the queue label.
+- Per-clip render `renderVideoWatermarked(item, index)`: on-demand `HTMLVideoElement` on an objectURL → `exportCanvasVideoToMp4` with `renderFrameAsync` (seekVideo per frame → drawImage → `drawWatermark`, identical settings to photos) + original audio muxed back via `decodeAudioFromFile` (best-effort — silent on failure); fractional progress `setProgress(index + p)` keeps the batch bar smooth.
+- Outputs: videos → MP4; photos → PNG/JPG as before; ZIP-all `watermarked-N-files.zip` (both fresh + re-download); results grid plays `<video>` for clips; dropzone/labels updated ("Drop images or videos…", "FORMAT (VIDEOS STAMP AS MP4)").
+
+**7.3 — `/your-data`:**
+- `src/app/your-data/page.tsx` + `layout.tsx` (toolMetadata SEO) + sitemap entry (0.5, monthly). Pure client page over `listMemory()`.
+- Tool cards: label, N files, bytes, SETTINGS badge, last-updated, VIEW (expands to image thumbnails via objectURLs — revoked on switch/unmount — + truncated state-JSON preview) and DELETE (`clearTool`).
+- localStorage `ck_*` section with per-key DELETE (watermark settings/logo lib, resizer brand kit, etc. — the tools not yet on IndexedDB).
+- **EXPORT ALL**: lazy-loaded JSZip → `creatorkit-your-data-YYYY-MM-DD.zip` — `manifest.json` (exportedAt, device-only note, tool inventory) + per-tool folder (asset blobs as `slot-name.ext` + `state.json`).
+- Privacy banner leads the page: "Your name is your name — we don't store your name."
+
+**Verification:** filtered tsc clean (your-data, watermark, canvas-video-exporter, resizer, sitemap; the two transient `.next/dev/types/validator.ts` errors were stale generated route types — cleared by the build's regeneration) · `npm run build` exit 0, **48/48** pages incl. `/your-data` · postbuild strip-ort-wasm clean.
+
+**Next:** Phase 7.4 one-tap download-all audit (watermark ZIP exists; verify compressor/carousel-slicer/resizer get ONE primary DOWNLOAD → ZIP) → then the Phase 1/4/5 residue (CreatorKit→CreatorsKit sweep, B&W kill list, QA greps).
+
+---
+
+## Step 2e — Session 7, final (2026-10-02): Phase 7.4 download-all audit + Phase-1 brand sweep — PHASE 7 COMPLETE
+
+**7.4 audit verdict — every batch surface already ships ONE primary ZIP:** watermark STAMP → `watermarked-N-files.zip` (7.2), compressor DOWNLOAD ALL (lazy JSZip, per-item folders, `creatorskit-convert-N-files.zip`), carousel-slicer ZIP, resizer "Export All 9 Formats (ZIP)". Bonus surfaces covered too: quote-card EXPORT DECK (ZIP), match-cut PNG Sequence (ZIP), /your-data EXPORT ALL (ZIP). No new buttons needed.
+
+**Audit residue fixed:**
+- **§7 lazy-load:** JSZip was statically imported in watermark/resizer/carousel-slicer/match-cut → all four now `(await import("jszip")).default` inside their async handlers; page bundles no longer carry the zip lib.
+- **Phase-1 brand sweep (flushed out by the audit's filename grep):** every user-visible `creatorkit-` string → `creatorskit-` — carousel-slicer ZIP, /your-data export ZIP, video-grabber fallback filename, color-gradient PNG, teleprompter ×4 take downloads, bouquet/[id] twitter `@creatorskit`, teleprompter + auto-captions project-package `generator` fields.
+- **Backward compat:** `project-metadata.ts` generator type widened to accept BOTH old `creatorkit-*` and new `creatorskit-*` values — old exported packages still open; writers emit the new values. Deliberately KEPT: localStorage/IndexedDB key names (`creatorkit_*`, `creatorkit:*`, `creatorkit_captions_db`) — renaming would orphan existing user data and break the Phase-7.1 restore promise; the internal `CreatorKitProjectMetadata` type identifier; `teleprompter/page.archive.tsx` (dead, unrouted).
+
+**QA grep:** `creatorkit-` / `CreatorKit` across src → only the back-compat parser values, the internal type name, and the archive file. **0 UI hits. ✓**
+
+**Verification:** filtered tsc clean (all touched files) · `npm run build` exit 0, 48/48 pages · postbuild strip-ort-wasm clean.
+
+**Phase 4/5 residue — CLOSED (same session):**
+- **§6 B&W kill list, last items:** CassettePlayer subtitle chip/text → monochrome (icon zinc-400, CC-ON zinc-800/white, caption text white); sync-slate paused-run button `#fef08a` → zinc-400 + HOLD tally `#fef08a` → zinc-200 (GOOD green / NG red semantics kept; per-row toggles were already compliant). Verified already-done: globals.css has no `#fde047`, no `#eab308` chips in match-cut/text-highlighter/auto-captions, PWA theme_color `#000000` in manifest + viewport.
+- **Phase-5 QA greps:** `CreatorKit`/`creatorkit-` → **0 UI hits** (internal type name + back-compat parser values + dead archive only); `ALL_TOOLS` → exactly 2 files (`tools.ts`, `SiteNav.tsx`); nav ≤1 tap = SiteNav architecture (standing); every tool ≥1 in-edge/share loop = Phase-3 spine (shipped session 4).
+- **Outstanding (owner-side):** Lighthouse ≥ 90 on the three promoted orphans + Android Chrome smoke — owner's probe suite re-run in flight during this session.
+
+**Verification:** filtered tsc clean (CassettePlayer, sync-slate). PHASES 1–7 ALL CLOSED except the owner-side Lighthouse smoke.
+
+---
+
+## Step 2e — Session 8 (2026-10-02): mobile QA to the edges — 320/360/768 sweep, thumbnail-lab tools menu, compressor rows
+
+**Width sweep (extends Session 6's 390px audit; scripts live in `scratch/`):**
+- New `scratch/width-sweep.mjs` — same false-positive-filtering clip audit as mobile-audit, parametric widths (default 320/360/768, single via argv[2]).
+- 360px + 768px: 21/21 clean immediately. 320px had 3 real offenders, all fixed:
+  1. **Homepage blog card** (`src/app/page.tsx`): `minmax(300px,1fr)` forced a 300px track into a 234px container → `minmax(min(100%,300px),1fr)` (desktop-identical); video caption bar got `flexWrap:wrap + gap` so FORMULA/formula-text stack instead of overflowing.
+  2. **Business receipt preview** (`src/app/business/page.tsx` `#receipt-capture-root`): fixed 355px thermal paper in a 296px column → added `maxWidth:'100%'`. SAFE for exports: `exportDocumentAsImage` clones the node off-screen and force-sets `width: designWidth (355)` + `maxWidth:none` — capture never depended on the live width.
+  3. **Color-gradient filter card**: search wrapper had inline `minWidth:260` > 240px card → class hook `.gradient-filter-search` + mobile `min-width:100%` (takes its own wrapped row).
+- `/receipt` note: client-redirects to `/business?tab=receipt`; an "Execution context destroyed" during evaluate is the redirect racing the audit, NOT an overflow — probe with a settle wait measures the destination clean.
+
+**Touch interaction polish (taste-skill `redesign-existing-projects` applied, mobile block only):** brutalist press physics on `.brutalist-button/-dark` (`:active` → translate(2px,2px) + shadow collapse), `:focus-visible` dashed rings, scroll-snap paging on `.ck-mobile-editor-toolbar`, `text-wrap:balance` on tool h1. Desktop untouched.
+
+**Thumbnail-lab mobile (owner feedback):**
+- **TOOLS dropdown restored.** `showToolsDropdown`/`toolsDropdownRef` state existed but NO UI ever opened it (dead code). New TOOLS chip in `fs-header-right` opens a fixed-position dark menu (below the 52px header, zIndex 200) with: 3-Second Glance Test (SPACE), Shuffle Feed (R), Edit Tag toggle, Import from YouTube. Panel is `position:fixed` because the header scrolls (`overflow-x:auto` would clip an absolute child); DOM stays inside `toolsDropdownRef` so the pre-existing outside-pointerdown closer just works. Hit-test verified: all 4 items are the topmost elements at their centers.
+- **Bottom bar matches the dark studio.** `MobileEditorToolbar` gains `theme?: 'light'|'dark'` (default light — other 5 host pages unchanged). Dark: #09090b bar, #FFE500 top border, #18181b chips, #FFE500 active. thumbnail-lab passes `theme="dark"`. Chip press physics + focus rings (yellow in dark) added in the mobile CSS block.
+- Chips verified at 390px: Grader/A-B Vars/Export taps flip the inspector aside correctly.
+
+**Compressor file rows (owner feedback):** name+size crammed one line at ~280px row width. Class hooks `compressor-file-row/-name/-size`; mobile CSS: name `flex:1 1 100%` (owns line 1, ellipsized), size flows below with `word-break`. Verified with a simulated long-filename upload: name bottom 577 / size top 583 → stacked.
+
+**Bottom-nav ruling (owner):** the Canva-pattern `MobileEditorToolbar` must NOT spread to `/teleprompter` and `/video-grabber` — they keep their own fullscreen navigation (mobile pill HUD / fs chrome). Confirmed: neither imports it (hosts are thumbnail-lab, text-behind, quote-card, business, bouquet only).
+
+**Verification:** filtered tsc clean (thumbnail-lab, compressor, MobileEditorToolbar, business, color-gradient, page, globals) · width-sweep 320/360/768 → ALL CLEAN · probe-320 → 0 offenders · toolbar/menu/chip/row functional tests green · desktop 1280px regression check clean.
+
+---
+
+## Step 2e — Session 9 (2026-10-02, agent): transcription fallback audit — AUDIO_TRANSCRIPTION_PLAN build-order item 1 CLOSED as already shipped
+
+User directive "next phases". TOOL_INTEGRATION_PLAN is 100% executed (Phases 1–7); the AUDIO_TRANSCRIPTION_PLAN build order defines what's next, and its item 1 ("← THE next task") is the captions UI server-fallback wiring. Full audit of the chain found it ALREADY IMPLEMENTED end-to-end — the plan's NEXT paragraph was stale:
+
+- **Ticket mint (edge):** `supabase/functions/video-grab/index.ts` action `captions-ticket` → `handleCaptionsTicket()` — WORKER_TOKEN never enters client code; mints the worker's one-time 10-min upload grant.
+- **Client pipeline:** `src/lib/captions/worker-transcribe.ts` (363 lines) — ticket → direct browser upload (16k-mono Float32 → 16-bit WAV via `encodeWav16kMono`, ~32KB/s; raw-file fallback for undecodable codecs; 99MB guard) → poll `/transcribe/job/{id}` every 2.5s (15-min deadline; 45s CONTACT_GRACE rides out free-tier container reboots that surface as CORS-less TypeErrors; 404-after-hold = job_lost) → ONE automatic re-upload on upload_lost/job_lost/lost_contact → words mapped through the SAME `groupWordsIntoSingleLineCues` as the browser engine (`TranscriptionResult` contract identical).
+- **Page wiring:** auto-captions `activeEngine === 'server'` is the DEFAULT — decodes via `processAudioForWhisper` first (PCM upgrade), calls `transcribeOnWorker`, and on failure silently falls back to browser whisper (MAX_AUTO_RETRIES=2, chip visibly flips to Local, progress restarts at 0%); too_large/edge_offline never fall back (pointless). LOCAL engine keeps browser-first with server rescue. `warmCaptionsWorker()` on mount eats the ~50s Render cold start during file-pick.
+- **Note:** `prefersServerTranscription()` is exported but currently unused — the page went server-first for everyone (stronger than the plan's mobile-only split). Kept for a future per-device split.
+
+**Action:** docs-only change (this record + AUDIO_TRANSCRIPTION_PLAN NEXT→DONE). No code touched → no build required (last build green 48/48 included all these files). **Build-order pointer now: item 2 — caption preset expansion.**
+
+**Item 2 SHIPPED (same session): caption preset expansion.**
+- `overlay-renderer.ts`: new `ActiveWordEffect` (`'fill' | 'marker' | 'box' | 'underline' | 'glow'`) + `glowColor` + `tapeBackdrop` on `OverlayTypographyOptions`/`CaptionStylePresetConfig`; kinetic-pop now draws a marker swipe-in bar, dashed hand-box, growing swipe underline, dual-pass neon glow halo, and a tilted masking-tape backdrop band. All deterministic canvas draws — exports stay frame-exact.
+- `CAPTION_STYLE_PRESETS` 6 → 14 (Marker Swipe, Neon Sign, Coach Box, Swipe Underline, Tape Label, Karaoke Pop, Clean Studio, Ember Glow) — includes the FIRST teleprompter-mode and minimal-mode presets (the original six were all kinetic-pop).
+- auto-captions page + OverlayStudio: state, preset application, preview + export typography literals, "Active word" chip row, "Tape backdrop" toggle — fully mirrored in both surfaces.
+- Cross-tool cohesion per the plan's "applies to match-cut + text-highlighter too": the new effects reuse THOSE tools' marker/box/underline/tape vocabulary rather than inventing a new one (their own preset sets were already rich — left untouched).
+
+**Owner mid-session feedback (sync-slate mobile):** calibration section header collapsed to ONE line on ≤768px (`.slate-cal-sub` hides the DAVINCI/PREMIERE footnote), strip confirmed at two rows of 5 (pre-existing rule), and the STRIKE CLAPPER (SPACEBAR) row is now mobile-hidden (`.slate-strike-actions { display:none }`) — the tappable clapper head is the mobile strike; SPACEBAR / 3-2-1 head leader stay desktop affordances.
+
+**Verification:** filtered tsc clean (overlay-renderer, auto-captions, OverlayStudio, sync-slate) · `npm run build` GREEN 48/48 (one EBUSY standalone-copy retry — stale `.next\standalone` lock cleared by removing the dir; compile + static generation were clean both times).
+
+**Plan true-up (same session, user steered the frame: "we are doing tool integration… making the tools look nice and be much more responsive"):** TOOL_INTEGRATION_PLAN §8 Phase 1 checklist was stale-unchecked — all six items verified shipped and ticked with evidence: naming sweep = Session 7 grep (0 UI hits); tools.ts schema + SiteNav = Phase 1 architecture, `ALL_TOOLS` grep still exactly 2 files; ClientLayout/StudioToolsDropdown item closed by the Session-8 owner ruling (fullscreen tools — teleprompter, video-grabber, business — deliberately keep their own chrome; `page.archive.tsx` is dead and unrouted); manifest/metadata cleanup + theme_color #000 done with §6; `/admin` noindex verified present in `src/app/admin/layout.tsx` (`robots: { index: false, follow: false }`) — sitemap archived-filter moot since zero `archived` tools exist in tools.ts. Phase 1 header marked ✅ DONE.
+
+**Frame status after true-up: every phase of TOOL_INTEGRATION_PLAN (1–7) is CLOSED.** The single remaining open line in the whole plan is §8 Phase 5's Lighthouse ≥ 90 + Android Chrome smoke — owner-side. Look-nice/responsiveness work continues live via owner probe feedback (this session's sync-slate pass is the pattern).
+
+
+## Step 2f — Session 9b (2026-10-02, agent): external-link standardization + mobile ad gate, sync-slate persistence/z-fix, LCP WebP, nav + save-image polish
+
+1. EXTERNAL LINKS + MOBILE AD FLOW (owner ask: standardize; on mobile show a full-screen ad, close it -> proceed, then a bottom slide-up banner):
+- SiteNavList isExt branch rewritten for all four variants — rail = 36x36 icon-only with absolute EXT-arrow badge (fits the 52px rail), drawer/compact/roomy = internal-matching rows + ArrowUpRight / EXTERNAL chip. Links keep href=/redirect?url=... bridge so DESKTOP flow is unchanged.
+- NEW src/components/ExternalAdGate.tsx: module bus (externalLinkClick intercepts only <=768px via matchMedia) + ExternalAdGateHost mounted once in ClientLayout. Mobile interstitial = brutalist SPONSORED card, 3s countdown before CONTINUE (opens the real site; window.open called directly in the click handler = popup-blocker-safe), then a once-per-session bottom slide-up banner promoting in-house tools (lifts above MobileEditorToolbar via body:has(.ck-mobile-editor-toolbar) rule).
+2. TOOLAYOUT DRAWER Z-FIX: mobile drawer overlay/drawer z 45/46 -> 240/241 — the sync-slate camera rig (z60) no longer paints over the nav drawer (3-point hit-test verified through the rig).
+3. SYNC-SLATE PERSISTENCE (owner ask: save to IndexedDB, RESET button to clear): saveState/loadState/clearTool via local-memory; hydrate-on-mount gate + debounced 600ms autosave of the full slate (production/scene/take/roll/camera/personal timecode/takes log/theme); take-log header shows "N Takes - Autosaved" + RESET (confirm -> clearTool -> defaults; survives reload). B-suite: type marker -> strike -> reload = marker back; RESET -> reload = wiped.
+4. LCP IMAGE (owner ask: compress demo-cruise-poster, use WebP): all 4 text-behind demo posters re-encoded via headless Edge canvas (webp q0.85 maxW800) 4139KB -> 232KB (-94%); page refs swapped to .webp + loading=eager on the cruise poster; OG/twitter stay .jpg for crawler compat.
+5. NAV + SAVE POLISH (owner feedback, same session):
+- Floating SiteNav dropdown on <=768px is now a CENTERED FIXED SHEET (.sitenav-drop, top 58px, width min(420px, 100vw-24px)) — previously pill-anchored absolute 320px panel hugged/overflowed the right edge (bouquet at 360px: left 39 + 328 = 367 > 360). Verified centered 12px/12px at 390 AND 360 on text-behind/thumbnail-lab/quote-card/bouquet; desktop 1440px regression = still pill-anchored absolute.
+- Castos Podcast Quote Cards EXTERNAL entry removed from tools.ts (superseded by in-house /quote-card) — gone from tools menus AND home curated directory (rendered-HTML grep 0 hits).
+- Home section titles (.home-sec-title) on <=768px: nowrap + font-size min(1.4rem, 4.8vw) + square-dot flexShrink 0 — CREATORSKIT IN-HOUSE TOOLS / RECOMMENDED EXTERNAL TOOLS stay single-line with the dot perfectly centered (centerDelta 0) at 360 and 320.
+- Receipt viewer footer (/r/[id]): flexWrap wrap + center — "MADE WITH [CREATORSKIT] — FREE CREATOR TOOLS" no longer wraps ragged on phones; desktop unchanged (fits one line).
+- SAVE PICTURE = DOWNLOAD, NEVER SHARE (owner ruling): exportDocumentAsImage Web Share branch deleted — mobile now gets the same direct PNG download as desktop (lands in Downloads/gallery). Covers receipts, invoices, contracts, letterheads (client-document-printer + business suite); bouquet already used direct anchor downloads.
+
+VERIFICATION: filtered tsc clean (only the 4 pre-existing archive/remotion errors elsewhere); scratch/verify-session9.mjs 24/24 PASS (drawer z + hit-test, persistence reload/wipe, mobile gate flow incl. skip->proceed + banner-once, desktop rail ext icon-only + bridge, cal-strip/strike rows); probe-sitenav mobile+desktop clean; home-header single-line probe clean; background width sweep 0 offenders.

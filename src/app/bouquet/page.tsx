@@ -32,7 +32,6 @@ import {
   Plus,
   Minus,
   LayoutTemplate,
-  Sparkles,
   Volume2,
   VolumeX,
   Play,
@@ -44,6 +43,8 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { soundEngine, SOUND_PRESETS } from '@/lib/bouquet/soundscapes';
 import { getBouquetFontEmbedCSS, prefetchBouquetFonts } from '@/lib/bouquet/font-embed';
 
@@ -63,8 +64,11 @@ export default function BouquetStudioPage() {
   // Collapsible Floating Control Panel state (user can hide completely to enjoy full canvas)
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
 
-  // Mobile Studio View Mode: 'stage' (Full Canvas Preview) vs 'sidebar' (Full Controls Panel)
-  const [mobileStudioTab, setMobileStudioTab] = useState<'stage' | 'sidebar'>('stage');
+  // Phase-6 Canva pattern (owner ruling 2026-10-02): the bouquet preview is
+  // ALWAYS visible on mobile; a bottom category bar opens ONE slide-up sheet
+  // per step. mobileSheet = open category id, or null (pure stage mode).
+  const [mobileSheet, setMobileSheet] = useState<'greenery' | 'flowers' | 'card' | 'message' | 'preview' | null>(null);
+  const isMobileView = useIsMobile();
 
   // Studio Step: 1 = Greenery, 2 = Blooms, 3 = Write Card, 4 = Finalize
   const [activeStep, setActiveStep] = useState<StudioStep>(1);
@@ -291,10 +295,10 @@ export default function BouquetStudioPage() {
     return () => observer.disconnect();
   }, [cardPlacement, activeStep, giftFormat, note, selectedFlowers.length, printerStage]);
 
-  // Close tools drawer on Escape key
+  // Close the mobile sheet on Escape key (Phase-6 Canva pattern)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setToolsSidebarOpen(false);
+      if (e.key === 'Escape') setMobileSheet(null);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -1082,9 +1086,10 @@ export default function BouquetStudioPage() {
           )}
 
           {/* ── MAIN UNBLOCKED CANVAS STAGE (LEFT / CENTER) ── */}
-          <main className={`flex-1 min-h-0 relative overflow-hidden flex items-center justify-center p-2 sm:p-5 ${
-            mobileStudioTab === 'sidebar' ? 'hidden md:flex' : 'flex'
-          }`}>
+          <main
+            className="flex-1 min-h-0 relative overflow-hidden flex items-center justify-center p-2 sm:p-5"
+            style={isMobileView ? { paddingBottom: 84 } : undefined}
+          >
             {/* Subtle warm center radial ambiance */}
             <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-stone-200/40" />
 
@@ -1099,7 +1104,9 @@ export default function BouquetStudioPage() {
                   className="w-full h-full"
                   onPromptClick={() => {
                     setSidebarOpen(true);
-                    setMobileStudioTab('sidebar');
+                    // Phase-6: the canvas prompt opens the first sheet directly
+                    setMobileSheet('greenery');
+                    setActiveStep(1);
                   }}
                 />
               </div>
@@ -1779,9 +1786,27 @@ export default function BouquetStudioPage() {
 
           {/* ── DEDICATED EDITING SIDEBAR (RIGHT ON DESKTOP, FULL SCREEN TAB ON MOBILE) ── */}
           {sidebarOpen && (
-            <aside className={`w-full md:w-[360px] lg:w-[400px] shrink-0 border-t-2 md:border-t-0 md:border-l-2 border-black bg-white flex flex-col h-full min-h-0 overflow-hidden z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.04)] animate-in slide-in-from-right duration-200 ${
-              mobileStudioTab === 'stage' ? 'hidden md:flex' : 'flex'
-            }`}>
+            <aside
+              className={`w-full md:w-[360px] lg:w-[400px] shrink-0 border-t-2 md:border-t-0 md:border-l-2 border-black bg-white flex-col h-full min-h-0 overflow-hidden z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.04)] animate-in slide-in-from-right duration-200 ${
+                mobileSheet ? 'flex' : 'hidden md:flex'
+              } ${mobileSheet === 'card' ? 'ck-bq-sheet-card' : ''} ${mobileSheet === 'message' ? 'ck-bq-sheet-message' : ''}`}
+              style={
+                isMobileView && mobileSheet
+                  ? {
+                      // Phase-6 Canva pattern: the sidebar becomes a slide-up sheet
+                      position: 'fixed',
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      top: 'auto',
+                      height: '85vh',
+                      width: '100%',
+                      zIndex: 80,
+                      boxShadow: '0 -10px 30px rgba(0, 0, 0, 0.28)',
+                    }
+                  : undefined
+              }
+            >
               {/* Sidebar Header */}
               <div className="h-11 px-3 sm:px-4 bg-stone-50 border-b-2 border-black flex items-center justify-between shrink-0">
                 <span className="font-mono text-xs font-black uppercase tracking-wider text-black whitespace-nowrap truncate mr-2">
@@ -1821,10 +1846,19 @@ export default function BouquetStudioPage() {
                     </button>
                   ) : null}
 
+                  {/* Phase-6: DONE closes the slide-up sheet, back to the stage */}
+                  <button
+                    type="button"
+                    onClick={() => setMobileSheet(null)}
+                    className="md:hidden px-2 py-1 bg-white hover:bg-stone-100 text-black border border-black font-mono text-[10px] font-black uppercase tracking-wider shadow-[1px_1px_0_#000] cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    DONE
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
-                    className="p-1 hover:bg-stone-200 text-stone-600 hover:text-black transition-colors cursor-pointer"
+                    className="hidden md:flex p-1 hover:bg-stone-200 text-stone-600 hover:text-black transition-colors cursor-pointer"
                     title="Collapse sidebar"
                   >
                     <PanelRightClose size={14} />
@@ -2040,8 +2074,8 @@ export default function BouquetStudioPage() {
                 {/* ── STEP 3: NOTE CARD & TYPOGRAPHY ── */}
                 {activeStep === 3 && (
                   <div className="flex flex-col gap-4">
-                    {/* Font Selector */}
-                    <div>
+                    {/* Font Selector — mobile sheet: CARD */}
+                    <div className="ck-bq-card">
                       <label className="block text-[10px] font-mono font-black uppercase mb-1.5">
                         Card Handwriting Font (8 Styles)
                       </label>
@@ -2093,8 +2127,8 @@ export default function BouquetStudioPage() {
                       </div>
                     </div>
 
-                    {/* Form Fields */}
-                    <div className="flex flex-col gap-2.5 pt-2 border-t border-stone-200">
+                    {/* Form Fields — mobile sheet: MESSAGE */}
+                    <div className="ck-bq-message flex flex-col gap-2.5 pt-2 border-t border-stone-200">
                       {/* Greeting & Recipient Row */}
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-1">
@@ -2592,7 +2626,7 @@ export default function BouquetStudioPage() {
                         rel="noreferrer"
                         className="p-3 bg-[#FFE500] hover:bg-[#FDD800] text-black border-2 border-black font-mono text-xs font-black uppercase tracking-wider shadow-[2px_2px_0_#000] flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 text-center"
                       >
-                        <Sparkles size={15} />
+                        <Eye size={15} />
                         <span>PREVIEW RECIPIENT PAGE ↗</span>
                       </a>
                     )}
@@ -2649,37 +2683,48 @@ export default function BouquetStudioPage() {
           )}
         </div>
 
-        {/* ── MOBILE PERSISTENT FLOATING NAVIGATION TOGGLE (EDIT CHOICES <-> VIEW CREATION) ── */}
-        <div className="md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
-          {mobileStudioTab === 'stage' ? (
-            <button
-              type="button"
-              onClick={() => setMobileStudioTab('sidebar')}
-              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
-            >
-              {selectedGreenery.length === 0 && selectedFlowers.length === 0 ? (
-                <>
-                  <Plus size={14} />
-                  <span>SELECT A FOLIAGE</span>
-                </>
-              ) : (
-                <>
-                  <SlidersHorizontal size={14} />
-                  <span>{activeStep === 4 ? 'OPTIONS & SOUND' : 'EDIT CHOICES'}</span>
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setMobileStudioTab('stage')}
-              className="px-5 py-2.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0_#000] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition-all whitespace-nowrap"
-            >
-              <Eye size={14} />
-              <span>VIEW CREATION</span>
-            </button>
-          )}
+        {/* ── PHASE-6 CANVA PATTERN: bottom category bar (md:hidden) — the
+             stage NEVER sits under it; each chip opens ONE slide-up sheet;
+             DONE in the sheet header (or the dimmed backdrop) closes it. ── */}
+        <div className="md:hidden">
+          <MobileEditorToolbar
+            categories={[
+              { id: 'greenery', label: 'Greenery', icon: <Layers size={15} /> },
+              { id: 'flowers', label: 'Flowers', icon: <Flower2 size={15} /> },
+              { id: 'card', label: 'Card', icon: <LayoutTemplate size={15} /> },
+              { id: 'message', label: 'Message', icon: <Mail size={15} /> },
+              { id: 'preview', label: 'Preview', icon: <Eye size={15} /> },
+            ]}
+            active={mobileSheet}
+            onSelect={(id) => {
+              setMobileSheet(id as 'greenery' | 'flowers' | 'card' | 'message' | 'preview' | null);
+              // Sheets need the sidebar mounted even if it was collapsed on desktop
+              if (id) setSidebarOpen(true);
+              // Chips map straight onto the studio's wizard steps; CARD and
+              // MESSAGE both live in step 3 and split via the classes below.
+              if (id === 'greenery') setActiveStep(1);
+              if (id === 'flowers') setActiveStep(2);
+              if (id === 'card' || id === 'message') setActiveStep(3);
+              if (id === 'preview') setActiveStep(4);
+            }}
+          />
         </div>
+
+        {/* Full sheet dims the stage; tap it to get back to the bouquet */}
+        {isMobileView && mobileSheet && (
+          <div
+            onClick={() => setMobileSheet(null)}
+            className="fixed inset-0 z-[70] bg-black/45"
+          />
+        )}
+
+        {/* CARD vs MESSAGE split inside step 3 (mobile sheets only) */}
+        <style>{`
+          @media (max-width: 767px) {
+            .ck-bq-sheet-card .ck-bq-message { display: none !important; }
+            .ck-bq-sheet-message .ck-bq-card { display: none !important; }
+          }
+        `}</style>
 
 
 

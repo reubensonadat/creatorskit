@@ -39,7 +39,7 @@ function formatBytes(n: number): string {
 
 function sanitizeName(raw: string, fallbackExt: string): string {
   const cleaned = raw.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
-  if (!cleaned) return `creatorkit-download.${fallbackExt}`;
+  if (!cleaned) return `creatorskit-download.${fallbackExt}`;
   return /\.[a-z0-9]{2,5}$/i.test(cleaned) ? cleaned : `${cleaned}.${fallbackExt}`;
 }
 

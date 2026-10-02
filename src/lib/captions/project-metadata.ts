@@ -17,7 +17,7 @@ import { saveAudioBlobToCache, getAudioBlobFromCache, clearAudioCache } from './
 
 export interface CreatorKitProjectMetadata {
     version: '1.0';
-    generator: 'creatorkit-studio' | 'creatorkit-teleprompter';
+    generator: 'creatorkit-studio' | 'creatorkit-teleprompter' | 'creatorskit-studio' | 'creatorskit-teleprompter';
     script: string;
     createdAt: number;
     title?: string;
@@ -75,7 +75,7 @@ export async function extractMetadataFromMediaBlob(
         if (fileOrBlob.type.includes('json') || (fileOrBlob instanceof File && fileOrBlob.name.endsWith('.ckcaptions'))) {
             const text = await fileOrBlob.text();
             const parsed = JSON.parse(text);
-            if (parsed && (parsed.generator === 'creatorkit-studio' || parsed.script || parsed.cues)) {
+            if (parsed && (parsed.generator === 'creatorkit-studio' || parsed.generator === 'creatorskit-studio' || parsed.script || parsed.cues)) {
                 return parsed as CreatorKitProjectMetadata;
             }
         }
@@ -94,7 +94,13 @@ export async function extractMetadataFromMediaBlob(
         const jsonString = text.substring(startIndex + CK_MAGIC_START.trim().length, endIndex).trim();
         const parsed = JSON.parse(jsonString);
 
-        if (parsed && (parsed.generator === 'creatorkit-studio' || parsed.generator === 'creatorkit-teleprompter')) {
+        if (
+            parsed &&
+            (parsed.generator === 'creatorkit-studio' ||
+                parsed.generator === 'creatorskit-studio' ||
+                parsed.generator === 'creatorkit-teleprompter' ||
+                parsed.generator === 'creatorskit-teleprompter')
+        ) {
             return parsed as CreatorKitProjectMetadata;
         }
 
@@ -128,7 +134,7 @@ export async function saveHandoffSession(payload: {
         // 1. Embed metadata into the blob itself for defense-in-depth
         const enrichedBlob = await embedMetadataIntoMediaBlob(payload.mediaBlob, {
             version: '1.0',
-            generator: 'creatorkit-studio',
+            generator: 'creatorskit-studio',
             script: payload.script,
             title: payload.title || 'Teleprompter Take',
             wpm: payload.wpm,

@@ -73,6 +73,58 @@ export function webCodecsSupported(): boolean {
     );
 }
 
+/** Seeks a video and resolves once the frame is actually decodable. */
+export function seekVideo(video: HTMLVideoElement, t: number): Promise<void> {
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            video.removeEventListener('seeked', finish);
+            resolve();
+        };
+        video.addEventListener('seeked', finish);
+        const clamped = Math.min(Math.max(0, t), Math.max(0, (video.duration || 0) - 0.02));
+        if (Math.abs(video.currentTime - clamped) < 0.001) {
+            requestAnimationFrame(() => requestAnimationFrame(finish));
+            return;
+        }
+        video.currentTime = clamped;
+        setTimeout(finish, 800); // safety net for stubborn streams
+    });
+}
+
+/** Slices an AudioBuffer between two timestamps (returns as-is when untrimmed). */
+export function sliceAudioBuffer(buf: AudioBuffer, start: number, end: number): AudioBuffer {
+    const sr = buf.sampleRate;
+    const s = Math.max(0, Math.floor(start * sr));
+    const e = Math.min(buf.length, Math.ceil(end * sr));
+    if (s === 0 && e === buf.length) return buf;
+    const len = Math.max(1, e - s);
+    const out = new AudioBuffer({ length: len, numberOfChannels: buf.numberOfChannels, sampleRate: sr });
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+        out.copyToChannel(buf.getChannelData(ch).subarray(s, e), ch);
+    }
+    return out;
+}
+
+/** Decodes the audio track of a file (best effort — null when silent/unsupported). */
+export async function decodeAudioFromFile(file: File | Blob | null, startSec: number, endSec: number): Promise<AudioBuffer | null> {
+    if (!file) return null;
+    try {
+        const AC: typeof AudioContext =
+            window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (!AC) return null;
+        const ac = new AC();
+        const raw = await file.arrayBuffer();
+        const decoded = await ac.decodeAudioData(raw);
+        void ac.close();
+        return sliceAudioBuffer(decoded, startSec, endSec);
+    } catch {
+        return null;
+    }
+}
+
 function defaultBitrate(width: number, height: number, fps: number): number {
     // ~0.4 bits per pixel per frame keeps grainy, dense newspaper text crisp.
     const estimate = Math.round(width * height * fps * 0.4);

@@ -52,5 +52,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
         // ── Secondary / in development ──────────────────────────────────────
         entry('/video-grabber', 0.6, 'monthly'),
         entry('/bouquet', 0.5, 'weekly'),
+
+        // ── Privacy / data transparency ─────────────────────────────────────
+        entry('/your-data', 0.5, 'monthly'),
     ];
 }

@@ -5,6 +5,7 @@ import { ThinkingOrb } from 'thinking-orbs';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { takeHandoffImage } from '@/lib/tool-handoff';
+import { loadAssets, loadState, saveAssets, saveState } from '@/lib/local-memory';
 import {
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,7 @@ import {
   Check,
   Link2,
 } from 'lucide-react';
+import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
 import { fetchCompetitorsFromDatabase, saveCompetitorToDatabase } from '@/lib/supabase';
 import { formatTimeAgo } from '@/lib/date-utils';
 
@@ -199,6 +201,7 @@ export default function ThumbnailLabPage() {
   const [shortsCandidates, setShortsCandidates] = useState<ThumbnailCandidate[]>([DEFAULT_SHORTS_COVER]);
   const [activeLongformId, setActiveLongformId] = useState<string>(DEFAULT_LONGFORM_THUMBNAIL.id);
   const [activeShortsId, setActiveShortsId] = useState<string>(DEFAULT_SHORTS_COVER.id);
+  const hydratedLabRef = useRef(false);
 
   // Platform & UI View
   const [platformView, setPlatformView] = useState<PlatformView>('yt-mobile');
@@ -208,7 +211,7 @@ export default function ThumbnailLabPage() {
   const [showCandidateBadge, setShowCandidateBadge] = useState<boolean>(true);
   const [showToolsDropdown, setShowToolsDropdown] = useState<boolean>(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'audit' | 'candidates' | 'export'>('audit');
-  const [mobileActiveView, setMobileActiveView] = useState<'feed' | 'grader' | 'variations'>('feed');
+  const [mobileActiveView, setMobileActiveView] = useState<'feed' | 'grader' | 'variations' | 'export'>('feed');
   const [mobileFeedTab, setMobileFeedTab] = useState<'home' | 'shorts' | 'subscriptions' | 'you'>('home');
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(false);
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
@@ -825,12 +828,56 @@ export default function ThumbnailLabPage() {
     reader.readAsDataURL(file);
   };
 
-  // ── Cross-tool hand-off ──────────────────────────────────────────────────
-  // Other CreatorsKit tools (e.g. text-behind "OPEN IN THUMBNAIL LAB") send
-  // their canvas via src/lib/tool-handoff.ts — consume it once on mount.
+  // ── Phase 7.1 local memory + cross-tool hand-off ──────────────────────────
+  // The working canvas (candidates + active selections) survives app close in
+  // IndexedDB (on-device only). Data-URL thumbnails are stashed as blobs and
+  // re-read on return; a pending §4 hand-off (e.g. text-behind "OPEN IN
+  // THUMBNAIL LAB") still appends on top of the restore.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      try {
+        const saved = await loadState<{
+          contentFormat: ContentFormat;
+          longform: ThumbnailCandidate[];
+          shorts: ThumbnailCandidate[];
+          activeLongformId: string;
+          activeShortsId: string;
+        }>('thumbnail-lab');
+        if (saved && !cancelled) {
+          const assets = await loadAssets('thumbnail-lab');
+          const urlFor = async (marker: string): Promise<string> => {
+            if (!marker.startsWith('mem:')) return marker;
+            const mem = assets.find((a) => a.slot === marker.slice(4));
+            if (!mem) return '';
+            return await new Promise<string>((resolve) => {
+              const r = new FileReader();
+              r.onload = () => resolve(String(r.result));
+              r.onerror = () => resolve('');
+              r.readAsDataURL(new File([mem.blob], mem.name ?? 'thumbnail', { type: mem.blob.type }));
+            });
+          };
+          const revive = async (arr: ThumbnailCandidate[]): Promise<ThumbnailCandidate[]> => {
+            const out: ThumbnailCandidate[] = [];
+            for (const c of arr) {
+              const imageUrl = await urlFor(c.imageUrl);
+              if (imageUrl) out.push({ ...c, imageUrl });
+            }
+            return out;
+          };
+          const lf = await revive(saved.state.longform);
+          const sh = await revive(saved.state.shorts);
+          if (cancelled) return;
+          if (lf.length > 0) setLongformCandidates(lf);
+          if (sh.length > 0) setShortsCandidates(sh);
+          setContentFormat(saved.state.contentFormat);
+          setActiveLongformId(saved.state.activeLongformId);
+          setActiveShortsId(saved.state.activeShortsId);
+        }
+      } catch {
+        /* private mode / unavailable — memory is optional */
+      }
+      hydratedLabRef.current = true;
       const handoff = await takeHandoffImage('thumbnail-lab');
       if (!handoff || cancelled) return;
       const reader = new FileReader();
@@ -844,6 +891,51 @@ export default function ThumbnailLabPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phase 7.1 — persist the lab (debounced). Data-URL thumbs are stashed as
+  // blobs in the assets store; the state keeps "mem:<slot>" markers so JSON
+  // stays small. The placeholder SVG thumbs are tiny, so persisting the whole
+  // canvas is cheap and restores pixel-exact.
+  useEffect(() => {
+    if (!hydratedLabRef.current) return; // never wipe before the restore lands
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const stash: Array<{ slot: string; url: string }> = [];
+        let slot = 0;
+        const mark = (arr: ThumbnailCandidate[]) =>
+          arr.map((c) => {
+            if (c.imageUrl.startsWith('data:')) {
+              const s = String(slot++);
+              stash.push({ slot: s, url: c.imageUrl });
+              return { ...c, imageUrl: `mem:${s}` };
+            }
+            return c;
+          });
+        const longMarked = mark(longformCandidates);
+        const shortMarked = mark(shortsCandidates);
+        const assets = await Promise.all(
+          stash.map(async (s) => ({ slot: s.slot, blob: await (await fetch(s.url)).blob(), name: 'thumbnail' }))
+        );
+        if (cancelled) return;
+        await saveAssets('thumbnail-lab', 'Thumbnail Lab', assets);
+        await saveState('thumbnail-lab', 'Thumbnail Lab', {
+          contentFormat,
+          longform: longMarked,
+          shorts: shortMarked,
+          activeLongformId,
+          activeShortsId,
+        });
+      } catch {
+        /* best-effort — the lab still works without memory */
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [longformCandidates, shortsCandidates, contentFormat, activeLongformId, activeShortsId]);
 
   const copyAuditSummary = () => {
     const text = `🎯 THUMBNAIL LAB REPORT (${contentFormat === 'longform' ? '16:9 Long-Form Video' : '9:16 YouTube Short'})
@@ -1139,6 +1231,103 @@ Tested on YouTube Simulator.`;
 
         {/* 1-Click Upload Button Directly in Header */}
         <div className="fs-header-right" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {/* ── TOOLS dropdown (3s glance / shuffle / tag / YouTube import).
+                Fixed-position panel: the header scrolls horizontally (overflow-x:auto),
+                which would clip an absolutely-positioned child, so the sheet anchors
+                below the 44-52px header instead. Stays inside toolsDropdownRef in the
+                DOM so the outside-pointerdown listener closes it. ── */}
+          <div ref={toolsDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setShowToolsDropdown((v) => !v)}
+              aria-expanded={showToolsDropdown}
+              aria-haspopup="menu"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                fontSize: '0.62rem',
+                borderRadius: 3,
+                background: showToolsDropdown ? '#FFE500' : '#27272a',
+                color: showToolsDropdown ? '#000' : '#fff',
+                border: '1px solid #3f3f46',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontWeight: 800,
+              }}
+              title="Studio tools"
+            >
+              <SlidersHorizontal size={11} />
+              <span>TOOLS</span>
+              <ChevronDown size={11} style={{ transform: showToolsDropdown ? 'rotate(180deg)' : 'none' }} />
+            </button>
+            {showToolsDropdown && (
+              <div
+                role="menu"
+                style={{
+                  position: 'fixed',
+                  top: 52,
+                  right: 8,
+                  zIndex: 200,
+                  minWidth: 215,
+                  background: '#18181b',
+                  border: '1.5px solid #3f3f46',
+                  borderRadius: 4,
+                  boxShadow: '4px 4px 0 #000',
+                  padding: 4,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                }}
+              >
+                {[
+                  { icon: <Timer size={13} />, label: '3-Second Glance Test', hint: 'SPACE', run: startGlanceTest },
+                  { icon: <Shuffle size={13} />, label: 'Shuffle Feed', hint: 'R', run: handleShuffleFeed },
+                  { icon: <Edit3 size={13} />, label: `Edit Tag: ${showCandidateBadge ? 'ON' : 'OFF'}`, hint: '', run: () => setShowCandidateBadge((v) => !v) },
+                  { icon: <Link2 size={13} />, label: 'Import from YouTube', hint: '', run: () => setYoutubeImportOpen(true) },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      item.run();
+                      setShowToolsDropdown(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      background: 'transparent',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.68rem',
+                      textAlign: 'left',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#27272a';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {item.icon}
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {item.hint && (
+                      <span style={{ fontSize: '0.56rem', color: '#a1a1aa', border: '1px solid #3f3f46', borderRadius: 3, padding: '1px 4px' }}>{item.hint}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <label
             style={{
               background: contentFormat === 'longform' ? '#FFE500' : '#ff0000',
@@ -1244,54 +1433,27 @@ Tested on YouTube Simulator.`;
         </div>
       </header>
 
-      {/* ── Mobile 1-Line Neo-Brutalist Tabs Bar ── */}
-      <div
-        className="mobile-only-tabs-bar"
-        style={{
-          display: isMobileScreen ? 'flex' : 'none',
-          background: '#000000',
-          borderBottom: '2px solid #FFE500',
-          padding: '4px 8px',
-          gap: 4,
-          flexShrink: 0,
-          zIndex: 40,
-        }}
-      >
-        {[
-          { id: 'feed' as const, label: 'FEED SIMULATOR' },
-          { id: 'grader' as const, label: `CTR GRADER (${overallPopoutScore})` },
-          { id: 'variations' as const, label: `A/B VARS (${currentCandidates.length})` },
-        ].map((tab) => {
-          const isActive = mobileActiveView === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setMobileActiveView(tab.id);
-                if (tab.id === 'grader') setActiveSidebarTab('audit');
-                if (tab.id === 'variations') setActiveSidebarTab('candidates');
-              }}
-              style={{
-                flex: 1,
-                padding: '7px 3px',
-                border: '1.5px solid #000',
-                borderRadius: 3,
-                background: isActive ? '#FFE500' : '#18181b',
-                color: isActive ? '#000000' : '#ffffff',
-                fontFamily: 'monospace',
-                fontWeight: 900,
-                fontSize: '0.62rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                textAlign: 'center',
-                boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                transition: 'all 0.1s ease',
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+      {/* ── PHASE-6 CANVA PATTERN: consolidated bottom navigation (mobile only).
+            Replaces the old top tabs bar — the SAME bar as the other studios,
+            and EXPORT becomes reachable on mobile for the first time. ── */}
+      <div style={{ display: isMobileScreen ? 'contents' : 'none' }}>
+        <MobileEditorToolbar
+          theme="dark"
+          categories={[
+            { id: 'feed', label: 'Feed', icon: <Radio size={15} /> },
+            { id: 'grader', label: 'Grader', icon: <Activity size={15} /> },
+            { id: 'variations', label: 'A/B Vars', icon: <Layout size={15} /> },
+            { id: 'export', label: 'Export', icon: <UploadCloud size={15} /> },
+          ]}
+          active={mobileActiveView}
+          onSelect={(id) => {
+            const view = (id ?? 'feed') as 'feed' | 'grader' | 'variations' | 'export';
+            setMobileActiveView(view);
+            if (view === 'grader') setActiveSidebarTab('audit');
+            if (view === 'variations') setActiveSidebarTab('candidates');
+            if (view === 'export') setActiveSidebarTab('export');
+          }}
+        />
       </div>
 
       {/* ── Quick Candidate Variation Strip Above Feed ── */}
@@ -1551,6 +1713,7 @@ Tested on YouTube Simulator.`;
             justifyContent: 'center',
             alignItems: 'flex-start',
             padding: 0,
+            paddingBottom: isMobileScreen ? 84 : 0,
             position: 'relative',
           }}
           className="no-scrollbar"
@@ -2338,6 +2501,7 @@ Tested on YouTube Simulator.`;
             display: !isMobileScreen || mobileActiveView !== 'feed' ? 'flex' : 'none',
             flexDirection: 'column',
             overflowY: 'auto',
+            paddingBottom: isMobileScreen ? 84 : 0,
             flexShrink: 0,
             flex: isMobileScreen ? 1 : 'none',
           }}
@@ -2679,7 +2843,7 @@ Tested on YouTube Simulator.`;
             )}
 
             {/* EXPORT TAB */}
-            {activeSidebarTab === 'export' && (
+            {(activeSidebarTab === 'export' || (isMobileScreen && mobileActiveView === 'export')) && (
               <div style={{ padding: 10, background: '#27272a', border: '1px solid #3f3f46', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#FFE500' }}>
                   CTR Audit Report

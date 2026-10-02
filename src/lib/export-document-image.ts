@@ -137,14 +137,12 @@ async function captureNodeAsPngBlob(node: HTMLElement, designWidth?: number): Pr
 
 /**
  * Robust, cross-browser document-to-image exporter.
- * On mobile, opens the native Share Sheet ("Save Image" to Photos / Files / AirDrop / WhatsApp).
- * On desktop, triggers a direct high-res PNG download.
+ * ALWAYS triggers a direct high-res PNG download (owner ruling 2026-10-02:
+ * "Save picture" must save the image to the device — never open a share sheet).
  */
 export async function exportDocumentAsImage({
   node,
   filename,
-  title = 'Document',
-  text = 'Creator document',
   designWidth,
 }: ExportImageOptions): Promise<boolean> {
   try {
@@ -154,26 +152,8 @@ export async function exportDocumentAsImage({
     }
 
     const safeFilename = filename.endsWith('.png') ? filename : `${filename}.png`;
-    const file = new File([blob], safeFilename, { type: 'image/png' });
 
-    // Web Share API on mobile (iOS Safari / Android Chrome)
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title,
-          text,
-        });
-        return true;
-      } catch (shareErr: unknown) {
-        // If user cancelled the share sheet (AbortError), don't fall through to download
-        if (shareErr instanceof Error && shareErr.name === 'AbortError') {
-          return true;
-        }
-      }
-    }
-
-    // Fallback: direct browser file download
+    // Direct browser file download (lands in Downloads / gallery)
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

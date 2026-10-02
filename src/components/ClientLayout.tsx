@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import ToolLayout from "@/components/ToolLayout";
 import AdBlockDetector from "@/components/AdBlockDetector";
 import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
+import { ExternalAdGateHost } from "@/components/ExternalAdGate";
 import { TOOL_CHROME } from "@/data/tools";
 
 /**
@@ -39,6 +40,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       )}
       <Toaster />
       <PwaInstallPrompt />
+      <ExternalAdGateHost />
     </>
   );
 }

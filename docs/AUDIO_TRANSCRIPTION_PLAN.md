@@ -174,12 +174,46 @@ curl -s -X POST "https://video-worker-xwv9.onrender.com/transcribe?ticket=<ticke
 curl -s "https://video-worker-xwv9.onrender.com/transcribe/job/<jobId>?t=<jobToken>"
 ```
 
-NEXT (frontend session): captions UI server-fallback wiring — edge
-function mints the ticket, browser uploads the extracted 16k mono audio
-(audio-processor already makes it), polls, feeds `words` into the existing
-`groupWordsIntoSingleLineCues` + overlay presets unchanged. Browser
-whisper stays first choice on desktop; mobile / weak devices go straight
-to the server.
+DONE (2026-10-02 audit — Session 9): the frontend wiring described below
+is SHIPPED end-to-end; verified in code:
+
+- `supabase/functions/video-grab/index.ts` — router action
+  `captions-ticket` → `handleCaptionsTicket()`: WORKER_TOKEN stays
+  server-side, mints the worker's one-time 10-min upload grant.
+- `src/lib/captions/worker-transcribe.ts` — full client pipeline:
+  ticket → DIRECT browser upload to the worker (decoded 16k-mono PCM
+  re-encoded to 16-bit WAV ~32KB/s; raw-file fallback when the browser
+  can't decode) → 2.5s job polling (15-min deadline, 45s contact-grace
+  riding out free-tier container reboots, ONE automatic re-upload on
+  upload_lost/job_lost/lost_contact) → words mapped through the SAME
+  `groupWordsIntoSingleLineCues` (identical engine contract).
+- `src/app/auto-captions/page.tsx` — SERVER is the DEFAULT engine;
+  browser whisper is the silent fallback (2 auto-retries with the chip
+  visibly flipping to Local); the LOCAL engine keeps browser-first with
+  server rescue; `warmCaptionsWorker()` pings /health on mount so the
+  ~50s cold start happens while the user picks a file. (Evolution of the
+  plan's "desktop browser-first": server-first everywhere, since it's
+  free and skips the model download; `prefersServerTranscription()`
+  remains exported for any future per-device split.)
+- Build-order item 1 of 4 CLOSED.
+
+## Item 2 SHIPPED (2026-10-02, Session 9): caption preset expansion
+
+`src/lib/captions/overlay-renderer.ts` gained an artistic active-word
+vocabulary (kinetic-pop): `ActiveWordEffect = 'fill' | 'marker' | 'box'
+| 'underline' | 'glow'` + `glowColor` + `tapeBackdrop` (translucent
+masking-tape band behind the word window). The marker/box/underline/tape
+treatments deliberately mirror match-cut's highlight styles and
+text-highlighter's vocabulary — the suite reads as one design language.
+`CAPTION_STYLE_PRESETS` grew 6 → 14: Marker Swipe, Neon Sign, Coach Box,
+Swipe Underline, Tape Label, Karaoke Pop (teleprompter + wordPop), Clean
+Studio (minimal mode's first preset), Ember Glow. Both studios
+(auto-captions page + OverlayStudio) expose an "Active word" chip row
+and a Tape backdrop toggle; presets carry the new fields through preview
+AND export. Filtered tsc clean; build green 48/48.
+
+Next per build order: item 3 — /matte (rembg u2netp) for
+text-behind / background-replace (fixes S21-freeze).
 
 Local-dev note: `workers/.venv` still carries its old absolute path in
 `activate` (harmless — call `workers\.venv\Scripts\python.exe` directly, or

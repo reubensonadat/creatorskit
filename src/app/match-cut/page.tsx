@@ -28,7 +28,6 @@ import {
   ChevronDown,
   Shuffle,
 } from 'lucide-react';
-import JSZip from 'jszip';
 import {
   renderNewspaperMatchCut,
   playCutSound,
@@ -491,6 +490,7 @@ export default function TextMatchCutStudioPage() {
     setIsExporting(true);
     setExportProgress('Rendering PNG sequence...');
     try {
+      const JSZip = (await import('jszip')).default; // lazy per §7 — never in the page bundle
       const zip = new JSZip();
       const exportCanvas = document.createElement('canvas');
       exportCanvas.width = selectedAspect.width;

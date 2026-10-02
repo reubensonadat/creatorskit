@@ -9,11 +9,11 @@ import {
   Archive
 } from "lucide-react";
 import Link from "next/link";
-import JSZip from "jszip";
 import { TactileScrubber } from "@/components/tactile-scrubber";
 import SpeederLoader from "@/components/SpeederLoader";
 import NextStepRow from "@/components/NextStepRow";
 import { takeHandoffImage, putHandoffImage } from "@/lib/tool-handoff";
+import { loadAssets, loadState, saveAssets, saveState } from "@/lib/local-memory";
 
 export default function CarouselSlicerPage() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -25,6 +25,8 @@ export default function CarouselSlicerPage() {
   const [isZipping, setIsZipping] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const hydratedRef = useRef(false);
+  const autoSliceRef = useRef(false);
 
   const loadImage = (file: File) => {
     if (!file.type.startsWith("image/")) return;
@@ -38,11 +40,42 @@ export default function CarouselSlicerPage() {
       img.src = dataUrl;
     };
     reader.readAsDataURL(file);
+    // Phase 7.1 — remember the last panorama (IndexedDB, on-device only).
+    void saveAssets("carousel-slicer", "Carousel Slicer", [{ slot: "0", blob: file, name: file.name }]);
   };
 
-  // Cross-tool hand-off intake (§4): text-behind posters/cards → slice into a carousel.
+  // Phase 7.1 — restore the last panorama + slide layout from local memory
+  // (on-device only). A pending §4 hand-off (text-behind posters/cards →
+  // carousel) still wins over the restore.
   useEffect(() => {
     (async () => {
+      try {
+        const stored = await loadAssets("carousel-slicer");
+        const mem = stored[0];
+        if (mem && mem.blob.type.startsWith("image/")) {
+          const file = new File([mem.blob], mem.name ?? "panorama.png", { type: mem.blob.type });
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(file);
+          });
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = () => reject(new Error("decode failed"));
+            i.src = dataUrl;
+          });
+          const stateRec = await loadState<{ numSlides: number }>("carousel-slicer");
+          setNumSlides(stateRec?.state.numSlides ?? 4);
+          setPreview(dataUrl);
+          setImage(img);
+          autoSliceRef.current = true; // regenerate slices once the state commits
+        }
+      } catch {
+        /* private mode / unavailable — memory is optional */
+      }
+      hydratedRef.current = true;
       const rec = await takeHandoffImage("carousel-slicer");
       if (rec && rec.blob.type.startsWith("image/")) {
         loadImage(new File([rec.blob], rec.name ?? "poster.png", { type: rec.blob.type }));
@@ -50,6 +83,22 @@ export default function CarouselSlicerPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phase 7.1 — the slide layout survives app close (state store, on-device).
+  useEffect(() => {
+    if (!hydratedRef.current) return; // never fire before the restore lands
+    void saveState("carousel-slicer", "Carousel Slicer", { numSlides });
+  }, [numSlides]);
+
+  // Phase 7.1 — after a restore commits, slice once so the results are back.
+  // sliceImage reads image/numSlides from render scope, so this must run in a
+  // committed-state effect rather than directly after the restore setStates.
+  useEffect(() => {
+    if (!autoSliceRef.current || !image) return;
+    autoSliceRef.current = false;
+    sliceImage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image]);
 
   const sliceImage = () => {
     if (!image) return;
@@ -85,6 +134,7 @@ export default function CarouselSlicerPage() {
   const downloadZip = async () => {
     if (!slices.length) return;
     setIsZipping(true);
+    const JSZip = (await import("jszip")).default; // lazy per §7 — never in the page bundle
     const zip = new JSZip();
     for (let i = 0; i < slices.length; i++) {
       const base64 = slices[i].split(",")[1];
@@ -94,7 +144,7 @@ export default function CarouselSlicerPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "creatorkit-carousel-slicer.zip";
+    a.download = "creatorskit-carousel-slicer.zip";
     a.click();
     URL.revokeObjectURL(url);
     setIsZipping(false);
@@ -118,6 +168,8 @@ export default function CarouselSlicerPage() {
     setImage(null);
     setPreview(null);
     setSlices([]);
+    // Phase 7.1 — a deliberate clear wipes memory too (empty replace-all).
+    void saveAssets("carousel-slicer", "Carousel Slicer", []);
   };
 
   return (

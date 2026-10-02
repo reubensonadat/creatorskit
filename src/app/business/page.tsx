@@ -17,6 +17,7 @@ import {
   ImagePlus,
   X,
 } from 'lucide-react';
+import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
 import { exportDocumentAsImage } from '@/lib/export-document-image';
 import StudioToolsDropdown from '@/components/nav/SiteNav';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
@@ -901,6 +902,11 @@ function BusinessSuiteContent() {
           .ck-workspace { gap: 16px !important; }
           /* Mobile: live document first, builder controls below it */
           .ck-preview-col { order: -1; }
+          /* Phase-6 Canva pattern: the tab-index cards give way to the bottom bar */
+          .ck-tab-grid { display: none !important; }
+        }
+        @media (min-width: 901px) {
+          .ck-mobile-nav { display: none !important; }
         }
         @page {
           size: ${activeTab === 'receipt' ? 'auto' : 'A4 portrait'};
@@ -1100,6 +1106,7 @@ function BusinessSuiteContent() {
 
         {/* Tab Selection — receipt-index cards */}
         <div
+          className="ck-tab-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 224px), 1fr))',
@@ -2608,6 +2615,7 @@ function BusinessSuiteContent() {
                       id="receipt-capture-root"
                       style={{
                         width: 355,
+                        maxWidth: '100%',
                         background: '#fafafa',
                         color: '#09090b',
                         padding: '28px 24px 32px',
@@ -2652,6 +2660,24 @@ function BusinessSuiteContent() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── PHASE-6 CANVA PATTERN: consolidated bottom navigation (mobile only) —
+            the four suite documents switch from one thumb-reach bar; the
+            receipt-index tab cards above stay desktop-only. ── */}
+      <div className="ck-mobile-nav ck-noprint">
+        <MobileEditorToolbar
+          categories={[
+            { id: 'invoice', label: 'Invoice', icon: <FileText size={15} /> },
+            { id: 'receipt', label: 'Receipt', icon: <Receipt size={15} /> },
+            { id: 'agreement', label: 'Agreement', icon: <ShieldCheck size={15} /> },
+            { id: 'letterhead', label: 'Letterhead', icon: <Award size={15} /> },
+          ]}
+          active={activeTab}
+          onSelect={(id) => {
+            if (id) setActiveTab(id as TabType);
+          }}
+        />
       </div>
 
       {/* ─── ANIMATED PRINTER OVERLAY (For all documents: Invoices, Receipts, Contracts, Letterheads) ─── */}

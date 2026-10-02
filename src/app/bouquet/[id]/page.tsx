@@ -61,7 +61,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
             title,
             description,
             images: [`${SITE_BASE_URL}/assets/bouquet/flowers/rose-pink.webp`],
-            creator: '@creatorkit',
+            creator: '@creatorskit',
         },
         robots: {
             index: false,

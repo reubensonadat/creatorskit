@@ -33,6 +33,14 @@ export type VideoBackgroundMode = 'transparent' | 'green-screen' | 'magenta-scre
 
 export type CaptionPillBackground = 'clear' | 'dark' | 'light' | 'custom';
 
+/**
+ * Artistic treatment of the ACTIVE spoken word in kinetic-pop mode.
+ * 'fill' is the classic colored fill; the rest mirror the highlight
+ * vocabulary already used by match-cut / text-highlighter so caption
+ * styles stay cohesive across the suite.
+ */
+export type ActiveWordEffect = 'fill' | 'marker' | 'box' | 'underline' | 'glow';
+
 export interface OverlayTypographyOptions {
     fontFamily?: string;       // e.g. "Montserrat", "Bebas Neue", "Inter"
     fontSize?: number;         // in px (scaled proportionally to resolution)
@@ -48,6 +56,9 @@ export interface OverlayTypographyOptions {
     wordPop?: boolean;         // Karaoke spring-pop on the active spoken word (teleprompter mode)
     textShadow?: boolean;      // Drop shadow for high-contrast legibility
     uppercase?: boolean;       // Force ALL CAPS (Hormozi style)
+    activeWordEffect?: ActiveWordEffect; // kinetic-pop active word treatment
+    glowColor?: string;        // halo color for the 'glow' effect
+    tapeBackdrop?: boolean;    // translucent masking-tape band behind the window
 }
 
 export interface OverlayRenderOptions {
@@ -102,6 +113,9 @@ export interface CaptionStylePresetConfig {
     textShadow: boolean;
     uppercase: boolean;
     emojiMode: boolean;
+    activeWordEffect: ActiveWordEffect;
+    glowColor?: string;
+    tapeBackdrop: boolean;
 }
 
 export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
@@ -117,6 +131,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#FFE500',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.0,
         wordRotation: false,
@@ -137,6 +153,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#22C55E',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.15,
         wordRotation: false,
@@ -157,6 +175,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#06B6D4',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.25,
         wordRotation: true,
@@ -178,6 +198,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 68,
         pillBackground: 'light',
         highlighterColor: '#F97316',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.3,
         wordRotation: false,
@@ -198,6 +220,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 70,
         pillBackground: 'dark',
         highlighterColor: '#EC4899',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.35,
         wordRotation: false,
@@ -218,6 +242,186 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         yPositionPercent: 71,
         pillBackground: 'dark',
         highlighterColor: '#A78BFA',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.2,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Marker vocabulary on captions: the highlighter bar wipes in
+        // behind the spoken word, black type on top — same energy as
+        // match-cut's marker style.
+        id: 'marker-swipe',
+        name: 'Marker Swipe',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'montserrat',
+        fontSize: 56,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'clear',
+        highlighterColor: '#FFE500',
+        activeWordEffect: 'marker',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.1,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Lit-sign look: cyan halo passes under a crisp white core.
+        id: 'neon-sign',
+        name: 'Neon Sign',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'outfit',
+        fontSize: 62,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#22D3EE',
+        activeWordEffect: 'glow',
+        glowColor: '#22D3EE',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.15,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Boxing-poster annotation: dashed hand-box around the spoken
+        // word; white type keeps the accent color as the marker.
+        id: 'coach-box',
+        name: 'Coach Box',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'archivo-black',
+        fontSize: 58,
+        letterSpacing: -1,
+        yPositionPercent: 69,
+        pillBackground: 'clear',
+        highlighterColor: '#F43F5E',
+        activeWordEffect: 'box',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.1,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Swipe underline: a lime bar grows under the spoken word —
+        // the text-highlighter underline, on video.
+        id: 'swipe-underline',
+        name: 'Swipe Underline',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'poppins',
+        fontSize: 58,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#A3E635',
+        activeWordEffect: 'underline',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.1,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Masking-tape texture: the whole word window sits on a tilted
+        // translucent tape band, crimson active word on top.
+        id: 'tape-label',
+        name: 'Tape Label',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'space-mono',
+        fontSize: 54,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'clear',
+        highlighterColor: '#DC2626',
+        activeWordEffect: 'fill',
+        tapeBackdrop: true,
+        springPhysics: true,
+        bounceIntensity: 1.0,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+    },
+    {
+        // Teleprompter mode with the karaoke spring-pop switched ON —
+        // the glide pill plus a bouncing spoken word.
+        id: 'karaoke-pop',
+        name: 'Karaoke Pop',
+        videoMode: 'teleprompter',
+        fontFamily: 'montserrat',
+        fontSize: 52,
+        letterSpacing: 0,
+        yPositionPercent: 72,
+        pillBackground: 'dark',
+        highlighterColor: '#FFE500',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.2,
+        wordRotation: false,
+        wordPop: true,
+        textShadow: true,
+        uppercase: false,
+        emojiMode: false,
+    },
+    {
+        // Minimal mode finally gets a preset: clean TV/film lower-third
+        // bar, spoken-only reveal, zero bounce.
+        id: 'clean-studio',
+        name: 'Clean Studio',
+        videoMode: 'minimal',
+        fontFamily: 'inter',
+        fontSize: 46,
+        letterSpacing: 0,
+        yPositionPercent: 76,
+        pillBackground: 'dark',
+        highlighterColor: '#FFE500',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
+        springPhysics: false,
+        bounceIntensity: 1.0,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: false,
+        emojiMode: false,
+    },
+    {
+        // Ember neon: warm orange halo — hype-video energy that stays
+        // legible on dark footage.
+        id: 'ember-glow',
+        name: 'Ember Glow',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'nunito-sans',
+        fontSize: 60,
+        letterSpacing: 0,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#FB923C',
+        activeWordEffect: 'glow',
+        glowColor: '#FB923C',
+        tapeBackdrop: false,
         springPhysics: true,
         bounceIntensity: 1.2,
         wordRotation: false,
@@ -734,6 +938,26 @@ export function drawCaptionFrame(
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
+        // Masking-tape backdrop (preset-driven texture): a translucent
+        // tape band behind the whole word window, tilted a hair — the
+        // match-cut "tape" vocabulary on captions. Drawn beneath every
+        // word so pops and strokes land ON the tape.
+        if (typography.tapeBackdrop) {
+            ctx.save();
+            ctx.translate(width / 2, centerY);
+            ctx.rotate((-1.6 * Math.PI) / 180);
+            const tapeH = Math.round(popFontSize * 1.9);
+            const tapeW = m.total + Math.round(popFontSize * 1.1);
+            ctx.fillStyle = 'rgba(255, 219, 89, 0.92)';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-tapeW / 2, -tapeH / 2, tapeW, tapeH, 6);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
         let currentX = (width - m.total) / 2;
 
         visibleWords.forEach((_rawWord, relativeIdx) => {
@@ -766,6 +990,21 @@ export function drawCaptionFrame(
                     ctx.shadowOffsetY = 4;
                 }
 
+                const effect: ActiveWordEffect = typography.activeWordEffect || 'fill';
+                const wordW = m.widths[relativeIdx];
+
+                // Marker-swipe: highlighter bar wipes in behind the spoken
+                // word over the first ~45%, black type on top — the classic
+                // marker-highlight vocabulary.
+                if (effect === 'marker') {
+                    const swipe = Math.min(1, wordProgress / 0.45);
+                    const barW = wordW * swipe + popFontSize * 0.12;
+                    ctx.fillStyle = highlighterColor;
+                    ctx.beginPath();
+                    ctx.roundRect(-barW / 2, -popFontSize * 0.62, barW, popFontSize * 1.24, popFontSize * 0.08);
+                    ctx.fill();
+                }
+
                 // Heavy Black Stroke Outline
                 ctx.lineWidth = Math.max(6, popFontSize * 0.18);
                 ctx.strokeStyle = '#000000';
@@ -774,9 +1013,50 @@ export function drawCaptionFrame(
 
                 ctx.shadowColor = 'transparent';
 
-                // Highlight Color Fill
-                ctx.fillStyle = highlighterColor;
-                ctx.fillText(word, 0, 0);
+                if (effect === 'glow') {
+                    // Neon: two halo passes in the glow color, then a crisp
+                    // white core — a lit sign, not a blurry mess.
+                    const glow = typography.glowColor || highlighterColor;
+                    ctx.save();
+                    ctx.shadowColor = glow;
+                    ctx.shadowBlur = Math.max(18, popFontSize * 0.42);
+                    ctx.fillStyle = glow;
+                    ctx.fillText(word, 0, 0);
+                    ctx.fillText(word, 0, 0);
+                    ctx.restore();
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillText(word, 0, 0);
+                } else if (effect === 'marker') {
+                    ctx.fillStyle = '#000000';
+                    ctx.fillText(word, 0, 0);
+                } else {
+                    // 'fill' (classic), plus 'box'/'underline' which keep a
+                    // white fill so the annotation color stays the accent.
+                    ctx.fillStyle = effect === 'fill' ? highlighterColor : '#FFFFFF';
+                    ctx.fillText(word, 0, 0);
+                }
+
+                // Hand-boxed annotation: dashed rect around the spoken
+                // word, pulsing with the same spring scale.
+                if (effect === 'box') {
+                    const padX = popFontSize * 0.16;
+                    const padY = popFontSize * 0.36;
+                    ctx.lineWidth = Math.max(4, popFontSize * 0.07);
+                    ctx.strokeStyle = highlighterColor;
+                    ctx.setLineDash([popFontSize * 0.28, popFontSize * 0.16]);
+                    ctx.strokeRect(-wordW / 2 - padX, -padY, wordW + padX * 2, padY * 2);
+                    ctx.setLineDash([]);
+                }
+
+                // Swipe underline: grows left→right with the spoken word.
+                if (effect === 'underline') {
+                    const swipe = Math.min(1, wordProgress / 0.6);
+                    const barH = Math.max(5, popFontSize * 0.13);
+                    ctx.fillStyle = highlighterColor;
+                    ctx.beginPath();
+                    ctx.roundRect(-wordW / 2, popFontSize * 0.62, wordW * swipe, barH, barH / 2);
+                    ctx.fill();
+                }
             } else {
                 if (typography.textShadow) {
                     ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';

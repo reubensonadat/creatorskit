@@ -74,6 +74,7 @@ import {
     type VideoAspectRatio,
     type VideoBackgroundMode,
     type CaptionStylePresetConfig,
+    type ActiveWordEffect,
     CAPTION_STYLE_PRESETS,
     drawCaptionFrame,
     renderCaptionsToVideo,
@@ -494,6 +495,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
     const [textShadow, setTextShadow] = useState<boolean>(true);
     const [uppercase, setUppercase] = useState<boolean>(false);
     const [wordPop, setWordPop] = useState<boolean>(false);
+    const [activeWordEffect, setActiveWordEffect] = useState<ActiveWordEffect>('fill');
+    const [glowColor, setGlowColor] = useState<string>('#22D3EE');
+    const [tapeBackdrop, setTapeBackdrop] = useState<boolean>(false);
     const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
     // 🚀 BYOK (Bring Your Own Key) Engine Settings + our free server engine
@@ -1718,7 +1722,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         try {
             const blobWithMeta = await embedMetadataIntoMediaBlob(file, {
                 version: '1.0',
-                generator: 'creatorkit-studio',
+                generator: 'creatorskit-studio',
                 script: fullText || teleprompterScript || '',
                 cues: cues,
                 createdAt: Date.now(),
@@ -1897,6 +1901,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setBounceIntensity(preset.bounceIntensity);
         setWordRotation(preset.wordRotation);
         setWordPop(preset.wordPop);
+        setActiveWordEffect(preset.activeWordEffect);
+        if (preset.glowColor) setGlowColor(preset.glowColor);
+        setTapeBackdrop(preset.tapeBackdrop);
         setTextShadow(preset.textShadow);
         setUppercase(preset.uppercase);
         setEmojiMode(preset.emojiMode);
@@ -1940,6 +1947,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                 wordPop: wordPop,
                 textShadow: textShadow,
                 uppercase: uppercase,
+                activeWordEffect: activeWordEffect,
+                glowColor: glowColor,
+                tapeBackdrop: tapeBackdrop,
             }
         );
     }, [
@@ -1962,6 +1972,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         wordPop,
         textShadow,
         uppercase,
+        activeWordEffect,
+        glowColor,
+        tapeBackdrop,
     ]);
 
     // Redraw preview whenever settings change or when scrubbed while paused
@@ -2108,6 +2121,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     wordPop: wordPop,
                     textShadow: textShadow,
                     uppercase: uppercase,
+                    activeWordEffect: activeWordEffect,
+                    glowColor: glowColor,
+                    tapeBackdrop: tapeBackdrop,
                 },
                 onProgress: (percent) => setVideoRenderProgress(percent),
             });
@@ -3461,6 +3477,24 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                                 </button>
                                             ))}
                                         </div>
+                                        {/* Active word effect (kinetic-pop artistic treatments) */}
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                                            <span style={{ ...BRUT_LABEL, fontSize: '0.62rem' }}>Active word</span>
+                                            {(['fill', 'marker', 'box', 'underline', 'glow'] as ActiveWordEffect[]).map((fx) => (
+                                                <button
+                                                    key={fx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setActiveWordEffect(fx);
+                                                        setActivePresetId(null);
+                                                    }}
+                                                    style={brutChip(activeWordEffect === fx)}
+                                                    title={`Active word effect: ${fx}`}
+                                                >
+                                                    {fx === 'fill' ? 'Color fill' : fx === 'marker' ? 'Marker swipe' : fx === 'box' ? 'Hand box' : fx === 'underline' ? 'Swipe underline' : 'Neon glow'}
+                                                </button>
+                                            ))}
+                                        </div>
                                         <div
                                             style={{
                                                 display: 'grid',
@@ -3683,6 +3717,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                                     ['Karaoke word pop', wordPop, setWordPop],
                                                     ['Rotation tilt', wordRotation, setWordRotation],
                                                     ['Drop shadow', textShadow, setTextShadow],
+                                                    ['Tape backdrop', tapeBackdrop, setTapeBackdrop],
                                                     ['All caps', uppercase, setUppercase],
                                                     ['Emoji mode', emojiMode, setEmojiMode],
                                                 ] as [string, boolean, (v: boolean) => void][]

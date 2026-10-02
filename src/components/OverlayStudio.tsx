@@ -7,6 +7,7 @@ import {
     type VideoAspectRatio,
     type VideoBackgroundMode,
     type CaptionStylePresetConfig,
+    type ActiveWordEffect,
     CAPTION_STYLE_PRESETS,
     drawCaptionFrame,
     renderCaptionsToVideo,
@@ -124,6 +125,9 @@ export function OverlayStudio({
     const [wordPop, setWordPop] = useState<boolean>(false);
     const [textShadow, setTextShadow] = useState<boolean>(true);
     const [uppercase, setUppercase] = useState<boolean>(true);
+    const [activeWordEffect, setActiveWordEffect] = useState<ActiveWordEffect>('fill');
+    const [glowColor, setGlowColor] = useState<string>('#22D3EE');
+    const [tapeBackdrop, setTapeBackdrop] = useState<boolean>(false);
 
     // Transport & Playback
     const [overlayCurrentTime, setOverlayCurrentTime] = useState<number>(0);
@@ -164,6 +168,9 @@ export function OverlayStudio({
         setBounceIntensity(preset.bounceIntensity);
         setWordRotation(preset.wordRotation);
         setWordPop(preset.wordPop);
+        setActiveWordEffect(preset.activeWordEffect);
+        if (preset.glowColor) setGlowColor(preset.glowColor);
+        setTapeBackdrop(preset.tapeBackdrop);
         setTextShadow(preset.textShadow);
         setUppercase(preset.uppercase);
         setEmojiMode(preset.emojiMode);
@@ -208,6 +215,9 @@ export function OverlayStudio({
                 wordPop: wordPop,
                 textShadow: textShadow,
                 uppercase: uppercase,
+                activeWordEffect: activeWordEffect,
+                glowColor: glowColor,
+                tapeBackdrop: tapeBackdrop,
             }
         );
     }, [
@@ -230,6 +240,9 @@ export function OverlayStudio({
         wordPop,
         textShadow,
         uppercase,
+        activeWordEffect,
+        glowColor,
+        tapeBackdrop,
     ]);
 
     useEffect(() => {
@@ -392,6 +405,9 @@ export function OverlayStudio({
                     wordPop: wordPop,
                     textShadow: textShadow,
                     uppercase: uppercase,
+                    activeWordEffect: activeWordEffect,
+                    glowColor: glowColor,
+                    tapeBackdrop: tapeBackdrop,
                 },
                 onProgress: (percent) => setVideoRenderProgress(percent),
             });
@@ -784,6 +800,25 @@ export function OverlayStudio({
                     ))}
                 </div>
 
+                {/* Active word effect (kinetic-pop artistic treatments) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    <span style={{ ...BRUT_LABEL, fontSize: '0.62rem' }}>Active word</span>
+                    {(['fill', 'marker', 'box', 'underline', 'glow'] as ActiveWordEffect[]).map((fx) => (
+                        <button
+                            key={fx}
+                            type="button"
+                            onClick={() => {
+                                setActiveWordEffect(fx);
+                                setActivePresetId(null);
+                            }}
+                            style={brutChip(activeWordEffect === fx)}
+                            title={`Active word effect: ${fx}`}
+                        >
+                            {fx === 'fill' ? 'Color fill' : fx === 'marker' ? 'Marker swipe' : fx === 'box' ? 'Hand box' : fx === 'underline' ? 'Swipe underline' : 'Neon glow'}
+                        </button>
+                    ))}
+                </div>
+
                 {/* Font Family */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, color: '#000' }}>FONT</span>
@@ -909,6 +944,7 @@ export function OverlayStudio({
                             ['Spring bounce', springPhysics, setSpringPhysics],
                             ['Rotation tilt', wordRotation, setWordRotation],
                             ['Drop shadow', textShadow, setTextShadow],
+                            ['Tape backdrop', tapeBackdrop, setTapeBackdrop],
                             ['All caps', uppercase, setUppercase],
                             ['Emoji mode', emojiMode, setEmojiMode],
                         ] as [string, boolean, (v: boolean) => void][]

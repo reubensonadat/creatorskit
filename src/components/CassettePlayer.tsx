@@ -702,7 +702,7 @@ export function CassettePlayer({
                     <div className="mt-4 flex flex-col items-center">
                         <div className="flex w-full max-w-[530px] items-center justify-between px-1 text-[11px] font-mono text-zinc-500">
                             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                                <Subtitles size={13} className="text-yellow-500" />
+                                <Subtitles size={13} className="text-zinc-400" />
                                 <span>Live Subtitles</span>
                             </span>
                             {cues.length > 0 && (
@@ -711,7 +711,7 @@ export function CassettePlayer({
                                     className={cn(
                                         'rounded px-1.5 py-0.5 font-bold uppercase tracking-widest text-[10px] transition-colors',
                                         captionsVisible
-                                            ? 'bg-yellow-400 text-black'
+                                            ? 'bg-zinc-800 text-white'
                                             : 'bg-zinc-800 text-zinc-400 hover:text-white'
                                     )}
                                 >
@@ -722,7 +722,7 @@ export function CassettePlayer({
 
                         <div className="mt-1.5 min-h-[44px] w-full max-w-[530px] rounded-xl border-2 border-zinc-950 bg-black p-3 text-center shadow-inner">
                             {activeCaption ? (
-                                <p className="animate-fade-in font-sans text-sm font-bold text-yellow-400">
+                                <p className="animate-fade-in font-sans text-sm font-bold text-white">
                                     &ldquo;{activeCaption}&rdquo;
                                 </p>
                             ) : (

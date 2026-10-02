@@ -510,7 +510,7 @@ export default function ColorGradientPage() {
     }
 
     const link = document.createElement("a");
-    link.download = "creatorkit-mesh-gradient.png";
+    link.download = "creatorskit-mesh-gradient.png";
     link.href = canvas.toDataURL("image/png");
     link.click();
   };
@@ -697,7 +697,7 @@ export default function ColorGradientPage() {
               <div style={{ width: 2, height: 40, background: "rgba(0,0,0,0.1)" }} />
 
               {/* Filter Search */}
-              <div style={{ flex: 1, minWidth: 260, position: "relative" }}>
+              <div className="gradient-filter-search" style={{ flex: 1, minWidth: 260, position: "relative" }}>
                 <span style={{ position: "absolute", left: 14, top: 12, color: "var(--text-hint)" }}>
                   <Search size={18} />
                 </span>

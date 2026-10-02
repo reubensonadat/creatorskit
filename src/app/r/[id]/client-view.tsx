@@ -76,6 +76,7 @@ export default function ShortLinkClientView() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexWrap: 'wrap',
                     gap: 8,
                     padding: '22px 16px 28px',
                     fontFamily: 'monospace',

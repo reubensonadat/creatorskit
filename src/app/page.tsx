@@ -245,9 +245,9 @@ export default function Home() {
       {/* ─── SECTION 1: IN-HOUSE CREATORKIT TOOLS ────────────────────────── */}
       <section id="in-house-tools" style={{ padding: "clamp(34px, 6vw, 60px) clamp(16px, 5vw, 24px) clamp(25px, 5vw, 50px)", maxWidth: 1200, margin: "0 auto" }}>
         {/* Section title without unnecessary verbose paragraph */}
-        <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 10, height: 10, background: "#000000" }} />
-          <h2 style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
+        <div className="home-sec-head" style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 10, height: 10, background: "#000000", flexShrink: 0 }} />
+          <h2 className="home-sec-title" style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
             CreatorsKit In-House Tools
           </h2>
         </div>
@@ -359,9 +359,9 @@ export default function Home() {
 
       {/* ─── SECTION 2: CURATED EXTERNAL TOOLS ───────────────────────────── */}
       <section id="external-tools" style={{ padding: "clamp(10px, 3vw, 20px) clamp(16px, 5vw, 24px) clamp(40px, 6vw, 70px)", maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 10, height: 10, background: "#000000" }} />
-          <h2 style={{ fontSize: "clamp(1.3rem, 4vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
+        <div className="home-sec-head" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 10, height: 10, background: "#000000", flexShrink: 0 }} />
+          <h2 className="home-sec-title" style={{ fontSize: "clamp(1.3rem, 4vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
             Recommended External Tools
           </h2>
         </div>
@@ -482,7 +482,7 @@ export default function Home() {
             </Link>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 28, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 28, alignItems: "center" }}>
             <div>
               <span
                 style={{
@@ -557,6 +557,8 @@ export default function Home() {
                   padding: "8px 12px",
                   borderTop: "1px solid #444444",
                   display: "flex",
+                  flexWrap: "wrap",
+                  gap: "2px 8px",
                   justifyContent: "space-between",
                   fontSize: "0.7rem",
                   fontFamily: "monospace",

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Palette, RefreshCw, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { putHandoffText } from "@/lib/tool-handoff";
+import { loadAssets, saveAssets } from "@/lib/local-memory";
 
 interface Swatch {
   hex: string;
@@ -83,9 +84,7 @@ export default function PaletteExtractorPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFiles = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
+  const loadFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -103,6 +102,31 @@ export default function PaletteExtractorPage() {
     };
     reader.readAsDataURL(file);
   };
+
+  const handleFiles = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    loadFile(file);
+    // Phase 7.1 — remember the last source photo (IndexedDB, on-device only).
+    void saveAssets("palette-extractor", "Palette Extractor", [{ slot: "0", blob: file, name: file.name }]);
+  };
+
+  // Phase 7.1 — restore the last source photo on return. The palette is
+  // recomputed from the image, so nothing else needs persisting.
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await loadAssets("palette-extractor");
+        const mem = stored[0];
+        if (mem && mem.blob.type.startsWith("image/")) {
+          loadFile(new File([mem.blob], mem.name ?? "photo", { type: mem.blob.type }));
+        }
+      } catch {
+        /* private mode / unavailable — memory is optional */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const copy = async (text: string, label: string) => {
     try {

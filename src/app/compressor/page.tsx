@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Download, FolderDown, X, FileText, Zap } from "lucide-react";
 import NextStepRow from "@/components/NextStepRow";
 import { putHandoffImage, takeHandoffImage } from "@/lib/tool-handoff";
+import { TactileScrubber } from "@/components/tactile-scrubber";
+import { loadAssets, loadState, saveAssets, saveState } from "@/lib/local-memory";
 
 type TargetFmt = "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "application/pdf";
 
@@ -182,6 +184,7 @@ export default function CompressorPage() {
     const [note, setNote] = useState("");
 
     const fileRef = useRef<HTMLInputElement>(null);
+    const hydratedRef = useRef(false);
 
     /** AVIF encoding support — feature-detected once (plan: "± AVIF where supported"). */
     const avifSupported = useMemo(() => {
@@ -228,16 +231,58 @@ export default function CompressorPage() {
         setNote("");
     }, []);
 
-    // Cross-tool intake (§4): an image handed off from watermark / carousel-slicer / resizer lands in the queue.
+    // Phase 7.1 + §4 cross-tool intake — restore the last queue + settings
+    // from local memory (on-device only), then let a pending hand-off image
+    // (from watermark / carousel-slicer / resizer) append on top.
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            try {
+                const stored = await loadAssets("compressor");
+                if (stored.length > 0) {
+                    const restored: Item[] = [];
+                    for (const mem of stored) {
+                        const f = new File([mem.blob], mem.name ?? "file", { type: mem.blob.type });
+                        const kind = classify(f);
+                        if (!kind) continue;
+                        restored.push({ id: `mem-${mem.slot}`, file: f, kind });
+                    }
+                    if (!cancelled && restored.length > 0) setItems(restored);
+                }
+                const saved = await loadState<{ target: TargetFmt; quality: number; pdfScale: number }>("compressor");
+                if (!cancelled && saved) {
+                    setTarget(saved.state.target);
+                    setQuality(saved.state.quality);
+                    setPdfScale(saved.state.pdfScale);
+                }
+            } catch {
+                /* private mode / unavailable — memory is optional */
+            }
+            hydratedRef.current = true;
             const rec = await takeHandoffImage("compressor");
             if (cancelled || !rec || !rec.blob.type.startsWith("image/")) return;
             addFiles([new File([rec.blob], rec.name ?? "handoff-image", { type: rec.blob.type })]);
         })();
         return () => { cancelled = true; };
     }, [addFiles]);
+
+    // Phase 7.1 — the queue survives app close (IndexedDB, on-device only).
+    // A deliberate clear (CLEAR ALL / removing every file) persists too:
+    // memory mirrors the visible queue.
+    useEffect(() => {
+        if (!hydratedRef.current) return; // never wipe before the restore lands
+        void saveAssets(
+            "compressor",
+            "Convert & Compress",
+            items.map((it, i) => ({ slot: String(i), blob: it.file, name: it.file.name }))
+        );
+    }, [items]);
+
+    // Phase 7.1 — settings persist alongside the queue.
+    useEffect(() => {
+        if (!hydratedRef.current) return;
+        void saveState("compressor", "Convert & Compress", { target, quality, pdfScale });
+    }, [target, quality, pdfScale]);
 
     const removeItem = (id: string) => setItems((prev) => prev.filter((i) => i.id !== id));
 
@@ -525,22 +570,16 @@ export default function CompressorPage() {
                             </div>
 
                             {(target === "image/jpeg" || target === "image/webp" || target === "image/avif") && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, letterSpacing: "0.05em" }}>
-                                        QUALITY
-                                    </span>
-                                    <input
-                                        type="range"
-                                        min={30}
-                                        max={95}
-                                        value={Math.round(quality * 100)}
-                                        onChange={(e) => setQuality(Number(e.target.value) / 100)}
-                                        style={{ flex: 1, minWidth: 160, accentColor: "#000" }}
-                                    />
-                                    <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800 }}>
-                                        {Math.round(quality * 100)}%
-                                    </span>
-                                </div>
+                                <TactileScrubber
+                                    label="Quality"
+                                    min={30}
+                                    max={95}
+                                    step={1}
+                                    value={Math.round(quality * 100)}
+                                    onChange={(v) => setQuality(v / 100)}
+                                    formatValue={(v) => `${v}%`}
+                                    presets={[50, 70, 80, 95]}
+                                />
                             )}
 
                             {hasPdf && target !== "application/pdf" && (
@@ -587,6 +626,7 @@ export default function CompressorPage() {
                                 return (
                                     <div
                                         key={item.id}
+                                        className="compressor-file-row"
                                         style={{
                                             display: "flex",
                                             alignItems: "center",
@@ -597,7 +637,7 @@ export default function CompressorPage() {
                                             flexWrap: "wrap",
                                         }}
                                     >
-                                        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 2, fontSize: "0.78rem", fontWeight: 700 }}>
+                                        <span className="compressor-file-name" style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 2, fontSize: "0.78rem", fontWeight: 700 }}>
                                             {item.kind === "pdf" ? <FileText size={15} /> : <ImageIcon size={15} />}
                                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                                 {item.file.name}
@@ -606,7 +646,7 @@ export default function CompressorPage() {
                                                 <span style={{ fontSize: "0.64rem", color: "#666", fontFamily: "monospace" }}>· {item.pages} PAGES</span>
                                             ) : null}
                                         </span>
-                                        <span style={{ fontSize: "0.68rem", fontFamily: "monospace", color: "#555", flex: 1 }}>
+                                        <span className="compressor-file-size" style={{ fontSize: "0.68rem", fontFamily: "monospace", color: "#555", flex: 1, minWidth: 0 }}>
                                             {formatBytes(item.file.size)} →{" "}
                                             {item.busy ? (
                                                 "…"

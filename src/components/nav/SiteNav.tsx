@@ -44,6 +44,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { VISIBLE_TOOLS, type ToolItem } from '@/data/tools';
+import { externalLinkClick } from '@/components/ExternalAdGate';
 
 // ─── Icon resolver — the single name→icon map in the codebase ────────────────
 const ICONS: Record<string, LucideIcon> = {
@@ -201,6 +202,7 @@ export default function SiteNav({
 
       {open && (
         <div
+          className="sitenav-drop"
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
@@ -293,11 +295,16 @@ export default function SiteNav({
                 {g.items.map((tool) => {
                   const Icon = resolveToolIcon(tool.icon);
                   const active = currentHref === tool.href;
+                  const isExtLink = tool.isExternal === true;
+                  const extTarget = tool.externalUrl || tool.href;
                   return (
                     <Link
                       key={tool.href}
                       href={tool.href}
-                      onClick={() => setOpen(false)}
+                      onClick={(e) => {
+                        setOpen(false);
+                        if (isExtLink) externalLinkClick(e, extTarget, tool.label);
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -412,31 +419,181 @@ export function SiteNavList({ currentHref, onNavigate, variant = 'compact', expa
       {VISIBLE_TOOLS.map((tool) => {
         const isActive = currentHref === tool.href;
         const isExt = tool.isExternal && (tool.externalUrl || tool.href).startsWith('http');
-        const target = tool.externalUrl || tool.href;
 
         if (isExt) {
+          const Icon = resolveToolIcon(tool.icon);
+          const extTarget = tool.externalUrl || '';
+          const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+            onNavigate?.();
+            externalLinkClick(e, extTarget, tool.label);
+          };
+
+          if (variant === 'rail') {
+            return (
+              <a
+                key={tool.href}
+                href={tool.href}
+                title={tool.label}
+                onClick={handleClick}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: expanded ? 10 : 0,
+                  padding: expanded ? '8px 10px' : '0',
+                  width: expanded ? '100%' : '36px',
+                  height: expanded ? 'auto' : '36px',
+                  margin: expanded ? '0 0 3px 0' : '0 auto 4px auto',
+                  textDecoration: 'none',
+                  position: 'relative',
+                  background: 'transparent',
+                  color: '#444444',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  justifyContent: expanded ? 'flex-start' : 'center',
+                  borderRadius: 4,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f4f4f5';
+                  e.currentTarget.style.color = '#000000';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#444444';
+                }}
+              >
+                <Icon size={16} style={{ flexShrink: 0 }} />
+                {!expanded && (
+                  <ArrowUpRight size={9} style={{ position: 'absolute', top: 1, right: 1, color: '#71717a' }} />
+                )}
+                {expanded && (
+                  <>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.label}</span>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: '0.52rem',
+                        fontFamily: 'monospace',
+                        opacity: 0.7,
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                      }}
+                    >
+                      EXT <ArrowUpRight size={10} />
+                    </span>
+                  </>
+                )}
+              </a>
+            );
+          }
+
+          if (variant === 'drawer') {
+            return (
+              <a
+                key={tool.href}
+                href={tool.href}
+                title={tool.label}
+                onClick={handleClick}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  width: '100%',
+                  textDecoration: 'none',
+                  background: 'transparent',
+                  color: '#444444',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  borderRadius: 4,
+                  marginBottom: 2,
+                }}
+              >
+                <Icon size={16} style={{ flexShrink: 0 }} />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.label}</span>
+                <ArrowUpRight size={12} style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.7 }} />
+              </a>
+            );
+          }
+
+          // compact & roomy — Navbar rows (match internal row styling)
           return (
             <a
               key={tool.href}
-              href={target}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={onNavigate}
+              href={tool.href}
+              onClick={handleClick}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                textDecoration: 'none',
                 gap: 12,
                 padding: variant === 'roomy' ? '12px 14px' : '8px 12px',
+                textDecoration: 'none',
+                transition: 'background 0.1s',
                 borderBottom: variant === 'roomy' ? '1px solid #f0f0f0' : 'none',
+                background: 'transparent',
                 color: '#000000',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f4f4f5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
-              <span style={{ fontSize: variant === 'roomy' ? '0.9rem' : '0.82rem', fontWeight: 700 }}>{tool.label}</span>
-              <span style={{ fontSize: '0.58rem', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.06em', color: '#71717a' }}>
-                {tool.hint} ↗
-              </span>
+              {variant === 'roomy' ? (
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{tool.label}</div>
+                  <div
+                    style={{
+                      fontSize: '0.65rem',
+                      fontFamily: 'monospace',
+                      color: '#888888',
+                      marginTop: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    {tool.hint} <ArrowUpRight size={9} />
+                  </div>
+                </div>
+              ) : (
+                <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{tool.label}</span>
+              )}
+              {tool.badge ? (
+                <span
+                  style={{
+                    fontSize: '0.55rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    background: '#000000',
+                    color: '#ffffff',
+                    padding: '2px 6px',
+                  }}
+                >
+                  {tool.badge}
+                </span>
+              ) : (
+                variant === 'compact' && (
+                  <span
+                    style={{
+                      fontSize: '0.58rem',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      letterSpacing: '0.06em',
+                      color: '#71717a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 3,
+                    }}
+                  >
+                    EXT <ArrowUpRight size={10} />
+                  </span>
+                )
+              )}
             </a>
           );
         }

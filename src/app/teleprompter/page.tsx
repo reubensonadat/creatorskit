@@ -1824,7 +1824,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         try {
           finalBlob = await embedMetadataIntoMediaBlob(rawBlob, {
             version: '1.0',
-            generator: 'creatorkit-teleprompter',
+            generator: 'creatorskit-teleprompter',
             script: script,
             createdAt: Date.now(),
             title: 'Teleprompter Take',
@@ -1860,7 +1860,7 @@ Control your speed, adjust your font size, and download your voice recording in 
           const dlUrl = URL.createObjectURL(finalBlob);
           const dlA = document.createElement('a');
           dlA.href = dlUrl;
-          dlA.download = `creatorkit-take-${Date.now()}.${ext}`;
+          dlA.download = `creatorskit-take-${Date.now()}.${ext}`;
           document.body.appendChild(dlA);
           dlA.click();
           dlA.remove();
@@ -2977,7 +2977,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <a
                             href={recordedAudioUrl}
-                            download={`creatorkit-take-${Date.now()}.webm`}
+                            download={`creatorskit-take-${Date.now()}.webm`}
                             onClick={() => setShowTakePrompt(false)}
                             style={{
                               border: '2px solid #000',
@@ -3042,7 +3042,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                         <RecordedAudioPlayer url={recordedAudioUrl} />
                         <a
                           href={recordedAudioUrl}
-                          download={`creatorkit-take-${Date.now()}.webm`}
+                          download={`creatorskit-take-${Date.now()}.webm`}
                           style={{
                             padding: '6px 10px',
                             background: '#000',
@@ -3313,7 +3313,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                 </button>
                 <a
                   href={recordedAudioUrl}
-                  download={`creatorkit-take-${Date.now()}.webm`}
+                  download={`creatorskit-take-${Date.now()}.webm`}
                   style={{
                     width: 36,
                     height: 36,

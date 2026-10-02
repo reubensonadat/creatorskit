@@ -117,6 +117,12 @@
     @apply border-border outline-ring/50;
   }
 
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -280,6 +286,39 @@
 
 .vg-sheet {
   animation: vg-sheet-up 0.22s ease-out both;
+}
+
+/* ExternalAdGate — mobile interstitial + bottom banner motion */
+@keyframes ck-ad-gate-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes ck-ad-gate-card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ck-ad-banner-up {
+  0% {
+    transform: translateY(110%);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
 }
 
 /* Buttons */
@@ -763,11 +802,24 @@
     display: none !important;
   }
 
-  /* === ALL 2-COL GRIDS: single column, no overflow === */
+  /* === ALL 2-COL GRIDS: single column, no overflow ===
+     minmax(0, 1fr) — NOT plain 1fr. A plain `1fr` track is minmax(auto, 1fr):
+     it grows to the largest child min-content (a 1080px-wide preview canvas,
+     a 9-thumb scroll strip, …) and blows the page past the viewport, so the
+     right half of every card gets clipped by overflow-x:hidden. minmax(0, 1fr)
+     caps the track at the viewport; wide children must then scroll/scale
+     inside their own containers (see canvas + thumb rules below). */
   .matchcut-workspace-grid,
   .tool-inner-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 10px !important;
+  }
+
+  .matchcut-workspace-grid>*,
+  .tool-inner-grid>*,
+  .resizer-workspace-grid>* {
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   .carousel-slices-grid {
@@ -775,14 +827,114 @@
   }
 
   .gradient-workspace-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
   /* === TOOL PAGE: generous padding, no overflow === */
   .tool-page-padding {
     padding: 8px 16px 40px !important;
-    overflow: hidden !important;
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
   }
+
+  /* === TOOL INNER CONTAINER: cancel double horizontal padding on mobile === */
+  /* The outer .tool-page-padding already provides 16px side gutters.
+     The inner container's inline padding would stack on top, wasting ~40px per side. */
+  .tool-inner-container {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 16px !important;
+  }
+
+  /* === RESIZER PAGE: responsive fixes === */
+  /* 2-col grid → single column stack */
+  .resizer-workspace-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Kill the 480px min-height that fills the entire phone screen */
+  .resizer-stage {
+    min-height: 0 !important;
+    padding: 8px !important;
+  }
+
+  /* Owner feedback: 38vw (≈150px) made the canvas unreadably small on phones.
+     56vh gives portrait formats a large preview (still shorter than the
+     viewport so the thumbnail strip peeks below); landscape formats stay
+     width-bound by max-width:100%. Horizontal overflow is impossible either
+     way — the page scrolls vertically. */
+  .resizer-canvas {
+    max-height: 56vh !important;
+  }
+
+  /* Canvas monitor header (preset label + PHOTO/VIDEO chip + Safe Zones +
+     source info): wraps awkwardly mid-item on narrow screens. Stack it into
+     two tidy rows instead. */
+  .resizer-monitor-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Inner rows must be allowed to shrink — the nowrap source-info span's
+     min-content ("1280 × 853px · Studio Master (demo)") otherwise stretches
+     the row ~6px past a 320px viewport. */
+  .resizer-monitor-head>div {
+    flex-wrap: wrap !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .resizer-src-info {
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* SYNC-SLATE: the timecode (3.6rem mono, nowrap ≈ 375px) + 96px lip-sync
+     dial share one space-between row that cannot fit a phone column. Shrink
+     the digits and allow the dial to wrap below. */
+  .syncslate-tc-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .syncslate-tc-row>* {
+    min-width: 0 !important;
+  }
+
+  .syncslate-tc-row>div:first-child>div:first-child {
+    font-size: 2.2rem !important;
+    letter-spacing: 0 !important;
+  }
+
+  /* Long marketing description eats ~80px — hide on mobile */
+  .resizer-header-desc {
+    display: none !important;
+  }
+
+  /* "Click & drag to reposition" hint — irrelevant on mobile touch, hide it */
+  .resizer-drag-hint {
+    display: none !important;
+  }
+
+  /* Thumbnail canvases: shrink from 110px → 68px so 9 tiles fit comfortably */
+  .resizer-thumb-canvas {
+    height: 68px !important;
+  }
+
+  /* The drag-hint (hidden on mobile) was the natural spacer between the canvas
+     and the download buttons. Restore that breathing room explicitly. */
+  .resizer-action-buttons {
+    margin-top: 16px !important;
+  }
+
 
   /* === TOOL PAGE HEADER: minimal === */
   .tool-page-header {
@@ -803,19 +955,31 @@
     display: none !important;
   }
 
-  /* === CANVAS: fit viewport === */
+  /* === CANVAS: fit viewport ===
+     The card is a shrink-to-fit flex column (align-items:center), so without a
+     definite width it wraps the canvas's INTRINSIC size (e.g. 1080px) and the
+     whole card punches past the viewport. Force the chain to full column width
+     and let the canvas scale inside it (aspect-ratio preserved via its width/
+     height attributes + max-width/max-height double constraint). */
   .tool-canvas-frame {
+    width: 100% !important;
+    min-width: 0 !important;
     padding: 8px !important;
     overflow: hidden !important;
   }
 
   .tool-canvas-viewport {
+    width: 100% !important;
+    min-width: 0 !important;
     min-height: 200px !important;
     max-height: 40vh !important;
   }
 
   .tool-canvas-viewport canvas {
+    max-width: 100% !important;
     max-height: 38vh !important;
+    height: auto !important;
+    margin: 0 auto !important;
   }
 
   /* === VIEWPORT META BAR: hide right controls === */
@@ -828,11 +992,15 @@
     display: none !important;
   }
 
-  /* === TRANSPORT BAR: keep on a single line on mobile === */
+  /* === TRANSPORT BAR: wrap into tidy rows on mobile ===
+     Play/step + sound chip + speed scrubber together exceed a phone line;
+     nowrap squeezed them past the edge where overflow-x:hidden clipped them.
+     Wrapping puts the (width:100%) speed scrubber on its own centered row. */
   .tool-transport-bar {
     flex-direction: row !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     align-items: center !important;
+    justify-content: center !important;
     gap: 6px !important;
     padding: 6px 8px !important;
   }
@@ -871,13 +1039,32 @@
 
   /* === EXPORT GRID: full width === */
   .tool-export-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 8px !important;
   }
 
-  .tool-export-grid button {
-    padding: 10px 14px !important;
-    font-size: 0.75rem !important;
+  /* Owner feedback: download/export buttons must be compact, ONE single-line
+     button per row on phones (they were wrapping into chunky multi-line
+     blocks). Applies to the export grid and resizer action pair alike. */
+  .tool-export-grid>button,
+  .tool-export-grid>a,
+  .resizer-action-buttons>button,
+  .resizer-action-buttons>a {
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  .tool-export-grid svg,
+  .resizer-action-buttons svg {
+    flex: 0 0 auto;
+  }
+
+  .resizer-action-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
   }
 
   /* === TAB BAR: scrollable === */
@@ -1051,6 +1238,140 @@
   .prompter-mobile-top-hud {
     display: flex !important;
   }
+
+  /* =============================================
+     TOUCH INTERACTION POLISH (brutalist press physics)
+     - Buttons physically press into the page: the chip translates toward its
+       shadow origin while the hard shadow collapses — the native gesture
+       metaphor for the hard-shadow design language.
+     - transform/opacity only (GPU) — no layout thrash.
+     - Focus stays visible for keyboard/switch users on touch devices.
+     ============================================= */
+  .brutalist-button,
+  .brutalist-button-dark {
+    transition: transform 0.09s ease, box-shadow 0.09s ease, background-color 0.18s ease;
+  }
+
+  .brutalist-button:active,
+  .brutalist-button-dark:active {
+    transform: translate(2px, 2px) !important;
+    box-shadow: 1px 1px 0 #000000 !important;
+  }
+
+  .brutalist-button:focus-visible,
+  .brutalist-button-dark:focus-visible {
+    outline: 3px dashed #000000;
+    outline-offset: 2px;
+  }
+
+  /* Mobile editor chip bar: snappy horizontal paging */
+  .ck-mobile-editor-toolbar {
+    scroll-snap-type: x proximity;
+  }
+
+  .ck-mobile-editor-toolbar>button {
+    scroll-snap-align: start;
+    transition: transform 0.09s ease, box-shadow 0.09s ease, background-color 0.18s ease;
+  }
+
+  .ck-mobile-editor-toolbar>button:active {
+    transform: translateY(1px) scale(0.97);
+  }
+
+  .ck-mobile-editor-toolbar>button:focus-visible {
+    outline: 3px dashed #000000;
+    outline-offset: 2px;
+  }
+
+  .ck-mobile-editor-toolbar--dark>button:focus-visible {
+    outline-color: #ffe500;
+  }
+
+  /* External-ad bottom banner lifts above the mobile editor chip bar */
+  body:has(.ck-mobile-editor-toolbar) .ck-mobile-ad-banner {
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Sync-slate: calibration strip wraps to two rows of 5 */
+  .slate-cal-strip {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+
+  .slate-cal-strip>div:nth-child(n+6) {
+    border-top: 1px solid rgba(0, 0, 0, 0.2);
+  }
+
+  /* Floating SiteNav dropdown: centered fixed sheet on phones — the
+     pill-anchored 320px panel hugged/overflowed the right edge. */
+  .sitenav-drop {
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    top: 58px !important;
+    transform: translateX(-50%) !important;
+    width: min(420px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: min(560px, calc(100dvh - 140px)) !important;
+  }
+
+  /* Home section titles: keep square-dot + title on ONE line — the 900-weight
+     uppercase titles wrapped "TOOLS" onto a second line at ~360px. */
+  .home-sec-head {
+    flex-wrap: nowrap !important;
+  }
+
+  .home-sec-title {
+    white-space: nowrap !important;
+    font-size: min(1.4rem, 4.8vw) !important;
+  }
+
+  /* Sync-slate: one-line section header — the eye-dropper footnote is a
+     desktop nicety; on phones it wrapped into a ragged 3-line header. */
+  .slate-cal-sub {
+    display: none !important;
+  }
+
+  /* Sync-slate: keyboard-driven 3-2-1 head leader is desktop-only */
+  .slate-head-leader {
+    display: none !important;
+  }
+
+  /* Sync-slate: both big strike actions are desktop affordances — the
+     SPACEBAR hint is meaningless on touch and the tappable clapper head
+     IS the mobile strike. Hide the whole row instead of shipping an
+     empty gap. */
+  .slate-strike-actions {
+    display: none !important;
+  }
+
+  /* Headlines never orphan a word on narrow screens */
+  .tool-page-header h1 {
+    text-wrap: balance;
+  }
+
+  /* === EXTREME NARROW (<360px): last-mile fit === */
+  /* Color-gradient filter card: search field drops its 260px floor and
+     takes its own full-width row inside the wrapping card. */
+  .gradient-filter-search {
+    min-width: 100% !important;
+  }
+
+  /* === COMPRESSOR: file rows stack cleanly === */
+  /* Name owns the full first line (ellipsized when long); size estimate,
+     SAVE button and remove X flow onto the lines below instead of all
+     squeezing onto one cramped row. */
+  .compressor-file-row {
+    row-gap: 4px !important;
+  }
+
+  .compressor-file-row>.compressor-file-name {
+    flex: 1 1 100% !important;
+  }
+
+  .compressor-file-row>.compressor-file-size {
+    flex: 1 1 auto !important;
+    word-break: break-word !important;
+  }
 }
 
 /* ============================================= */
@@ -1145,7 +1466,9 @@ label,
 }
 
 @media print {
-  html, body {
+
+  html,
+  body {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;

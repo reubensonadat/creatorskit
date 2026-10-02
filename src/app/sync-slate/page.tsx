@@ -40,6 +40,8 @@ import {
   Grid,
 } from 'lucide-react';
 
+import { saveState, loadState, clearTool } from '@/lib/local-memory';
+
 export type TakeStatus = 'GOOD' | 'HOLD' | 'NG' | 'FALSE_START' | 'DIRECTOR_PICK';
 
 export interface TakeRecord {
@@ -77,6 +79,49 @@ const COLOR_CALIBRATION_PATCHES = [
   { name: '90% White', hex: '#EEEEEE', label: '90% W' },
   { name: '5% Black', hex: '#111111', label: 'BLACK' },
   { name: 'Skin Tone Reference', hex: '#E0AC69', label: 'SKIN' },
+];
+
+// ─── IndexedDB persistence (src/lib/local-memory — survives refresh) ──────────
+const SYNC_SLATE_TOOL = 'sync-slate';
+
+type SyncSlatePersist = {
+  production: string;
+  scene: string;
+  take: number;
+  roll: string;
+  director: string;
+  dp: string;
+  fps: number;
+  shutterAngle: string;
+  lens: string;
+  iso: string;
+  environment: 'INT' | 'EXT';
+  dayNight: 'DAY' | 'NIGHT';
+  soundType: 'SYNC' | 'MOS';
+  themeMode: 'standard' | 'high-contrast' | 'oled-night';
+  isTailSlate: boolean;
+  showFramingGuides: boolean;
+  voiceSlateEnabled: boolean;
+  syncToneType: '1khz' | '2pop' | '400hz' | 'pink';
+  timecodeMode: 'TOD' | 'PERSONAL';
+  personalHours: string;
+  personalMinutes: string;
+  personalSeconds: string;
+  personalFrames: string;
+  takes: TakeRecord[];
+};
+
+const INITIAL_TAKES: TakeRecord[] = [
+  {
+    id: 'take-init-1',
+    takeNumber: 1,
+    scene: '01',
+    roll: 'A-CAM',
+    timecode: '14:22:10:14',
+    timestamp: '2:22 PM',
+    status: 'GOOD',
+    notes: 'Initial framing test. Great key light exposure.',
+  },
 ];
 
 export default function ProductionSyncSlatePage() {
@@ -128,19 +173,93 @@ export default function ProductionSyncSlatePage() {
   const [countdownStep, setCountdownStep] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Take Logs History
-  const [takes, setTakes] = useState<TakeRecord[]>([
-    {
-      id: 'take-init-1',
-      takeNumber: 1,
-      scene: '01',
-      roll: 'A-CAM',
-      timecode: '14:22:10:14',
-      timestamp: '2:22 PM',
-      status: 'GOOD',
-      notes: 'Initial framing test. Great key light exposure.',
-    },
-  ]);
+  // Take Logs History (seed lives in INITIAL_TAKES so RESET + fresh mounts agree)
+  const [takes, setTakes] = useState<TakeRecord[]>(INITIAL_TAKES);
+
+  // ─── IndexedDB persistence: restore once, autosave debounced ────────────────
+  const hydratedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const rec = await loadState<SyncSlatePersist>(SYNC_SLATE_TOOL);
+      if (cancelled) return;
+      if (rec?.state) {
+        const s = rec.state;
+        setProduction(s.production);
+        setScene(s.scene);
+        setTake(s.take);
+        setRoll(s.roll);
+        setDirector(s.director);
+        setDp(s.dp);
+        setFps(s.fps);
+        setShutterAngle(s.shutterAngle);
+        setLens(s.lens);
+        setIso(s.iso);
+        setEnvironment(s.environment);
+        setDayNight(s.dayNight);
+        setSoundType(s.soundType);
+        setThemeMode(s.themeMode);
+        setIsTailSlate(s.isTailSlate);
+        setShowFramingGuides(s.showFramingGuides);
+        setVoiceSlateEnabled(s.voiceSlateEnabled);
+        setSyncToneType(s.syncToneType);
+        setTimecodeMode(s.timecodeMode);
+        setPersonalHours(s.personalHours);
+        setPersonalMinutes(s.personalMinutes);
+        setPersonalSeconds(s.personalSeconds);
+        setPersonalFrames(s.personalFrames);
+        setTakes(s.takes);
+      }
+      hydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const t = setTimeout(() => {
+      saveState(SYNC_SLATE_TOOL, 'Production Sync Slate', {
+        production, scene, take, roll, director, dp, fps, shutterAngle, lens, iso,
+        environment, dayNight, soundType, themeMode, isTailSlate, showFramingGuides,
+        voiceSlateEnabled, syncToneType, timecodeMode,
+        personalHours, personalMinutes, personalSeconds, personalFrames, takes,
+      } satisfies SyncSlatePersist);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [production, scene, take, roll, director, dp, fps, shutterAngle, lens, iso, environment, dayNight, soundType, themeMode, isTailSlate, showFramingGuides, voiceSlateEnabled, syncToneType, timecodeMode, personalHours, personalMinutes, personalSeconds, personalFrames, takes]);
+
+  // RESET — wipe IndexedDB memory and restore factory defaults.
+  const handleFullReset = () => {
+    if (!window.confirm('Reset the slate? Metadata, timecode settings and the take log saved on this device will be cleared.')) return;
+    clearTool(SYNC_SLATE_TOOL);
+    setProduction('CREATOR HERO EP.01');
+    setScene('01');
+    setTake(1);
+    setRoll('A-CAM');
+    setDirector('ALEX CREATOR');
+    setDp('STUDIO CAM');
+    setFps(24);
+    setShutterAngle('180°');
+    setLens('35mm f/1.8');
+    setIso('800');
+    setEnvironment('INT');
+    setDayNight('DAY');
+    setSoundType('SYNC');
+    setThemeMode('standard');
+    setIsTailSlate(false);
+    setShowFramingGuides(false);
+    setVoiceSlateEnabled(true);
+    setSyncToneType('1khz');
+    setTimecodeMode('TOD');
+    setPersonalHours('01');
+    setPersonalMinutes('00');
+    setPersonalSeconds('00');
+    setPersonalFrames('00');
+    setTakes(INITIAL_TAKES);
+  };
 
   // Audio Context Ref & Canvas
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -158,7 +277,7 @@ export default function ProductionSyncSlatePage() {
       }
     }
     if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume().catch(() => {});
+      audioCtxRef.current.resume().catch(() => { });
     }
     return audioCtxRef.current;
   }, []);
@@ -172,7 +291,7 @@ export default function ProductionSyncSlatePage() {
       utterance.rate = 1.15;
       utterance.pitch = 1.0;
       window.speechSynthesis.speak(utterance);
-    } catch {}
+    } catch { }
   }, [voiceSlateEnabled]);
 
   // Play selectable audio tone oscillator (1kHz SMPTE, 2-Pop, 400Hz, Pink Noise)
@@ -238,7 +357,7 @@ export default function ProductionSyncSlatePage() {
       clickGain.connect(ctx.destination);
       clickOsc.start(ctx.currentTime);
       clickOsc.stop(ctx.currentTime + 0.035);
-    } catch {}
+    } catch { }
   }, [soundEnabled, getAudioContext, syncToneType]);
 
   // Execute The Clapper Strike
@@ -590,7 +709,6 @@ export default function ProductionSyncSlatePage() {
         padding: isFullscreen ? 0 : '20px 24px 80px',
         position: 'relative',
         transition: 'background 0.2s ease',
-        overflow: 'hidden',
         boxSizing: 'border-box',
         width: '100%',
       }}
@@ -642,110 +760,110 @@ export default function ProductionSyncSlatePage() {
 
           {/* Row 2: Quick Actions & Calibration Presets (Dedicated Row Directly Underneath) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {/* Pause / Resume Timecode Button */}
-              <button
-                onClick={() => setIsRunning(!isRunning)}
-                className="brutalist-button"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '6px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: isRunning ? '#ffffff' : '#fef08a',
-                  color: isRunning ? '#000000' : '#854d0e',
-                  fontWeight: 900,
-                  boxShadow: '2px 2px 0 #000',
-                }}
-                title={isRunning ? 'Pause Timecode (Lifts clapper up)' : 'Resume Timecode'}
-              >
-                {isRunning ? <Pause size={14} /> : <Play size={14} />}
-                {isRunning ? 'Pause Timecode' : 'Resume Run'}
-              </button>
+            {/* Pause / Resume Timecode Button */}
+            <button
+              onClick={() => setIsRunning(!isRunning)}
+              className="brutalist-button"
+              style={{
+                fontSize: '0.72rem',
+                padding: '6px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: isRunning ? '#ffffff' : '#a1a1aa',
+                color: isRunning ? '#000000' : '#09090b',
+                fontWeight: 900,
+                boxShadow: '2px 2px 0 #000',
+              }}
+              title={isRunning ? 'Pause Timecode (Lifts clapper up)' : 'Resume Timecode'}
+            >
+              {isRunning ? <Pause size={14} /> : <Play size={14} />}
+              {isRunning ? 'Pause Timecode' : 'Resume Run'}
+            </button>
 
-              {/* Mic Monitor Button */}
-              <button
-                onClick={toggleMicMonitor}
-                className="brutalist-button"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '6px 10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: micMonitorActive ? '#dcfce7' : '#fff',
-                }}
-              >
-                {micMonitorActive ? <Mic size={14} style={{ color: '#15803d' }} /> : <MicOff size={14} />}
-                {micMonitorActive ? `Mic: ${micDbLevel}dB` : 'Live VU Meter'}
-              </button>
+            {/* Mic Monitor Button */}
+            <button
+              onClick={toggleMicMonitor}
+              className="brutalist-button"
+              style={{
+                fontSize: '0.72rem',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: micMonitorActive ? '#dcfce7' : '#fff',
+              }}
+            >
+              {micMonitorActive ? <Mic size={14} style={{ color: '#15803d' }} /> : <MicOff size={14} />}
+              {micMonitorActive ? `Mic: ${micDbLevel}dB` : 'Live VU Meter'}
+            </button>
 
-              {/* Voice Slate Toggle */}
-              <button
-                onClick={() => setVoiceSlateEnabled(!voiceSlateEnabled)}
-                className="brutalist-button"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '6px 10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: voiceSlateEnabled ? '#FFE500' : '#fff',
-                }}
-                title="Speak scene and take before clapping"
-              >
-                <Volume1 size={14} />
-                Voice Callout: {voiceSlateEnabled ? 'ON' : 'OFF'}
-              </button>
+            {/* Voice Slate Toggle */}
+            <button
+              onClick={() => setVoiceSlateEnabled(!voiceSlateEnabled)}
+              className="brutalist-button"
+              style={{
+                fontSize: '0.72rem',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: voiceSlateEnabled ? '#FFE500' : '#fff',
+              }}
+              title="Speak scene and take before clapping"
+            >
+              <Volume1 size={14} />
+              Voice Callout: {voiceSlateEnabled ? 'ON' : 'OFF'}
+            </button>
 
-              {/* Framing Guides Toggle */}
-              <button
-                onClick={() => setShowFramingGuides(!showFramingGuides)}
-                className="brutalist-button"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '6px 10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: showFramingGuides ? '#FFE500' : '#fff',
-                }}
-                title="Toggle framing crosshair & safe zone grid"
-              >
-                <Crosshair size={14} />
-                Guides
-              </button>
+            {/* Framing Guides Toggle */}
+            <button
+              onClick={() => setShowFramingGuides(!showFramingGuides)}
+              className="brutalist-button"
+              style={{
+                fontSize: '0.72rem',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: showFramingGuides ? '#FFE500' : '#fff',
+              }}
+              title="Toggle framing crosshair & safe zone grid"
+            >
+              <Crosshair size={14} />
+              Guides
+            </button>
 
-              {/* Tail Slate Toggle */}
-              <button
-                onClick={() => setIsTailSlate(!isTailSlate)}
-                className="brutalist-button"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '6px 10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: isTailSlate ? '#fee2e2' : '#fff',
-                  color: isTailSlate ? '#dc2626' : '#000',
-                }}
-                title="End-slate mode (upside down clapper)"
-              >
-                <RotateCw size={14} />
-                {isTailSlate ? 'TAIL SLATE (ON)' : 'Head Slate'}
-              </button>
+            {/* Tail Slate Toggle */}
+            <button
+              onClick={() => setIsTailSlate(!isTailSlate)}
+              className="brutalist-button"
+              style={{
+                fontSize: '0.72rem',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: isTailSlate ? '#fee2e2' : '#fff',
+                color: isTailSlate ? '#dc2626' : '#000',
+              }}
+              title="End-slate mode (upside down clapper)"
+            >
+              <RotateCw size={14} />
+              {isTailSlate ? 'TAIL SLATE (ON)' : 'Head Slate'}
+            </button>
 
-              {/* Fullscreen Button */}
-              <button
-                onClick={() => setIsFullscreen(true)}
-                className="brutalist-button brutalist-button-primary"
-                style={{ fontSize: '0.74rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <Maximize2 size={14} />
-                FULLSCREEN (F)
-              </button>
-            </div>
+            {/* Fullscreen Button */}
+            <button
+              onClick={() => setIsFullscreen(true)}
+              className="brutalist-button brutalist-button-primary"
+              style={{ fontSize: '0.74rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Maximize2 size={14} />
+              FULLSCREEN (F)
+            </button>
           </div>
+        </div>
       )}
 
       {/* Main Workspace Grid */}
@@ -1120,7 +1238,7 @@ export default function ProductionSyncSlatePage() {
               )}
 
               {/* Main Digits Display & Rotating Dial */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="syncslate-tc-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <div
                     style={{
@@ -1135,35 +1253,35 @@ export default function ProductionSyncSlatePage() {
                     {timecodeStr}
                   </div>
 
-                {/* Live Peak VU Meter */}
-                {micMonitorActive && (
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#888' }}>PEAK:</span>
-                    <div style={{ flex: 1, height: 6, background: '#27272a', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
-                      <div
-                        style={{
-                          width: `${Math.max(0, Math.min(100, ((micDbLevel + 60) / 60) * 100))}%`,
-                          background: micDbLevel > -6 ? '#ef4444' : micDbLevel > -18 ? '#eab308' : '#22c55e',
-                          transition: 'width 0.05s linear',
-                        }}
-                      />
+                  {/* Live Peak VU Meter */}
+                  {micMonitorActive && (
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#888' }}>PEAK:</span>
+                      <div style={{ flex: 1, height: 6, background: '#27272a', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+                        <div
+                          style={{
+                            width: `${Math.max(0, Math.min(100, ((micDbLevel + 60) / 60) * 100))}%`,
+                            background: micDbLevel > -6 ? '#ef4444' : micDbLevel > -18 ? '#eab308' : '#22c55e',
+                            transition: 'width 0.05s linear',
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: micDbLevel > -6 ? '#ef4444' : '#22c55e', fontWeight: 900 }}>
+                        {micDbLevel} dB
+                      </span>
                     </div>
-                    <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: micDbLevel > -6 ? '#ef4444' : '#22c55e', fontWeight: 900 }}>
-                      {micDbLevel} dB
-                    </span>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Rotating Lip-Sync Strobe Sync Dial */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <canvas ref={dialCanvasRef} style={{ width: 96, height: 96 }} />
-                <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', textTransform: 'uppercase' }}>
-                  LIP-SYNC DIAL
-                </span>
+                {/* Rotating Lip-Sync Strobe Sync Dial */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <canvas ref={dialCanvasRef} style={{ width: 96, height: 96 }} />
+                  <span style={{ fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 900, color: '#FFE500', textTransform: 'uppercase' }}>
+                    LIP-SYNC DIAL
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
             {/* SLATE PRODUCTION METADATA GRID */}
             <div style={{ display: 'flex', flexDirection: 'column', border: '2px solid #000', borderRadius: 4, overflow: 'hidden' }}>
@@ -1233,12 +1351,12 @@ export default function ProductionSyncSlatePage() {
                 <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#666' }}>
                   🎯 CAMERA WHITE BALANCE & COLOR CALIBRATION STRIP
                 </span>
-                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#888' }}>
+                <span className="slate-cal-sub" style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#888' }}>
                   DAVINCI RESOLVE / PREMIERE EYE-DROPPER COMPATIBLE
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', border: '2px solid #000', borderRadius: 4, overflow: 'hidden' }}>
+              <div className="slate-cal-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', border: '2px solid #000', borderRadius: 4, overflow: 'hidden' }}>
                 {COLOR_CALIBRATION_PATCHES.map((patch) => (
                   <div
                     key={patch.name}
@@ -1269,10 +1387,10 @@ export default function ProductionSyncSlatePage() {
             </div>
 
             {/* STRIKE CLAPPER BIG ACTIONS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+            <div className="slate-strike-actions" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
               <button
                 onClick={() => triggerClap(true)}
-                className="brutalist-button brutalist-button-primary"
+                className="brutalist-button brutalist-button-primary slate-strike-space"
                 style={{
                   padding: '16px 20px',
                   fontSize: '1rem',
@@ -1291,7 +1409,7 @@ export default function ProductionSyncSlatePage() {
               <button
                 onClick={startCountdown}
                 disabled={countdownActive}
-                className="brutalist-button"
+                className="brutalist-button slate-head-leader"
                 style={{
                   padding: '16px 20px',
                   fontSize: '0.9rem',
@@ -1315,13 +1433,13 @@ export default function ProductionSyncSlatePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Take Logs Header Card */}
           <div className="brutalist-card" style={{ padding: 16, background: '#ffffff', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 8, borderBottom: '2px solid #000', paddingBottom: 8 }}>
               <div>
                 <span style={{ fontWeight: 900, fontSize: '0.88rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
                   DIRECTOR TAKE LOG
                 </span>
                 <span style={{ fontSize: '0.68rem', color: '#666', fontFamily: 'monospace', display: 'block' }}>
-                  {takes.length} Takes Recorded
+                  {takes.length} Takes Recorded · Autosaved
                 </span>
               </div>
 
@@ -1344,6 +1462,15 @@ export default function ProductionSyncSlatePage() {
                   <FileSpreadsheet size={13} />
                   CSV Log
                 </button>
+                <button
+                  onClick={handleFullReset}
+                  className="brutalist-button"
+                  style={{ fontSize: '0.7rem', padding: '5px 10px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4, background: '#fee2e2' }}
+                  title="Clear saved state (IndexedDB) and restore defaults"
+                >
+                  <RotateCcw size={13} />
+                  Reset
+                </button>
               </div>
             </div>
 
@@ -1352,7 +1479,7 @@ export default function ProductionSyncSlatePage() {
               <div style={{ padding: '6px', background: '#dcfce7', border: '1px solid #000', borderRadius: 3, textAlign: 'center' }}>
                 GOOD: {takes.filter((t) => t.status === 'GOOD').length}
               </div>
-              <div style={{ padding: '6px', background: '#fef08a', border: '1px solid #000', borderRadius: 3, textAlign: 'center' }}>
+              <div style={{ padding: '6px', background: '#e4e4e7', border: '1px solid #000', borderRadius: 3, textAlign: 'center' }}>
                 HOLD: {takes.filter((t) => t.status === 'HOLD').length}
               </div>
               <div style={{ padding: '6px', background: '#fee2e2', border: '1px solid #000', borderRadius: 3, textAlign: 'center' }}>

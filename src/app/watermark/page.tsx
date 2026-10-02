@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import JSZip from "jszip";
-import { Camera, Download, RefreshCw, Droplets, Trash2, Save, Image as ImageIcon } from "lucide-react";
+import { Camera, Download, RefreshCw, Droplets, Trash2, Save, Image as ImageIcon, Film } from "lucide-react";
 import Link from "next/link";
 import {
   drawWatermark,
@@ -12,13 +11,20 @@ import {
   type WatermarkPosition,
 } from "@/lib/watermark";
 import { putHandoffImage, takeHandoffImage } from "@/lib/tool-handoff";
+import { loadAssets, saveAssets } from "@/lib/local-memory";
+import { exportCanvasVideoToMp4, seekVideo, decodeAudioFromFile } from "@/lib/canvas-video-exporter";
 import { TactileScrubber } from "@/components/tactile-scrubber";
 import NextStepRow from "@/components/NextStepRow";
 
 interface Item {
   id: string;
   name: string;
+  /** Decoded image, or the video's poster frame when isVideo. */
   img: HTMLImageElement;
+  /** The ORIGINAL file — persisted to local memory (Phase 7.1). */
+  blob?: Blob;
+  /** Video clip: rendered frame-by-frame at stamp time (Phase 7.2). */
+  isVideo?: boolean;
 }
 
 interface SavedLogo {
@@ -52,6 +58,39 @@ const loadImageFromDataUrl = (dataUrl: string): Promise<HTMLImageElement> =>
     img.src = dataUrl;
   });
 
+/** Loads a video File into a queue Item — poster frame only, no live element. */
+const loadVideoItem = async (file: File): Promise<Item | null> => {
+  const url = URL.createObjectURL(file);
+  try {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error("video load failed"));
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+    const ctx = canvas.getContext("2d");
+    if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = await loadImageFromDataUrl(canvas.toDataURL("image/jpeg", 0.8));
+    return {
+      id: `vid-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: file.name.replace(/\.[^.]+$/, ""),
+      img,
+      blob: file,
+      isVideo: true,
+    };
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
 export default function WatermarkPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [mode, setMode] = useState<WatermarkMode>("text");
@@ -66,7 +105,7 @@ export default function WatermarkPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [doneLabel, setDoneLabel] = useState("");
-  const [results, setResults] = useState<{ name: string; url: string; blob: Blob }[]>([]);
+  const [results, setResults] = useState<{ name: string; url: string; blob: Blob; video?: boolean }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [logoLib, setLogoLib] = useState<SavedLogo[]>([]);
   const [libNote, setLibNote] = useState("");
@@ -75,6 +114,7 @@ export default function WatermarkPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const zipBlobRef = useRef<Blob | null>(null);
+  const hydratedRef = useRef(false);
 
   const flashLibNote = (msg: string) => {
     setLibNote(msg);
@@ -108,6 +148,30 @@ export default function WatermarkPage() {
       /* corrupted storage — start fresh */
     }
     (async () => {
+      // Phase 7.1 — restore the last batch queue from local memory (on-device).
+      const stored = await loadAssets("watermark");
+      if (stored.length > 0) {
+        const restored: Item[] = [];
+        for (const mem of stored) {
+          try {
+            const f = new File([mem.blob], mem.name ?? "photo", { type: mem.blob.type });
+            if (f.type.startsWith("video/")) {
+              const vid = await loadVideoItem(f);
+              if (vid) restored.push(vid);
+            } else {
+              const img = await loadImageFromFile(f);
+              restored.push({ id: `${Date.now()}-mem-${restored.length}`, name: mem.name ?? `photo-${restored.length + 1}`, img, blob: mem.blob });
+            }
+          } catch {
+            /* skip unreadable */
+          }
+        }
+        if (restored.length > 0) {
+          setItems(restored);
+          flashLibNote(`Restored ${restored.length} photo${restored.length === 1 ? "" : "s"} from your last visit`);
+        }
+      }
+      hydratedRef.current = true;
       const rec = await takeHandoffImage("watermark");
       if (rec && rec.blob.type.startsWith("image/")) {
         try {
@@ -117,6 +181,7 @@ export default function WatermarkPage() {
               id: `${Date.now()}-handoff`,
               name: (rec.name ?? "handoff").replace(/\.[^.]+$/, ""),
               img,
+              blob: rec.blob,
             },
           ]);
         } catch {
@@ -150,6 +215,19 @@ export default function WatermarkPage() {
     }
   }, [logoLib]);
 
+  // Phase 7.1 — the uploaded queue survives app close (IndexedDB, on-device
+  // only). A deliberate clear persists too: memory mirrors the visible queue.
+  useEffect(() => {
+    if (!hydratedRef.current) return; // never wipe before the restore lands
+    const withBlobs = items.filter((it) => it.blob);
+    if (items.length > 0 && withBlobs.length === 0) return;
+    void saveAssets(
+      "watermark",
+      "Batch Watermark",
+      withBlobs.map((it, i) => ({ slot: String(i), blob: it.blob as Blob, name: it.name }))
+    );
+  }, [items]);
+
   // ── WYSIWYG: live preview of the watermark exactly as it will be stamped.
   useEffect(() => {
     const canvas = previewRef.current;
@@ -172,10 +250,14 @@ export default function WatermarkPage() {
     if (list.length === 0) return;
     const loaded: Item[] = [];
     for (const file of list) {
-      if (!file.type.startsWith("image/")) continue;
       try {
-        const img = await loadImageFromFile(file);
-        loaded.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name.replace(/\.[^.]+$/, ""), img });
+        if (file.type.startsWith("video/")) {
+          const vid = await loadVideoItem(file);
+          if (vid) loaded.push(vid);
+        } else if (file.type.startsWith("image/")) {
+          const img = await loadImageFromFile(file);
+          loaded.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name.replace(/\.[^.]+$/, ""), img, blob: file });
+        }
       } catch {
         /* skip unreadable */
       }
@@ -247,19 +329,64 @@ export default function WatermarkPage() {
       );
     });
 
+  // Phase 7.2 — video clips get the SAME stamp (logo/position/opacity/size),
+  // rendered frame-by-frame through the deterministic WebCodecs exporter with
+  // the original audio muxed back in (best effort). 100% on-device.
+  const renderVideoWatermarked = async (item: Item, index: number): Promise<Blob> => {
+    const blob = item.blob ?? new Blob();
+    const file = new File([blob], `${item.name}.mp4`, { type: blob.type || "video/mp4" });
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => reject(new Error("decode failed"));
+      });
+      const duration = video.duration || 0;
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("bad duration");
+      const fps = 30;
+      const totalFrames = Math.max(1, Math.round(duration * fps));
+      const W = video.videoWidth || 1280;
+      const H = video.videoHeight || 720;
+      const audioBuffer = await decodeAudioFromFile(file, 0, duration);
+      const result = await exportCanvasVideoToMp4({
+        width: W,
+        height: H,
+        fps,
+        totalFrames,
+        audioBuffer,
+        renderFrameAsync: async (i, ctx) => {
+          await seekVideo(video, i / fps);
+          ctx.drawImage(video, 0, 0, W, H);
+          drawWatermark(ctx, W, H, { mode, text, textColor, logo, sizePct, opacity, position });
+        },
+        onProgress: (p) => setProgress(index + p),
+      });
+      return result.blob;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const runBatch = async (zip: boolean) => {
     if (items.length === 0) return;
     setBusy(true);
     setProgress(0);
     setDoneLabel("");
-    const out: { name: string; url: string; blob: Blob }[] = [];
+    const out: { name: string; url: string; blob: Blob; video?: boolean }[] = [];
+    const JSZip = (await import("jszip")).default; // lazy per §7 — never in the page bundle
     const zipped = new JSZip();
-    const ext = format === "png" ? "png" : "jpg";
     for (let i = 0; i < items.length; i++) {
-      const blob = await drawWatermarked(items[i]);
-      const name = `${items[i].name}-watermarked.${ext}`;
+      const it = items[i];
+      const blob = it.isVideo ? await renderVideoWatermarked(it, i) : await drawWatermarked(it);
+      const ext = it.isVideo ? "mp4" : format === "png" ? "png" : "jpg";
+      const name = `${it.name}-watermarked.${ext}`;
       zipped.file(name, blob);
-      out.push({ name, url: URL.createObjectURL(blob), blob });
+      out.push({ name, url: URL.createObjectURL(blob), blob, video: it.isVideo });
       setProgress(i + 1);
     }
     setResults(out);
@@ -270,11 +397,11 @@ export default function WatermarkPage() {
       const url = URL.createObjectURL(zblob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `watermarked-${items.length}-images.zip`;
+      a.download = `watermarked-${items.length}-files.zip`;
       a.click();
       URL.revokeObjectURL(url);
     }
-    setDoneLabel(zip ? `Done! ZIP with ${items.length} image(s) downloaded.` : `${items.length} image(s) ready below.`);
+    setDoneLabel(zip ? `Done! ZIP with ${items.length} file(s) downloaded.` : `${items.length} file(s) ready below.`);
     setBusy(false);
   };
 
@@ -284,7 +411,7 @@ export default function WatermarkPage() {
     const url = URL.createObjectURL(z);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `watermarked-${items.length}-images.zip`;
+    a.download = `watermarked-${items.length}-files.zip`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -312,7 +439,7 @@ export default function WatermarkPage() {
   return (
     <div className="tool-page-padding" style={{ position: "relative", minHeight: "100vh", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
       <div className="grid-bg" />
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 24px 96px", position: "relative", zIndex: 1 }}>
+      <div className="tool-inner-container" style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 24px 96px", position: "relative", zIndex: 1 }}>
         {/* Top Title Section */}
         <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -358,14 +485,14 @@ export default function WatermarkPage() {
             <div style={{ width: 64, height: 64, border: "3px solid #000", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, background: "#fff", boxShadow: "4px 4px 0 #000" }}>
               <Camera size={30} style={{ color: "#000" }} />
             </div>
-            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8, color: "#000" }}>Drop images to watermark in bulk</h3>
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8, color: "#000" }}>Drop images or videos to watermark in bulk</h3>
             <p style={{ fontSize: "0.88rem", color: "#666", maxWidth: 440, lineHeight: 1.6, fontWeight: 500 }}>
-              JPG · PNG · WEBP — batch stamp your logo or handle, keep thieves away. Your settings, logo library and position are remembered.
+              JPG · PNG · WEBP · MP4 — batch stamp your logo or handle, keep thieves away. Your settings, logo library and position are remembered.
             </p>
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
               style={{ display: "none" }}
               onChange={(e) => {
@@ -385,8 +512,9 @@ export default function WatermarkPage() {
                 <canvas ref={previewRef} style={{ maxWidth: "100%", maxHeight: 380, objectFit: "contain", display: "block" }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800, color: "#666" }}>
-                  {items.length} IMAGE{items.length > 1 ? "S" : ""} QUEUED — PREVIEW SHOWS THE FIRST ONE
+                <span style={{ fontSize: "0.72rem", fontFamily: "monospace", fontWeight: 800, color: "#666", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {items.some((it) => it.isVideo) && <Film size={12} />}
+                  {items.length} FILE{items.length > 1 ? "S" : ""} QUEUED — PREVIEW SHOWS THE FIRST ONE
                 </span>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="brutalist-button" onClick={reset} style={{ fontSize: "0.74rem", padding: "7px 12px" }}>
@@ -400,7 +528,7 @@ export default function WatermarkPage() {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
@@ -537,7 +665,7 @@ export default function WatermarkPage() {
 
               {/* Output format */}
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ ...label, color: "#666" }}>FORMAT:</span>
+                <span style={{ ...label, color: "#666" }}>FORMAT (VIDEOS STAMP AS MP4):</span>
                 {(["png", "jpg"] as const).map((f) => (
                   <button
                     key={f}
@@ -561,7 +689,7 @@ export default function WatermarkPage() {
               {/* Batch actions */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button className="brutalist-button" disabled={busy} onClick={() => runBatch(false)} style={{ flex: 1, justifyContent: "center", minWidth: 200, cursor: busy ? "wait" : "pointer" }}>
-                  <Download size={14} /> STAMP {items.length} IMAGE{items.length > 1 ? "S" : ""}
+                  <Download size={14} /> STAMP {items.length} FILE{items.length > 1 ? "S" : ""}
                 </button>
                 <button className="brutalist-button" disabled={busy} onClick={() => runBatch(true)} style={{ flex: 1, justifyContent: "center", minWidth: 200, cursor: busy ? "wait" : "pointer" }}>
                   <Download size={14} /> STAMP + ZIP
@@ -582,8 +710,14 @@ export default function WatermarkPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
                   {results.map((r) => (
                     <a key={r.name} href={r.url} download={r.name} style={{ border: "2px solid #000", background: "#fff", textDecoration: "none" }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={r.url} alt={r.name} style={{ width: "100%", height: 120, objectFit: "cover", display: "block", borderBottom: "2px solid #000" }} />
+                      {r.video ? (
+                        <video src={r.url} muted playsInline style={{ width: "100%", height: 120, objectFit: "cover", display: "block", borderBottom: "2px solid #000" }} />
+                      ) : (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={r.url} alt={r.name} style={{ width: "100%", height: 120, objectFit: "cover", display: "block", borderBottom: "2px solid #000" }} />
+                        </>
+                      )}
                       <span style={{ display: "block", padding: "6px 8px", fontSize: "0.64rem", fontFamily: "monospace", fontWeight: 800, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {r.name}
                       </span>

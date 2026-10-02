@@ -17,7 +17,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Scissors, Download, SlidersHorizontal, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, Eye, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2 } from 'lucide-react';
+import { ImagePlus, Scissors, Download, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2 } from 'lucide-react';
+import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
 import Link from 'next/link';
 import NextImage from 'next/image';
 import { ThinkingOrb } from 'thinking-orbs';
@@ -555,6 +556,16 @@ interface TextMetrics {
 // Page
 // ---------------------------------------------------------------------------
 
+/** Phase-6 mobile sheet titles — one per bottom-bar category
+ * (docs/TOOL_INTEGRATION_PLAN.md §8, Canva pattern). */
+const MOBILE_SHEET_LABELS = {
+    photo: 'PHOTO & CUTOUT',
+    text: 'TEXT & TYPOGRAPHY',
+    shapes: 'SHAPES & LAYERS',
+    effects: 'EFFECTS & GRAIN',
+    next: 'EXPORT & NEXT STEPS',
+} as const;
+
 export default function TextBehindPage() {
     // --- images -------------------------------------------------------------
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
@@ -571,10 +582,10 @@ export default function TextBehindPage() {
     } | null>(null);
     const [cutoutError, setCutoutError] = useState<string | null>(null);
 
-    /** Mobile studio mode (bouquet-style): 'stage' = full-bleed canvas,
-     * 'sidebar' = full-screen controls. Never split-screen — the artwork is
-     * either fully visible or the controls fully own the screen. */
-    const [mobileStudioTab, setMobileStudioTab] = useState<'stage' | 'sidebar'>('stage');
+    /** Phase-6 Canva pattern (owner ruling 2026-10-02): the canvas is ALWAYS
+     * visible; a bottom category bar opens ONE slide-up sheet per job.
+     * activeSheet = open category id, or null (pure canvas mode). */
+    const [activeSheet, setActiveSheet] = useState<keyof typeof MOBILE_SHEET_LABELS | null>(null);
     /** Guard: require explicit confirmation before wiping the user's photos */
     const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
@@ -1859,7 +1870,7 @@ export default function TextBehindPage() {
 
     return (
         <div
-            className={`text-behind-root${mobileStudioTab === 'sidebar' ? ' mode-sidebar' : ''}`}
+            className={`text-behind-root${activeSheet ? ` ck-sheet-open ck-sheet-${activeSheet}` : ''}`}
             style={{
                 width: '100%',
                 height: '100dvh',
@@ -2162,10 +2173,10 @@ export default function TextBehindPage() {
                                         </div>
                                         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
                                             {[
-                                                { src: '/assets/text-behind/demo-cruise-poster.jpg', alt: 'Travel poster with giant CRUISE text layered behind the photo subject' },
-                                                { src: '/assets/text-behind/demo-earth-poster.jpg', alt: 'Earth poster with EARTH typography behind the subject — depth text effect' },
-                                                { src: '/assets/text-behind/demo-portrait-poster.jpg', alt: 'Portrait poster with bold text behind the person, on-device background remover cutout' },
-                                                { src: '/assets/text-behind/demo-egypt-poster.jpg', alt: 'Egypt travel poster with EGYPT text behind the subject' },
+                                                { src: '/assets/text-behind/demo-cruise-poster.webp', alt: 'Travel poster with giant CRUISE text layered behind the photo subject', eager: true },
+                                                { src: '/assets/text-behind/demo-earth-poster.webp', alt: 'Earth poster with EARTH typography behind the subject — depth text effect', eager: false },
+                                                { src: '/assets/text-behind/demo-portrait-poster.webp', alt: 'Portrait poster with bold text behind the person, on-device background remover cutout', eager: false },
+                                                { src: '/assets/text-behind/demo-egypt-poster.webp', alt: 'Egypt travel poster with EGYPT text behind the subject', eager: false },
                                             ].map((demo) => (
                                                 <NextImage
                                                     key={demo.src}
@@ -2173,6 +2184,7 @@ export default function TextBehindPage() {
                                                     alt={demo.alt}
                                                     width={150}
                                                     height={100}
+                                                    loading={demo.eager ? 'eager' : 'lazy'}
                                                     style={{ border: '1.5px solid #000', borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
                                                 />
                                             ))}
@@ -2254,21 +2266,20 @@ export default function TextBehindPage() {
                         <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleBgFile(e.target.files?.[0] ?? null)} />
                         <input ref={cutoutInputRef} type="file" accept="image/png,image/*" style={{ display: 'none' }} onChange={(e) => handleCutoutFile(e.target.files?.[0] ?? null)} />
 
-                        {/* Mobile sidebar header (mobile only) — context + jump back to the stage */}
-                        <div className="text-behind-drawer-bar">
-                            <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, letterSpacing: '0.04em' }}>
-                                POSTER CONTROLS · {layers.length} TEXT {layers.length === 1 ? 'BOX' : 'BOXES'}
+                        {/* Phase-6 sheet header (mobile only) — title + DONE closes the sheet */}
+                        <div className="text-behind-sheet-head">
+                            <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                                {activeSheet ? MOBILE_SHEET_LABELS[activeSheet] : ''}
                             </span>
-                            <button type="button" onClick={() => setMobileStudioTab('stage')}>
-                                <Eye size={13} />
-                                <span>VIEW</span>
+                            <button type="button" onClick={() => setActiveSheet(null)}>
+                                DONE
                             </button>
                         </div>
 
                         {/* Desktop Continuous Cards Column */}
                         <div className="text-behind-desktop-cards">
-                            {/* 1. Photos & Subject Cutout Card */}
-                            <div className="brutalist-card" style={{ padding: 14 }}>
+                            {/* 1. Photos & Subject Cutout Card — mobile sheet: PHOTO */}
+                            <div className="brutalist-card" data-ck-cat="photo" style={{ padding: 14 }}>
                                 {sectionTitle(<ImagePlus size={14} />, 'Photos & Cutout')}
                                 <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666', marginBottom: 10 }}>
                                     STANDARDIZED CANVAS RENDERING · 100% PRIVATE ON-DEVICE AI
@@ -2353,8 +2364,8 @@ export default function TextBehindPage() {
                                 )}
                             </div>
 
-                            {/* 2. Text Boxes & Typography Card */}
-                            <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {/* 2. Text Boxes & Typography Card — mobile sheet: TEXT */}
+                            <div className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 {/* Multi-Textbox Selector */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 10, borderBottom: '1.5px solid #000' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2955,8 +2966,8 @@ export default function TextBehindPage() {
                                 </div>
                             </div>
 
-                            {/* 3. Style Presets, Blends & Geometry Card */}
-                            <div className="brutalist-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            {/* 3. Style Presets, Blends & Geometry Card — mobile sheet: TEXT */}
+                            <div className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 {sectionTitle(<Scissors size={14} />, 'Style & Poster Looks')}
 
                                 {/* 10 Style Presets */}
@@ -3206,8 +3217,8 @@ export default function TextBehindPage() {
                                 />
                             </div>
 
-                            {/* 4. Export Card */}
-                            <div className="brutalist-card" style={{ padding: 14 }}>
+                            {/* 4. Export Card — mobile sheet: NEXT */}
+                            <div className="brutalist-card" data-ck-cat="next" style={{ padding: 14 }}>
                                 {sectionTitle(<Download size={14} />, 'Export Poster')}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
                                     <button className="brutalist-button brutalist-button-primary" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 1)}>
@@ -3245,8 +3256,9 @@ export default function TextBehindPage() {
                                 )}
                             </div>
 
-                            {/* 5. Advanced Image Editing — collapsed by default, keeps the core flow clean */}
-                            <div className="brutalist-card" style={{ padding: 14 }}>
+                            {/* 5. Advanced Image Editing — collapsed by default on desktop.
+                                Mobile sheets: SHAPES (shape UI) + EFFECTS (film grain). */}
+                            <div className="brutalist-card" data-ck-cat="shapes effects" style={{ padding: 14 }}>
                                 <button
                                     type="button"
                                     onClick={() => setAdvancedOpen((o) => !o)}
@@ -3283,7 +3295,7 @@ export default function TextBehindPage() {
 
                                         {/* Shape add row — chips wrap with their icons on narrow
                                             screens (mobile ruling 2026-10-02), never squashed. */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(84px, 1fr))', gap: 6 }}>
+                                        <div className="ck-cat-shapeui" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(84px, 1fr))', gap: 6 }}>
                                             <button
                                                 type="button"
                                                 className="brutalist-button"
@@ -3337,7 +3349,7 @@ export default function TextBehindPage() {
 
                                         {/* Shape pills */}
                                         {shapes.length > 0 && (
-                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                            <div className="ck-cat-shapeui" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                                 {shapes.map((s, index) => {
                                                     const isActive = s.id === activeShapeId;
                                                     const kindLabel = s.kind === 'rect' ? 'RECT' : s.kind === 'line' ? 'LINE' : s.kind === 'beam' ? 'BEAM' : s.kind === 'circle' ? 'CIRCLE' : s.kind === 'button' ? 'BUTTON' : 'ICON';
@@ -3370,7 +3382,7 @@ export default function TextBehindPage() {
 
                                         {/* Active shape inspector */}
                                         {activeShape && (
-                                            <div style={{ border: '2px solid #000', background: '#fafafa', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            <div className="ck-cat-shapeui" style={{ border: '2px solid #000', background: '#fafafa', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                                     <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.66rem' }}>
                                                         {activeShape.kind === 'rect' ? 'RECTANGLE' : activeShape.kind === 'line' ? 'LINE' : activeShape.kind === 'beam' ? 'LIGHT BEAM' : activeShape.kind === 'circle' ? 'CIRCLE' : activeShape.kind === 'button' ? 'BUTTON' : 'ICON'}
@@ -3637,8 +3649,8 @@ export default function TextBehindPage() {
                                             </div>
                                         )}
 
-                                        {/* Film grain overlay */}
-                                        <div style={{ borderTop: '1.5px solid #eee', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {/* Film grain overlay — mobile sheet: EFFECTS */}
+                                        <div className="ck-cat-grain" style={{ borderTop: '1.5px solid #eee', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                             {sectionTitle(<Layers size={13} />, 'Film Grain Overlay')}
                                             <div style={{ display: 'flex', gap: 6 }}>
                                                 {([false, true] as const).map((on) => (
@@ -3689,26 +3701,30 @@ export default function TextBehindPage() {
                 </div>
             </div>
 
-            {/* Mobile floating mode pill (bouquet-studio style): stage ⇄ sidebar.
-                Never covers the canvas in stage mode; sits above the controls
-                in sidebar mode so the latest change is one tap away. */}
-            <button
-                type="button"
-                className="text-behind-edit-fab"
-                onClick={() => setMobileStudioTab((t) => (t === 'stage' ? 'sidebar' : 'stage'))}
-            >
-                {mobileStudioTab === 'stage' ? (
-                    <>
-                        <SlidersHorizontal size={14} />
-                        <span>{bgImage ? 'EDIT POSTER' : 'START EDITING'}</span>
-                    </>
-                ) : (
-                    <>
-                        <Eye size={14} />
-                        <span>VIEW POSTER</span>
-                    </>
-                )}
-            </button>
+            {/* Phase-6 Canva pattern (owner ruling 2026-10-02): bottom category
+                bar — the canvas NEVER sits under it; each chip opens ONE
+                slide-up sheet; tap the canvas (peek) or DONE to close. */}
+            <MobileEditorToolbar
+                categories={[
+                    { id: 'photo', label: 'Photo', icon: <ImagePlus size={15} /> },
+                    { id: 'text', label: 'Text', icon: <TypeIcon size={15} /> },
+                    { id: 'shapes', label: 'Shapes', icon: <Square size={15} /> },
+                    { id: 'effects', label: 'Effects', icon: <Layers size={15} /> },
+                    { id: 'next', label: 'Next', icon: <Download size={15} /> },
+                ]}
+                active={activeSheet}
+                onSelect={(id) => {
+                    setActiveSheet(id as keyof typeof MOBILE_SHEET_LABELS | null);
+                    // The Advanced card hosts both SHAPES and EFFECTS — make
+                    // sure its content is expanded when either sheet opens.
+                    if (id === 'shapes' || id === 'effects') setAdvancedOpen(true);
+                }}
+            />
+
+            {/* Canvas tap closes a peek sheet; dimmed tap closes a full sheet */}
+            {activeSheet && (
+                <div className="text-behind-sheet-backdrop" onClick={() => setActiveSheet(null)} />
+            )}
 
 
             {/* Cross-Tool Handoff Format Choice Modal */}
@@ -3944,8 +3960,10 @@ export default function TextBehindPage() {
                         overflow-x: hidden !important;
                         padding-right: 6px !important;
                     }
-                    .text-behind-edit-fab,
-                    .text-behind-drawer-bar {
+                    /* Phase-6 Canva pattern — desktop never sees the bar, sheet header or backdrop */
+                    .ck-mobile-editor-toolbar,
+                    .text-behind-sheet-head,
+                    .text-behind-sheet-backdrop {
                         display: none !important;
                     }
                 }
@@ -3988,8 +4006,8 @@ export default function TextBehindPage() {
                         gap: 0 !important;
                         width: 100% !important;
                     }
-                    /* Canvas-first hero: the poster fills the whole screen while
-                       the drawer is closed — see everything, uninterrupted. */
+                    /* Canvas-first stage: the poster fills the whole screen and
+                       NEVER sits under the bottom category bar (Phase 6). */
                     .text-behind-viewport {
                         flex: 1 1 auto !important;
                         min-height: 0 !important;
@@ -4002,6 +4020,9 @@ export default function TextBehindPage() {
                         border: none !important;
                         width: 100% !important;
                         background-size: 16px 16px !important;
+                        /* Reserve the toolbar lane — canvas never touches the bar */
+                        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+                        box-sizing: border-box !important;
                     }
                     .text-behind-viewport canvas {
                         max-width: 100% !important;
@@ -4009,88 +4030,161 @@ export default function TextBehindPage() {
                         width: auto !important;
                         height: auto !important;
                     }
-                    /* Bouquet-faithful: in sidebar mode the controls own the
-                       ENTIRE screen — the canvas is never partially covered by
-                       a differently-colored panel. One tap on VIEW POSTER
-                       shows the change full-screen. */
-                    .text-behind-root.mode-sidebar .text-behind-viewport {
-                        display: none !important;
-                    }
                     .text-behind-meta-strip {
                         display: none !important;
                     }
-                    /* Full control column: hidden until the drawer opens, then a
-                       complete scrollable panel — the SAME controls as desktop. */
+                    /* ---- Phase-6 Canva sheet: the controls column becomes a
+                       slide-up bottom sheet while the canvas stays visible. */
                     .text-behind-controls-scroll {
                         display: none !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll {
+                    .ck-sheet-open .text-behind-controls-scroll {
                         display: flex !important;
-                        flex: 1 1 auto !important;
-                        min-height: 0 !important;
-                        height: auto !important;
+                        position: fixed !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        bottom: 0 !important;
+                        z-index: 80 !important;
+                        height: min(60vh, 560px) !important;
+                        max-height: min(60vh, 560px) !important;
+                        flex-direction: column !important;
+                        background: #fff !important;
+                        border-top: 3px solid #000 !important;
+                        box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28) !important;
+                        padding: 0 !important;
                         overflow-y: auto !important;
                         overflow-x: hidden !important;
-                        padding: 0 12px 32px !important;
-                        padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
-                        background: #fff !important;
                         -webkit-overflow-scrolling: touch !important;
+                        animation: ckSheetUp 220ms cubic-bezier(0.32, 0.72, 0, 1);
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll::-webkit-scrollbar {
+                    /* Dense categories get the tall sheet */
+                    .ck-sheet-text .text-behind-controls-scroll,
+                    .ck-sheet-shapes .text-behind-controls-scroll {
+                        height: 85vh !important;
+                        max-height: 85vh !important;
+                    }
+                    .ck-sheet-open .text-behind-controls-scroll::-webkit-scrollbar {
                         width: 4px;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll::-webkit-scrollbar-thumb {
+                    .ck-sheet-open .text-behind-controls-scroll::-webkit-scrollbar-thumb {
                         background: #000;
                     }
+                    @keyframes ckSheetUp {
+                        from { transform: translateY(100%); }
+                        to { transform: translateY(0); }
+                    }
+                    /* Sheet header — title + DONE (mobile only) */
+                    .text-behind-sheet-head {
+                        display: none !important;
+                    }
+                    .ck-sheet-open .text-behind-sheet-head {
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        gap: 10px !important;
+                        position: sticky !important;
+                        top: 0 !important;
+                        z-index: 5 !important;
+                        background: #fff !important;
+                        border-bottom: 2px solid #000 !important;
+                        padding: 10px 14px !important;
+                        flex-shrink: 0 !important;
+                    }
+                    .text-behind-sheet-head button {
+                        background: #000 !important;
+                        color: #fff !important;
+                        border: 2px solid #000 !important;
+                        font-family: monospace !important;
+                        font-weight: 900 !important;
+                        font-size: 0.66rem !important;
+                        letter-spacing: 0.08em !important;
+                        padding: 6px 12px !important;
+                        cursor: pointer !important;
+                    }
+                    /* Canvas tap-catcher: transparent for peek sheets
+                       (tap the canvas to get back), dimmed for full sheets */
+                    .text-behind-sheet-backdrop {
+                        position: fixed !important;
+                        inset: 0 !important;
+                        z-index: 70 !important;
+                        background: transparent !important;
+                    }
+                    .ck-sheet-text .text-behind-sheet-backdrop,
+                    .ck-sheet-shapes .text-behind-sheet-backdrop {
+                        background: rgba(0, 0, 0, 0.45) !important;
+                    }
+                    /* Sheet body: only the active category's cards show —
+                       desktop JSX reused verbatim, filtered per sheet. */
                     .text-behind-desktop-cards {
                         display: flex !important;
                         flex-direction: column !important;
                         gap: 14px !important;
+                        padding: 12px 2px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
                     }
                     .text-behind-desktop-cards .brutalist-card {
                         padding: 14px 12px !important;
                     }
+                    .ck-sheet-open .text-behind-desktop-cards > [data-ck-cat] {
+                        display: none !important;
+                    }
+                    .ck-sheet-photo .text-behind-desktop-cards > [data-ck-cat~='photo'],
+                    .ck-sheet-next .text-behind-desktop-cards > [data-ck-cat~='next'] {
+                        display: block !important;
+                    }
+                    .ck-sheet-text .text-behind-desktop-cards > [data-ck-cat~='text'],
+                    .ck-sheet-shapes .text-behind-desktop-cards > [data-ck-cat~='shapes'],
+                    .ck-sheet-effects .text-behind-desktop-cards > [data-ck-cat~='effects'] {
+                        display: flex !important;
+                        flex-direction: column !important;
+                    }
+                    /* The Advanced card is shared by SHAPES and EFFECTS — split them */
+                    .ck-sheet-shapes .ck-cat-grain {
+                        display: none !important;
+                    }
+                    .ck-sheet-effects .ck-cat-shapeui {
+                        display: none !important;
+                    }
                     /* ---- Touch sizing: every control a real finger target ---- */
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll button {
+                    .ck-sheet-open .text-behind-controls-scroll button {
                         font-size: 0.78rem !important;
                         min-height: 42px !important;
                         max-width: 100% !important;
                         padding: 8px 12px !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll button svg {
+                    .ck-sheet-open .text-behind-controls-scroll button svg {
                         width: 16px !important;
                         height: 16px !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='text'],
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='number'],
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll textarea {
+                    .ck-sheet-open .text-behind-controls-scroll input[type='text'],
+                    .ck-sheet-open .text-behind-controls-scroll input[type='number'],
+                    .ck-sheet-open .text-behind-controls-scroll textarea {
                         font-size: 1rem !important; /* 16px stops iOS focus-zoom */
                         min-height: 46px !important;
                         box-sizing: border-box !important;
                         max-width: 100% !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='range'] {
+                    .ck-sheet-open .text-behind-controls-scroll input[type='range'] {
                         min-height: 44px !important;
                         height: 44px !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll input[type='color'] {
+                    .ck-sheet-open .text-behind-controls-scroll input[type='color'] {
                         width: 44px !important;
                         height: 44px !important;
                         min-width: 44px !important;
                         border: 2px solid #000 !important;
                         padding: 2px !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll select {
+                    .ck-sheet-open .text-behind-controls-scroll select {
                         font-size: 0.95rem !important;
                         min-height: 44px !important;
                         padding: 10px !important;
                     }
                     /* Dense desktop chip-grids -> roomy phone grids
                        (inline styles are beaten by !important + attribute selectors) */
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll div[style*='repeat(5,'] {
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(5,'] {
                         grid-template-columns: repeat(3, 1fr) !important;
                     }
-                    .text-behind-root.mode-sidebar .text-behind-controls-scroll div[style*='repeat(4,'] {
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(4,'] {
                         grid-template-columns: repeat(2, 1fr) !important;
                     }
                     /* Empty-state drop zone never overflows narrow phones
@@ -4105,59 +4199,6 @@ export default function TextBehindPage() {
                     .text-behind-confirm-pop button {
                         min-height: 44px !important;
                         font-size: 0.72rem !important;
-                    }
-                    /* Sticky sidebar header bar with VIEW button */
-                    .text-behind-root.mode-sidebar .text-behind-drawer-bar {
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: space-between !important;
-                        position: sticky !important;
-                        top: 0 !important;
-                        z-index: 30 !important;
-                        background: #fff !important;
-                        border-bottom: 2px solid #000 !important;
-                        margin: 0 -12px 10px !important;
-                        padding: 10px 14px !important;
-                        flex-shrink: 0 !important;
-                    }
-                    .text-behind-drawer-bar button {
-                        display: inline-flex !important;
-                        align-items: center !important;
-                        gap: 6px !important;
-                        background: #000 !important;
-                        color: #fff !important;
-                        border: 2px solid #000 !important;
-                        font-family: monospace !important;
-                        font-weight: 900 !important;
-                        font-size: 0.68rem !important;
-                        letter-spacing: 0.06em !important;
-                        padding: 6px 12px !important;
-                        cursor: pointer !important;
-                    }
-                    /* Floating EDIT trigger — bouquet-studio style */
-                    .text-behind-edit-fab {
-                        display: flex !important;
-                        position: fixed !important;
-                        bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
-                        left: 50% !important;
-                        transform: translateX(-50%) !important;
-                        z-index: 60 !important;
-                        align-items: center !important;
-                        gap: 8px !important;
-                        background: #000 !important;
-                        color: #fff !important;
-                        border: 2px solid #000 !important;
-                        box-shadow: 3px 3px 0 #000, 0 10px 24px rgba(0, 0, 0, 0.35) !important;
-                        font-family: monospace !important;
-                        font-weight: 900 !important;
-                        font-size: 0.78rem !important;
-                        letter-spacing: 0.06em !important;
-                        padding: 12px 22px !important;
-                        cursor: pointer !important;
-                        white-space: nowrap !important;
-                    }
-                    .text-behind-root.mode-sidebar .text-behind-edit-fab {
-                        z-index: 65 !important;
                     }
                 }
             `}</style>
