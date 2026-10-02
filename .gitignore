@@ -45,7 +45,8 @@ __pycache__/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
+/local-*
+!src/lib/local-memory.ts
 .claude
 .z-ai-config
 *.log
