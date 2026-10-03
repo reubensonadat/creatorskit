@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Cloudflare Pages (next-on-pages) requires every non-static route to run on
+// the Edge Runtime — same convention as every other /api route here.
+export const runtime = 'edge';
+
 // NOTE: the annotated allowlist below must stay in sync with
 // src/lib/demystify.ts DEMYSTIFY_TOOL_SLUGS (the validation truth — unknown
 // slugs coming back from the model are dropped client-side, never rendered).
