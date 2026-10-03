@@ -6,7 +6,9 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'CreatorsKit',
     description:
       'All-in-one brutalist production tools for creators — teleprompter, auto captions, thumbnails, invoices & more. Free, instant, in your browser.',
-    start_url: '/',
+    // Installed PWA opens straight into the app home (tool launcher), not
+    // the marketing landing page — owner ruling 2026-10-03.
+    start_url: '/app',
     display: 'standalone',
     background_color: '#090D16',
     theme_color: '#000000',

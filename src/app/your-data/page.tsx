@@ -220,6 +220,9 @@ export default function YourDataPage() {
               your work between visits. It is never uploaded, never synced, and there is no server copy to ask for — deleting it here
               deletes it everywhere.
             </div>
+            <Link href="/privacy" style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 900, color: "#000", textDecoration: "none", borderBottom: "2px solid #000", paddingBottom: 1, display: "inline-block", marginTop: 8 }}>
+              FULL PRIVACY POLICY →
+            </Link>
           </div>
         </div>
 

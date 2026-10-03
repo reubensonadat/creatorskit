@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { putHandoffText } from '@/lib/tool-handoff';
+import { putHandoffText, takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
   Pause,
@@ -566,6 +566,11 @@ Control your speed, adjust your font size, and download your voice recording in 
       if (savedScript && savedScript.trim().length > 0) {
         setScript(savedScript);
       }
+      // §4: a pending hand-off (e.g. the sync-slate take rundown) wins over
+      // the restored script — it is the user's most recent intent.
+      takeHandoffText('teleprompter').then((incoming) => {
+        if (incoming && incoming.trim().length > 0) setScript(incoming);
+      });
       const savedSpeed = localStorage.getItem('creatorKit_teleprompter_speed');
       if (savedSpeed) setSpeed(parseFloat(savedSpeed) || 2.2);
 
@@ -877,7 +882,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     // 3. Suspend Web Audio Context so mobile OS (Android/Samsung Galaxy) completely exits in-call/telephony mode
     if (audioContextRef.current && audioContextRef.current.state === 'running') {
       try {
-        audioContextRef.current.suspend().catch(() => {});
+        audioContextRef.current.suspend().catch(() => { });
       } catch { }
     }
     audioMeterActiveRef.current = false;
@@ -918,7 +923,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     if (!isRecordingActive && (isMobileDevice || micStreamRef.current)) {
       if (micStreamRef.current) {
-        try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+        try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch { }
         micStreamRef.current = null;
       }
       if (audioContextRef.current && audioContextRef.current.state === 'running') {
@@ -1097,7 +1102,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         if (err.error === 'audio-capture') {
           // Mobile audio conflict recovery: release competing mic streams and retry
           if (micStreamRef.current) {
-            try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+            try { micStreamRef.current.getTracks().forEach((t) => t.stop()); } catch { }
             micStreamRef.current = null;
           }
           audioMeterActiveRef.current = false;
@@ -1244,7 +1249,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         micStreamRef.current = null;
       }
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try { audioContextRef.current.close().catch(() => {}); } catch { }
+        try { audioContextRef.current.close().catch(() => { }); } catch { }
         audioContextRef.current = null;
       }
       if (speechRecognitionRef.current) {
@@ -1701,7 +1706,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         speechRecognitionRef.current = null;
       }
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try { audioContextRef.current.close().catch(() => {}); } catch { }
+        try { audioContextRef.current.close().catch(() => { }); } catch { }
         audioContextRef.current = null;
       }
       stopAudioAnalysis();
@@ -1719,11 +1724,11 @@ Control your speed, adjust your font size, and download your voice recording in 
     } catch (err) {
       console.warn('1-Click handoff fallback:', err);
       if (recordingStreamRef.current) {
-        try { recordingStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch {}
+        try { recordingStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch { }
         recordingStreamRef.current = null;
       }
       if (micStreamRef.current) {
-        try { micStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch {}
+        try { micStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch { }
         micStreamRef.current = null;
       }
       stopAudioAnalysis();
@@ -3002,7 +3007,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                               setShowTakePrompt(false);
                               // Also drop the pre-saved handoff so a discarded
                               // take can never resurrect inside Auto Captions.
-                              clearHandoffSession().catch(() => {});
+                              clearHandoffSession().catch(() => { });
                             }}
                             style={{
                               border: '2px solid #000',

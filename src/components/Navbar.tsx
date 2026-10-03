@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, LayoutGrid, Menu, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Menu, X } from "lucide-react";
 import { SiteNavList, SITE_TOOL_COUNT } from "@/components/nav/SiteNav";
+import { hapticTap } from "@/lib/haptics";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -203,15 +204,22 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* CTA */}
+          {/* CTA — one-tap route into the app home launcher (owner ruling
+              2026-10-03: landing ⇄ app-home split). Yellow = the site-wide
+              "app entry" anchor; the Tools dropdown still lists everything. */}
           <Link
-            href="/#tools"
+            href="/app"
+            onClick={() => hapticTap()}
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
               fontSize: "0.75rem",
               padding: "7px 16px",
-              background: "#000000",
-              color: "#ffffff",
+              background: "#FFE500",
+              color: "#000000",
               border: "2px solid #000000",
+              borderRadius: "4px",
               boxShadow: "2px 2px 0 #000000",
               fontWeight: 900,
               textDecoration: "none",
@@ -223,7 +231,8 @@ export default function Navbar() {
             onMouseEnter={(e) => { e.currentTarget.style.transform = "translate(-1px, -1px)"; e.currentTarget.style.boxShadow = "3px 3px 0 #000"; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "2px 2px 0 #000"; }}
           >
-            All Tools
+            Open the App
+            <ChevronRight size={13} />
           </Link>
         </div>
       </nav>
@@ -304,6 +313,29 @@ export default function Navbar() {
                 padding: 16,
               }}
             >
+              {/* App home entry — first item, most prominent (2026-10-03) */}
+              <div style={{ marginBottom: 16 }}>
+                <Link
+                  href="/app"
+                  onClick={() => { hapticTap(); setMobileMenuOpen(false); }}
+                  style={{
+                    display: "block",
+                    padding: "12px 14px",
+                    textAlign: "center",
+                    background: "#18181b",
+                    color: "#ffffff",
+                    border: "2px solid #000000",
+                    fontWeight: 800,
+                    fontSize: "0.9rem",
+                    letterSpacing: "0.02em",
+                    textDecoration: "none",
+                    borderRadius: "8px",
+                  }}
+                >
+                  Open the App →
+                </Link>
+              </div>
+
               <div style={{ marginBottom: 16 }}>
                 <Link
                   href="/blog"

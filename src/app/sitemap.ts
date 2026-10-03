@@ -19,6 +19,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
         // ── Home ────────────────────────────────────────────────────────────
         entry('/', 1.0, 'daily'),
 
+        // NOTE: /app (the installed-PWA tool launcher, manifest start_url) is
+        // deliberately NOT listed — it's noindex so search signals consolidate
+        // on '/' (see src/app/app/layout.tsx).
+
         // ── Flagship pair: background remover ⇄ text behind image ──────────
         // Unified theme, separate pages → two shots at the same queries.
         entry('/background-replace', 0.95, 'daily'),
@@ -37,6 +41,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/text-highlighter', 0.8, 'weekly'),
         entry('/match-cut', 0.8, 'weekly'),
 
+        // ── AI-guided planning (BYOK — keys never touch our servers) ─────────
+        entry('/demystify', 0.8, 'weekly'),
+
         // ── Utility tools ───────────────────────────────────────────────────
         entry('/resizer', 0.75, 'weekly'),
         entry('/watermark', 0.75, 'weekly'),
@@ -53,7 +60,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/video-grabber', 0.6, 'monthly'),
         entry('/bouquet', 0.5, 'weekly'),
 
-        // ── Privacy / data transparency ─────────────────────────────────────
+        // ── Site / legal ─────────────────────────────────────────────────────
+        entry('/about', 0.5, 'monthly'),
         entry('/your-data', 0.5, 'monthly'),
+        entry('/privacy', 0.4, 'yearly'),
+        entry('/terms', 0.3, 'yearly'),
     ];
 }

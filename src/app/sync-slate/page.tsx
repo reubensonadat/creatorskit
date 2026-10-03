@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import NextStepRow from '@/components/NextStepRow';
+import { putHandoffText } from '@/lib/tool-handoff';
 import {
   Volume2,
   VolumeX,
@@ -1488,6 +1490,23 @@ export default function ProductionSyncSlatePage() {
             </div>
 
             {/* List of Logged Takes */}
+            {/* §4: shoot-day pairing — the take log becomes the prompter rundown */}
+            <NextStepRow
+              currentHref="/sync-slate"
+              heading="WRAPPED — REHEARSE THE SCRIPT"
+              onBeforeNavigate={async (href) => {
+                if (href !== '/teleprompter') return;
+                const rundown = [
+                  `${production} — SHOT RUNDOWN`,
+                  '',
+                  ...takes.map((t) => `SCENE ${t.scene} · TAKE ${t.takeNumber} · ${t.status}\n${t.notes}`),
+                ].join('\n\n');
+                await putHandoffText('teleprompter', rundown, { sourceTool: 'sync-slate' });
+              }}
+              onDownload={exportEDL}
+              downloadLabel="EDL"
+            />
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 440, overflowY: 'auto' }}>
               {takes.map((t) => (
                 <div

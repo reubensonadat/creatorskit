@@ -26,7 +26,7 @@ import {
 } from "@/lib/watermark";
 import { TactileScrubber } from "@/components/tactile-scrubber";
 import NextStepRow from "@/components/NextStepRow";
-import { takeHandoffImage } from "@/lib/tool-handoff";
+import { putHandoffImage, takeHandoffImage } from "@/lib/tool-handoff";
 import { loadAssets, loadState, saveAssets, saveState } from "@/lib/local-memory";
 
 type FitMode = "blur-fill" | "gradient" | "fill" | "contain";
@@ -247,6 +247,8 @@ export default function ResizerPage() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState("");
+  // §4: last saved image — carried into the compressor via the hand-off row
+  const [lastImageBlob, setLastImageBlob] = useState<Blob | null>(null);
 
   // Trim (In/Out points for video export)
   const [trimIn, setTrimIn] = useState(0);
@@ -612,6 +614,7 @@ export default function ResizerPage() {
       (blob) => {
         if (!blob) return;
         downloadBlob(blob, `${fileName}-${preset.id}-${preset.width}x${preset.height}.${format}`);
+        setLastImageBlob(blob);
         setDownloaded(true);
         setTimeout(() => setDownloaded(false), 1600);
       },
@@ -1175,10 +1178,21 @@ export default function ResizerPage() {
               </div>
 
               {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
-              {(isVideo ? renderedVideoUrl : downloaded) && (
+              {(isVideo ? renderedVideoUrl : downloaded || lastImageBlob) && (
                 <NextStepRow
                   currentHref="/resizer"
                   heading={isVideo ? "MP4 rendered — keep going" : "Image saved — keep going"}
+                  onBeforeNavigate={async (href) => {
+                    // §4: carry the saved image straight into the compressor.
+                    // (Video outputs navigate as a plain link — the compressor
+                    // receiver only accepts images.)
+                    if (href === "/compressor" && !isVideo && lastImageBlob) {
+                      await putHandoffImage("compressor", lastImageBlob, {
+                        sourceTool: "resizer",
+                        name: `${fileName}-${preset.id}.${format}`,
+                      });
+                    }
+                  }}
                   onDownload={
                     isVideo
                       ? () => {

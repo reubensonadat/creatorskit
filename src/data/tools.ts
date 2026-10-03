@@ -43,6 +43,21 @@ export const NATIVE_TOOLS: ToolItem[] = [
     badge: 'NEW FLAGSHIP',
   },
   {
+    label: 'Demystify Idea Planner',
+    href: '/demystify',
+    hint: 'BIG TASK → SMALL CHUNKS',
+    desc: 'How to stop procrastinating: type the big task you keep avoiding, get it back as small checkable steps + a mind map with your own free AI key — every step opens the tool that does it',
+    isFlagship: false,
+    category: 'utility',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'ListChecks',
+    // The suite's front door: plan → execute in the same tab
+    // (docs/DEMYSTIFY_TOOL_PLAN.md). BYOK: groq/openai share the captions
+    // keyring (whisper-cloud.ts); gemini has its own localStorage slot.
+    badge: 'NEW',
+  },
+  {
     label: 'Thumbnail Lab & Split-Tester',
     href: '/thumbnail-lab',
     hint: 'CTR GRADER',
@@ -279,6 +294,19 @@ export const HIDDEN_TOOLS: ToolItem[] = [
     chrome: 'embedded',
     status: 'live',
     icon: 'Video',
+  },
+  // App home / tool launcher (owner ruling 2026-10-03): the screen the
+  // installed PWA opens on (manifest.ts start_url). fullscreen chrome →
+  // bare render with its own header; hidden from nav grids because this
+  // page IS the nav.
+  {
+    label: 'App Home',
+    href: '/app',
+    hint: 'TOOL LAUNCHER',
+    desc: 'The installed app home — search once, tap a tool, done',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'LayoutGrid',
   },
   // (Space Planner was fully removed 2026-10-02 — route deleted, /space-planner
   // 301s to / in next.config.ts. Post-mortem: docs/BUSINESS_MODEL_PLAN.md.)

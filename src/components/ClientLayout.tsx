@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import Navbar from "@/components/Navbar";
 import ToolLayout from "@/components/ToolLayout";
@@ -8,6 +9,7 @@ import AdBlockDetector from "@/components/AdBlockDetector";
 import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
 import { ExternalAdGateHost } from "@/components/ExternalAdGate";
 import { TOOL_CHROME } from "@/data/tools";
+import { recordVisitForPath } from "@/lib/app-home";
 
 /**
  * Chrome router. The single source of truth for which routes get which
@@ -24,6 +26,12 @@ function chromeFor(pathname: string): "embedded" | "fullscreen" | undefined {
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const chrome = chromeFor(pathname);
+
+  // App-home quick tools (owner ruling 2026-10-03): remember every tool
+  // surface visited — feeds /app recents + the mobile bottom bar slots.
+  useEffect(() => {
+    recordVisitForPath(pathname);
+  }, [pathname]);
 
   return (
     <>

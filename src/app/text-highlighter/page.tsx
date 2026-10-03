@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import NextStepRow from '@/components/NextStepRow';
-import { takeHandoffText } from '@/lib/tool-handoff';
+import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
   Pause,
@@ -194,6 +194,8 @@ export default function TextHighlighterPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
+  // §4: last exported video — carried into the resizer via the hand-off row
+  const [lastExportBlob, setLastExportBlob] = useState<Blob | null>(null);
 
   // Canvas Refs & Loop
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -509,6 +511,7 @@ export default function TextHighlighterPage() {
         result.blob,
         `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.${ext}`
       );
+      setLastExportBlob(result.blob);
       setExportProgress(null);
     } catch (err) {
       console.error('Video Export failed:', err);
@@ -1166,7 +1169,19 @@ export default function TextHighlighterPage() {
 
             {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
             {!isExporting && (
-              <NextStepRow currentHref="/text-highlighter" heading="Video exported — keep going" />
+              <NextStepRow
+                currentHref="/text-highlighter"
+                heading="Video exported — keep going"
+                onBeforeNavigate={async (href) => {
+                  // §4: carry the exported video straight into the resizer
+                  if (href === '/resizer' && lastExportBlob) {
+                    await putHandoffImage('resizer', lastExportBlob, {
+                      sourceTool: 'text-highlighter',
+                      name: 'highlighter-export.mp4',
+                    });
+                  }
+                }}
+              />
             )}
           </div>
         </div>

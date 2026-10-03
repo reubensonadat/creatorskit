@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import { NATIVE_TOOLS, CURATED_DIRECTORY } from '@/data/tools';
+import { hapticTap } from '@/lib/haptics';
 
 export default function Home() {
   return (
@@ -232,6 +233,42 @@ export default function Home() {
             }}
           >
             Research Blog
+            <ChevronRight size={16} />
+          </Link>
+
+          {/* OPEN THE APP — terminal entry into the app-home launcher
+              (owner ruling 2026-10-03: landing ⇄ app-home split) */}
+          <Link
+            href="/app"
+            onClick={() => hapticTap()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "13px 22px",
+              background: "#000000",
+              color: "#FFE500",
+              border: "2px solid #000000",
+              borderRadius: "4px",
+              fontWeight: 900,
+              fontSize: "0.82rem",
+              fontFamily: "monospace",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              textDecoration: "none",
+              boxShadow: "3px 3px 0 #000000",
+              transition: "all 0.12s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translate(-2px, -2px)";
+              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "none";
+              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+            }}
+          >
+            Open the App
             <ChevronRight size={16} />
           </Link>
         </div>
@@ -620,6 +657,42 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      {/* ─── SITE FOOTER (legal + data transparency) ─────────────────────── */}
+      <footer style={{ maxWidth: 1200, margin: "0 auto", padding: "28px clamp(16px, 5vw, 24px) 40px" }}>
+        <div style={{ height: 2, background: "#000000", marginBottom: 22 }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+          <span style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, color: "#000000", letterSpacing: "0.08em" }}>
+            CREATORSKIT · CREATORSKIT.WIN · © 2026
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <Link
+              href="/about"
+              style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, color: "#000000", letterSpacing: "0.08em", textDecoration: "none", borderBottom: "2px solid #000000", paddingBottom: 2 }}
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/your-data"
+              style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, color: "#000000", letterSpacing: "0.08em", textDecoration: "none", borderBottom: "2px solid #000000", paddingBottom: 2 }}
+            >
+              YOUR DATA
+            </Link>
+            <Link
+              href="/privacy"
+              style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, color: "#000000", letterSpacing: "0.08em", textDecoration: "none", borderBottom: "2px solid #000000", paddingBottom: 2 }}
+            >
+              PRIVACY POLICY
+            </Link>
+            <Link
+              href="/terms"
+              style={{ fontSize: "0.68rem", fontFamily: "monospace", fontWeight: 900, color: "#000000", letterSpacing: "0.08em", textDecoration: "none", borderBottom: "2px solid #000000", paddingBottom: 2 }}
+            >
+              TERMS OF SERVICE
+            </Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

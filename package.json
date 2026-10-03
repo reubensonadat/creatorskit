@@ -68,6 +68,7 @@
     "liquid-gooey": "^0.2.2",
     "lucide-react": "^0.525.0",
     "lz-string": "^1.5.0",
+    "mermaid": "^12.1.0",
     "mp4-muxer": "^5.2.2",
     "next": "^16.1.1",
     "next-auth": "^4.24.11",

@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
             const mimeType = file.type || 'audio/webm';
 
             const geminiRes = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(geminiKey)}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
 
             return NextResponse.json({
                 provider: 'gemini',
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.8-flash',
                 text: parsedCues.map((c) => c.text).join(' '),
                 words: [],
                 segments: parsedCues,

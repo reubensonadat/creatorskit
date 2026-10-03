@@ -41,6 +41,7 @@ import {
   Quote,
   Ruler,
   ExternalLink,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { VISIBLE_TOOLS, type ToolItem } from '@/data/tools';
@@ -67,6 +68,7 @@ const ICONS: Record<string, LucideIcon> = {
   Quote,
   Ruler,
   ExternalLink,
+  ListChecks,
 };
 
 export function resolveToolIcon(name: string): LucideIcon {

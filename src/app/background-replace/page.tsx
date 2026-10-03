@@ -255,23 +255,25 @@ export default function BackgroundRemoverPage() {
         a.click();
     };
 
+    // §4: same-tab navigation keeps hand-offs inside the PWA flow —
+    // window.open('_blank') breaks out of standalone mode and loses the app.
     const sendToTextBehind = async () => {
         if (!cutoutBlob) return;
         await putHandoffImage('text-behind', cutoutBlob, { sourceTool: 'background-remover' });
-        window.open('/text-behind', '_blank');
+        window.location.assign('/text-behind');
     };
 
     const sendToThumbnailLab = async () => {
         if (!originalFile) return;
         await putHandoffImage('thumbnail-lab', originalFile, { sourceTool: 'background-remover' });
-        window.open('/thumbnail-lab', '_blank');
+        window.location.assign('/thumbnail-lab');
     };
 
     // §4 edge: stamp the cutout before publishing (batch watermark tool)
     const sendToWatermark = async () => {
         if (!cutoutBlob) return;
         await putHandoffImage('watermark', cutoutBlob, { sourceTool: 'background-remover' });
-        window.open('/watermark', '_blank');
+        window.location.assign('/watermark');
     };
 
     const hasResult = cutoutUrl !== null;
