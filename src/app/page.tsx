@@ -284,7 +284,7 @@ export default function Home() {
         {/* Section title without unnecessary verbose paragraph */}
         <div className="home-sec-head" style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 10, height: 10, background: "#000000", flexShrink: 0 }} />
-          <h2 className="home-sec-title" style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
+          <h2 className="home-sec-title" style={{ fontSize: "clamp(0.98rem, 4.6vw, 2rem)", fontWeight: 900, letterSpacing: "-0.03em", color: "#000000", margin: 0, textTransform: "uppercase", whiteSpace: "nowrap" }}>
             CreatorsKit In-House Tools
           </h2>
         </div>
@@ -398,7 +398,7 @@ export default function Home() {
       <section id="external-tools" style={{ padding: "clamp(10px, 3vw, 20px) clamp(16px, 5vw, 24px) clamp(40px, 6vw, 70px)", maxWidth: 1200, margin: "0 auto" }}>
         <div className="home-sec-head" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 10, height: 10, background: "#000000", flexShrink: 0 }} />
-          <h2 className="home-sec-title" style={{ fontSize: "clamp(1.3rem, 4vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.02em", color: "#000000", margin: 0, textTransform: "uppercase" }}>
+          <h2 className="home-sec-title" style={{ fontSize: "clamp(0.98rem, 4.6vw, 1.8rem)", fontWeight: 900, letterSpacing: "-0.03em", color: "#000000", margin: 0, textTransform: "uppercase", whiteSpace: "nowrap" }}>
             Recommended External Tools
           </h2>
         </div>
@@ -495,7 +495,7 @@ export default function Home() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 8, height: 8, background: "#FFE500" }} />
-              <span style={{ fontSize: "0.68rem", fontWeight: 900, color: "#ffffff", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace" }}>
+              <span style={{ fontSize: "clamp(0.56rem, 2.9vw, 0.68rem)", fontWeight: 900, color: "#ffffff", letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "monospace", whiteSpace: "nowrap" }}>
                 NEW VIRAL RESEARCH &amp; CASE STUDIES
               </span>
             </div>

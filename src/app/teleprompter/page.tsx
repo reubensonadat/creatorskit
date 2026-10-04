@@ -423,7 +423,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   // camera app — the only way to script + film simultaneously on iPhone.
   const mirrorLink = () =>
     `${typeof window !== 'undefined' ? window.location.origin : 'https://creatorskit.win'}/teleprompter/mirror?d=${lzCompress(
-      JSON.stringify({ s: script, v: speed, f: fontSize }),
+      JSON.stringify({ s: script, v: speed, f: fontSize, e: eyelinePercent / 100 }),
     )}`;
 
   // 1. Web Speech AI Auto-Scroll State
@@ -812,7 +812,9 @@ Control your speed, adjust your font size, and download your voice recording in 
       // On mobile, anchor the active reading line at one-third screen height —
       // phones have less vertical real estate, so the line sits higher and the
       // reader keeps more upcoming script visible below it.
-      const targetRatio = isMobile ? 0.33 : (eyelinePercent / 100);
+      // Owner ruling 2026-10-04: the mobile eyeline LEVEL is a setting now —
+      // the scroll anchor follows it instead of a hardcoded 33%.
+      const targetRatio = eyelinePercent / 100;
       const targetY = targetSpan.offsetTop - readerRef.current.clientHeight * targetRatio;
       targetScrollYRef.current = Math.max(0, targetY);
     }
@@ -1363,7 +1365,7 @@ Control your speed, adjust your font size, and download your voice recording in 
             const floorIdx = Math.min(Math.floor(virtualWordFloatRef.current), wordSpans.length - 1);
             const ceilIdx = Math.min(floorIdx + 1, wordSpans.length - 1);
             const frac = virtualWordFloatRef.current - floorIdx;
-            const targetRatio = isMobile ? 0.33 : eyelinePercent / 100;
+            const targetRatio = eyelinePercent / 100;
             const anchorY = (readerRef.current?.clientHeight || 0) * targetRatio;
             const y0 = Math.max(0, (wordSpans[floorIdx] as HTMLElement).offsetTop - anchorY);
             const y1 = Math.max(0, (wordSpans[ceilIdx] as HTMLElement).offsetTop - anchorY);
@@ -1687,9 +1689,12 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   const startCamera = async (deviceId?: string, facing?: 'user' | 'environment') => {
     try {
-      if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
       const targetId = deviceId || selectedCameraId;
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Acquire the NEW stream BEFORE stopping the old one (owner bug
+      // report 2026-10-04: flipping to the back camera killed the preview —
+      // stop-then-request leaves a dead stream when a phone can't hand the
+      // lens over instantly). On failure the live preview survives.
+      const constraints: MediaStreamConstraints = {
         video: targetId
           ? { deviceId: { exact: targetId } }
           : facing
@@ -1699,7 +1704,16 @@ Control your speed, adjust your font size, and download your voice recording in 
         // stream would compete with AI voice listening and the dedicated
         // recording mic. Video takes merge the mic stream separately.
         audio: false,
-      });
+      };
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch {
+        // Retry unconstrained — single-webcam laptops and stubborn lens
+        // switches fall back to "any camera" instead of going black.
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
       setCameraStream(stream);
       setCameraActive(true);
       if (targetId) setSelectedCameraId(targetId);
@@ -1738,9 +1752,9 @@ Control your speed, adjust your font size, and download your voice recording in 
   // the front lens previews mirrored like a selfie. Never flips mid-take.
   const flipCamera = () => {
     if (isRecording) return;
-    const next = cameraFacing === 'user' ? 'environment' : 'user';
-    setCameraFacing(next);
-    startCamera(undefined, next);
+    // startCamera records the facing on success only — a failed flip keeps
+    // the live lens and the honest UI state.
+    startCamera(undefined, cameraFacing === 'user' ? 'environment' : 'user');
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -2681,10 +2695,12 @@ Control your speed, adjust your font size, and download your voice recording in 
                 top: `${eyelinePercent}%`,
                 left: 0,
                 right: 0,
-                height: 38,
+                // Owner ruling 2026-10-04: blend, don't shout — a thin,
+                // translucent band so the script keeps all the attention.
+                height: 24,
                 transform: 'translateY(-50%)',
-                background: 'rgba(255, 229, 0, 0.14)',
-                borderBottom: '2.5px solid rgba(255, 229, 0, 0.85)',
+                background: 'rgba(255, 229, 0, 0.06)',
+                borderBottom: '1.5px solid rgba(255, 229, 0, 0.42)',
                 zIndex: 15,
                 pointerEvents: 'none',
               }}
@@ -2696,16 +2712,17 @@ Control your speed, adjust your font size, and download your voice recording in 
                   top: '50%',
                   transform: 'translateY(-50%)',
                   fontFamily: 'monospace',
-                  fontSize: '0.62rem',
+                  fontSize: '0.56rem',
                   fontWeight: 900,
-                  color: '#FFE500',
-                  background: 'rgba(0,0,0,0.85)',
-                  padding: '2px 8px',
-                  border: '1px solid #FFE500',
+                  letterSpacing: '0.06em',
+                  color: 'rgba(255, 229, 0, 0.75)',
+                  background: 'rgba(0,0,0,0.72)',
+                  padding: '1px 6px',
+                  border: '1px solid rgba(255, 229, 0, 0.4)',
                   borderRadius: 3,
                 }}
               >
-                EYELINE HORIZON ({eyelinePercent}%)
+                EYELINE {eyelinePercent}%
               </div>
             </div>
           )}
@@ -3296,6 +3313,33 @@ Control your speed, adjust your font size, and download your voice recording in 
                         </button>
                       </div>
                     )}
+                    {cameraActive && showEyelineGuide && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.6rem', color: '#000', flexShrink: 0 }}>
+                          EYELINE LEVEL
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEyelinePercent((p) => Math.max(15, p - 1)); }}
+                          style={{ width: 42, minHeight: 40, border: '2px solid #000', borderRadius: 8, background: '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="Lower the eyeline horizon"
+                        >
+                          −
+                        </button>
+                        <div
+                          style={{ flex: 1, minHeight: 40, border: '1.5px solid #000', borderRadius: 8, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', color: '#000' }}
+                          title="Where the read line sits — matches your camera height"
+                        >
+                          {eyelinePercent}%
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEyelinePercent((p) => Math.min(65, p + 1)); }}
+                          style={{ width: 42, minHeight: 40, border: '2px solid #000', borderRadius: 8, background: '#fff', color: '#000', fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="Raise the eyeline horizon"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
                     {cameraActive && (
                       <button
                         onClick={(e) => {
@@ -3425,215 +3469,6 @@ Control your speed, adjust your font size, and download your voice recording in 
                     </div>
                   </div>
 
-                  {/* End-of-take prompt: downloads live only in this tab — save it now */}
-                  {showTakePrompt && recordedAudioUrl && (
-                    <div
-                      style={{
-                        position: 'fixed',
-                        inset: 0,
-                        zIndex: 80,
-                        background: 'rgba(0,0,0,0.55)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 16,
-                      }}
-                      onClick={() => setShowTakePrompt(false)}
-                    >
-                      <div
-                        style={{
-                          background: '#fff',
-                          border: '2.5px solid #000',
-                          boxShadow: '4px 4px 0 #000',
-                          padding: 20,
-                          maxWidth: 430,
-                          width: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 12,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
-                          TAKE RECORDED — SAVE IT BEFORE IT'S LOST
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
-                          The recording lives only in this browser tab. Download it now, discard it, or keep
-                          it in the studio for the 1-click captions handoff.
-                        </p>
-                        {takeIsVideo && recordedVideoUrl && (
-                          <video
-                            src={recordedVideoUrl}
-                            controls
-                            playsInline
-                            style={{ width: '100%', border: '2px solid #000', background: '#000', maxHeight: 240, display: 'block' }}
-                          />
-                        )}
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <a
-                            href={recordedAudioUrl}
-                            download={`creatorskit-take-${Date.now()}.${takeIsVideo && recordedBlob && recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`}
-                            onClick={() => setShowTakePrompt(false)}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#FFE500',
-                              color: '#000',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                              textDecoration: 'none',
-                            }}
-                          >
-                            ⬇ DOWNLOAD TAKE
-                          </a>
-                          <button
-                            onClick={() => {
-                              URL.revokeObjectURL(recordedAudioUrl);
-                              if (recordedVideoUrl) {
-                                URL.revokeObjectURL(recordedVideoUrl);
-                                setRecordedVideoUrl(null);
-                              }
-                              setRecordedAudioUrl(null);
-                              setRecordedBlob(null);
-                              setTakeIsVideo(false);
-                              setHandoffSuccessNotice(false);
-                              setShowTakePrompt(false);
-                              // Also drop the pre-saved handoff so a discarded
-                              // take can never resurrect inside Auto Captions.
-                              clearHandoffSession().catch(() => { });
-                            }}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#fff',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            ✕ DISCARD
-                          </button>
-                          <button
-                            onClick={() => setShowTakePrompt(false)}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#f4f4f5',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 700,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            KEEP IN STUDIO
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CREW MODE — script mirror to a second screen */}
-                  {mirrorOpen && (
-                    <div
-                      style={{
-                        position: 'fixed',
-                        inset: 0,
-                        zIndex: 80,
-                        background: 'rgba(0,0,0,0.55)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 16,
-                      }}
-                      onClick={() => setMirrorOpen(false)}
-                    >
-                      <div
-                        style={{
-                          background: '#fff',
-                          border: '2.5px solid #000',
-                          boxShadow: '4px 4px 0 #000',
-                          padding: 20,
-                          maxWidth: 430,
-                          width: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 12,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
-                          SECOND SCREEN — CREW MODE
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
-                          Film on your phone's camera app at full quality while this script scrolls on a
-                          laptop or a second phone. Send this link there (WhatsApp it to yourself or type
-                          it), open it, press play, then put the phone on the tripod and hit record.
-                        </p>
-                        <div
-                          style={{
-                            border: '1.5px dashed #000',
-                            padding: '8px 10px',
-                            fontFamily: 'monospace',
-                            fontSize: '0.64rem',
-                            wordBreak: 'break-all',
-                            background: '#f4f4f5',
-                          }}
-                        >
-                          {mirrorLink()}
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(mirrorLink()).catch(() => { });
-                            }}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#FFE500',
-                              color: '#000',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            COPY LINK
-                          </button>
-                          <button
-                            onClick={() => window.open(mirrorLink(), '_blank')}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#fff',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            OPEN HERE
-                          </button>
-                          <button
-                            onClick={() => setMirrorOpen(false)}
-                            style={{
-                              border: '2px solid #000',
-                              background: '#f4f4f5',
-                              padding: '9px 14px',
-                              fontFamily: 'monospace',
-                              fontWeight: 700,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            DONE
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Recorded Audio Download / Preview Player (If available) */}
                   {recordedAudioUrl && (
@@ -3785,6 +3620,228 @@ Control your speed, adjust your font size, and download your voice recording in 
               </>
             )}
           </>
+
+          {/* End-of-take prompt (slide-up sheet, TOP-LEVEL so the save prompt
+              opens even when the mobile Studio Controls sheet is closed) */}
+          {showTakePrompt && recordedAudioUrl && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 80,
+                background: 'rgba(0,0,0,0.55)',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+              }}
+              onClick={() => setShowTakePrompt(false)}
+            >
+              <div
+                style={{
+                  background: '#fff',
+                  color: '#000',
+                  border: '2.5px solid #000',
+                  borderBottom: 'none',
+                  boxShadow: '4px 4px 0 #000',
+                  padding: 20,
+                  maxWidth: 480,
+                  width: '100%',
+                  maxHeight: '86vh',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  borderRadius: '18px 18px 0 0',
+                  animation: 'ck-prompter-sheet-up 0.32s cubic-bezier(0.2,0.9,0.3,1)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
+                  TAKE RECORDED — SAVE IT BEFORE IT'S LOST
+                </div>
+                <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
+                  The recording lives only in this browser tab. Download it now, discard it, or keep
+                  it in the studio for the 1-click captions handoff.
+                </p>
+                {takeIsVideo && recordedVideoUrl && (
+                  <video
+                    src={recordedVideoUrl}
+                    controls
+                    playsInline
+                    style={{ width: '100%', border: '2px solid #000', background: '#000', maxHeight: 240, display: 'block' }}
+                  />
+                )}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a
+                    href={recordedAudioUrl}
+                    download={`creatorskit-take-${Date.now()}.${takeIsVideo && recordedBlob && recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`}
+                    onClick={() => setShowTakePrompt(false)}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#FFE500',
+                      color: '#000',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    ⬇ DOWNLOAD TAKE
+                  </a>
+                  <button
+                    onClick={() => {
+                      URL.revokeObjectURL(recordedAudioUrl);
+                      if (recordedVideoUrl) {
+                        URL.revokeObjectURL(recordedVideoUrl);
+                        setRecordedVideoUrl(null);
+                      }
+                      setRecordedAudioUrl(null);
+                      setRecordedBlob(null);
+                      setTakeIsVideo(false);
+                      setHandoffSuccessNotice(false);
+                      setShowTakePrompt(false);
+                      // Also drop the pre-saved handoff so a discarded
+                      // take can never resurrect inside Auto Captions.
+                      clearHandoffSession().catch(() => { });
+                    }}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#fff',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✕ DISCARD
+                  </button>
+                  <button
+                    onClick={() => setShowTakePrompt(false)}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#f4f4f5',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    KEEP IN STUDIO
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CREW MODE (slide-up sheet, TOP-LEVEL so SECOND SCREEN works from
+              the pill / dock without opening Studio Controls first) */}
+          {mirrorOpen && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 80,
+                background: 'rgba(0,0,0,0.55)',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+              }}
+              onClick={() => setMirrorOpen(false)}
+            >
+              <div
+                style={{
+                  background: '#fff',
+                  color: '#000',
+                  border: '2.5px solid #000',
+                  borderBottom: 'none',
+                  boxShadow: '4px 4px 0 #000',
+                  padding: 20,
+                  maxWidth: 480,
+                  width: '100%',
+                  maxHeight: '86vh',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  borderRadius: '18px 18px 0 0',
+                  animation: 'ck-prompter-sheet-up 0.32s cubic-bezier(0.2,0.9,0.3,1)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
+                  SECOND SCREEN — CREW MODE
+                </div>
+                <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
+                  Film on your phone's camera app at full quality while this script scrolls on a
+                  laptop or second phone. Send this link there (WhatsApp it to yourself or type
+                  it), open it, press play, then put the phone on the tripod and hit record.
+                </p>
+                <div
+                  style={{
+                    border: '1.5px dashed #000',
+                    padding: '8px 10px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.64rem',
+                    wordBreak: 'break-all',
+                    background: '#f4f4f5',
+                  }}
+                >
+                  {mirrorLink()}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(mirrorLink()).catch(() => { });
+                    }}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#FFE500',
+                      color: '#000',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    COPY LINK
+                  </button>
+                  <button
+                    onClick={() => window.open(mirrorLink(), '_blank')}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#fff',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    OPEN HERE
+                  </button>
+                  <button
+                    onClick={() => setMirrorOpen(false)}
+                    style={{
+                      border: '2px solid #000',
+                      background: '#f4f4f5',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    DONE
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Desktop Studio Floating Transport Dock ── */}
           <div
@@ -4477,28 +4534,28 @@ Control your speed, adjust your font size, and download your voice recording in 
                           </div>
                         </div>
 
-                       {/* Eyeline ON/OFF (owner ruling 2026-10-04): the
+                        {/* Eyeline ON/OFF (owner ruling 2026-10-04): the
                            horizon marker needs a visible yes/no setting */}
-                       <button
-                         onClick={() => setShowEyelineGuide((s) => !s)}
-                         style={{
-                           minHeight: 38,
-                           border: '2px solid #000',
-                           borderRadius: 6,
-                           background: showEyelineGuide ? '#FFE500' : '#ffffff',
-                           color: '#000',
-                           fontFamily: 'monospace',
-                           fontWeight: 900,
-                           fontSize: '0.66rem',
-                           cursor: 'pointer',
-                           display: 'flex',
-                           alignItems: 'center',
-                           justifyContent: 'center',
-                           gap: 6,
-                         }}
-                       >
-                         {showEyelineGuide ? 'EYELINE: ON' : 'EYELINE: OFF'}
-                       </button>
+                        <button
+                          onClick={() => setShowEyelineGuide((s) => !s)}
+                          style={{
+                            minHeight: 38,
+                            border: '2px solid #000',
+                            borderRadius: 6,
+                            background: showEyelineGuide ? '#FFE500' : '#ffffff',
+                            color: '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.66rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          {showEyelineGuide ? 'EYELINE: ON' : 'EYELINE: OFF'}
+                        </button>
 
                         <TactileScrubber
                           label="Eyeline Horizon Height"

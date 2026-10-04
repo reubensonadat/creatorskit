@@ -82,7 +82,7 @@ export default function MobileEditorToolbar({
                             minWidth: 72,
                             padding: '8px 10px',
                             background: isActive ? (dark ? '#FFE500' : '#000') : dark ? '#18181b' : '#fff',
-                            color: isActive ? '#000' : dark ? '#fff' : '#000',
+                            color: isActive ? (dark ? '#000' : '#fff') : dark ? '#fff' : '#000',
                             border: dark ? '2px solid #3f3f46' : '2px solid #000',
                             boxShadow: isActive ? 'none' : dark ? '2px 2px 0 rgba(255, 229, 0, 0.35)' : '2px 2px 0 #000',
                             fontFamily: 'monospace',

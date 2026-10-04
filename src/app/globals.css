@@ -321,6 +321,19 @@
   }
 }
 
+/* Teleprompter stage modals (take-prompt, CREW second screen) — slide up
+   from the bottom edge like the mobile sheet instead of popping mid-screen
+   (owner ruling 2026-10-04: "the modals should be slide up not pop up"). */
+@keyframes ck-prompter-sheet-up {
+  0% {
+    transform: translateY(100%);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
 /* Demystify mind-map node pop-in (each box lands with a little weight) */
 .ck-mm-node {
   animation: ck-mm-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
