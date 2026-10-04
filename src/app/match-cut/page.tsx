@@ -42,6 +42,7 @@ import {
   renderOfflineAudio,
   downloadBlob,
 } from '@/lib/canvas-video-exporter';
+import { renderPaperTransition } from '@/lib/motion/paper-transition';
 import { PRESET_TOPICS, generateCutsForPhrase, MASTHEADS, LOCATIONS, BYLINES } from './presets';
 import { GOOGLE_FONTS_LIST } from './google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
@@ -234,6 +235,19 @@ export default function TextMatchCutStudioPage() {
   const [highlightDuration, setHighlightDuration] = useState(2.0); // seconds
   const [highlightProgress, setHighlightProgress] = useState(1.0); // 0 to 1
 
+  // Paper Motion — the SAME shared spring/streak library as the Text
+  // Highlighter: the sequence slams into frame with directional motion blur,
+  // runs, then the last paper whips back out with a hot streak.
+  const [entranceDirection, setEntranceDirection] = useState<'none' | 'top' | 'bottom' | 'left' | 'right'>('none');
+  const [entranceFlight, setEntranceFlight] = useState(0.6);
+  const [entranceHold, setEntranceHold] = useState(0.4);
+  const [entranceBlur, setEntranceBlur] = useState(0.8);
+  const [entranceProgress, setEntranceProgress] = useState(1);
+  const [exitDirection, setExitDirection] = useState<'none' | 'top' | 'bottom' | 'left' | 'right'>('none');
+  const [exitDuration, setExitDuration] = useState(0.5);
+  const [exitBlur, setExitBlur] = useState(0.85);
+  const [exitProgress, setExitProgress] = useState(0);
+
   // Sidebar Tab Navigation
   const [activeTab, setActiveTab] = useState<'headlines' | 'style' | 'macro' | 'export'>('headlines');
 
@@ -242,6 +256,8 @@ export default function TextMatchCutStudioPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
+  // Export resolution multiplier — 2 = 4K (e.g. 9:16 becomes 2160×3840).
+  const [exportScale, setExportScale] = useState(1);
 
   // Canvas Refs & Loop
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -250,6 +266,31 @@ export default function TextMatchCutStudioPage() {
   const animStartTimeRef = useRef<number>(0);
 
   const selectedAspect = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
+
+  // Motion timeline (ms): [slam-in] → main (whip loops / sweep) → [whip-out] → tail.
+  // Deterministic clock shared by the live loop and the frame-stepped exporter.
+  const entranceWindowMs = entranceDirection === 'none' ? 0 : (entranceFlight + entranceHold) * 1000;
+  const exitWindowMs = exitDirection === 'none' ? 0 : exitDuration * 1000;
+  const EXIT_TAIL_MS = 450;
+  const mainWindowMs = animationMode === 'animated-highlight'
+    ? highlightDuration * 1000 + 300 // sweep + settle beat
+    : (cuts.length / Math.max(1, cutsPerSecond)) * 1000 * 3; // 3 whip loops
+  const motionTotalMs = entranceWindowMs + mainWindowMs + exitWindowMs + EXIT_TAIL_MS;
+
+  const sampleMotion = (elapsedMs: number): { entP: number; mainT: number; exitP: number } => {
+    let t = Math.max(0, elapsedMs);
+    if (entranceWindowMs > 0) {
+      if (t < entranceWindowMs) return { entP: t / entranceWindowMs, mainT: 0, exitP: 0 };
+      t -= entranceWindowMs;
+    }
+    if (t < mainWindowMs) return { entP: 1, mainT: t, exitP: 0 };
+    t -= mainWindowMs;
+    if (exitWindowMs > 0) {
+      if (t < exitWindowMs) return { entP: 1, mainT: mainWindowMs, exitP: t / exitWindowMs };
+      return { entP: 1, mainT: mainWindowMs, exitP: 1 };
+    }
+    return { entP: 1, mainT: mainWindowMs, exitP: 0 };
+  };
 
   // Bundle current render options.
   // Match-cut anchors are clamped to ≤23 chars per phrase — the optical lock
@@ -285,8 +326,41 @@ export default function TextMatchCutStudioPage() {
     showDividerRules,
   };
 
-  // Redraw current cut
-  const redraw = useCallback(() => {
+  // Composite with the SHARED paper-transition library: slam-in before the
+  // sequence, whip-out after it. Falls through to the plain render otherwise.
+  const renderWithMotion = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    cut: NewspaperCut,
+    opts: RenderOptions,
+    cutIndex: number,
+    entP: number,
+    exitP: number
+  ) => {
+    const theme = PAPER_THEMES[paperTheme] || PAPER_THEMES.vintage;
+    if (entranceDirection !== 'none' && entP < 1) {
+      renderPaperTransition(ctx, width, height, (c) => {
+        renderNewspaperMatchCut(c, width, height, cut, {
+          ...opts,
+          highlightProgress: animationMode === 'animated-highlight' ? 0 : opts.highlightProgress,
+        }, cutIndex);
+      }, { mode: 'in', direction: entranceDirection, progress: entP, blur: entranceBlur, bg: theme.bg });
+      return;
+    }
+    if (exitDirection !== 'none' && exitP > 0) {
+      renderPaperTransition(ctx, width, height, (c) => {
+        renderNewspaperMatchCut(c, width, height, cut, opts, cutIndex);
+      }, { mode: 'out', direction: exitDirection, progress: exitP, blur: exitBlur, bg: theme.bg });
+      return;
+    }
+    renderNewspaperMatchCut(ctx, width, height, cut, opts, cutIndex);
+  };
+
+  // Redraw current cut (optionally with per-frame motion overrides — hp lets
+  // the animated-highlight sweep run at FULL frame rate even though the
+  // React progress states are only synced at ~10 Hz)
+  const redraw = useCallback((entP?: number, exitP?: number, hp?: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -295,26 +369,60 @@ export default function TextMatchCutStudioPage() {
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
-    renderNewspaperMatchCut(
+    renderWithMotion(
       ctx,
       canvas.width,
       canvas.height,
       cut,
-      renderOptions,
-      currentCutIndex
+      hp !== undefined ? { ...renderOptions, highlightProgress: hp } : renderOptions,
+      currentCutIndex,
+      entP ?? entranceProgress,
+      exitP ?? exitProgress
     );
-  }, [cuts, currentCutIndex, renderOptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuts, currentCutIndex, renderOptions, entranceProgress, exitProgress, entranceDirection, exitDirection, entranceBlur, exitBlur, paperTheme, animationMode]);
 
-  // Live Animation Loop supporting both Match Cut and Animated Highlighter modes
+  // Live Animation Loop supporting both Match Cut and Animated Highlighter
+  // modes — one deterministic motion clock drives slam-in / main / whip-out.
+  // The canvas is driven DIRECTLY every frame; React progress state syncs at
+  // ~10 Hz so the 60 fps render path never re-renders the page mid-motion.
+  const redrawRef = useRef(redraw);
+  redrawRef.current = redraw;
+
   useEffect(() => {
     let active = true;
+    let lastStateSync = 0;
 
     const loop = (timestamp: number) => {
       if (!active) return;
 
       if (isPlaying) {
+        if (!animStartTimeRef.current) animStartTimeRef.current = timestamp;
+        const elapsed = (timestamp - animStartTimeRef.current) % motionTotalMs;
+        const m = sampleMotion(elapsed);
+        const inMotionWindow =
+          (entranceDirection !== 'none' && m.entP < 1) ||
+          (exitDirection !== 'none' && m.exitP > 0);
+
+        // Full-frame-rate sweep value for animated mode; the explicit args
+        // below carry it to the canvas — state is only a ~10 Hz UI readout.
+        let hpOverride: number | undefined;
+        if (animationMode !== 'match-cut') {
+          const drawDurationMs = highlightDuration * 1000;
+          hpOverride = m.mainT <= drawDurationMs ? easeHighlightSweep(m.mainT / drawDurationMs) : 1.0;
+        }
+        if (timestamp - lastStateSync > 100) {
+          lastStateSync = timestamp;
+          setEntranceProgress(m.entP);
+          setExitProgress(m.exitP);
+          if (hpOverride !== undefined) setHighlightProgress(hpOverride);
+        }
+
         if (animationMode === 'match-cut') {
-          if (cuts.length > 0) {
+          if (inMotionWindow) {
+            // Motion windows hold the boundary cut — no whip-cutting mid-flight.
+            setCurrentCutIndex(0);
+          } else if (cuts.length > 0) {
             const interval = 1000 / cutsPerSecond;
             if (timestamp - lastCutTimeRef.current >= interval) {
               lastCutTimeRef.current = timestamp;
@@ -328,23 +436,12 @@ export default function TextMatchCutStudioPage() {
               });
             }
           }
-        } else {
-          // Cinematic Animated Highlighter Sweep
-          if (!animStartTimeRef.current) animStartTimeRef.current = timestamp;
-          const totalCycleMs = (highlightDuration + 0.8) * 1000;
-          const elapsed = (timestamp - animStartTimeRef.current) % totalCycleMs;
-          const drawDurationMs = highlightDuration * 1000;
-
-          if (elapsed <= drawDurationMs) {
-            const p = easeHighlightSweep(elapsed / drawDurationMs);
-            setHighlightProgress(p);
-          } else {
-            setHighlightProgress(1.0);
-          }
         }
-      }
 
-      redraw();
+        redrawRef.current(m.entP, m.exitP, hpOverride);
+      } else {
+        redrawRef.current();
+      }
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
@@ -354,7 +451,8 @@ export default function TextMatchCutStudioPage() {
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, cutsPerSecond, cuts.length, soundEffect, soundVolume, animationMode, highlightDuration, redraw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, cutsPerSecond, cuts.length, soundEffect, soundVolume, animationMode, highlightDuration, motionTotalMs, entranceDirection, exitDirection]);
 
   // Cross-tool intake (§4): transcript text handed off from Auto-Captions seeds the anchor phrase.
   useEffect(() => {
@@ -531,7 +629,8 @@ export default function TextMatchCutStudioPage() {
     if (cuts.length === 0) return;
     setIsExporting(true);
     setIsPlaying(false);
-    setExportProgress('Preparing HD encoder...');
+    const exportResLabel = `${exportScale > 1 ? '4K' : 'HD'} (${selectedAspect.width * exportScale}×${selectedAspect.height * exportScale})`;
+    setExportProgress(`Preparing ${exportResLabel} encoder...`);
 
     try {
       const isAnimated = animationMode === 'animated-highlight';
@@ -540,9 +639,8 @@ export default function TextMatchCutStudioPage() {
       const fps = isAnimated ? 60 : 30;
       const framesPerCut = Math.max(3, Math.round(fps / cutsPerSecond));
 
-      const totalFrames = isAnimated
-        ? Math.max(30, Math.round(highlightDuration * fps)) + Math.round(0.8 * fps)
-        : cuts.length * 3 * framesPerCut;
+      // Whole motion timeline: slam-in → main → whip-out → tail.
+      const totalFrames = Math.max(30, Math.round((motionTotalMs / 1000) * fps));
 
       // Make sure webfonts (masthead serif, etc.) are ready before any frame renders.
       try {
@@ -557,8 +655,9 @@ export default function TextMatchCutStudioPage() {
           audioBuffer = await renderOfflineAudio({
             durationSec: totalFrames / fps,
             schedule: (ctx, dest) => {
+              const lead = entranceWindowMs / 1000; // sounds wait for the slam-in
               if (isAnimated) {
-                synthesizeCutSound(ctx, dest, soundEffect, soundVolume, 0, highlightDuration);
+                synthesizeCutSound(ctx, dest, soundEffect, soundVolume, lead, highlightDuration);
               } else {
                 // Short percussive strokes synced to each cut. Full-length
                 // 1.8s highlighter drones stacked on rapid cuts is what made
@@ -566,7 +665,7 @@ export default function TextMatchCutStudioPage() {
                 const strokeDur = Math.min(0.28, Math.max(0.08, (framesPerCut / fps) * 0.9));
                 for (let loop = 0; loop < 3; loop++) {
                   for (let c = 0; c < cuts.length; c++) {
-                    const t = ((loop * cuts.length + c) * framesPerCut) / fps;
+                    const t = lead + ((loop * cuts.length + c) * framesPerCut) / fps;
                     synthesizeCutSound(ctx, dest, soundEffect, soundVolume, t, strokeDur);
                   }
                 }
@@ -583,27 +682,34 @@ export default function TextMatchCutStudioPage() {
       const drawFrames = Math.max(30, Math.round(highlightDuration * fps));
 
       const result = await exportCanvasVideoToMp4({
-        width: selectedAspect.width,
-        height: selectedAspect.height,
+        width: selectedAspect.width * exportScale,
+        height: selectedAspect.height * exportScale,
         fps,
         totalFrames,
-        bitrate: 20_000_000,
+        // 4K needs roughly 2.2× the bits per frame to stay crisp.
+        bitrate: exportScale > 1 ? 45_000_000 : 20_000_000,
         audioBuffer,
         // Force a pristine intra frame at every whip-cut boundary so each
         // hard cut snaps in crisp instead of smearing from the previous page.
         isKeyFrame: (i) => !isAnimated && i % framesPerCut === 0,
-        onProgress: (p) => setExportProgress(`Encoding HD video: ${Math.round(p * 100)}%`),
+        onProgress: (p) => setExportProgress(`Encoding ${exportResLabel} video: ${Math.round(p * 100)}%`),
         renderFrame: (frameIndex, ctx) => {
+          // Same deterministic motion clock as the live loop.
+          const m = sampleMotion((frameIndex / fps) * 1000);
+          const inMotionWindow =
+            (entranceDirection !== 'none' && m.entP < 1) ||
+            (exitDirection !== 'none' && m.exitP > 0);
           if (isAnimated) {
-            const p = frameIndex < drawFrames ? easeHighlightSweep(frameIndex / drawFrames) : 1.0;
+            const mainFrame = Math.min(drawFrames, Math.round((m.mainT / 1000) * fps));
+            const p = mainFrame < drawFrames ? easeHighlightSweep(mainFrame / drawFrames) : 1.0;
             const frameRenderOptions: RenderOptions = {
               ...renderOptions,
               highlightProgress: p,
             };
-            renderNewspaperMatchCut(ctx, ctx.canvas.width, ctx.canvas.height, animatedCut, frameRenderOptions, 0);
+            renderWithMotion(ctx, ctx.canvas.width, ctx.canvas.height, animatedCut, frameRenderOptions, 0, m.entP, m.exitP);
           } else {
-            const c = Math.floor(frameIndex / framesPerCut) % cuts.length;
-            renderNewspaperMatchCut(ctx, ctx.canvas.width, ctx.canvas.height, cuts[c], renderOptions, c);
+            const c = inMotionWindow ? 0 : Math.floor((m.mainT / 1000) * cutsPerSecond) % cuts.length;
+            renderWithMotion(ctx, ctx.canvas.width, ctx.canvas.height, cuts[c], renderOptions, c, m.entP, m.exitP);
           }
         },
       });
@@ -797,6 +903,27 @@ export default function TextMatchCutStudioPage() {
                     </option>
                   ))}
                 </select>
+                <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 3, overflow: 'hidden' }} title="Export resolution — 4K doubles both dimensions (9:16 → 2160×3840)">
+                  {[{ id: 1, label: 'HD' }, { id: 2, label: '4K' }].map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setExportScale(r.id)}
+                      style={{
+                        padding: '3px 7px',
+                        border: 'none',
+                        background: exportScale === r.id ? '#000' : '#fff',
+                        color: exportScale === r.id ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontSize: '0.62rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2006,6 +2133,162 @@ export default function TextMatchCutStudioPage() {
                     style={{ width: 16, height: 16, accentColor: '#000', cursor: 'pointer' }}
                   />
                 </div>
+              </div>
+
+              {/* Paper Motion — the same slam-in / whip-out system as the Text
+                  Highlighter, powered by the shared spring + streak library. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000' }}>
+                    Paper Motion
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: entranceDirection !== 'none' || exitDirection !== 'none' ? '#16a34a' : '#b91c1c' }}>
+                    {entranceDirection !== 'none' || exitDirection !== 'none' ? 'SLAM → RUN → WHIP' : 'OFF'}
+                  </span>
+                </div>
+
+                <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', color: '#555' }}>
+                  Slam In
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['none', 'top', 'bottom', 'left', 'right'] as const).map((d) => (
+                    <button
+                      key={`in-${d}`}
+                      type="button"
+                      onClick={() => setEntranceDirection(d)}
+                      style={{
+                        flex: 1,
+                        padding: '5px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 3,
+                        background: entranceDirection === d ? '#000' : '#fff',
+                        color: entranceDirection === d ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.58rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                      title={d === 'none' ? 'No entrance — the sequence starts immediately' : `The paper slams in from the ${d} with motion blur`}
+                    >
+                      {d === 'none' ? 'OFF' : d === 'top' ? '↓ TOP' : d === 'bottom' ? '↑ BOTTOM' : d === 'left' ? '→ LEFT' : '← RIGHT'}
+                    </button>
+                  ))}
+                </div>
+                {entranceDirection !== 'none' && (
+                  <>
+                    <TactileScrubber
+                      label="Flight"
+                      value={entranceFlight}
+                      min={0.3}
+                      max={2}
+                      step={0.1}
+                      stepDelta={0.1}
+                      onChange={setEntranceFlight}
+                      formatValue={(v) => `${v.toFixed(1)}s`}
+                      presets={[
+                        { label: '0.4s', value: 0.4 },
+                        { label: '0.6s ★', value: 0.6 },
+                        { label: '1.2s', value: 1.2 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Hold Before Run"
+                      value={entranceHold}
+                      min={0}
+                      max={4}
+                      step={0.1}
+                      stepDelta={0.1}
+                      onChange={setEntranceHold}
+                      formatValue={(v) => `${v.toFixed(1)}s`}
+                      presets={[
+                        { label: '0s', value: 0 },
+                        { label: '0.4s ★', value: 0.4 },
+                        { label: '1s', value: 1 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="In Motion Blur"
+                      value={entranceBlur}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setEntranceBlur}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
+                      presets={[
+                        { label: 'OFF', value: 0 },
+                        { label: '50%', value: 0.5 },
+                        { label: '80% ★', value: 0.8 },
+                        { label: 'MAX', value: 1 },
+                      ]}
+                    />
+                  </>
+                )}
+
+                <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', color: '#555', paddingTop: 6, borderTop: '1px dashed #ddd' }}>
+                  Whip Out
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['none', 'top', 'bottom', 'left', 'right'] as const).map((d) => (
+                    <button
+                      key={`out-${d}`}
+                      type="button"
+                      onClick={() => setExitDirection(d)}
+                      style={{
+                        flex: 1,
+                        padding: '5px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 3,
+                        background: exitDirection === d ? '#000' : '#fff',
+                        color: exitDirection === d ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.58rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                      title={d === 'none' ? 'No exit — the sequence simply holds' : `The paper whips out through the ${d} with motion blur`}
+                    >
+                      {d === 'none' ? 'OFF' : d === 'top' ? '↑ TOP' : d === 'bottom' ? '↓ BOTTOM' : d === 'left' ? '← LEFT' : '→ RIGHT'}
+                    </button>
+                  ))}
+                </div>
+                {exitDirection !== 'none' && (
+                  <>
+                    <TactileScrubber
+                      label="Exit Duration"
+                      value={exitDuration}
+                      min={0.2}
+                      max={1.5}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setExitDuration}
+                      formatValue={(v) => `${v.toFixed(2)}s`}
+                      presets={[
+                        { label: '0.3s', value: 0.3 },
+                        { label: '0.5s ★', value: 0.5 },
+                        { label: '0.9s', value: 0.9 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Out Motion Blur"
+                      value={exitBlur}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setExitBlur}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
+                      presets={[
+                        { label: 'OFF', value: 0 },
+                        { label: '50%', value: 0.5 },
+                        { label: '85% ★', value: 0.85 },
+                        { label: 'MAX', value: 1 },
+                      ]}
+                    />
+                  </>
+                )}
               </div>
 
               {/* Advanced Settings — document section visibility */}

@@ -211,7 +211,123 @@ export default function TextHighlighterPage() {
   const [entranceHold, setEntranceHold] = useState(0.9);
   const [entranceBlur, setEntranceBlur] = useState(0.8);
   const [entranceProgress, setEntranceProgress] = useState(0);
+
+  // Paper Exit — the post-sweep whip-out: the finished paper pulls back a
+  // hair (anticipation), then accelerates out of frame with a hot streak,
+  // leaving only the paper color behind. Same shared spring as the entrance.
+  const [exitDirection, setExitDirection] = useState<'none' | 'top' | 'bottom' | 'left' | 'right'>('none');
+  const [exitDuration, setExitDuration] = useState(0.5);
+  const [exitBlur, setExitBlur] = useState(0.85);
+  const [exitProgress, setExitProgress] = useState(0);
+
+  // Multi-screen story sequencer (the viral reference): ONE paper, ONE
+  // theme, ONE sector — the document NEVER changes. "|" separates phrases
+  // highlighted on the SAME screen (one continuous marker pass). ">" and
+  // "<" break to the next screen: the same paper scrolls DOWN (>) or UP
+  // (<) with a rapid motion-blurred vertical pan, then the sweep resumes.
+  const [scrollTransitions, setScrollTransitions] = useState(true);
+  // Scroll tuning — how long each inter-screen scroll runs, how hot its
+  // motion blur is, and how far the paper travels (all transitions).
+  const [scrollDuration, setScrollDuration] = useState(0.42);
+  const [scrollBlur, setScrollBlur] = useState(0.85);
+  const [paperTravel, setPaperTravel] = useState(1.3);
+  const sequenceGroups = (() => {
+    // Split on direction tokens; each ">" / "<" run starts a new screen.
+    const raw = anchorPhrase.split(/(>+|<+)/);
+    const groups: { phrases: string[]; label: string; scrollIn: 'down' | 'up' | 'none' }[] = [];
+    let pendingScroll: 'down' | 'up' = 'down';
+    raw.forEach((part) => {
+      if (/^>+$/.test(part)) { pendingScroll = 'down'; return; }
+      if (/^<+$/.test(part)) { pendingScroll = 'up'; return; }
+      const phrases = part.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean);
+      if (phrases.length === 0) return;
+      groups.push({ phrases, label: phrases.join(' | '), scrollIn: groups.length === 0 ? 'none' : pendingScroll });
+      pendingScroll = 'down';
+    });
+    if (groups.length === 0) {
+      groups.push({ phrases: [anchorPhrase.trim() || 'highlight'], label: anchorPhrase.trim() || 'highlight', scrollIn: 'none' });
+    }
+    // Master toggle OFF → collapse every phrase onto ONE screen (classic pass).
+    if (!scrollTransitions && groups.length > 1) {
+      const all = groups.flatMap((g) => g.phrases);
+      return [{ phrases: all, label: all.join(' | '), scrollIn: 'none' }];
+    }
+    return groups;
+  })();
+  const sequenceActive = sequenceGroups.length > 1;
   const entranceWindowMs = entranceDirection === 'none' ? 0 : (entranceFlight + entranceHold) * 1000;
+  const exitWindowMs = exitDirection === 'none' ? 0 : exitDuration * 1000;
+  const SCENE_TRANSITION_MS = scrollDuration * 1000;  // motion-blurred scroll between screens
+  const SCENE_SETTLE_MS = 380;      // dead stop beat after the scroll lands
+  const SCENE_GAP_MS = 350;         // hold after each completed sweep
+  const FINAL_HOLD_MS = 350;        // beat between the last sweep and the whip-out
+  const EXIT_TAIL_MS = 450;         // blank paper color after the paper is gone
+  const sceneSweepMs = highlightDuration * 1000;
+
+  // Deterministic sequence clock — S(t) = f(t). Used identically by the live
+  // loop and the frame-stepped exporter so preview pixels == export pixels.
+  // The sector & paper NEVER change — every screen is the same document.
+  // Tail: last sweep → FINAL hold → whip-out EXIT → blank paper tail.
+  const sampleSequence = (elapsedMs: number): {
+    phrase: string;
+    screenIndex: number;
+    entranceDir: 'none' | 'top' | 'bottom' | 'left' | 'right';
+    entP: number;
+    hp: number;
+    exitDir: 'none' | 'top' | 'bottom' | 'left' | 'right';
+    exitP: number;
+  } => {
+    const groups = sequenceGroups;
+    let t = elapsedMs;
+    if (entranceWindowMs > 0) {
+      if (t < entranceWindowMs) {
+        return { phrase: groups[0].label, screenIndex: 0, entranceDir: entranceDirection, entP: t / entranceWindowMs, hp: 0, exitDir: 'none', exitP: 0 };
+      }
+      t -= entranceWindowMs;
+    }
+    for (let i = 0; i < groups.length; i++) {
+      if (i > 0 && groups[i].scrollIn !== 'none') {
+        if (t < SCENE_TRANSITION_MS) {
+          // ">" moves the view DOWN the page ⇒ paper flies in from below.
+          const dir = groups[i].scrollIn === 'down' ? 'bottom' : 'top';
+          return { phrase: groups[i].label, screenIndex: i, entranceDir: dir, entP: t / SCENE_TRANSITION_MS, hp: 0, exitDir: 'none', exitP: 0 };
+        }
+        t -= SCENE_TRANSITION_MS;
+        if (t < SCENE_SETTLE_MS) {
+          return { phrase: groups[i].label, screenIndex: i, entranceDir: 'none', entP: 1, hp: 0, exitDir: 'none', exitP: 0 };
+        }
+        t -= SCENE_SETTLE_MS;
+      }
+      if (t < sceneSweepMs) {
+        return { phrase: groups[i].label, screenIndex: i, entranceDir: 'none', entP: 1, hp: easeHighlightSweep(t / sceneSweepMs), exitDir: 'none', exitP: 0 };
+      }
+      t -= sceneSweepMs;
+      if (groups.length > 1) {
+        if (t < SCENE_GAP_MS) {
+          return { phrase: groups[i].label, screenIndex: i, entranceDir: 'none', entP: 1, hp: 1, exitDir: 'none', exitP: 0 };
+        }
+        t -= SCENE_GAP_MS;
+      }
+    }
+    const last = groups.length - 1;
+    const tailPhrase = { phrase: groups[last].label, screenIndex: last, entranceDir: 'none' as const, entP: 1, hp: 1 };
+    if (t < FINAL_HOLD_MS) return { ...tailPhrase, exitDir: 'none', exitP: 0 };
+    t -= FINAL_HOLD_MS;
+    if (exitWindowMs > 0) {
+      if (t < exitWindowMs) return { ...tailPhrase, exitDir: exitDirection, exitP: t / exitWindowMs };
+      t -= exitWindowMs;
+      return { ...tailPhrase, exitDir: exitDirection, exitP: 1 };
+    }
+    return { ...tailPhrase, exitDir: 'none', exitP: 0 };
+  };
+
+  const sequenceTotalMs = (() => {
+    let acc = entranceWindowMs;
+    sequenceGroups.forEach((g, i) => {
+      acc += (i > 0 && g.scrollIn !== 'none' ? SCENE_TRANSITION_MS + SCENE_SETTLE_MS : 0) + sceneSweepMs + (sequenceGroups.length > 1 ? SCENE_GAP_MS : 0);
+    });
+    return acc + FINAL_HOLD_MS + exitWindowMs + EXIT_TAIL_MS;
+  })();
 
   // Typography Scale & Layout
   const [headlineScale, setHeadlineScale] = useState(1.0);
@@ -224,6 +340,8 @@ export default function TextHighlighterPage() {
   const [copiedNotification, setCopiedNotification] = useState(false);
   // §4: last exported video — carried into the resizer via the hand-off row
   const [lastExportBlob, setLastExportBlob] = useState<Blob | null>(null);
+  // Export resolution multiplier — 2 = 4K (e.g. 9:16 becomes 2160×3840).
+  const [exportScale, setExportScale] = useState(1);
 
   // Canvas Refs & Loop
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -347,10 +465,15 @@ export default function TextHighlighterPage() {
     entranceDirection,
     entranceProgress,
     entranceBlur,
+    exitDirection,
+    exitProgress,
+    exitBlur,
+    paperTravel,
   };
 
-  // Redraw Canvas Frame
-  const redraw = useCallback(() => {
+  // Redraw Canvas Frame (optionally with per-frame sequence overrides —
+  // multi-scene phrase/sector/entrance state from the sequence clock)
+  const redraw = useCallback((overrides?: Partial<HighlighterRenderOptions>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -359,39 +482,56 @@ export default function TextHighlighterPage() {
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
-    renderHighlighterStoryWithEntrance(ctx, canvas.width, canvas.height, cut, renderOptions, currentCutIndex);
+    renderHighlighterStoryWithEntrance(ctx, canvas.width, canvas.height, cut, { ...renderOptions, ...overrides }, currentCutIndex);
   }, [cuts, currentCutIndex, renderOptions]);
 
-  // Live Smooth Animation Loop
+  // Live Smooth Animation Loop — butter-smooth by construction:
+  //  • the canvas is driven DIRECTLY by the sequence clock every frame;
+  //  • React state (scrubber readouts) syncs at ~10 Hz, so the 60 fps render
+  //    path never triggers a full page re-render mid-motion;
+  //  • the rAF effect depends only on play-state + duration + scroll blur,
+  //    so the subscription never tears down once per frame.
+  const redrawRef = useRef(redraw);
+  redrawRef.current = redraw;
+
   useEffect(() => {
     let active = true;
+    let lastStateSync = 0;
 
     const loop = (timestamp: number) => {
       if (!active) return;
 
+      let frameOverrides: Partial<HighlighterRenderOptions> | undefined;
       if (isPlaying) {
         if (!animStartTimeRef.current) animStartTimeRef.current = timestamp;
-        const drawDurationMs = highlightDuration * 1000;
-        const totalCycleMs = entranceWindowMs + drawDurationMs + 1000; // entrance + sweep + 1s hold
-        const elapsed = (timestamp - animStartTimeRef.current) % totalCycleMs;
-
-        if (entranceWindowMs > 0 && elapsed < entranceWindowMs) {
-          // Paper slam phase: flight + settle hold, sweep parked at 0.
-          setEntranceProgress(elapsed / entranceWindowMs);
-          setHighlightProgress(0);
-        } else {
-          setEntranceProgress(1);
-          const sweepElapsed = elapsed - entranceWindowMs;
-          if (sweepElapsed <= drawDurationMs) {
-            const p = easeHighlightSweep(sweepElapsed / drawDurationMs);
-            setHighlightProgress(p);
-          } else {
-            setHighlightProgress(1.0);
-          }
+        const elapsed = (timestamp - animStartTimeRef.current) % sequenceTotalMs;
+        const seq = sampleSequence(elapsed);
+        // UI-only sync at ~10 Hz — the overrides below carry the truth to
+        // the canvas at full frame rate.
+        if (timestamp - lastStateSync > 100) {
+          lastStateSync = timestamp;
+          setEntranceProgress(seq.entP);
+          setExitProgress(seq.exitP);
+          setHighlightProgress(seq.hp);
         }
+        // Sector is deliberately NOT overridden — same paper, same sector.
+        // Inter-screen scrolls are PURE glides: their own blur setting, ZERO
+        // tilt wobble, no zoom, no settle bounce — the sheet flies flat.
+        const isSceneScroll = seq.screenIndex > 0 && seq.entranceDir !== 'none';
+        frameOverrides = {
+          anchorPhrase: seq.phrase,
+          entranceDirection: seq.entranceDir,
+          entranceProgress: seq.entP,
+          highlightProgress: seq.hp,
+          exitDirection: seq.exitDir,
+          exitProgress: seq.exitP,
+          ...(isSceneScroll
+            ? { entranceBlur: scrollBlur, entranceTilt: 0, entranceScaleFrom: 1, entranceOvershoot: 0.02 }
+            : {}),
+        };
       }
 
-      redraw();
+      redrawRef.current(frameOverrides);
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
@@ -401,18 +541,53 @@ export default function TextHighlighterPage() {
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, highlightDuration, entranceWindowMs, redraw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, sequenceTotalMs, scrollBlur]);
 
-  // Handle Preset Selection
-  const handleLoadPreset = (presetId: string) => {
-    const p = PRESET_TOPICS.find((t) => t.id === presetId);
-    if (!p) return;
-    setAnchorPhrase(p.anchor);
+  // ─── ZERO-LEARNING-CURVE SEQUENCING ───────────────────────────────────────
+  // One-tap tokens: chips insert "|", ">" and "<" AT THE CURSOR so nobody
+  // ever has to learn syntax — you tap, the structure builds itself.
+  const anchorInputRef = useRef<HTMLInputElement>(null);
+  const insertAnchorToken = (token: string) => {
+    const el = anchorInputRef.current;
+    const start = el?.selectionStart ?? anchorPhrase.length;
+    const end = el?.selectionEnd ?? anchorPhrase.length;
+    setAnchorPhrase(anchorPhrase.slice(0, start) + token + anchorPhrase.slice(end));
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const caret = start + token.length;
+      el.setSelectionRange(caret, caret);
+    });
+  };
+
+  // Apply a preset's LOOK + MOTION personality. keepText preserves the
+  // user's anchor phrase and regenerates the paper AROUND it — that's the
+  // shuffle contract: vibes change, your words never do.
+  const applyPresetVibe = (p: (typeof PRESET_TOPICS)[number], opts?: { keepText?: boolean }) => {
     setHighlightColor(p.highlightColor);
     setHighlightStyle(p.highlightStyle);
     setPaperTheme(p.paperTheme);
 
-    const freshCuts = p.cuts.length > 0 ? JSON.parse(JSON.stringify(p.cuts)) : generateCutsForPhrase(p.anchor, 6);
+    // Motion recipe — presets carry the FULL cinematic package (slam-in →
+    // sweep → whip-out) so one click sets the whole personality, not just
+    // the colors. Different presets intentionally use different edges and
+    // blur intensities so the library feels varied, not templated.
+    const m = p.motion;
+    setEntranceDirection(m?.entranceDirection ?? 'none');
+    if (m?.entranceFlight) setEntranceFlight(m.entranceFlight);
+    if (m?.entranceHold !== undefined) setEntranceHold(m.entranceHold);
+    setEntranceBlur(m?.entranceBlur ?? 0.8);
+    setExitDirection(m?.exitDirection ?? 'none');
+    if (m?.exitDuration) setExitDuration(m.exitDuration);
+    setExitBlur(m?.exitBlur ?? 0.8);
+    setEntranceProgress(0);
+    setExitProgress(0);
+
+    const anchor = opts?.keepText ? anchorPhrase : p.anchor;
+    const freshCuts = !opts?.keepText && p.cuts.length > 0
+      ? JSON.parse(JSON.stringify(p.cuts))
+      : generateCutsForPhrase(anchor, 6);
     setCuts(freshCuts);
     setCurrentCutIndex(0);
 
@@ -425,12 +600,49 @@ export default function TextHighlighterPage() {
       setCustomBodyText((firstCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
     }
 
-    const presetPhrases = p.anchor.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
+    const presetScreens = (anchor.match(/(>+|<+)/g)?.length ?? 0) + 1;
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
     setIsPlaying(true);
-    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, presetPhrases);
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, presetScreens);
   };
+
+  // Handle Preset Selection (full apply — example text + vibe)
+  const handleLoadPreset = (presetId: string) => {
+    const p = PRESET_TOPICS.find((t) => t.id === presetId);
+    if (!p) return;
+    setAnchorPhrase(p.anchor);
+    applyPresetVibe(p);
+  };
+
+  // SHUFFLE VIBE — instant personality roulette from the 30-vibe deck.
+  // Never touches the user's text: roll until it feels right, hit GENERATE.
+  const [lastVibeId, setLastVibeId] = useState<string | null>(null);
+  const handleShuffleVibe = () => {
+    const pool = PRESET_TOPICS.filter((t) => t.id !== lastVibeId);
+    const p = pool[Math.floor(Math.random() * pool.length)];
+    if (!p) return;
+    setLastVibeId(p.id);
+    applyPresetVibe(p, { keepText: true });
+  };
+
+  const tokenChipStyle = {
+    padding: '5px 10px',
+    border: '2px solid #000',
+    borderRadius: 4,
+    background: '#fff',
+    color: '#000',
+    fontSize: '0.62rem',
+    fontFamily: 'monospace',
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    cursor: 'pointer',
+    letterSpacing: '0.04em',
+    boxShadow: '2px 2px 0 #000',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+  } as const;
 
   // Generate Custom Phrase Cuts
   const handleAutoGenerate = () => {
@@ -442,9 +654,11 @@ export default function TextHighlighterPage() {
     setCurrentCutIndex(0);
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
+    setExitProgress(0);
     setIsPlaying(true);
-    const phrasesCount = phrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
-    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, phrasesCount);
+    // One sound pass per screen (">" / "<" tokens), not per phrase.
+    const screensCount = (phrase.match(/(>+|<+)/g)?.length ?? 0) + 1;
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, screensCount);
     setTimeout(() => setIsGenerating(false), 250);
   };
 
@@ -453,9 +667,10 @@ export default function TextHighlighterPage() {
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
     setEntranceProgress(entranceWindowMs > 0 ? 0 : 1);
+    setExitProgress(0);
     setIsPlaying(true);
-    const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
-    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, phrasesCount);
+    const screensCount = sequenceGroups.length;
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, screensCount);
   };
 
   // Single Frame PNG Copy
@@ -493,17 +708,14 @@ export default function TextHighlighterPage() {
 
     setIsExporting(true);
     setIsPlaying(false);
-    setExportProgress('Preparing HD encoder...');
+    const exportResLabel = `${exportScale > 1 ? '4K' : 'HD'} (${selectedAspect.width * exportScale}×${selectedAspect.height * exportScale})`;
+    setExportProgress(`Preparing ${exportResLabel} encoder...`);
 
     try {
       // 60fps constant frame rate — buttery sweep, matching the live preview.
       const fps = 60;
-      const entranceWindowSec = entranceWindowMs / 1000;
-      const entranceFrames = Math.round(entranceWindowSec * fps);
-      const sweepFrames = Math.max(20, Math.round(highlightDuration * fps));
-      const totalFrames = Math.max(40, Math.round((entranceWindowSec + highlightDuration + 1.0) * fps));
+      const totalFrames = Math.max(40, Math.round((sequenceTotalMs / 1000) * fps));
       const currentCut = cuts[currentCutIndex] || cuts[0];
-      const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
 
       // Make sure webfonts are ready before any frame renders — an explicit
       // load() is required: fonts download lazily and canvas usage alone
@@ -528,9 +740,14 @@ export default function TextHighlighterPage() {
           audioBuffer = await renderOfflineAudio({
             durationSec: totalFrames / fps,
             schedule: (ctx, dest) => {
-              // Marker sounds wait for the paper to land — the sweep starts
-              // only after the entrance window.
-              synthesizeCutSound(ctx, dest, soundEffect, soundVolume, entranceWindowSec, highlightDuration, phrasesCount);
+              // One marker pass per screen — each sweep gets its own sound at
+              // the exact second its screen starts (after any slam/scroll).
+              let cursor = entranceWindowMs;
+              sequenceGroups.forEach((g, i) => {
+                if (i > 0 && g.scrollIn !== 'none') cursor += SCENE_TRANSITION_MS + SCENE_SETTLE_MS;
+                synthesizeCutSound(ctx, dest, soundEffect, soundVolume, cursor / 1000, highlightDuration, 1);
+                cursor += sceneSweepMs + (sequenceGroups.length > 1 ? SCENE_GAP_MS : 0);
+              });
             },
           });
         } catch (audioErr) {
@@ -540,33 +757,36 @@ export default function TextHighlighterPage() {
       }
 
       const result = await exportCanvasVideoToMp4({
-        width: selectedAspect.width,
-        height: selectedAspect.height,
+        width: selectedAspect.width * exportScale,
+        height: selectedAspect.height * exportScale,
         fps,
         totalFrames,
-        bitrate: 20_000_000,
+        // 4K needs roughly 2.2× the bits per frame to stay crisp.
+        bitrate: exportScale > 1 ? 45_000_000 : 20_000_000,
         audioBuffer,
-        onProgress: (p) => setExportProgress(`Encoding HD video: ${Math.round(p * 100)}%`),
+        onProgress: (p) => setExportProgress(`Encoding ${exportResLabel} video: ${Math.round(p * 100)}%`),
         renderFrame: (frameIndex, ctx) => {
-          let ent = 1;
-          let p = 1.0;
-          if (entranceFrames > 0 && frameIndex < entranceFrames) {
-            // Entrance window: paper slams in and settles, sweep parked at 0.
-            ent = frameIndex / entranceFrames;
-            p = 0;
-          } else {
-            const sweepIndex = frameIndex - entranceFrames;
-            p = sweepIndex < sweepFrames ? easeHighlightSweep(sweepIndex / sweepFrames) : 1.0;
-          }
+          // Same deterministic sequence clock as the live loop.
+          const seq = sampleSequence((frameIndex / fps) * 1000);
           if (frameIndex % 10 === 0) {
-            setEntranceProgress(ent);
-            setHighlightProgress(p);
+            setEntranceProgress(seq.entP);
+            setHighlightProgress(seq.hp);
           }
 
+          const isSceneScroll = seq.screenIndex > 0 && seq.entranceDir !== 'none';
           const frameRenderOptions: HighlighterRenderOptions = {
             ...renderOptions,
-            highlightProgress: p,
-            entranceProgress: ent,
+            anchorPhrase: seq.phrase,
+            highlightProgress: seq.hp,
+            entranceDirection: seq.entranceDir,
+            entranceProgress: seq.entP,
+            exitDirection: seq.exitDir,
+            exitProgress: seq.exitP,
+            // Export mirrors the live loop: inter-screen scrolls are pure
+            // glides (own blur, flat tilt, no zoom, no bounce).
+            ...(isSceneScroll
+              ? { entranceBlur: scrollBlur, entranceTilt: 0, entranceScaleFrom: 1, entranceOvershoot: 0.02 }
+              : {}),
           };
 
           renderHighlighterStoryWithEntrance(ctx, ctx.canvas.width, ctx.canvas.height, currentCut, frameRenderOptions, currentCutIndex);
@@ -776,6 +996,27 @@ export default function TextHighlighterPage() {
                     </option>
                   ))}
                 </select>
+                <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 3, overflow: 'hidden' }} title="Export resolution — 4K doubles both dimensions (9:16 → 2160×3840)">
+                  {[{ id: 1, label: 'HD' }, { id: 2, label: '4K' }].map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setExportScale(r.id)}
+                      style={{
+                        padding: '3px 7px',
+                        border: 'none',
+                        background: exportScale === r.id ? '#000' : '#fff',
+                        color: exportScale === r.id ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontSize: '0.62rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1303,6 +1544,7 @@ export default function TextHighlighterPage() {
 
             <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
               <input
+                ref={anchorInputRef}
                 type="text"
                 value={anchorPhrase}
                 onChange={(e) => setAnchorPhrase(e.target.value)}
@@ -1348,15 +1590,71 @@ export default function TextHighlighterPage() {
                 {isGenerating ? 'GENERATING...' : 'GENERATE'}
               </button>
             </div>
-            <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666', marginTop: -2 }}>
-              💡 <b>Sequential Highlight:</b> Separate multiple phrases with <code style={{ background: '#eee', padding: '1px 4px', borderRadius: 2 }}>|</code> to sweep each phrase one after another with an animated pause!
-            </span>
+            {/* ONE-TAP SEQUENCE TOKENS — zero syntax to learn: tap a chip and
+                the token drops in at the cursor. Structure without typing. */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
+              <button onClick={() => insertAnchorToken(' | ')} style={tokenChipStyle}>
+                + PHRASE <span style={{ background: '#FFE500', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'|'}</span>
+              </button>
+              <button onClick={() => insertAnchorToken(' > ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
+                ↓ SCROLL DOWN <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'>'}</span>
+              </button>
+              <button onClick={() => insertAnchorToken(' < ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
+                ↑ SCROLL UP <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'<'}</span>
+              </button>
+            </div>
+
+            {/* LIVE STRUCTURE READOUT — the parsed screens as chips, so users
+                SEE what the video will do instead of parsing symbols. */}
+            {sequenceGroups.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {sequenceGroups.map((g, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: '0.6rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      color: '#000',
+                      background: i === 0 ? '#FFE500' : '#fff',
+                      border: '1.5px solid #000',
+                      borderRadius: 999,
+                      padding: '2px 9px',
+                    }}
+                  >
+                    {i === 0 ? '' : g.scrollIn === 'down' ? '↓ ' : '↑ '}SCREEN {i + 1} · {g.phrases.length} PHRASE{g.phrases.length === 1 ? '' : 'S'}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* Presets */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
               <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
                 Tool Presets:
               </span>
+              {/* SHUFFLE VIBE — instant personality roulette. Keeps your text;
+                  rolls a new look + motion recipe from the full deck. */}
+              <button
+                onClick={handleShuffleVibe}
+                style={{
+                  padding: '5px 12px',
+                  border: '2px solid #000',
+                  borderRadius: 4,
+                  background: '#000',
+                  color: '#FFE500',
+                  fontSize: '0.64rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  boxShadow: '2px 2px 0 #000',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                🎲 SHUFFLE VIBE · {PRESET_TOPICS.length} DECK
+              </button>
               {PRESET_TOPICS.map((p) => {
                 const isActive = anchorPhrase.toLowerCase() === p.anchor.toLowerCase();
                 return (
@@ -1980,6 +2278,78 @@ export default function TextHighlighterPage() {
                     </button>
                   ))}
                 </div>
+                {/* Screen sequence — same paper throughout; ">" scrolls the view
+                    down, "<" scrolls up, "|" keeps phrases on the same screen. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={scrollTransitions}
+                      onChange={(e) => setScrollTransitions(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#000', cursor: 'pointer' }}
+                    />
+                    Screen Sequence
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: sequenceActive ? '#16a34a' : '#000' }}>
+                    {sequenceActive ? `${sequenceGroups.length} SCREENS · SAME PAPER` : '1 SCREEN'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 700, color: '#666', lineHeight: 1.5 }}>
+                  {'Type > in the phrase box to scroll DOWN to the next phrase, < to scroll UP. Use | to highlight more phrases on the SAME screen. The paper, theme and sector never change.'}
+                </div>
+                {scrollTransitions && sequenceActive && (
+                  <>
+                    <TactileScrubber
+                      label="Scroll Duration"
+                      value={scrollDuration}
+                      min={0.25}
+                      max={1.2}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setScrollDuration}
+                      formatValue={(v) => `${Math.round(v * 1000)}ms`}
+                      presets={[
+                        { label: '300ms', value: 0.3 },
+                        { label: '420ms ★', value: 0.42 },
+                        { label: '800ms', value: 0.8 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Scroll Blur"
+                      value={scrollBlur}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setScrollBlur}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
+                      presets={[
+                        { label: 'OFF', value: 0 },
+                        { label: '50%', value: 0.5 },
+                        { label: '85% ★', value: 0.85 },
+                        { label: 'MAX', value: 1 },
+                      ]}
+                    />
+                  </>
+                )}
+                <TactileScrubber
+                  label="Travel Distance"
+                  value={paperTravel}
+                  min={0.6}
+                  max={2.2}
+                  step={0.1}
+                  stepDelta={0.1}
+                  onChange={setPaperTravel}
+                  formatValue={(v) => `${v.toFixed(1)}×`}
+                  presets={[
+                    { label: '0.8×', value: 0.8 },
+                    { label: '1.3× ★', value: 1.3 },
+                    { label: '1.8×', value: 1.8 },
+                  ]}
+                />
+                <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 700, color: '#666', lineHeight: 1.5 }}>
+                  {'Travel Distance scales EVERY paper move — the slam-in, each > / < scroll, and the whip-out.'}
+                </div>
                 {entranceDirection !== 'none' && (
                   <>
                     <TactileScrubber
@@ -2026,6 +2396,80 @@ export default function TextHighlighterPage() {
                         { label: 'OFF', value: 0 },
                         { label: '50%', value: 0.5 },
                         { label: '80% ★', value: 0.8 },
+                        { label: 'MAX', value: 1 },
+                      ]}
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Paper Exit — the post-sweep whip-out. Mirrors the entrance:
+                  anticipation windup, acceleration out of frame, hot motion
+                  blur, then blank paper color. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Paper Exit
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: exitDirection === 'none' ? '#b91c1c' : '#16a34a' }}>
+                    {exitDirection === 'none' ? 'OFF' : 'SWEEP → WHIP OUT'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['none', 'top', 'bottom', 'left', 'right'] as const).map((d) => (
+                    <button
+                      key={`exit-${d}`}
+                      type="button"
+                      onClick={() => setExitDirection(d)}
+                      style={{
+                        flex: 1,
+                        padding: '5px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 3,
+                        background: exitDirection === d ? '#000' : '#fff',
+                        color: exitDirection === d ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.58rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                      title={d === 'none' ? 'No exit — the finished paper just holds' : `Paper whips out through the ${d} with motion blur`}
+                    >
+                      {d === 'none' ? 'OFF' : d === 'top' ? '↑ TOP' : d === 'bottom' ? '↓ BOTTOM' : d === 'left' ? '← LEFT' : '→ RIGHT'}
+                    </button>
+                  ))}
+                </div>
+                {exitDirection !== 'none' && (
+                  <>
+                    <TactileScrubber
+                      label="Exit Duration"
+                      value={exitDuration}
+                      min={0.2}
+                      max={1.5}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setExitDuration}
+                      formatValue={(v) => `${v.toFixed(2)}s`}
+                      presets={[
+                        { label: '0.3s', value: 0.3 },
+                        { label: '0.5s ★', value: 0.5 },
+                        { label: '0.9s', value: 0.9 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Exit Motion Blur"
+                      value={exitBlur}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setExitBlur}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
+                      presets={[
+                        { label: 'OFF', value: 0 },
+                        { label: '50%', value: 0.5 },
+                        { label: '85% ★', value: 0.85 },
                         { label: 'MAX', value: 1 },
                       ]}
                     />

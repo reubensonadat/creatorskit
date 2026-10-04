@@ -14,6 +14,23 @@
 
 import { NewspaperCut } from '@/lib/paper-graphics';
 
+/**
+ * The FULL cinematic motion recipe a preset carries — one click sets the
+ * whole personality: which edge the paper slams in from, how hot the blur
+ * runs, how long it holds before the sweep, and which edge it whips back
+ * out of. Different presets intentionally use different edges and blur
+ * intensities so the library feels varied, not templated.
+ */
+export interface PresetMotion {
+    entranceDirection?: 'none' | 'top' | 'bottom' | 'left' | 'right';
+    entranceFlight?: number;  // seconds of flight before the settle
+    entranceHold?: number;    // seconds held before the sweep begins
+    entranceBlur?: number;    // 0..1 smear intensity on the way in
+    exitDirection?: 'none' | 'top' | 'bottom' | 'left' | 'right';
+    exitDuration?: number;    // seconds of the whip-out
+    exitBlur?: number;        // 0..1 smear intensity on the way out
+}
+
 export interface PresetTopic {
     id: string;
     name: string;
@@ -23,6 +40,7 @@ export interface PresetTopic {
     highlightStyle: 'marker' | 'underline' | 'box' | 'circle' | 'tape' | 'double-underline';
     paperTheme: 'vintage' | 'salmon' | 'tabloid' | 'dossier' | 'crisp' | 'noir' | 'academic';
     cuts: NewspaperCut[];
+    motion?: PresetMotion;
 }
 
 export const MASTHEADS = [
@@ -161,11 +179,36 @@ export function generateCutsForPhrase(phrase: string, count = 6): NewspaperCut[]
     return cuts;
 }
 
+/**
+ * Compact vibe factory for the SHUFFLE DECK — one line per personality:
+ * pairs an anchor with a DISTINCT motion recipe (edge + blur + pacing) so
+ * every shuffle changes the energy. Cuts are generated FROM the anchor, so
+ * the paper always embeds the phrase in real journal prose.
+ */
+const vibe = (
+    id: string,
+    name: string,
+    anchor: string,
+    category: string,
+    highlightColor: string,
+    highlightStyle: PresetTopic['highlightStyle'],
+    paperTheme: PresetTopic['paperTheme'],
+    motion: PresetMotion,
+): PresetTopic => ({
+    id, name, anchor, category, highlightColor, highlightStyle, paperTheme, motion,
+    cuts: generateCutsForPhrase(anchor, 6),
+});
+
 export const PRESET_TOPICS: PresetTopic[] = [
     {
         id: 'creator-research',
         name: 'Research Journal',
-        anchor: '10x faster turnaround times | neural depth rendering',
+        // SCROLL DEMO: two phrases share screen one, then ">" scrolls the
+        // page DOWN to a third phrase — the in-page reference-video sequence.
+        anchor: '10x faster turnaround times | neural depth rendering > fifteen hours per project',
+        // Vertical journal slam: drops in from the top, holds a full beat,
+        // sweeps, scrolls down to the next phrase, then whips back up out.
+        motion: { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 1.0, entranceBlur: 0.85, exitDirection: 'top', exitDuration: 0.5, exitBlur: 0.85 },
         category: 'Academic Journal',
         highlightColor: '#ff6b81', // Authentic Journal Coral Highlighter
         highlightStyle: 'marker',
@@ -231,6 +274,9 @@ export const PRESET_TOPICS: PresetTopic[] = [
         id: 'friction-diary',
         name: 'Everyday Systems',
         anchor: 'small reductions in friction | accumulate into meaningful changes',
+        // Lateral cross-wind: slides in from the left, light blur, and
+        // exits right — a different personality from the vertical journal.
+        motion: { entranceDirection: 'left', entranceFlight: 0.8, entranceHold: 0.6, entranceBlur: 0.6, exitDirection: 'right', exitDuration: 0.45, exitBlur: 0.7 },
         category: 'Behavioral Research',
         highlightColor: '#00F0FF',
         highlightStyle: 'underline',
@@ -424,6 +470,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#FFE500',
         highlightStyle: 'marker',
         paperTheme: 'vintage',
+        motion: { entranceDirection: 'bottom', entranceFlight: 0.55, entranceHold: 0.9, entranceBlur: 0.75, exitDirection: 'top', exitDuration: 0.5, exitBlur: 0.75 },
         cuts: generateCutsForPhrase('Studio Space Planner', 8),
     },
     {
@@ -434,6 +481,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#FFE500',
         highlightStyle: 'box',
         paperTheme: 'noir',
+        motion: { entranceDirection: 'left', entranceFlight: 0.5, entranceHold: 0.5, entranceBlur: 0.9, exitDirection: 'right', exitDuration: 0.4, exitBlur: 0.9 },
         cuts: generateCutsForPhrase('Text Behind Image', 8),
     },
     {
@@ -444,6 +492,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#00F0FF',
         highlightStyle: 'marker',
         paperTheme: 'vintage',
+        motion: { entranceDirection: 'right', entranceFlight: 0.45, entranceHold: 0.6, entranceBlur: 0.8, exitDirection: 'right', exitDuration: 0.45, exitBlur: 0.8 },
         cuts: generateCutsForPhrase('Background Replace', 8),
     },
     {
@@ -454,6 +503,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#FFE500',
         highlightStyle: 'marker',
         paperTheme: 'vintage',
+        motion: { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 1.0, entranceBlur: 0.85, exitDirection: 'bottom', exitDuration: 0.5, exitBlur: 0.85 },
         cuts: generateCutsForPhrase('Optical Match Cut', 8),
     },
     {
@@ -464,6 +514,7 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#FF2A85',
         highlightStyle: 'circle',
         paperTheme: 'crisp',
+        motion: { entranceDirection: 'left', entranceFlight: 0.5, entranceHold: 0.5, entranceBlur: 0.6, exitDirection: 'left', exitDuration: 0.4, exitBlur: 0.7 },
         cuts: generateCutsForPhrase('Palette Extractor', 8),
     },
     {
@@ -474,6 +525,32 @@ export const PRESET_TOPICS: PresetTopic[] = [
         highlightColor: '#FFE500',
         highlightStyle: 'tape',
         paperTheme: 'dossier',
+        motion: { entranceDirection: 'bottom', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.7, exitDirection: 'bottom', exitDuration: 0.5, exitBlur: 0.75 },
         cuts: generateCutsForPhrase('Quote Card Studio', 8),
     },
+    // ─── SHUFFLE DECK ────────────────────────────────────────────────────────
+    // 20 generated vibes: each pairs a distinct look with a distinct motion
+    // personality (varied edges, blur heat, pacing — a few demo in-page
+    // scrolls with ">" / "<"). Shuffle rolls these WITHOUT touching the
+    // user's text; clicking one applies its example anchor + vibe.
+    vibe('velocity-lead', 'Velocity Lead', 'velocity over polish | shipped beats perfect', 'Momentum', '#FFE500', 'marker', 'salmon', { entranceDirection: 'bottom', entranceFlight: 0.55, entranceHold: 0.7, entranceBlur: 0.9, exitDirection: 'top', exitDuration: 0.45, exitBlur: 0.9 }),
+    vibe('midnight-audit', 'Midnight Audit', 'midnight audits catch what mornings miss', 'Audit & Risk', '#00F0FF', 'underline', 'noir', { entranceDirection: 'left', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.7, exitDirection: 'right', exitDuration: 0.45, exitBlur: 0.7 }),
+    vibe('slow-sunday', 'Slow Sunday', 'slow sunday edits | craft nobody schedules', 'Craft Essay', '#ff6b81', 'circle', 'vintage', { entranceDirection: 'top', entranceFlight: 0.8, entranceHold: 1.2, entranceBlur: 0.45, exitDirection: 'top', exitDuration: 0.6, exitBlur: 0.5 }),
+    vibe('burnout-index', 'Burnout Index', 'the burnout index | rest is a strategy > recovery compounds quarterly', 'Wellness', '#FF2A85', 'marker', 'crisp', { entranceDirection: 'bottom', entranceFlight: 0.5, entranceHold: 0.6, entranceBlur: 0.8, exitDirection: 'bottom', exitDuration: 0.5, exitBlur: 0.8 }),
+    vibe('first-draft', 'First Draft', 'first drafts are allowed to be bad', 'Writing', '#FFE500', 'tape', 'dossier', { entranceDirection: 'left', entranceFlight: 0.7, entranceHold: 0.9, entranceBlur: 0.6, exitDirection: 'left', exitDuration: 0.5, exitBlur: 0.65 }),
+    vibe('deep-work-diary', 'Deep Work Diary', 'deep work diaries | four hours of silence', 'Focus Research', '#00F0FF', 'box', 'academic', { entranceDirection: 'right', entranceFlight: 0.6, entranceHold: 0.7, entranceBlur: 0.7, exitDirection: 'right', exitDuration: 0.45, exitBlur: 0.7 }),
+    vibe('quiet-launch', 'Quiet Launch', 'quiet launches beat loud announcements', 'Shipping', '#FFE500', 'underline', 'crisp', { entranceDirection: 'top', entranceFlight: 0.5, entranceHold: 0.5, entranceBlur: 0.55, exitDirection: 'bottom', exitDuration: 0.4, exitBlur: 0.6 }),
+    vibe('ink-and-static', 'Ink & Static', 'ink and static | analog soul, digital speed', 'Media Theory', '#FF2A85', 'double-underline', 'tabloid', { entranceDirection: 'left', entranceFlight: 0.45, entranceHold: 0.5, entranceBlur: 0.95, exitDirection: 'right', exitDuration: 0.4, exitBlur: 0.95 }),
+    vibe('marginalia', 'Marginalia', 'marginalia | notes in the margins', 'Reading', '#ff6b81', 'circle', 'dossier', { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.6, exitDirection: 'top', exitDuration: 0.45, exitBlur: 0.6 }),
+    vibe('golden-hour', 'Golden Hour', 'golden hour is a business model', 'Creator Economy', '#FFE500', 'marker', 'salmon', { entranceDirection: 'bottom', entranceFlight: 0.6, entranceHold: 0.9, entranceBlur: 0.75, exitDirection: 'bottom', exitDuration: 0.5, exitBlur: 0.75 }),
+    vibe('archive-dive', 'Archive Dive', 'archive dives < back to the source', 'Research', '#00F0FF', 'box', 'vintage', { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 0.7, entranceBlur: 0.8, exitDirection: 'top', exitDuration: 0.5, exitBlur: 0.8 }),
+    vibe('attention-price', 'Attention Price', 'the price of attention', 'Media Critique', '#FF2A85', 'marker', 'noir', { entranceDirection: 'right', entranceFlight: 0.5, entranceHold: 0.6, entranceBlur: 0.85, exitDirection: 'left', exitDuration: 0.45, exitBlur: 0.85 }),
+    vibe('studio-economics', 'Studio Economics', 'studio economics | every hour billed', 'Business', '#FFE500', 'underline', 'academic', { entranceDirection: 'top', entranceFlight: 0.55, entranceHold: 0.8, entranceBlur: 0.65, exitDirection: 'top', exitDuration: 0.45, exitBlur: 0.65 }),
+    vibe('contrast-theory', 'Contrast Theory', 'contrast theory | loud needs quiet > whitespace is a tool', 'Design', '#00F0FF', 'box', 'crisp', { entranceDirection: 'bottom', entranceFlight: 0.5, entranceHold: 0.6, entranceBlur: 0.7, exitDirection: 'bottom', exitDuration: 0.45, exitBlur: 0.7 }),
+    vibe('paper-trail', 'Paper Trail', 'the paper trail | receipts over promises', 'Accountability', '#FFE500', 'tape', 'dossier', { entranceDirection: 'left', entranceFlight: 0.5, entranceHold: 0.6, entranceBlur: 0.8, exitDirection: 'right', exitDuration: 0.45, exitBlur: 0.8 }),
+    vibe('motion-study', 'Motion Study', 'motion studies | easing is a language', 'Motion Design', '#FF2A85', 'underline', 'crisp', { entranceDirection: 'left', entranceFlight: 0.55, entranceHold: 0.5, entranceBlur: 0.9, exitDirection: 'right', exitDuration: 0.4, exitBlur: 0.9 }),
+    vibe('field-notes', 'Field Notes', 'field notes from the feed', 'Ethnography', '#ff6b81', 'marker', 'vintage', { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.7, exitDirection: 'top', exitDuration: 0.5, exitBlur: 0.7 }),
+    vibe('render-farm', 'Render Farm', 'render farm blues | overnight batches', 'Production', '#00F0FF', 'double-underline', 'noir', { entranceDirection: 'bottom', entranceFlight: 0.5, entranceHold: 0.5, entranceBlur: 0.9, exitDirection: 'bottom', exitDuration: 0.4, exitBlur: 0.9 }),
+    vibe('scope-whisperer', 'Scope Whisperer', 'scope is a story | boundaries bill hourly', 'Client Work', '#FFE500', 'circle', 'salmon', { entranceDirection: 'right', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.65, exitDirection: 'right', exitDuration: 0.5, exitBlur: 0.65 }),
+    vibe('final-cut', 'Final Cut', 'final cut energy | done is a decision', 'Editorial', '#FF2A85', 'marker', 'academic', { entranceDirection: 'top', entranceFlight: 0.6, entranceHold: 0.8, entranceBlur: 0.8, exitDirection: 'top', exitDuration: 0.5, exitBlur: 0.8 }),
 ];

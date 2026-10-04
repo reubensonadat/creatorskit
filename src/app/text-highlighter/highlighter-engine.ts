@@ -30,6 +30,7 @@ import {
 } from '@/lib/paper-graphics';
 import { buildPhraseBodySentence } from './highlighter-presets';
 import { clamp01 } from '@/lib/motion/easing';
+import { renderPaperTransition } from '@/lib/motion/paper-transition';
 
 // Re-exported for the highlighter page's convenience.
 export { PAPER_THEMES } from '@/lib/paper-graphics';
@@ -83,6 +84,19 @@ export interface HighlighterRenderOptions {
     entranceBlur?: number; // 0..1 directional smear intensity during flight
     entranceTilt?: number; // settle rotation in degrees (default 5)
     entranceScaleFrom?: number; // starting scale, e.g. 1.1 (default)
+    entranceOvershoot?: number; // settle bounce depth (0.2 default; ~0 = pure glide)
+
+    // Paper Exit (post-sweep whip-out): after the final sweep the finished
+    // document whips back OUT of frame — anticipation windup, acceleration,
+    // hot motion-blur streak — leaving only the paper color behind.
+    exitDirection?: 'none' | 'top' | 'bottom' | 'left' | 'right';
+    exitProgress?: number; // 0..1 across the whip-out window (1 = fully gone)
+    exitBlur?: number; // 0..1 directional smear intensity during the exit
+
+    // Travel distance multiplier for EVERY paper move — slam-in, inter-screen
+    // scrolls and whip-out (default 1.3 × axis length). Raise it to scroll
+    // "more of the page" between screens.
+    paperTravel?: number;
 }
 
 interface HeadlineLine {
@@ -863,26 +877,20 @@ export function renderHighlighterStory(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAPER ENTRANCE — the pre-sweep slam.
+// PAPER ENTRANCE / EXIT — the pre-sweep slam and the post-sweep whip-out.
 //
 // The viral pattern: before any highlighting starts, the whole news article
 // flies into view (top→bottom, bottom→top, left→right, right→left) with
 // directional motion blur and a settle tilt, lands dead center, holds for a
-// configurable beat (0–4s), and only then does the marker sweep begin.
-// Deterministic Motion-as-Code: the caller drives `entranceProgress` (0..1
-// across the flight+hold window) exactly like `highlightProgress`, so the
-// live preview and the frame-stepped exporter produce identical pixels.
+// configurable beat (0–4s), and only then does the marker sweep begin. After
+// the final sweep the SAME machinery runs as an exit: the finished paper
+// whips back out with an anticipation windup and a hot streak.
+// Deterministic Motion-as-Code: the caller drives `entranceProgress` /
+// `exitProgress` (0..1) exactly like `highlightProgress`, so the live
+// preview and the frame-stepped exporter produce identical pixels.
+// All spring/streak math lives in the SHARED lib so Text Match Cut gets
+// pixel-identical motion for free.
 // ─────────────────────────────────────────────────────────────────────────────
-
-let entranceBuffer: HTMLCanvasElement | null = null;
-function getEntranceBuffer(width: number, height: number): HTMLCanvasElement {
-    if (!entranceBuffer) entranceBuffer = document.createElement('canvas');
-    if (entranceBuffer.width !== width || entranceBuffer.height !== height) {
-        entranceBuffer.width = width;
-        entranceBuffer.height = height;
-    }
-    return entranceBuffer;
-}
 
 export function renderHighlighterStoryWithEntrance(
     targetCanvasCtx: CanvasRenderingContext2D,
@@ -892,108 +900,45 @@ export function renderHighlighterStoryWithEntrance(
     options: HighlighterRenderOptions,
     frameIndex = 0
 ) {
-    const dir = options.entranceDirection ?? 'none';
-    const progress = clamp01(options.entranceProgress ?? 1);
+    const inDir = options.entranceDirection ?? 'none';
+    const outDir = options.exitDirection ?? 'none';
+    const inP = clamp01(options.entranceProgress ?? 1);
+    const outP = clamp01(options.exitProgress ?? 0);
+    const theme: PaperTheme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.academic;
 
-    // Entrance finished (or disabled, or SSR) → straight to the classic render.
-    if (dir === 'none' || typeof document === 'undefined' || progress >= 1) {
-        renderHighlighterStory(targetCanvasCtx, width, height, cut, options, frameIndex);
+    // Entrance in flight → the document renders untouched (no sweep strokes
+    // yet) and the shared transition composites the slam-in.
+    if (inDir !== 'none' && inP < 1 && typeof document !== 'undefined') {
+        renderPaperTransition(targetCanvasCtx, width, height, (c) => {
+            renderHighlighterStory(c, width, height, cut, { ...options, highlightProgress: 0 }, frameIndex);
+        }, {
+            mode: 'in',
+            direction: inDir,
+            progress: inP,
+            blur: options.entranceBlur ?? 0.8,
+            tiltDeg: options.entranceTilt ?? 4,
+            scaleEdge: options.entranceScaleFrom ?? 1.07,
+            overshoot: options.entranceOvershoot,
+            bg: theme.bg,
+            travelScale: options.paperTravel,
+        });
         return;
     }
 
-    const tctx = targetCanvasCtx;
-    const theme: PaperTheme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.academic;
-
-    // 1. Backdrop: the EXACT paper color — the article slides in over more
-    //    of itself, so the flight reads as one continuous sheet settling on
-    //    the stack, never a dark pit behind a floating rectangle.
-    tctx.save();
-    tctx.fillStyle = theme.bg;
-    tctx.fillRect(0, 0, width, height);
-    tctx.restore();
-
-    // 2. Render the untouched document (no sweep strokes yet) offscreen.
-    const buf = getEntranceBuffer(width, height);
-    const bctx = buf.getContext('2d')!;
-    renderHighlighterStory(bctx, width, height, cut, { ...options, highlightProgress: 0 }, frameIndex);
-
-    // 3. ONE damped spring drives every channel — position, rotation, scale,
-    //    blur and shadow — like a single After Effects expression: explosive
-    //    launch, travel, a small overshoot past center, then a tiny damped
-    //    settle. Shared-curve motion is what separates pro animation from
-    //    "sloppy": no channel floats on its own timeline.
-    const FLIGHT_SHARE = 0.8; // flight occupies 80% of the window; rest is the settle hold
-    const t2 = Math.min(1, progress / FLIGHT_SHARE);
-    const springDisp = (x: number) => Math.exp(-4.2 * x) * Math.cos(8.5 * x); // remaining-displacement spring
-    const d = Math.max(-0.2, Math.min(1, springDisp(t2))); // dips ≤ −0.2 → overshoot past center
-
-    // Instantaneous velocity (finite difference) — drives the smear so blur
-    // is strongest at launch and dies the INSTANT the paper touches down.
-    const dt = 0.016;
-    const dNext = Math.max(-0.2, Math.min(1, springDisp(t2 + dt)));
-    const vel = Math.abs(d - dNext) / dt;
-    const speed = Math.min(1, vel / 5); // normalized 0..1
-
-    const axisLen = dir === 'top' || dir === 'bottom' ? height : width;
-    const travel = axisLen * 1.3;
-    let dx = 0;
-    let dy = 0;
-    if (dir === 'top') dy = -travel * d;
-    else if (dir === 'bottom') dy = travel * d;
-    else if (dir === 'left') dx = -travel * d;
-    else if (dir === 'right') dx = travel * d;
-    const tiltSign = dir === 'left' || dir === 'top' ? -1 : 1;
-    const tilt = ((options.entranceTilt ?? 4) * Math.PI / 180) * d * tiltSign;
-    const scale = 1 + ((options.entranceScaleFrom ?? 1.07) - 1) * Math.max(0, d);
-    const blur = clamp01(options.entranceBlur ?? 0.8);
-
-    // 4. Landing shadow — deepens as the paper approaches the stack.
-    const approach = 1 - Math.min(1, Math.abs(d));
-    const shadow = tctx.createRadialGradient(
-        width / 2, height / 2 + height * 0.015, Math.min(width, height) * 0.08,
-        width / 2, height / 2 + height * 0.015, Math.max(width, height) * 0.5
-    );
-    shadow.addColorStop(0, `rgba(0,0,0,${(0.05 + 0.14 * approach).toFixed(3)})`);
-    shadow.addColorStop(1, 'rgba(0,0,0,0)');
-    tctx.save();
-    tctx.fillStyle = shadow;
-    tctx.fillRect(0, 0, width, height);
-    tctx.restore();
-
-    // 5. TRUE directional motion blur — a continuous streak, not discrete
-    //    ghosts: 16 samples laid along the motion path BEHIND the paper,
-    //    Gaussian-weighted (solid leading edge, smearing tail), spacing ∝
-    //    velocity², and each trail copy softened with a small canvas blur so
-    //    ghost boundaries dissolve into one smear — the After Effects
-    //    "directional blur" look. The streak is huge at launch and collapses
-    //    to exactly zero on touchdown, so the paper snaps crisp.
-    const ux = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
-    const uy = dir === 'top' ? -1 : dir === 'bottom' ? 1 : 0;
-    const smear = axisLen * 0.35 * blur * speed * speed;
-    const samples = blur > 0.02 ? 16 : 1;
-    const weights: number[] = [];
-    let wSum = 0;
-    for (let k = 0; k < samples; k++) {
-        const f = samples > 1 ? k / (samples - 1) : 0;
-        const w = Math.exp(-Math.pow(f / 0.3, 2)); // gaussian falloff along the trail
-        weights.push(w);
-        wSum += w;
+    // Exit in flight (or fully gone) → the finished document whips out.
+    if (outDir !== 'none' && outP > 0 && typeof document !== 'undefined') {
+        renderPaperTransition(targetCanvasCtx, width, height, (c) => {
+            renderHighlighterStory(c, width, height, cut, options, frameIndex);
+        }, {
+            mode: 'out',
+            direction: outDir,
+            progress: outP,
+            blur: options.exitBlur ?? 0.8,
+            bg: theme.bg,
+            travelScale: options.paperTravel,
+        });
+        return;
     }
-    for (let k = samples - 1; k >= 0; k--) {
-        const f = samples > 1 ? k / (samples - 1) : 0;
-        const off = smear * f;
-        const alpha = Math.min(1, (weights[k] / wSum) * 2.1); // gain keeps the head solid
-        tctx.save();
-        tctx.globalAlpha = alpha;
-        try {
-            if (k > 0) tctx.filter = `blur(${(1 + f * 4).toFixed(1)}px)`; // dissolve ghost edges
-        } catch { /* filters unsupported — crisp trail still works */ }
-        tctx.translate(width / 2 + dx - ux * off, height / 2 + dy - uy * off);
-        tctx.rotate(tilt);
-        tctx.scale(scale, scale);
-        tctx.translate(-width / 2, -height / 2);
-        tctx.drawImage(buf, 0, 0);
-        tctx.restore();
-    }
-    try { tctx.filter = 'none'; } catch { /* ignore */ }
+
+    renderHighlighterStory(targetCanvasCtx, width, height, cut, options, frameIndex);
 }
