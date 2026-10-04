@@ -429,6 +429,14 @@ Owner asks: (1) "there's nothing on the home page where I can physically navigat
 
 **Verification:** filtered `npx tsc --noEmit` — only the 4 known pre-existing errors, zero new. `npm run build` **exit 0, 54/54 pages** (`/teleprompter` + `/teleprompter/mirror` both Static), ORT strip clean, no EBUSY. Owner was ALSO looking at a stale dev preview (Turbopack cache had been wiped after an internal error) — advised a hard reload / dev-server restart alongside this fix. **Commit + push still pending for Cloudflare** (carries the Session 14 edge-runtime fix and all of FILM MODE).
 
+**Post-test additions (owner, live voice):**
+
+- **Corrupted Turbopack dev cache crashed the dev server** (turbo-tasks panic: LevelDB `00000010.meta` referenced a missing `00000003.sst`). Wiped `.next\dev`, cleared the orphaned process holding port 3000, restarted dev clean. Root cause of BOTH the earlier "cache has been deleted" warning and the owner's "I cannot see any difference at all".
+- **Camera FLIP setting (front ⇄ back):** `startCamera(deviceId?, facing?)` now accepts `facingMode` (`ideal`, so single-webcam laptops fall back gracefully); new `flipCamera()` (no-op mid-take) surfaced as (a) a one-tap ⟲ button ON the corner PiP itself — native camera-app feel — and (b) a full-width `⟲ FLIP CAMERA` row in the FILM MODE sheet. Front-lens previews are **mirrored like a native selfie view** (`scaleX(-1)` when facing 'user', preview-only — the recorded file stays true), on both PiP and full-bleed layouts.
+- **Mic-fight ruling (owner: "two things fighting… who would win?"):** answer — on iPhone it's a coin flip (speech recognition + simultaneous capture is unreliable on iOS, and the owner confirmed voice sync "wasn't working on mobile"), so FILM MODE removes the gamble entirely: turning the camera ON force-switches to **TIMED SCROLL** (`setSpeechFollowEnabled(false)`) and the recognition-start effect is hard-guarded with `!cameraActive` — the video take OWNS the mic, no co-tenant, ever. The sheet explainer states this in plain words ("Scroll runs TIMED while filming: the take owns the mic, so AI voice sync is off").
+
+**Re-verification:** filtered `tsc` — 4 known only; `npm run build` **exit 0, 54/54**. Dev server serving the updated page live.
+
 ---
 
 ## Step 2k — Session 14 (2026-10-03, later, agent): HAND-OFF WIRING COMPLETED — every declared §4 edge now carries the work (Ship-It Pack STRUCK)

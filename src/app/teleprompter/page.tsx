@@ -38,6 +38,7 @@ import {
   MonitorSmartphone,
   Video,
   VideoOff,
+  RefreshCw,
 } from 'lucide-react';
 import { compressToEncodedURIComponent as lzCompress } from 'lz-string';
 import { useRouter } from 'next/navigation';
@@ -411,6 +412,8 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  // Front/back lens for FILM MODE flip (owner ruling 2026-10-04).
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   // FILM MODE (owner ruling 2026-10-04): with the camera live, REC captures
   // video + mic (SOLO take); camera off keeps the classic voice-only take.
   const [takeIsVideo, setTakeIsVideo] = useState(false);
@@ -1203,7 +1206,10 @@ Control your speed, adjust your font size, and download your voice recording in 
   }, [autoPauseThresholdMs, cleanWordsList, releaseAllAudioAndMic, stopSpeechRecognition, updateTargetScrollForWord]);
 
   useEffect(() => {
-    if (speechFollowEnabled && isPlaying) {
+    // Owner ruling 2026-10-04 (mic fight): while the FILM MODE camera is
+    // live, the take owns the mic — never let speech recognition start and
+    // fight for it. Timed scroll drives the prompter instead.
+    if (speechFollowEnabled && isPlaying && !cameraActive) {
       startSpeechRecognition();
     } else {
       stopSpeechRecognition();
@@ -1211,7 +1217,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     return () => {
       stopSpeechRecognition();
     };
-  }, [speechFollowEnabled, isPlaying, startSpeechRecognition, stopSpeechRecognition]);
+  }, [speechFollowEnabled, isPlaying, cameraActive, startSpeechRecognition, stopSpeechRecognition]);
 
   // ── LIFECYCLE & BACKGROUND MIC TEARDOWN ──
   // When leaving the tab, switching apps, locking the phone, or navigating away:
@@ -1679,12 +1685,16 @@ Control your speed, adjust your font size, and download your voice recording in 
     }
   }, [cameraStream, cameraActive, cameraLayout]);
 
-  const startCamera = async (deviceId?: string) => {
+  const startCamera = async (deviceId?: string, facing?: 'user' | 'environment') => {
     try {
       if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
       const targetId = deviceId || selectedCameraId;
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: targetId ? { deviceId: { exact: targetId } } : { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: targetId
+          ? { deviceId: { exact: targetId } }
+          : facing
+            ? { facingMode: { ideal: facing } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } },
         // NEVER open audio here (owner ruling 2026-10-04): a second mic
         // stream would compete with AI voice listening and the dedicated
         // recording mic. Video takes merge the mic stream separately.
@@ -1693,6 +1703,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       setCameraStream(stream);
       setCameraActive(true);
       if (targetId) setSelectedCameraId(targetId);
+      if (facing) setCameraFacing(facing);
     } catch (err: any) {
       console.warn('Camera initiation failed:', err);
       alert(err?.message ? `Camera access error: ${err.message}` : 'Camera access denied. Grant camera permission, then try again (HTTPS or localhost required).');
@@ -1714,10 +1725,22 @@ Control your speed, adjust your font size, and download your voice recording in 
       stopCamera();
       return;
     }
-    await startCamera();
+    await startCamera(undefined, cameraFacing);
     // Owner ruling 2026-10-04: the moment the camera is live, a line must
     // show where the eyes should sit — raise the eyeline with the camera.
     setShowEyelineGuide(true);
+    // Owner ruling 2026-10-04 (mic fight): while the camera is live the take
+    // owns the mic — AI voice sync is forced OFF so nothing fights over it.
+    setSpeechFollowEnabled(false);
+  };
+
+  // Flip front/back camera (owner ruling 2026-10-04): native-camera feel —
+  // the front lens previews mirrored like a selfie. Never flips mid-take.
+  const flipCamera = () => {
+    if (isRecording) return;
+    const next = cameraFacing === 'user' ? 'environment' : 'user';
+    setCameraFacing(next);
+    startCamera(undefined, next);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -2768,6 +2791,9 @@ Control your speed, adjust your font size, and download your voice recording in 
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
+                // Selfie mirror on the front lens — preview only; the
+                // recorded file stays true (unmirrored), like native apps.
+                transform: cameraFacing === 'user' ? 'scaleX(-1)' : 'none',
                 zIndex: 1,
                 background: '#000',
                 pointerEvents: 'none',
@@ -2775,28 +2801,64 @@ Control your speed, adjust your font size, and download your voice recording in 
             />
           )}
 
-          {/* 5c. FILM MODE live camera — corner PiP: frame yourself while you read */}
+          {/* 5c. FILM MODE live camera — corner PiP: frame yourself while
+              you read. Front lens mirrors like a native selfie preview. */}
           {cameraActive && cameraLayout === 'corner-pip' && (
-            <video
-              ref={videoPreviewRef}
-              autoPlay
-              muted
-              playsInline
+            <div
               style={{
                 position: 'absolute',
                 top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
                 right: 14,
                 width: 'clamp(96px, 24vw, 190px)',
                 aspectRatio: '3 / 4',
-                objectFit: 'cover',
                 zIndex: 30,
                 border: '2px solid #000',
                 borderRadius: 10,
                 boxShadow: '0 6px 24px rgba(0,0,0,0.55)',
                 background: '#000',
+                overflow: 'hidden',
                 pointerEvents: 'none',
               }}
-            />
+            >
+              <video
+                ref={videoPreviewRef}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: cameraFacing === 'user' ? 'scaleX(-1)' : 'none',
+                }}
+              />
+              {/* Native-camera flip — one tap swaps front/back lens */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  flipCamera();
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: 6,
+                  right: 6,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  border: '1.5px solid #fff',
+                  background: 'rgba(0,0,0,0.65)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  pointerEvents: 'auto',
+                }}
+                title="Flip camera (front / back)"
+              >
+                <RefreshCw size={13} />
+              </button>
+            </div>
           )}
 
           {/* 6. Main Prompter Reading Column */}
@@ -3126,7 +3188,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                     </span>
                     <p style={{ margin: 0, fontSize: '0.62rem', fontFamily: 'monospace', color: '#52525b', lineHeight: 1.5 }}>
                       {cameraActive
-                        ? 'CAMERA LIVE — REC now films VIDEO + your mic and auto-saves exactly like an audio take.'
+                        ? 'CAMERA LIVE — REC films VIDEO + your mic (auto-saved like audio). Scroll runs TIMED while filming: the take owns the mic, so AI voice sync is off.'
                         : 'Tap CAMERA to film yourself reading — REC switches from mic-only to video + mic.'}
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -3233,6 +3295,33 @@ Control your speed, adjust your font size, and download your voice recording in 
                           {showEyelineGuide ? 'EYELINE ON' : 'EYELINE OFF'}
                         </button>
                       </div>
+                    )}
+                    {cameraActive && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          flipCamera();
+                        }}
+                        style={{
+                          width: '100%',
+                          minHeight: 40,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: '#ffffff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.62rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                        title="Swap front / back camera"
+                      >
+                        ⟲ FLIP CAMERA ({cameraFacing === 'user' ? 'FRONT ⇄ BACK' : 'BACK ⇄ FRONT'})
+                      </button>
                     )}
                     {cameraActive && cameras.length > 1 && (
                       <select
