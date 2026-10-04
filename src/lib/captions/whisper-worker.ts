@@ -32,19 +32,45 @@ class WhisperPipelineSingleton {
         if (this.instance === null) {
             // Test if WebGPU is available in the worker environment
             const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
-            const device = hasWebGPU ? 'webgpu' : 'wasm';
 
             self.postMessage({
                 type: 'status',
-                message: 'Initializing...',
-                device,
+                message: hasWebGPU ? 'Initializing GPU engine...' : 'Initializing CPU engine...',
+                device: hasWebGPU ? 'webgpu' : 'wasm',
             });
 
-            this.instance = await pipeline(this.task, this.model, {
-                device: device,
-                dtype: device === 'webgpu' ? 'fp32' : 'q8',
-                progress_callback,
-            });
+            if (hasWebGPU) {
+                try {
+                    this.instance = await pipeline(this.task, this.model, {
+                        device: 'webgpu',
+                        dtype: 'fp32',
+                        progress_callback,
+                    });
+                } catch (gpuErr) {
+                    // navigator.gpu EXISTS but the adapter request failed
+                    // ("Failed to get GPU adapter" — driver blocklists, VMs,
+                    // RDP sessions, disabled flags). A single-attempt engine
+                    // surfaces that raw backend error and the whole tool dies.
+                    // Degrade transparently to WASM: slower, identical captions.
+                    console.warn('WebGPU pipeline failed — falling back to WASM:', gpuErr);
+                    self.postMessage({
+                        type: 'status',
+                        message: 'GPU unavailable — switching to CPU engine (slower, same captions)...',
+                        device: 'wasm',
+                    });
+                    this.instance = await pipeline(this.task, this.model, {
+                        device: 'wasm',
+                        dtype: 'q8',
+                        progress_callback,
+                    });
+                }
+            } else {
+                this.instance = await pipeline(this.task, this.model, {
+                    device: 'wasm',
+                    dtype: 'q8',
+                    progress_callback,
+                });
+            }
         }
         return this.instance;
     }

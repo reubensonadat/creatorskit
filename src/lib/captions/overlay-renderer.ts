@@ -25,6 +25,7 @@
 
 import { SubtitleCue, cleanStageDirections } from './vtt-formatter';
 import { exportCanvasVideoToMp4 } from '@/lib/canvas-video-exporter';
+import { accumulateMotionBlur, impactShake, springScale } from '@/lib/motion';
 
 export type CaptionVideoMode = 'teleprompter' | 'kinetic-pop' | 'minimal';
 export type CaptionStylePreset = CaptionVideoMode | 'tiktok' | 'hormozi'; // Backward compatibility
@@ -59,6 +60,8 @@ export interface OverlayTypographyOptions {
     activeWordEffect?: ActiveWordEffect; // kinetic-pop active word treatment
     glowColor?: string;        // halo color for the 'glow' effect
     tapeBackdrop?: boolean;    // translucent masking-tape band behind the window
+    shakeIntensity?: number;   // MOTION-AS-CODE: decaying-sine impact shake on each spoken word onset (0 = off, ~1.25 = strong)
+    motionBlurSamples?: number; // MOTION-AS-CODE: sub-frames averaged per output frame at export (1 = off, 4-8 = cinematic blur)
 }
 
 export interface OverlayRenderOptions {
@@ -116,6 +119,8 @@ export interface CaptionStylePresetConfig {
     activeWordEffect: ActiveWordEffect;
     glowColor?: string;
     tapeBackdrop: boolean;
+    shakeIntensity?: number;   // word-onset impact shake (omitted/0 = off)
+    motionBlurSamples?: number; // export-time sub-frame motion blur (omitted/1 = off)
 }
 
 export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
@@ -260,18 +265,18 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         name: 'Marker Swipe',
         videoMode: 'kinetic-pop',
         fontFamily: 'montserrat',
-        fontSize: 56,
+        fontSize: 60,
         letterSpacing: 0,
-        yPositionPercent: 70,
+        yPositionPercent: 72,
         pillBackground: 'clear',
         highlighterColor: '#FFE500',
         activeWordEffect: 'marker',
         tapeBackdrop: false,
         springPhysics: true,
-        bounceIntensity: 1.1,
+        bounceIntensity: 1.05,
         wordRotation: false,
         wordPop: false,
-        textShadow: true,
+        textShadow: false,
         uppercase: true,
         emojiMode: false,
     },
@@ -304,7 +309,7 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         name: 'Coach Box',
         videoMode: 'kinetic-pop',
         fontFamily: 'archivo-black',
-        fontSize: 58,
+        fontSize: 56,
         letterSpacing: -1,
         yPositionPercent: 69,
         pillBackground: 'clear',
@@ -312,8 +317,8 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         activeWordEffect: 'box',
         tapeBackdrop: false,
         springPhysics: true,
-        bounceIntensity: 1.1,
-        wordRotation: false,
+        bounceIntensity: 1.25,
+        wordRotation: true,
         wordPop: false,
         textShadow: true,
         uppercase: true,
@@ -430,6 +435,31 @@ export const CAPTION_STYLE_PRESETS: CaptionStylePresetConfig[] = [
         uppercase: true,
         emojiMode: false,
     },
+    {
+        // Motion-as-code flagship: every spoken word onset fires a
+        // decaying-sine impact shake, and the export averages sub-frames
+        // across each exposure window for true temporal motion blur.
+        id: 'impact-shake',
+        name: 'Impact Shake',
+        videoMode: 'kinetic-pop',
+        fontFamily: 'archivo-black',
+        fontSize: 62,
+        letterSpacing: -1,
+        yPositionPercent: 70,
+        pillBackground: 'dark',
+        highlighterColor: '#EF4444',
+        activeWordEffect: 'fill',
+        tapeBackdrop: false,
+        springPhysics: true,
+        bounceIntensity: 1.25,
+        wordRotation: false,
+        wordPop: false,
+        textShadow: true,
+        uppercase: true,
+        emojiMode: false,
+        shakeIntensity: 1.25,
+        motionBlurSamples: 4,
+    },
 ];
 
 const EMOJI_DICTIONARY: Record<string, string> = {
@@ -465,25 +495,14 @@ function applyEmoji(word: string): string {
 
 /**
  * Damped harmonic spring physics calculation for word kinetic entrance.
- * Provides snappy overshoot and elastic settling (the signature creator pop).
+ * Delegates to the shared motion-as-code engine (`springScale`) so the
+ * caption pop, match-cut sweep and any future plate share one curve.
  *
  * @param progress 0.0 (word start) to 1.0 (word end)
  * @param intensity Spring bounce factor (default 1.1)
  */
 export function calculateSpringScale(progress: number, intensity: number = 1.1): number {
-    if (progress <= 0) return 0.92;
-    if (progress >= 1.0) return 1.0;
-    // Harmonic oscillation with exponential decay:
-    // Snappy entrance peaking at ~1.28 within first 18% of word duration, then smooth elastic settle
-    const t = progress;
-    // Natural settle: ONE quick overshoot, then rest. The old
-    // 9.5/5.0/0.32 spring visibly wobbled ("bouncing too much") —
-    // lower frequency, faster decay, half the amplitude.
-    const frequency = 7.0;
-    const decay = 7.5;
-    const amplitude = 0.16 * intensity;
-    const springOffset = amplitude * Math.exp(-decay * t) * Math.sin(frequency * t * Math.PI);
-    return Math.max(0.9, 1.0 + springOffset);
+    return springScale(progress, intensity);
 }
 
 /**
@@ -699,10 +718,10 @@ export function drawCaptionFrame(
     }
 
     // Resolve mode
-    const mode: CaptionVideoMode = 
+    const mode: CaptionVideoMode =
         videoModeOrStyle === 'minimal' ? 'minimal' :
-        (videoModeOrStyle === 'kinetic-pop' || videoModeOrStyle === 'tiktok' || videoModeOrStyle === 'hormozi') ? 'kinetic-pop' :
-        'teleprompter';
+            (videoModeOrStyle === 'kinetic-pop' || videoModeOrStyle === 'tiktok' || videoModeOrStyle === 'hormozi') ? 'kinetic-pop' :
+                'teleprompter';
 
     ctx.save();
 
@@ -729,6 +748,32 @@ export function drawCaptionFrame(
     // Apply letter spacing if canvas context supports it
     if ('letterSpacing' in ctx) {
         (ctx as any).letterSpacing = `${letterSpacing}px`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MOTION-AS-CODE IMPACT SHAKE
+    // A decaying-sine camera flinch anchored to the ACTIVE WORD's onset
+    // timestamp (cue start as fallback). Pure function of (currentTime,
+    // word timings): the live preview loop and the deterministic export
+    // produce the exact same shake. Skipped in minimal mode — clean TV
+    // subtitles should never flinch.
+    // ─────────────────────────────────────────────────────────────────────
+    const shakeIntensity = typography.shakeIntensity ?? 0;
+    if (shakeIntensity > 0 && mode !== 'minimal') {
+        const wordStart = activeWordIndex >= 0
+            ? rawActiveCue.words?.[activeWordIndex]?.start
+            : undefined;
+        const triggerStart = wordStart ?? rawActiveCue.start;
+        const shake = impactShake(currentTime - triggerStart, {
+            amplitudePx: baseFontSize * 0.05 * shakeIntensity,
+            frequencyHz: 26,
+            decayPerSec: 13,
+            maxRotationRad: 0.006,
+        });
+        if (shake.envelope > 0.001) {
+            ctx.translate(shake.x, shake.y);
+            ctx.rotate(shake.rot);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -896,9 +941,9 @@ export function drawCaptionFrame(
             ctx.restore();
         });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // MODE 2: KINETIC POP (Punchy 2-3 Word Creator Pop with Heavy Stroke)
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // MODE 2: KINETIC POP (Punchy 2-3 Word Creator Pop with Heavy Stroke)
+        // ─────────────────────────────────────────────────────────────────────────
     } else if (mode === 'kinetic-pop') {
         // Safe area: pop captions cap at ~78% of portrait width (~11%
         // margins each side) — comfortably inside platform UI zones.
@@ -993,20 +1038,27 @@ export function drawCaptionFrame(
                 const effect: ActiveWordEffect = typography.activeWordEffect || 'fill';
                 const wordW = m.widths[relativeIdx];
 
-                // Marker-swipe: highlighter bar wipes in behind the spoken
-                // word over the first ~45%, black type on top — the classic
-                // marker-highlight vocabulary.
+                // Marker-swipe: a REAL highlighter pass — the bar travels
+                // LEFT→RIGHT across the word (the old center-out expansion
+                // read as a blob, not a swipe), hugs the optical text zone,
+                // and slightly overshoots like a felt tip reaching the last
+                // letter.
                 if (effect === 'marker') {
-                    const swipe = Math.min(1, wordProgress / 0.45);
-                    const barW = wordW * swipe + popFontSize * 0.12;
+                    const swipe = Math.min(1, wordProgress / 0.5);
+                    const pad = popFontSize * 0.14;
+                    const barW = (wordW + pad * 2) * (0.14 + 0.86 * swipe);
                     ctx.fillStyle = highlighterColor;
                     ctx.beginPath();
-                    ctx.roundRect(-barW / 2, -popFontSize * 0.62, barW, popFontSize * 1.24, popFontSize * 0.08);
+                    ctx.roundRect(-wordW / 2 - pad, -popFontSize * 0.6, barW, popFontSize * 1.12, popFontSize * 0.06);
                     ctx.fill();
                 }
 
-                // Heavy Black Stroke Outline
-                ctx.lineWidth = Math.max(6, popFontSize * 0.18);
+                // Heavy Black Stroke Outline — EXCEPT marker: a fat outline
+                // over the yellow bar turns to mud; the highlighter look
+                // needs crisp black type sitting clean on the marker pass.
+                ctx.lineWidth = effect === 'marker'
+                    ? Math.max(3, popFontSize * 0.05)
+                    : Math.max(6, popFontSize * 0.18);
                 ctx.strokeStyle = '#000000';
                 ctx.lineJoin = 'round';
                 ctx.strokeText(word, 0, 0);
@@ -1039,11 +1091,11 @@ export function drawCaptionFrame(
                 // Hand-boxed annotation: dashed rect around the spoken
                 // word, pulsing with the same spring scale.
                 if (effect === 'box') {
-                    const padX = popFontSize * 0.16;
-                    const padY = popFontSize * 0.36;
-                    ctx.lineWidth = Math.max(4, popFontSize * 0.07);
+                    const padX = popFontSize * 0.24;
+                    const padY = popFontSize * 0.46;
+                    ctx.lineWidth = Math.max(6, popFontSize * 0.085);
                     ctx.strokeStyle = highlighterColor;
-                    ctx.setLineDash([popFontSize * 0.28, popFontSize * 0.16]);
+                    ctx.setLineDash([popFontSize * 0.42, popFontSize * 0.22]);
                     ctx.strokeRect(-wordW / 2 - padX, -padY, wordW + padX * 2, padY * 2);
                     ctx.setLineDash([]);
                 }
@@ -1081,9 +1133,9 @@ export function drawCaptionFrame(
             currentX += m.widths[relativeIdx] + (relativeIdx < styledWords.length - 1 ? m.gap : 0);
         });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // MODE 3: MINIMAL CLEAN (Small, Crisp TV / Film Subtitles - Strictly Single Line)
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // MODE 3: MINIMAL CLEAN (Small, Crisp TV / Film Subtitles - Strictly Single Line)
+        // ─────────────────────────────────────────────────────────────────────────
     } else {
         // Size the font on the FULL line (so it never jumps as words are
         // revealed), but only draw what has actually been SPOKEN — the old
@@ -1182,6 +1234,11 @@ export async function renderCaptionsToVideo(
 
     const resolvedMode = resolveVideoMode(videoMode, style);
 
+    // Motion-as-code motion blur: sub-frames averaged per output frame.
+    // Clamped to 1 (= off) through 8; only paid at export time, never in
+    // the live preview loop.
+    const motionBlurSamples = Math.max(1, Math.min(8, Math.round(typography.motionBlurSamples ?? 1)));
+
     // Load the real webfont BEFORE the first frame: canvas never waits
     // for fonts, so an export started too early ships the fallback face.
     await ensureOverlayFontReady(typography.fontFamily || 'Montserrat');
@@ -1254,17 +1311,37 @@ export async function renderCaptionsToVideo(
             audioBuffer: options.audioBuffer ?? null,
             desynchronized: false,
             renderFrame: (frameIndex, ctx) => {
-                drawCaptionFrame(
-                    scratchCtx,
-                    w,
-                    h,
-                    (frameIndex / fps) - delaySeconds,
-                    cues,
-                    resolvedMode,
-                    effectiveBackground,
-                    highlighterColor,
-                    typography
-                );
+                const frameTime = frameIndex / fps;
+                // MOTION BLUR: average `motionBlurSamples` sub-frames
+                // across the frame's exposure window (the blueprint's
+                // Phase-5 accumulator, Δt = 1/(fps·samples)).
+                if (motionBlurSamples > 1) {
+                    accumulateMotionBlur(scratchCtx, frameTime, 1 / fps, motionBlurSamples, (subT) => {
+                        drawCaptionFrame(
+                            scratchCtx,
+                            w,
+                            h,
+                            subT - delaySeconds,
+                            cues,
+                            resolvedMode,
+                            effectiveBackground,
+                            highlighterColor,
+                            typography
+                        );
+                    });
+                } else {
+                    drawCaptionFrame(
+                        scratchCtx,
+                        w,
+                        h,
+                        frameTime - delaySeconds,
+                        cues,
+                        resolvedMode,
+                        effectiveBackground,
+                        highlighterColor,
+                        typography
+                    );
+                }
                 ctx.drawImage(scratch, 0, 0);
             },
             // Exporter reports 0..1; the UI progress bar expects 0..100.
@@ -1293,7 +1370,7 @@ export async function renderCaptionsToVideo(
 
     console.info(
         `[overlay-export] done: ${(result.blob.size / 1048576).toFixed(2)}MB ` +
-        `mime=${result.mimeType} fallback=${result.usedFallback} frames=${totalFrames}`
+        `mime=${result.mimeType} fallback=${result.usedFallback} frames=${totalFrames} mbSamples=${motionBlurSamples}`
     );
 
     return result.blob;

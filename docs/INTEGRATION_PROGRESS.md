@@ -437,6 +437,19 @@ Owner asks: (1) "there's nothing on the home page where I can physically navigat
 
 **Re-verification:** filtered `tsc` — 4 known only; `npm run build` **exit 0, 54/54**. Dev server serving the updated page live.
 
+**Phone-test batch 2 (owner, live voice — 2026-10-04):**
+
+- **SECOND SCREEN dead from the pill + auto-save prompt invisible:** root cause — the take-prompt AND the CREW modal were nested INSIDE `{mobileControlsOpen && …}` (they only mounted while the Studio Controls sheet was open; on desktop the mobile-sheet container is display:none so the dock's CREW button opened nothing). Both blocks moved OUT to top-level siblings of the transport fragment. Ruling at the same time: *"the modals should be slide up not pop up"* — both restyled as bottom sheets (`alignItems: flex-end`, `borderRadius: 18px 18px 0 0`, `maxHeight: 86vh`, animated by the new `ck-prompter-sheet-up` keyframe in globals.css). SECOND SCREEN now works from the pill, the dock, anywhere.
+- **Slide-up contrast follow-up (owner: "text is white on a white background… the rest of the things are white I can't see what I'm supposed to tap"):** the un-nested cards inherited the dark stage's white text — both cards now set `color: '#000'` so every child button (OPEN HERE / DONE / KEEP IN STUDIO / DISCARD) is readable black on white.
+- **Same bug class in Business (owner: "the bottom controls… if you selected, the texts and everything is black"):** `MobileEditorToolbar` light theme rendered the ACTIVE chip as black bg + **black text** (dark theme was already correct). Fixed: light active chip is now white-on-black. Affects every studio using the Phase-6 bottom bar in light mode.
+- **EYELINE LEVEL on mobile (owner: "you cannot control the eyeline level on mobile"):** FILM MODE sheet gains a −/[%]/+ stepper (clamp 15–65, same range as the desktop LAYOUT scrubber); the marker itself was already thinned in the prior batch (24px soft-yellow wash + 1.5px border — "it shouldn't be stealing your attention").
+- **Mirror speed calibration (owner: "6X too fast comparing it to the normal screen") + matching line:** `PX_PER_SPEED` 38→**34** and the crawl is now **× fontScale** (bigger text crawls proportionally, matching the main stage across font sizes); the payload gains `e: eyelinePercent / 100` and the mirror read-line + top padding follow it exactly (thin 2px `rgba(255,229,0,0.55)` line at the same height, default 38%).
+- **Cue tags must never read as script (owner: "you might just mistakenly read them out loud… they are cues OK"):** the mirror now renders `[HOOK]`, `[PAUSE 2s]`, `[LOOK AT LENS]`-style bracketed directives as small yellow monospace chips instead of body text.
+- **Mirror FLIP control (owner: "the other screen also needs controls like to flip the thing"):** ⇅ HUD button rotates the whole stage 180° — mount the second phone upside-down under the lens.
+- **Landing page:** the blog section eyebrow "NEW VIRAL RESEARCH & CASE STUDIES" wrapped to two lines on mobile (the two top headings were already nowrap-protected via globals.css) — now `whiteSpace: nowrap` with a responsive `clamp(0.56rem, 2.9vw, 0.68rem)` size so it holds one line down to 320px.
+
+**Re-verification (batch 2):** filtered `tsc` — 4 known only; `npm run build` **exit 0, 54/54** (`/teleprompter` + `/teleprompter/mirror` Static). **Commit + push still pending for Cloudflare** (carries Sessions 14–15).
+
 ---
 
 ## Step 2k — Session 14 (2026-10-03, later, agent): HAND-OFF WIRING COMPLETED — every declared §4 edge now carries the work (Ship-It Pack STRUCK)

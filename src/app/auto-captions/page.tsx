@@ -20,6 +20,7 @@ import {
     downloadFile,
     formatVttTimestamp,
     type SubtitleCue,
+    type SubtitleWord,
 } from '@/lib/captions/vtt-formatter';
 import {
     saveAudioBlobToCache,
@@ -55,6 +56,7 @@ import {
     transcribeWithCloudProvider,
     getStoredApiKey,
     setStoredApiKey,
+    BYOK_PROVIDER_DIRECTORY,
     type CloudTranscriptionProvider,
 } from '@/lib/captions/whisper-cloud';
 import {
@@ -82,7 +84,7 @@ import {
     POPULAR_OVERLAY_FONTS,
 } from '@/lib/captions/overlay-renderer';
 import { downloadBlob } from '@/lib/canvas-video-exporter';
-import { alignScriptWithAudioCues } from '@/lib/captions/script-aligner';
+import { alignScriptWithAudioCues, buildCuesFromScript } from '@/lib/captions/script-aligner';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import { OverlayStudio } from '@/components/OverlayStudio';
 
@@ -502,8 +504,18 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
 
     // 🚀 BYOK (Bring Your Own Key) Engine Settings + our free server engine
     const [transcriptionEngine, setTranscriptionEngine] = useState<EngineChoice>('server');
+    // The chip the USER last pressed. Auto-retry ladders (server→local,
+    // local→server) must never clobber an explicit human choice made while
+    // a run was in flight — clicking Gemini and watching Local Offline run
+    // is exactly the betrayal that kills trust in the engine selector.
+    const engineChoiceRef = useRef<EngineChoice>('server');
+    const chooseEngine = useCallback((e: EngineChoice) => {
+        engineChoiceRef.current = e;
+        setTranscriptionEngine(e);
+    }, []);
     const [groqKey, setGroqKey] = useState<string>('');
     const [openaiKey, setOpenaiKey] = useState<string>('');
+    const [geminiKey, setGeminiKey] = useState<string>('');
     const [byokModalOpen, setByokModalOpen] = useState<boolean>(false);
     const [byokModalProvider, setByokModalProvider] = useState<CloudTranscriptionProvider>('groq');
     const [tempKeyInput, setTempKeyInput] = useState<string>('');
@@ -862,8 +874,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
             // Only use script for forced alignment if embedded in the file or provided explicitly
             const effectiveScript = extractedScript || undefined;
 
-            if (activeEngine === 'groq' || activeEngine === 'openai') {
-                const userKey = activeEngine === 'groq' ? groqKey : openaiKey;
+            if (activeEngine === 'groq' || activeEngine === 'openai' || activeEngine === 'gemini') {
+                const userKey = activeEngine === 'groq' ? groqKey : activeEngine === 'openai' ? openaiKey : geminiKey;
                 if (!userKey) {
                     // Prompt user for key
                     setByokModalProvider(activeEngine);
@@ -875,7 +887,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
 
                 handleProgressUpdate({
                     stage: 'loading_model',
-                    message: `Connecting to ${activeEngine === 'groq' ? 'Groq Cloud' : 'OpenAI'} Whisper...`,
+                    message: `Connecting to ${BYOK_PROVIDER_DIRECTORY[activeEngine].label}...`,
                     percent: 20,
                 });
 
@@ -886,7 +898,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     effectiveScript,
                     (prog) => handleProgressUpdate(prog)
                 );
-                setEngineSourceLabel(activeEngine === 'groq' ? 'GROQ' : 'OPENAI');
+                setEngineSourceLabel(activeEngine.toUpperCase());
             } else if (activeEngine === 'server') {
                 // SERVER (the DEFAULT): free Render worker first (one-time
                 // ticket minted by the edge function — the real worker token
@@ -923,14 +935,34 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                 });
 
                 try {
-                    result = await transcribeOnWorker({
+                    const workerAttempt = transcribeOnWorker({
                         file: selectedFile,
                         audioData: browserPcm,
                         durationSeconds: decodedDuration,
                         onProgress: (prog) => handleProgressUpdate(prog),
                     });
+                    if (effectiveScript) {
+                        // TELEPROMPTER HANDOFF TIME BUDGET: the script is
+                        // already in hand — never hold the user hostage to a
+                        // slow server. Past 25s the script lands on the
+                        // timeline directly (the terminal catch builds the
+                        // cues) and the user refines timings by dragging.
+                        result = await Promise.race([
+                            workerAttempt,
+                            new Promise<never>((_, reject) =>
+                                setTimeout(() => reject(new Error('SCRIPT_TIMELINE')), 25000)
+                            ),
+                        ]);
+                    } else {
+                        result = await workerAttempt;
+                    }
                     setEngineSourceLabel('SERVER');
                 } catch (serverErr) {
+                    // Script-budget expiry goes STRAIGHT to the script
+                    // timeline — no local-engine detour, no extra waiting.
+                    if (serverErr instanceof Error && serverErr.message === 'SCRIPT_TIMELINE') {
+                        throw serverErr;
+                    }
                     if (
                         serverErr instanceof WorkerTranscribeError &&
                         (serverErr.code === 'too_large' || serverErr.code === 'edge_offline')
@@ -948,9 +980,29 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         }
                     }
 
-                    // Automatic failure recovery: switch to Local engine and restart progress from 0%
-                    // Allows a maximum of 2 automatic retries as requested.
-                    if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
+                    // The USER switched engine chips while this run was in
+                    // flight — their choice outranks the fallback ladder.
+                    // Clicking Gemini must RUN Gemini, not Local Offline.
+                    // (TS note: inside this 'server' branch, `!== activeEngine`
+                    // already excludes 'server' from the ref's type.)
+                    if (
+                        engineChoiceRef.current !== activeEngine &&
+                        engineChoiceRef.current !== 'local'
+                    ) {
+                        const userEngine = engineChoiceRef.current as CloudTranscriptionProvider;
+                        const userKey = userEngine === 'groq' ? groqKey : userEngine === 'openai' ? openaiKey : geminiKey;
+                        setTranscriptionEngine(userEngine);
+                        if (!userKey) {
+                            setByokModalProvider(userEngine);
+                            setTempKeyInput('');
+                            setByokModalOpen(true);
+                            setIsProcessing(false);
+                            return;
+                        }
+                        resetProgressForNewAttempt(`Switching to ${BYOK_PROVIDER_DIRECTORY[userEngine].label} (your selection)...`);
+                        result = await transcribeWithCloudProvider(selectedFile, userEngine, userKey, effectiveScript, (prog) => handleProgressUpdate(prog));
+                        setEngineSourceLabel(userEngine.toUpperCase());
+                    } else if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
                         autoRetryCountRef.current += 1;
                         const attempt = autoRetryCountRef.current;
 
@@ -1128,6 +1180,92 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
             });
         } catch (err) {
             console.error('Transcription error:', err);
+
+            // ── LAST-RESORT ENGINE: THE TELEPROMPTER SCRIPT ──────────────
+            // Every audio engine failed, but the user HANDED US the exact
+            // words (teleprompter handoff / embedded metadata). Dead-ending
+            // at an error banner while their script sits unused — with the
+            // overlay studio waiting for cues — is unacceptable. Build
+            // estimated-timing cues straight from the script so the audio,
+            // timeline, overlay and export all keep working. Timings are
+            // draggable on the timeline afterwards.
+            const fallbackScript = extractedScript || magicMetadata?.script || null;
+            if (fallbackScript && fallbackScript.trim().length > 0) {
+                try {
+                    const fallbackWpm = magicMetadata?.wpm && magicMetadata.wpm > 50 ? magicMetadata.wpm : 150;
+                    const finalCues = buildCuesFromScript(
+                        fallbackScript,
+                        containerDuration > 0 ? containerDuration : undefined,
+                        fallbackWpm,
+                    );
+
+                    if (finalCues.length > 0) {
+                        setCues(finalCues);
+                        setFullText(fallbackScript.trim());
+                        setElapsed('0');
+                        setScriptAligned(true);
+                        setEngineSourceLabel('SCRIPT');
+
+                        const vttContent = generateVtt(finalCues);
+                        const vttBlobUrl = URL.createObjectURL(new Blob([vttContent], { type: 'text/vtt' }));
+                        setVttUrl(vttBlobUrl);
+
+                        if (containerDuration > 0) {
+                            setAudioDuration(containerDuration);
+                        }
+
+                        try {
+                            localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(finalCues));
+                            localStorage.setItem(STORAGE_KEYS.FULL_TEXT, fallbackScript.trim());
+                            localStorage.setItem(STORAGE_KEYS.FILE_NAME, selectedFile.name);
+                            localStorage.setItem(STORAGE_KEYS.ELAPSED, '0');
+                            if (containerDuration > 0) {
+                                localStorage.setItem(STORAGE_KEYS.DURATION, containerDuration.toString());
+                            }
+                            await saveAudioBlobToCache(STORAGE_KEYS.AUDIO_KEY, selectedFile);
+
+                            const sessionDuration = containerDuration > 0
+                                ? containerDuration
+                                : finalCues[finalCues.length - 1].end;
+                            const sessionId = `s_${Date.now()}`;
+                            await saveAudioBlobToCache(`session:${sessionId}`, selectedFile);
+                            localStorage.setItem(
+                                sessionMetaKey(sessionId),
+                                JSON.stringify({
+                                    cues: finalCues,
+                                    fullText: fallbackScript.trim(),
+                                    elapsed: '0',
+                                    duration: sessionDuration,
+                                })
+                            );
+                            const prevIndex = loadSessionsIndex();
+                            for (const old of prevIndex) {
+                                if (old.name === selectedFile.name) {
+                                    localStorage.removeItem(sessionMetaKey(old.id));
+                                    clearAudioCache(`session:${old.id}`).catch(() => {});
+                                }
+                            }
+                            saveSessionsIndex([
+                                { id: sessionId, name: selectedFile.name, createdAt: Date.now(), duration: sessionDuration, cueCount: finalCues.length },
+                                ...prevIndex.filter((s) => s.name !== selectedFile.name),
+                            ]);
+                            setSessionsIndex(loadSessionsIndex());
+                        } catch (cacheErr) {
+                            console.warn('Script-fallback session caching warning:', cacheErr);
+                        }
+
+                        handleProgressUpdate({
+                            stage: 'complete',
+                            message: 'Cues not auto-generated — your teleprompter script is laid out on the timeline · drag words to match your delivery',
+                            percent: 100,
+                        });
+                        return; // finally still flips isProcessing off
+                    }
+                } catch (fallbackErr) {
+                    console.warn('Teleprompter script fallback failed:', fallbackErr);
+                }
+            }
+
             handleProgressUpdate({
                 stage: 'error',
                 message: err instanceof Error ? err.message : 'Transcription failed',
@@ -1154,6 +1292,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                 if (storedGroq) setGroqKey(storedGroq);
                 const storedOpenai = getStoredApiKey('openai');
                 if (storedOpenai) setOpenaiKey(storedOpenai);
+                const storedGemini = getStoredApiKey('gemini');
+                if (storedGemini) setGeminiKey(storedGemini);
 
                 // Check for 1-Click Handoff from Teleprompter
                 const handoff = await getHandoffSession();
@@ -1341,50 +1481,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         });
     };
 
-    const handleSplitCue = (index: number) => {
-        setCues((prev) => {
-            const cue = prev[index];
-            if (!cue) return prev;
-            const words = cue.text.trim().split(/\s+/);
-            const midTime = parseFloat(((cue.start + cue.end) / 2).toFixed(2));
-            if (words.length <= 1) {
-                const c1 = { start: cue.start, end: midTime, text: words[0] || '' };
-                const c2 = { start: midTime, end: cue.end, text: '' };
-                const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
-                const vtt = generateVtt(next);
-                setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-                try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
-                return next;
-            }
-            const midWordIdx = Math.ceil(words.length / 2);
-            const firstHalf = words.slice(0, midWordIdx).join(' ');
-            const secondHalf = words.slice(midWordIdx).join(' ');
-            // Split word timings at the word whose center is closest to the
-            // time midpoint so both halves keep accurate karaoke reveal.
-            let splitWordIdx = midWordIdx;
-            if (cue.words && cue.words.length > 0) {
-                let bestDist = Infinity;
-                cue.words.forEach((w, wi) => {
-                    const dist = Math.abs((w.start + w.end) / 2 - midTime);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        splitWordIdx = wi + 1;
-                    }
-                });
-            }
-            const c1: SubtitleCue = { start: cue.start, end: midTime, text: firstHalf };
-            const c2: SubtitleCue = { start: midTime, end: cue.end, text: secondHalf };
-            if (cue.words && cue.words.length > 0) {
-                c1.words = cue.words.slice(0, splitWordIdx);
-                c2.words = cue.words.slice(splitWordIdx);
-            }
-            const next = [...prev.slice(0, index), c1, c2, ...prev.slice(index + 1)];
-            const vtt = generateVtt(next);
-            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
-            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
-            return next;
-        });
-    };
+    // (Cue splitting is unified in handleSplitCue(index, parts) further down —
+    // both the timeline tap-sheet and the cue list route through it.)
 
     const handleMergeWithNextCue = (index: number) => {
         setCues((prev) => {
@@ -1495,6 +1593,104 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
             try {
                 localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next));
             } catch { }
+            return next;
+        });
+    };
+
+    // ── Tap-to-edit sheet: tap a cue card (no drag) to open a popup that
+    // splits it into 2/3/4 equal-time pieces and edits its text directly
+    // on the timeline — the timeline IS the cue editor.
+    const [cueSheet, setCueSheet] = useState<{ index: number; x: number; y: number } | null>(null);
+    const [cueEditText, setCueEditText] = useState('');
+
+    const handleSplitCue = (index: number, parts: number) => {
+        if (parts < 2) return;
+        setCues((prev) => {
+            const cue = prev[index];
+            if (!cue) return prev;
+            // Word source of truth: the cue text, falling back to timed words.
+            let allWords = (cue.text || '').trim().split(/\s+/).filter(Boolean);
+            if (allWords.length === 0 && cue.words && cue.words.length > 0) {
+                allWords = cue.words.map((w) => w.word).filter(Boolean);
+            }
+            // SMART CAP — never more pieces than words. A 2-word cue asked for
+            // a 3-way split gets a clean 2-way split instead; a 1-word cue is
+            // not splittable at all (no blank slices, no shredded single
+            // words). Balanced floor/ceil sizing then puts every original word
+            // in exactly one piece, in order, tiling the original's exact
+            // time slot in place — nothing lost, duplicated, or padded.
+            if (allWords.length < 2) return prev;
+            const pieces = Math.min(parts, allWords.length);
+            setPastCues((past) => [...past.slice(-40), prev]);
+            setFutureCues([]);
+            const span = Math.max(0.3, cue.end - cue.start);
+            const seg = span / pieces;
+            const timed = cue.words && cue.words.length === allWords.length ? cue.words : null;
+            const base = Math.floor(allWords.length / pieces);
+            const rem = allWords.length % pieces;
+            const newCues: SubtitleCue[] = Array.from({ length: pieces }, (_, p) => {
+                const count = p < rem ? base + 1 : base; // 0 when the cue has fewer words than pieces
+                const from = p * base + Math.min(p, rem);
+                const chunkWords = allWords.slice(from, from + count);
+                const start = cue.start + p * seg;
+                const end = cue.start + (p + 1) * seg;
+                let pieceWords: SubtitleWord[];
+                if (timed) {
+                    const tw = timed.slice(from, from + count);
+                    const sub = seg / Math.max(1, tw.length);
+                    pieceWords = tw.map((w, k) => ({
+                        word: w.word,
+                        start: parseFloat((start + k * sub).toFixed(3)),
+                        end: parseFloat((start + (k + 1) * sub).toFixed(3)),
+                    }));
+                } else {
+                    const sub = seg / Math.max(1, chunkWords.length);
+                    pieceWords = chunkWords.map((w, k) => ({
+                        word: w,
+                        start: parseFloat((start + k * sub).toFixed(3)),
+                        end: parseFloat((start + (k + 1) * sub).toFixed(3)),
+                    }));
+                }
+                return {
+                    start: parseFloat(start.toFixed(2)),
+                    end: parseFloat(end.toFixed(2)),
+                    // Fewer words than pieces (e.g. a one-word cue split in 3):
+                    // extra slices stay BLANK so you can tap them and type new
+                    // text straight into the timeline. The word itself keeps
+                    // its slot, re-timed inside its own slice.
+                    text: chunkWords.join(' '),
+                    words: pieceWords,
+                };
+            });
+            const next = [...prev.slice(0, index), ...newCues, ...prev.slice(index + 1)];
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
+            return next;
+        });
+    };
+
+    const handleEditCueText = (index: number, text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        setCues((prev) => {
+            const cue = prev[index];
+            if (!cue || cue.text === trimmed) return prev;
+            setPastCues((past) => [...past.slice(-40), prev]);
+            setFutureCues([]);
+            const span = Math.max(0.1, cue.end - cue.start);
+            const wordsList = trimmed.split(/\s+/).filter(Boolean);
+            const sub = span / wordsList.length;
+            const rebuilt: SubtitleWord[] = wordsList.map((w, k) => ({
+                word: w,
+                start: parseFloat((cue.start + k * sub).toFixed(3)),
+                end: parseFloat((cue.start + (k + 1) * sub).toFixed(3)),
+            }));
+            const next = [...prev];
+            next[index] = { ...cue, text: trimmed, words: rebuilt };
+            const vtt = generateVtt(next);
+            setVttUrl(URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })));
+            try { localStorage.setItem(STORAGE_KEYS.CUES, JSON.stringify(next)); } catch { }
             return next;
         });
     };
@@ -1704,7 +1900,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setStoredApiKey(provider, key);
         if (provider === 'groq') setGroqKey(key);
         if (provider === 'openai') setOpenaiKey(key);
-        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API key saved`);
+        if (provider === 'gemini') setGeminiKey(key);
+        setByokSavedToast(`${BYOK_PROVIDER_DIRECTORY[provider].label} API key saved`);
         setTimeout(() => setByokSavedToast(null), 3000);
         setByokModalOpen(false);
     };
@@ -1713,7 +1910,8 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
         setStoredApiKey(provider, '');
         if (provider === 'groq') setGroqKey('');
         if (provider === 'openai') setOpenaiKey('');
-        setByokSavedToast(`${provider === 'groq' ? 'Groq' : 'OpenAI'} API key cleared`);
+        if (provider === 'gemini') setGeminiKey('');
+        setByokSavedToast(`${BYOK_PROVIDER_DIRECTORY[provider].label} API key cleared`);
         setTimeout(() => setByokSavedToast(null), 3000);
     };
 
@@ -2255,7 +2453,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     <button
                         type="button"
                         style={brutChip(transcriptionEngine === 'server')}
-                        onClick={() => setTranscriptionEngine('server')}
+                        onClick={() => chooseEngine('server')}
                         title="Transcribe on CreatorsKit's free server — works on any device, handles files the browser can't decode. Falls back to your browser automatically if the server is busy."
                     >
                         Server · Free ★
@@ -2263,7 +2461,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     <button
                         type="button"
                         style={brutChip(transcriptionEngine === 'local')}
-                        onClick={() => setTranscriptionEngine('local')}
+                        onClick={() => chooseEngine('local')}
                         title="Fully offline — Whisper runs in your browser. The free server rescues files this browser can't decode."
                     >
                         Local · Offline
@@ -2272,7 +2470,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         type="button"
                         style={brutChip(transcriptionEngine === 'groq')}
                         onClick={() => {
-                            setTranscriptionEngine('groq');
+                            chooseEngine('groq');
                             if (!groqKey) {
                                 setByokModalProvider('groq');
                                 setTempKeyInput('');
@@ -2286,7 +2484,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                         type="button"
                         style={brutChip(transcriptionEngine === 'openai')}
                         onClick={() => {
-                            setTranscriptionEngine('openai');
+                            chooseEngine('openai');
                             if (!openaiKey) {
                                 setByokModalProvider('openai');
                                 setTempKeyInput('');
@@ -2296,6 +2494,21 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     >
                         OpenAI{openaiKey ? ' ✓' : ''}
                     </button>
+                    <button
+                        type="button"
+                        style={brutChip(transcriptionEngine === 'gemini')}
+                        onClick={() => {
+                            chooseEngine('gemini');
+                            if (!geminiKey) {
+                                setByokModalProvider('gemini');
+                                setTempKeyInput('');
+                                setByokModalOpen(true);
+                            }
+                        }}
+                        title="Bring your free Google AI Studio key — Gemini listens to the audio and writes the cues."
+                    >
+                        Gemini{geminiKey ? ' ✓' : ''}
+                    </button>
                 </div>
 
                 <button
@@ -2303,8 +2516,12 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                     className="brutalist-button"
                     style={{ fontSize: '0.68rem', padding: '5px 10px' }}
                     onClick={() => {
-                        setByokModalProvider(transcriptionEngine === 'openai' ? 'openai' : 'groq');
-                        setTempKeyInput(transcriptionEngine === 'openai' ? openaiKey : groqKey);
+                        const modalProvider: CloudTranscriptionProvider =
+                            transcriptionEngine === 'openai' ? 'openai'
+                                : transcriptionEngine === 'gemini' ? 'gemini'
+                                    : 'groq';
+                        setByokModalProvider(modalProvider);
+                        setTempKeyInput(modalProvider === 'groq' ? groqKey : modalProvider === 'openai' ? openaiKey : geminiKey);
                         setByokModalOpen(true);
                     }}
                 >
@@ -2530,6 +2747,16 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                             >
                                 OpenAI
                             </button>
+                            <button
+                                type="button"
+                                style={brutChip(byokModalProvider === 'gemini')}
+                                onClick={() => {
+                                    setByokModalProvider('gemini');
+                                    setTempKeyInput(geminiKey);
+                                }}
+                            >
+                                Gemini (free)
+                            </button>
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2537,13 +2764,13 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                 type="password"
                                 value={tempKeyInput}
                                 onChange={(e) => setTempKeyInput(e.target.value)}
-                                placeholder={byokModalProvider === 'groq' ? 'gsk_…' : 'sk-…'}
+                                placeholder={BYOK_PROVIDER_DIRECTORY[byokModalProvider].placeholder}
                                 style={{ ...BRUT_INPUT, fontFamily: 'monospace' }}
                             />
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.66rem', fontFamily: 'monospace', color: '#888' }}>
                                 <span>NEVER LEAVES YOUR DEVICE</span>
                                 <a
-                                    href={byokModalProvider === 'groq' ? 'https://console.groq.com/keys' : 'https://platform.openai.com/api-keys'}
+                                    href={BYOK_PROVIDER_DIRECTORY[byokModalProvider].keyUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     style={{ color: '#000', fontWeight: 900, textDecoration: 'underline' }}
@@ -2551,10 +2778,16 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                     GET A KEY →
                                 </a>
                             </div>
+                            {/* Demystify-style inline key guide: WHERE to go and
+                                what it costs — nobody should have to search
+                                "how do I get an API key" on another tab. */}
+                            <p style={{ margin: 0, fontSize: '0.64rem', fontFamily: 'monospace', color: '#555', lineHeight: 1.5 }}>
+                                {BYOK_PROVIDER_DIRECTORY[byokModalProvider].keyHint}
+                            </p>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-                            {(byokModalProvider === 'groq' ? groqKey : openaiKey) && (
+                            {(byokModalProvider === 'groq' ? groqKey : byokModalProvider === 'openai' ? openaiKey : geminiKey) && (
                                 <button
                                     type="button"
                                     className="brutalist-button"
@@ -2620,6 +2853,9 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                             </button>
                             <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'openai')}>
                                 Retry with OpenAI
+                            </button>
+                            <button type="button" className="brutalist-button" style={{ fontSize: '0.7rem', padding: '6px 12px' }} onClick={() => handleFile(file, 'gemini')}>
+                                Retry with Gemini
                             </button>
                         </div>
                     )}
@@ -2888,7 +3124,25 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                         <audio
                                             ref={overlayAudioRef}
                                             src={audioUrl}
-                                            onEnded={() => setOverlayPlaying(false)}
+                                            onLoadedMetadata={(e) => {
+                                                // The real audio duration is the single source of truth —
+                                                // correct any earlier estimate so the seeker, the cue
+                                                // timeline and the export all end exactly at the voice track.
+                                                const dur = e.currentTarget.duration;
+                                                if (Number.isFinite(dur) && dur > 0 && Math.abs(dur - audioDuration) > 0.25) {
+                                                    setAudioDuration(dur);
+                                                    try { localStorage.setItem(STORAGE_KEYS.DURATION, dur.toString()); } catch { }
+                                                }
+                                            }}
+                                            onEnded={() => {
+                                                // Park at the exact audio end — nothing plays past the voice track.
+                                                setOverlayPlaying(false);
+                                                const dur = overlayAudioRef.current?.duration;
+                                                if (dur && Number.isFinite(dur)) {
+                                                    setOverlayCurrentTime(dur);
+                                                    renderPreviewCanvas(dur);
+                                                }
+                                            }}
                                             onPause={() => setOverlayPlaying(false)}
                                             onPlay={() => setOverlayPlaying(true)}
                                             style={{ display: 'none' }}
@@ -3284,6 +3538,103 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                                                 <span style={{ position: 'absolute', bottom: 1, left: 2, fontSize: '0.5rem', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)', fontWeight: 700 }}>{t}s</span>
                                                             </div>
                                                         ))}
+
+                                                        {/* Tap-to-edit sheet — fixed to the viewport so it
+                                                            floats above the scrollable track. */}
+                                                        {cueSheet && cues[cueSheet.index] && (() => {
+                                                            // Smart split budget: you can never split into more
+                                                            // pieces than there are words. The sheet says so.
+                                                            const sheetCue = cues[cueSheet.index];
+                                                            const sheetWords = ((sheetCue.text || '').trim().split(/\s+/).filter(Boolean).length) || (sheetCue.words?.length ?? 0);
+                                                            return (
+                                                            <div
+                                                                style={{
+                                                                    position: 'fixed',
+                                                                    left: Math.max(8, Math.min(cueSheet.x - 115, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 246)),
+                                                                    top: Math.max(8, cueSheet.y - 50),
+                                                                    zIndex: 95,
+                                                                    background: '#fff',
+                                                                    border: '2px solid #000',
+                                                                    borderRadius: 6,
+                                                                    boxShadow: '4px 4px 0 #000',
+                                                                    padding: '10px 12px',
+                                                                    width: 234,
+                                                                    display: 'flex',
+                                                                    flexDirection: 'column',
+                                                                    gap: 8,
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.66rem', letterSpacing: '0.04em' }}>
+                                                                    CUE #{cueSheet.index + 1} — SPLIT & EDIT
+                                                                </div>
+                                                                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.58rem', letterSpacing: '0.03em', color: sheetWords >= 2 ? '#16a34a' : '#b91c1c' }}>
+                                                                    {sheetWords >= 2
+                                                                        ? `${sheetWords} WORD${sheetWords === 1 ? '' : 'S'} · SPLITS UP TO ${Math.min(4, sheetWords)}`
+                                                                        : '1 WORD — TYPE NEW TEXT BELOW'}
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                                    {[2, 3, 4].map((n) => {
+                                                                        const unavailable = n > sheetWords;
+                                                                        return (
+                                                                            <button
+                                                                                key={n}
+                                                                                type="button"
+                                                                                className="brutalist-button"
+                                                                                disabled={unavailable}
+                                                                                style={{ fontSize: '0.66rem', padding: '5px 8px', flex: 1, ...(unavailable ? { opacity: 0.35 } : {}) }}
+                                                                                title={unavailable ? `Only ${sheetWords} word${sheetWords === 1 ? '' : 's'} — max split is ${sheetWords}` : `Split into ${n} cues`}
+                                                                                onClick={() => {
+                                                                                    if (unavailable) return;
+                                                                                    handleSplitCue(cueSheet.index, n);
+                                                                                    setCueSheet(null);
+                                                                                }}
+                                                                            >
+                                                                                SPLIT {n}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                                <input
+                                                                    value={cueEditText}
+                                                                    onChange={(e) => setCueEditText(e.target.value)}
+                                                                    style={{ ...BRUT_INPUT, fontFamily: 'monospace', fontSize: '0.7rem' }}
+                                                                />
+                                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="brutalist-button brutalist-button-primary"
+                                                                        style={{ fontSize: '0.66rem', padding: '5px 8px', flex: 1 }}
+                                                                        onClick={() => {
+                                                                            handleEditCueText(cueSheet.index, cueEditText);
+                                                                            setCueSheet(null);
+                                                                        }}
+                                                                    >
+                                                                        SAVE TEXT
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="brutalist-button"
+                                                                        style={{ fontSize: '0.66rem', padding: '5px 8px' }}
+                                                                        onClick={() => {
+                                                                            seekTo(cues[cueSheet.index].start);
+                                                                            setCueSheet(null);
+                                                                        }}
+                                                                    >
+                                                                        ▶ HERE
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="brutalist-button"
+                                                                        style={{ fontSize: '0.66rem', padding: '5px 8px' }}
+                                                                        onClick={() => setCueSheet(null)}
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            );
+                                                        })()}
                                                         {cues.map((c, i) => {
                                                             const rawStart = cueDragView && cueDragView.index === i ? cueDragView.newStart : norm[i].st;
                                                             const rawEnd = cueDragView && cueDragView.index === i && cueDragView.newEnd !== undefined ? cueDragView.newEnd : norm[i].en;
@@ -3387,7 +3738,10 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                                                         setCueDragView(null);
                                                                         if (!d || d.index !== i) return;
                                                                         if (d.movedPx < 4 && d.mode === 'move') {
-                                                                            seekTo(d.origStart);
+                                                                            // TAP (no drag) — open the split & edit
+                                                                            // sheet; seeking stays available inside it.
+                                                                            setCueEditText(cues[i]?.text ?? '');
+                                                                            setCueSheet({ index: i, x: e.clientX, y: e.clientY });
                                                                         } else {
                                                                             if (d.mode === 'trim-start') {
                                                                                 handleTrimCue(i, 'start', parseFloat(d.newStart.toFixed(2)));
@@ -4347,7 +4701,7 @@ export default function CaptionsPage({ initialDeck }: { initialDeck?: 'cassette'
                                                 )}
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleSplitCue(index)}
+                                                    onClick={() => handleSplitCue(index, 2)}
                                                     style={{
                                                         display: 'inline-flex',
                                                         alignItems: 'center',

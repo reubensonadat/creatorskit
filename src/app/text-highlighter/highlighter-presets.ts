@@ -69,6 +69,37 @@ export const BODY_CORPUS = [
 ];
 
 /**
+ * Natural journal-prose sentences that EMBED the anchor phrase mid-sentence.
+ * Used for body-paragraph sweeps and generated stories so the highlighted
+ * text is always the user's phrase inside REAL prose — never unrelated
+ * corpus filler, and never meta commentary that talks *about* the phrase.
+ */
+export const PHRASE_BODY_TEMPLATES: Array<(phrase: string) => string> = [
+    (p) => `Across four hundred logged productions, teams that committed early to ${p} shipped earlier and revised less, and the advantage compounded in longer productions without any measurable loss of quality.`,
+    (p) => `Follow-up interviews confirmed that ${p} reshaped daily workflow long after the trial period ended, with participants reporting lower cognitive load during editing sessions.`,
+    (p) => `Telemetry from nine independent studios shows ${p} paying for itself within a single quarter, provided adoption is paired with deliberate workflow redesign.`,
+    (p) => `In the replication study, ${p} held under stricter controls while several celebrated shortcuts did not, and the full log was published so other teams could repeat the analysis line by line.`,
+    (p) => `Cost records and editor diaries place the break-even point of ${p} earlier than industry folklore predicts, across budgets ranging from shoestring to studio scale.`,
+    (p) => `When the survey asked working creators to rank consequential pipeline changes, ${p} placed among the top three, and its perceived value compounded with experience rather than decaying.`,
+];
+
+/**
+ * Builds one body-paragraph sentence containing the anchor phrase, with a
+ * deterministic per-paper variant (pass any stable seed, e.g. derived from
+ * the cut id, so every page gets a different but stable sentence).
+ */
+export function buildPhraseBodySentence(phrase: string, variant: number): string {
+    const joined = phrase
+        .split(/[|\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(' and ');
+    const clean = joined || 'creator workflows';
+    const idx = ((Math.round(variant) % PHRASE_BODY_TEMPLATES.length) + PHRASE_BODY_TEMPLATES.length) % PHRASE_BODY_TEMPLATES.length;
+    return PHRASE_BODY_TEMPLATES[idx](clean);
+}
+
+/**
  * Generates journal-style abstracts for any phrase — the phrase is embedded
  * naturally so the highlighter sweep has real prose to travel through.
  */
@@ -113,7 +144,11 @@ export function generateCutsForPhrase(phrase: string, count = 6): NewspaperCut[]
             headline: shuffled[i % shuffled.length].replace('Abstract ', 'Abstract  '),
             byline: shuffledBylines[i % shuffledBylines.length],
             location: shuffledLocations[i % shuffledLocations.length],
+            // First body paragraph always EMBEDS the phrase (natural prose
+            // template) so the body-paragraph sector sweeps the user's
+            // phrase with a real match — corpus filler fills only below it.
             bodyParagraphs: [
+                buildPhraseBodySentence(clean, i),
                 BODY_CORPUS[i % BODY_CORPUS.length],
                 BODY_CORPUS[(i + 2) % BODY_CORPUS.length],
             ],

@@ -25,12 +25,14 @@ const STORAGE_KEYS = {
     PROVIDER: 'creatorkit_transcription_provider',
     GROQ_KEY: 'creatorkit_byok_groq_key',
     OPENAI_KEY: 'creatorkit_byok_openai_key',
+    GEMINI_KEY: 'creatorkit_byok_gemini_key',
 };
 
 export function getStoredApiKey(provider: CloudTranscriptionProvider): string {
     if (typeof window === 'undefined') return '';
     if (provider === 'groq') return localStorage.getItem(STORAGE_KEYS.GROQ_KEY) || '';
     if (provider === 'openai') return localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || '';
+    if (provider === 'gemini') return localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
     return '';
 }
 
@@ -43,6 +45,10 @@ export function setStoredApiKey(provider: CloudTranscriptionProvider, key: strin
     if (provider === 'openai') {
         if (key) localStorage.setItem(STORAGE_KEYS.OPENAI_KEY, key.trim());
         else localStorage.removeItem(STORAGE_KEYS.OPENAI_KEY);
+    }
+    if (provider === 'gemini') {
+        if (key) localStorage.setItem(STORAGE_KEYS.GEMINI_KEY, key.trim());
+        else localStorage.removeItem(STORAGE_KEYS.GEMINI_KEY);
     }
 }
 
@@ -67,6 +73,35 @@ export function saveCloudConfig(config: CloudKeyConfig): void {
         localStorage.setItem(STORAGE_KEYS.OPENAI_KEY, config.openAiApiKey.trim());
     }
 }
+
+/**
+ * BYOK provider directory — the Demystify-style "where do I even get a
+ * key?" answer, inline in the captions studio. Each entry tells the user
+ * exactly which site to open and what the key will cost them.
+ */
+export const BYOK_PROVIDER_DIRECTORY: Record<
+    CloudTranscriptionProvider,
+    { label: string; placeholder: string; keyUrl: string; keyHint: string }
+> = {
+    groq: {
+        label: 'Groq',
+        placeholder: 'gsk_…',
+        keyUrl: 'https://console.groq.com/keys',
+        keyHint: 'FREE — sign up at console.groq.com → API Keys → Create API Key. Whisper-large-v3 with a generous free tier, no credit card.',
+    },
+    openai: {
+        label: 'OpenAI',
+        placeholder: 'sk-…',
+        keyUrl: 'https://platform.openai.com/api-keys',
+        keyHint: 'Create at platform.openai.com → API keys (pay-as-you-go, ~$0.006 per minute of audio).',
+    },
+    gemini: {
+        label: 'Gemini',
+        placeholder: 'AIza…',
+        keyUrl: 'https://aistudio.google.com/app/apikey',
+        keyHint: 'FREE — aistudio.google.com → Get API key. Works with any Google account, no credit card. Gemini listens to the audio and writes the cues.',
+    },
+};
 
 /**
  * Breaks down raw word-level Whisper output into punchy, high-retention 3-5 word cues

@@ -31,6 +31,7 @@ import {
   HighlighterRenderOptions,
   PAPER_THEMES,
   renderHighlighterStory,
+  renderHighlighterStoryWithEntrance,
   synthesizeCutSound,
   easeHighlightSweep,
   playCutSound,
@@ -87,6 +88,24 @@ export default function TextHighlighterPage() {
   // Typography (52 Google Fonts)
   const [fontFamily, setFontFamily] = useState<string>('"Playfair Display", Georgia, serif');
   const [selectedFontCategory, setSelectedFontCategory] = useState<string>('All');
+
+  // Force-download the selected webfont so canvas can actually rasterize it.
+  // The stylesheet in the root layout only makes families AVAILABLE — the
+  // font files download lazily when rendered DOM text requests them, and
+  // canvas usage does NOT trigger that. Without this explicit load() the
+  // engine silently falls back to Georgia/Playfair and font selection
+  // appears completely dead.
+  useEffect(() => {
+    const bare = fontFamily.split(',')[0].replace(/["']/g, '').trim();
+    if (!bare || typeof document === 'undefined' || !document.fonts?.load) return;
+    Promise.all([
+      document.fonts.load(`bold 64px "${bare}"`),
+      document.fonts.load(`italic 32px "${bare}"`),
+      document.fonts.load(`900 32px "${bare}"`),
+    ])
+      .then(() => document.fonts.ready)
+      .catch(() => { /* canvas falls back to the next family in the stack */ });
+  }, [fontFamily]);
 
   // Custom Document Copy State (for active cut)
   const currentCut = cuts[currentCutIndex] || cuts[0];
@@ -184,6 +203,15 @@ export default function TextHighlighterPage() {
   const [zoomEnabled, setZoomEnabled] = useState(false);
   const [zoomDirection, setZoomDirection] = useState<'in' | 'out'>('in');
   const [zoomIntensity, setZoomIntensity] = useState(0.10);
+
+  // Paper Entrance — the pre-sweep slam: the whole article flies in from an
+  // edge with directional motion blur, holds a beat, THEN the sweep begins.
+  const [entranceDirection, setEntranceDirection] = useState<'none' | 'top' | 'bottom' | 'left' | 'right'>('none');
+  const [entranceFlight, setEntranceFlight] = useState(0.7);
+  const [entranceHold, setEntranceHold] = useState(0.9);
+  const [entranceBlur, setEntranceBlur] = useState(0.8);
+  const [entranceProgress, setEntranceProgress] = useState(0);
+  const entranceWindowMs = entranceDirection === 'none' ? 0 : (entranceFlight + entranceHold) * 1000;
 
   // Typography Scale & Layout
   const [headlineScale, setHeadlineScale] = useState(1.0);
@@ -316,6 +344,9 @@ export default function TextHighlighterPage() {
     zoomIntensity,
     headlineScale,
     headlineWrapMode,
+    entranceDirection,
+    entranceProgress,
+    entranceBlur,
   };
 
   // Redraw Canvas Frame
@@ -328,7 +359,7 @@ export default function TextHighlighterPage() {
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
-    renderHighlighterStory(ctx, canvas.width, canvas.height, cut, renderOptions, currentCutIndex);
+    renderHighlighterStoryWithEntrance(ctx, canvas.width, canvas.height, cut, renderOptions, currentCutIndex);
   }, [cuts, currentCutIndex, renderOptions]);
 
   // Live Smooth Animation Loop
@@ -341,14 +372,22 @@ export default function TextHighlighterPage() {
       if (isPlaying) {
         if (!animStartTimeRef.current) animStartTimeRef.current = timestamp;
         const drawDurationMs = highlightDuration * 1000;
-        const totalCycleMs = drawDurationMs + 1000; // 1s hold at end
+        const totalCycleMs = entranceWindowMs + drawDurationMs + 1000; // entrance + sweep + 1s hold
         const elapsed = (timestamp - animStartTimeRef.current) % totalCycleMs;
 
-        if (elapsed <= drawDurationMs) {
-          const p = easeHighlightSweep(elapsed / drawDurationMs);
-          setHighlightProgress(p);
+        if (entranceWindowMs > 0 && elapsed < entranceWindowMs) {
+          // Paper slam phase: flight + settle hold, sweep parked at 0.
+          setEntranceProgress(elapsed / entranceWindowMs);
+          setHighlightProgress(0);
         } else {
-          setHighlightProgress(1.0);
+          setEntranceProgress(1);
+          const sweepElapsed = elapsed - entranceWindowMs;
+          if (sweepElapsed <= drawDurationMs) {
+            const p = easeHighlightSweep(sweepElapsed / drawDurationMs);
+            setHighlightProgress(p);
+          } else {
+            setHighlightProgress(1.0);
+          }
         }
       }
 
@@ -362,7 +401,7 @@ export default function TextHighlighterPage() {
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, highlightDuration, redraw]);
+  }, [isPlaying, highlightDuration, entranceWindowMs, redraw]);
 
   // Handle Preset Selection
   const handleLoadPreset = (presetId: string) => {
@@ -413,6 +452,7 @@ export default function TextHighlighterPage() {
   const handleReplay = () => {
     animStartTimeRef.current = performance.now();
     setHighlightProgress(0);
+    setEntranceProgress(entranceWindowMs > 0 ? 0 : 1);
     setIsPlaying(true);
     const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
     if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, phrasesCount);
@@ -458,13 +498,25 @@ export default function TextHighlighterPage() {
     try {
       // 60fps constant frame rate — buttery sweep, matching the live preview.
       const fps = 60;
+      const entranceWindowSec = entranceWindowMs / 1000;
+      const entranceFrames = Math.round(entranceWindowSec * fps);
       const sweepFrames = Math.max(20, Math.round(highlightDuration * fps));
-      const totalFrames = Math.max(40, Math.round((highlightDuration + 1.0) * fps));
+      const totalFrames = Math.max(40, Math.round((entranceWindowSec + highlightDuration + 1.0) * fps));
       const currentCut = cuts[currentCutIndex] || cuts[0];
       const phrasesCount = anchorPhrase.split(/[|\n]+/).map((s) => s.trim()).filter(Boolean).length || 1;
 
-      // Make sure webfonts are ready before any frame renders.
+      // Make sure webfonts are ready before any frame renders — an explicit
+      // load() is required: fonts download lazily and canvas usage alone
+      // never triggers the fetch, so `ready` alone can still race.
       try {
+        const bare = fontFamily.split(',')[0].replace(/["']/g, '').trim();
+        if (bare) {
+          await Promise.all([
+            document.fonts.load(`bold 64px "${bare}"`),
+            document.fonts.load(`italic 32px "${bare}"`),
+            document.fonts.load(`900 32px "${bare}"`),
+          ]);
+        }
         await document.fonts?.ready;
       } catch { }
 
@@ -476,7 +528,9 @@ export default function TextHighlighterPage() {
           audioBuffer = await renderOfflineAudio({
             durationSec: totalFrames / fps,
             schedule: (ctx, dest) => {
-              synthesizeCutSound(ctx, dest, soundEffect, soundVolume, 0, highlightDuration, phrasesCount);
+              // Marker sounds wait for the paper to land — the sweep starts
+              // only after the entrance window.
+              synthesizeCutSound(ctx, dest, soundEffect, soundVolume, entranceWindowSec, highlightDuration, phrasesCount);
             },
           });
         } catch (audioErr) {
@@ -494,15 +548,28 @@ export default function TextHighlighterPage() {
         audioBuffer,
         onProgress: (p) => setExportProgress(`Encoding HD video: ${Math.round(p * 100)}%`),
         renderFrame: (frameIndex, ctx) => {
-          const p = frameIndex < sweepFrames ? easeHighlightSweep(frameIndex / sweepFrames) : 1.0;
-          if (frameIndex % 10 === 0) setHighlightProgress(p);
+          let ent = 1;
+          let p = 1.0;
+          if (entranceFrames > 0 && frameIndex < entranceFrames) {
+            // Entrance window: paper slams in and settles, sweep parked at 0.
+            ent = frameIndex / entranceFrames;
+            p = 0;
+          } else {
+            const sweepIndex = frameIndex - entranceFrames;
+            p = sweepIndex < sweepFrames ? easeHighlightSweep(sweepIndex / sweepFrames) : 1.0;
+          }
+          if (frameIndex % 10 === 0) {
+            setEntranceProgress(ent);
+            setHighlightProgress(p);
+          }
 
           const frameRenderOptions: HighlighterRenderOptions = {
             ...renderOptions,
             highlightProgress: p,
+            entranceProgress: ent,
           };
 
-          renderHighlighterStory(ctx, ctx.canvas.width, ctx.canvas.height, currentCut, frameRenderOptions, currentCutIndex);
+          renderHighlighterStoryWithEntrance(ctx, ctx.canvas.width, ctx.canvas.height, currentCut, frameRenderOptions, currentCutIndex);
         },
       });
 
@@ -958,6 +1025,7 @@ export default function TextHighlighterPage() {
                   {highlightDirection === 'ltr' ? 'LTR ➔' : '⬅ RTL'}
                 </button>
               </div>
+
 
               {/* Stout Upward-Opening Sound Selector */}
               <div style={{ position: 'relative' }} ref={soundMenuRef}>
@@ -1874,6 +1942,94 @@ export default function TextHighlighterPage() {
                       { label: 'Heavy', value: 1.0 },
                     ]}
                   />
+                )}
+              </div>
+
+              {/* Paper Entrance — motion-blur slam before the sweep */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.74rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase' }}>
+                    Paper Entrance
+                  </label>
+                  <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: entranceDirection === 'none' ? '#b91c1c' : '#16a34a' }}>
+                    {entranceDirection === 'none' ? 'OFF' : 'SLAM → HOLD → SWEEP'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['none', 'top', 'bottom', 'left', 'right'] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setEntranceDirection(d)}
+                      style={{
+                        flex: 1,
+                        padding: '5px 4px',
+                        border: '2px solid #000',
+                        borderRadius: 3,
+                        background: entranceDirection === d ? '#000' : '#fff',
+                        color: entranceDirection === d ? '#FFE500' : '#000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.58rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                      title={d === 'none' ? 'No entrance — the sweep starts immediately' : `Paper slams in from the ${d} with motion blur`}
+                    >
+                      {d === 'none' ? 'OFF' : d === 'top' ? '↓ TOP' : d === 'bottom' ? '↑ BOTTOM' : d === 'left' ? '→ LEFT' : '← RIGHT'}
+                    </button>
+                  ))}
+                </div>
+                {entranceDirection !== 'none' && (
+                  <>
+                    <TactileScrubber
+                      label="Flight"
+                      value={entranceFlight}
+                      min={0.3}
+                      max={2}
+                      step={0.1}
+                      stepDelta={0.1}
+                      onChange={setEntranceFlight}
+                      formatValue={(v) => `${v.toFixed(1)}s`}
+                      presets={[
+                        { label: '0.4s', value: 0.4 },
+                        { label: '0.7s ★', value: 0.7 },
+                        { label: '1.2s', value: 1.2 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Hold Before Sweep"
+                      value={entranceHold}
+                      min={0}
+                      max={4}
+                      step={0.1}
+                      stepDelta={0.1}
+                      onChange={setEntranceHold}
+                      formatValue={(v) => `${v.toFixed(1)}s`}
+                      presets={[
+                        { label: '0s', value: 0 },
+                        { label: '1s', value: 1 },
+                        { label: '2s', value: 2 },
+                        { label: '4s', value: 4 },
+                      ]}
+                    />
+                    <TactileScrubber
+                      label="Motion Blur"
+                      value={entranceBlur}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      stepDelta={0.05}
+                      onChange={setEntranceBlur}
+                      formatValue={(v) => `${Math.round(v * 100)}%`}
+                      presets={[
+                        { label: 'OFF', value: 0 },
+                        { label: '50%', value: 0.5 },
+                        { label: '80% ★', value: 0.8 },
+                        { label: 'MAX', value: 1 },
+                      ]}
+                    />
+                  </>
                 )}
               </div>
 

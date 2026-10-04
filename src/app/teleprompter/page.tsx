@@ -1307,6 +1307,46 @@ Control your speed, adjust your font size, and download your voice recording in 
         } catch { }
         speechRecognitionRef.current = null;
       }
+
+      // Racing-restart guard: an onend/backoff timer that fires just after
+      // this cleanup can resurrect the recognition session (or the VU mic)
+      // in the background — the browser's mic indicator then stays lit on
+      // the NEXT page (Auto Captions never touches the mic itself). Sweep
+      // again shortly after teardown and stop anything that came back.
+      setTimeout(() => {
+        try {
+          recognitionRestartRef.current.gen++;
+          if (recognitionRestartRef.current.timer) {
+            clearTimeout(recognitionRestartRef.current.timer);
+            recognitionRestartRef.current.timer = null;
+          }
+          if (watchdogTimerRef.current) {
+            clearInterval(watchdogTimerRef.current);
+            watchdogTimerRef.current = null;
+          }
+          if (speechRecognitionRef.current) {
+            try {
+              speechRecognitionRef.current.onend = null;
+              speechRecognitionRef.current.onerror = null;
+              speechRecognitionRef.current.onresult = null;
+              speechRecognitionRef.current.abort();
+            } catch { }
+            speechRecognitionRef.current = null;
+          }
+          if (micStreamRef.current) {
+            micStreamRef.current.getTracks().forEach((t) => t.stop());
+            micStreamRef.current = null;
+          }
+          if (recordingStreamRef.current) {
+            recordingStreamRef.current.getTracks().forEach((t) => t.stop());
+            recordingStreamRef.current = null;
+          }
+          if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            try { audioContextRef.current.close().catch(() => { }); } catch { }
+            audioContextRef.current = null;
+          }
+        } catch { }
+      }, 400);
     };
   }, [releaseAllAudioAndMic, cameraStream]);
 
@@ -1770,6 +1810,16 @@ Control your speed, adjust your font size, and download your voice recording in 
   const handleOneClickCaptions = async () => {
     if (!recordedBlob) return;
     try {
+      // 0. Kill every DESIRE for the mic before tearing it down. If the
+      // reader is still playing with follow-mode armed, a racing
+      // recognition restart can re-acquire the mic WHILE the navigation
+      // to Auto Captions is in flight — the indicator then stays lit on
+      // a page that never asked for the microphone.
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+      setSpeechFollowEnabled(false);
+      speechFollowRef.current = false;
+
       // 1. Immediately turn off all microphone, recording streams and speech recognition
       if (recordingStreamRef.current) {
         try {
@@ -1991,6 +2041,14 @@ Control your speed, adjust your font size, and download your voice recording in 
           recordingTimerRef.current = null;
         }
 
+        // The take is finished — the mic dies NOW. The VU-meter stream and
+        // any live speech-recognition session must not linger under the take
+        // prompt (or bleed into the Auto Captions handoff): the browser's
+        // "using your microphone" indicator stays lit until every track
+        // stops, and the user has already given us everything we need.
+        stopAudioAnalysis();
+        releaseAllAudioAndMic();
+
         const ext = effectiveMime.includes('mp4') ? 'mp4' : effectiveMime.includes('aac') ? 'aac' : 'webm';
         saveHandoffSession({
           script: script,
@@ -2000,22 +2058,11 @@ Control your speed, adjust your font size, and download your voice recording in 
           wpm: Math.round(speed * 125),
         }).catch((e) => console.warn('Pre-save handoff error:', e));
 
-        // AUTO-DOWNLOAD the take the instant recording ends: recordings live
-        // only in this tab, and the buried dock made them too easy to lose on
-        // refresh. The take prompt stays on screen as the manual fallback.
-        try {
-          const dlUrl = URL.createObjectURL(finalBlob);
-          const dlA = document.createElement('a');
-          dlA.href = dlUrl;
-          dlA.download = `creatorskit-take-${Date.now()}.${ext}`;
-          document.body.appendChild(dlA);
-          dlA.click();
-          dlA.remove();
-          setTimeout(() => URL.revokeObjectURL(dlUrl), 30000);
-        } catch (dlErr) {
-          console.warn('Auto-download failed (use the take prompt):', dlErr);
-        }
-
+        // NO auto-download here: the take prompt IS the single decision
+        // point (download / discard / continue to captions). Firing a
+        // download AND asking the prompt makes two download requests at
+        // once — the take is already safely pre-saved for the handoff
+        // above, so nothing is lost by waiting for the user's choice.
         setHandoffSuccessNotice(true);
       };
 
@@ -3634,7 +3681,12 @@ Control your speed, adjust your font size, and download your voice recording in 
                 alignItems: 'flex-end',
                 justifyContent: 'center',
               }}
-              onClick={() => setShowTakePrompt(false)}
+              // NO backdrop-dismiss: an accidental tap outside used to kill
+              // the ONLY download prompt (auto-download is gone by design),
+              // leaving the user cooked with no way back. The prompt closes
+              // exclusively through its own buttons (download / discard /
+              // captions) and can always be re-opened from the TAKE chip in
+              // the dock below.
             >
               <div
                 style={{
@@ -3709,6 +3761,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                     style={{
                       border: '2px solid #000',
                       background: '#fff',
+                      color: '#000',
                       padding: '9px 14px',
                       fontFamily: 'monospace',
                       fontWeight: 800,
@@ -3723,6 +3776,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                     style={{
                       border: '2px solid #000',
                       background: '#f4f4f5',
+                      color: '#000',
                       padding: '9px 14px',
                       fontFamily: 'monospace',
                       fontWeight: 700,
@@ -3815,6 +3869,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                     style={{
                       border: '2px solid #000',
                       background: '#fff',
+                      color: '#000',
                       padding: '9px 14px',
                       fontFamily: 'monospace',
                       fontWeight: 800,
@@ -3829,6 +3884,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                     style={{
                       border: '2px solid #000',
                       background: '#f4f4f5',
+                      color: '#000',
                       padding: '9px 14px',
                       fontFamily: 'monospace',
                       fontWeight: 700,
@@ -4012,6 +4068,34 @@ Control your speed, adjust your font size, and download your voice recording in 
             {/* Recorded Audio Download & Captions (Compact, Never Balloons Dock) */}
             {recordedAudioUrl && !isRecording && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                {/* TAKE chip — always-visible re-open for the end-of-take
+                    decision sheet. There must be NO state where a finished
+                    take exists but the user has no path to download it. */}
+                <button
+                  type="button"
+                  onClick={() => setShowTakePrompt(true)}
+                  style={{
+                    height: 36,
+                    padding: '0 10px',
+                    background: '#fff',
+                    color: '#000',
+                    border: '1.5px solid #000',
+                    borderRadius: 18,
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.68rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    boxShadow: '1px 1px 0 #000',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                  title="Reopen the take sheet (download / discard / captions)"
+                >
+                  <span>TAKE</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleOneClickCaptions}

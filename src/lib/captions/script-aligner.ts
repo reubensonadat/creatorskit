@@ -295,3 +295,57 @@ export function alignScriptWithAudioCues(
     // 4. Group into strictly ONE-LINE cues with exact word timings
     return groupWordsIntoSingleLineCues(alignedWords);
 }
+
+/**
+ * Script-Only Caption Builder (last-resort engine)
+ * ================================================
+ * When EVERY audio engine fails (no GPU adapter, WASM OOM, server down)
+ * but the teleprompter script is already known, the session must still
+ * come alive: the user handed us the exact words, so we build cues from
+ * the script with ESTIMATED timings stretched across the known media
+ * duration. They land in the overlay timeline with real, draggable cues
+ * instead of a dead error banner — audio, burning and export all keep
+ * working; timings can be nudged on the timeline afterwards.
+ */
+export function buildCuesFromScript(
+    script: string,
+    durationSec?: number,
+    wpm = 150,
+): SubtitleCue[] {
+    const { tokens } = tokenizeScript(script);
+    if (tokens.length === 0) return [];
+
+    // Per-word durations weighted by length (same heuristic as the whisper
+    // segment fallback): longer words take proportionally longer to say.
+    const weights = tokens.map((t) => Math.max(2, t.clean.length + 1));
+    // Sentence-ending punctuation earns a breathing pause, like real speech.
+    const pauses: number[] = tokens.map((t) => (/[.!?,;:]$/.test(t.text) ? 0.32 : 0));
+
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    const totalPause = pauses.reduce((s, p) => s + p, 0);
+
+    const knownDuration = durationSec && durationSec > 1 ? durationSec : 0;
+    // Known media duration → speech fills the take (minus a small lead-in/out
+    // margin). Unknown → estimate from the teleprompter's words-per-minute.
+    const speechTarget = knownDuration
+        ? Math.max(1, knownDuration - Math.min(knownDuration * 0.25, 2))
+        : (tokens.length / Math.max(60, wpm)) * 60;
+    const leadIn = knownDuration ? Math.min(0.5, knownDuration * 0.02) : 0;
+    const speechBudget = Math.max(1, speechTarget - totalPause);
+
+    const words: SubtitleWord[] = [];
+    let cursor = leadIn;
+    tokens.forEach((t, i) => {
+        const span = (weights[i] / totalWeight) * speechBudget;
+        const start = cursor;
+        const end = cursor + Math.max(0.12, span);
+        words.push({
+            word: t.text,
+            start: parseFloat(start.toFixed(3)),
+            end: parseFloat(end.toFixed(3)),
+        });
+        cursor = end + pauses[i];
+    });
+
+    return groupWordsIntoSingleLineCues(words);
+}

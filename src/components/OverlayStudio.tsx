@@ -128,6 +128,11 @@ export function OverlayStudio({
     const [activeWordEffect, setActiveWordEffect] = useState<ActiveWordEffect>('fill');
     const [glowColor, setGlowColor] = useState<string>('#22D3EE');
     const [tapeBackdrop, setTapeBackdrop] = useState<boolean>(false);
+    // Motion-as-code extras: word-onset impact shake (decaying sine) and
+    // export-time sub-frame motion blur. Off by default — existing styles
+    // render exactly as before until the user opts in.
+    const [impactShakeOn, setImpactShakeOn] = useState<boolean>(false);
+    const [motionBlurOn, setMotionBlurOn] = useState<boolean>(false);
 
     // Transport & Playback
     const [overlayCurrentTime, setOverlayCurrentTime] = useState<number>(0);
@@ -174,6 +179,8 @@ export function OverlayStudio({
         setTextShadow(preset.textShadow);
         setUppercase(preset.uppercase);
         setEmojiMode(preset.emojiMode);
+        setImpactShakeOn((preset.shakeIntensity ?? 0) > 0);
+        setMotionBlurOn((preset.motionBlurSamples ?? 1) > 1);
     };
 
     // Live Canvas Preview Draw
@@ -218,6 +225,8 @@ export function OverlayStudio({
                 activeWordEffect: activeWordEffect,
                 glowColor: glowColor,
                 tapeBackdrop: tapeBackdrop,
+                shakeIntensity: impactShakeOn ? 1.25 : 0,
+                motionBlurSamples: motionBlurOn ? 4 : 1,
             }
         );
     }, [
@@ -243,6 +252,8 @@ export function OverlayStudio({
         activeWordEffect,
         glowColor,
         tapeBackdrop,
+        impactShakeOn,
+        motionBlurOn,
     ]);
 
     useEffect(() => {
@@ -298,7 +309,7 @@ export function OverlayStudio({
             return;
         }
         if (audio.paused) {
-            audio.play().catch(() => {});
+            audio.play().catch(() => { });
             setOverlayPlaying(true);
         } else {
             audio.pause();
@@ -408,6 +419,8 @@ export function OverlayStudio({
                     activeWordEffect: activeWordEffect,
                     glowColor: glowColor,
                     tapeBackdrop: tapeBackdrop,
+                    shakeIntensity: impactShakeOn ? 1.25 : 0,
+                    motionBlurSamples: motionBlurOn ? 4 : 1,
                 },
                 onProgress: (percent) => setVideoRenderProgress(percent),
             });
@@ -947,6 +960,8 @@ export function OverlayStudio({
                             ['Tape backdrop', tapeBackdrop, setTapeBackdrop],
                             ['All caps', uppercase, setUppercase],
                             ['Emoji mode', emojiMode, setEmojiMode],
+                            ['Impact shake', impactShakeOn, setImpactShakeOn],
+                            ['Motion blur', motionBlurOn, setMotionBlurOn],
                         ] as [string, boolean, (v: boolean) => void][]
                     ).map(([label, value, setter]) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>

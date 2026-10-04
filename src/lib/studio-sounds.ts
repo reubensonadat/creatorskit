@@ -2,6 +2,8 @@
 // Both the Text Match Cut and Text Highlighter engines/pages use these —
 // no network audio, fully deterministic on OfflineAudioContext for exports.
 
+import { easeInOutSine } from '@/lib/motion/easing';
+
 export type StudioSoundType =
     | 'highlighter-1'
     | 'highlighter-2'
@@ -16,10 +18,11 @@ export type StudioSoundType =
  * Natural hand-stroke easing for the highlighter sweep timeline.
  * easeInOutSine: slow take-off → fast glide through the middle → gentle settle.
  * Applied identically in live preview and video export so both feel the same.
+ * Delegates to the shared motion-as-code engine so every studio tool uses
+ * the exact same curve definition.
  */
 export function easeHighlightSweep(t: number): number {
-    const x = Math.min(1, Math.max(0, t));
-    return 0.5 - 0.5 * Math.cos(Math.PI * x);
+    return easeInOutSine(t);
 }
 
 export function synthesizeCutSound(
