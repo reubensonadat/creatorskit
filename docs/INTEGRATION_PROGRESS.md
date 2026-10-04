@@ -1,6 +1,6 @@
 # Integration Progress Log & Session Handoff
 
-> **Updated:** 2026-10-03 later (Cross-tool hand-off wiring COMPLETED: every declared `handoffs` edge now carries the work, Ship-It Pack tool STRUCK by owner ruling · Demystify v2 FROZEN — **next: Stage-0 launch checklist**)
+> **Updated:** 2026-10-04 (FILM MODE SHIPPED in the teleprompter: SOLO video takes at 8 Mbps + CREW second-screen script mirror (/teleprompter/mirror) · hand-off wiring + /api/demystify edge fix done2026-10-03 — **next: Stage-0 launch checklist**)
 > **Governing plans:** `docs/TOOL_INTEGRATION_PLAN.md` (integration + nav) · `docs/BUSINESS_MODEL_PLAN.md` (monetization + stage gates)
 > **Purpose:** survive conversation compaction. Read this + the two plans to resume work.
 
@@ -393,6 +393,41 @@ Owner asks: (1) "there's nothing on the home page where I can physically navigat
 **Verification:** filtered `npx tsc --noEmit` — source clean (only the stale `.next/dev` LayoutRoutes artifact, cleared before build; known archive/remotion noise filtered). `npm run build` **exit 0, 54/54 routes** incl. `/app ○ (Static)`; postbuild ORT strip clean; no EBUSY this run.
 
 **Still open (unchanged):** the Stage-0 launch checklist remains THE next-session directive. Pre-launch audits unchanged: (a) "Made with CreatorsKit" footer on all shared document kinds, (b) OG share previews for WhatsApp/X.
+
+---
+
+## Step 2l — Session 15 (2026-10-04, agent): FILM MODE SHIPPED — SOLO video takes + CREW second-screen mirror in the teleprompter
+
+**Owner rulings that shaped it (voice, live):** (1) the parked background recorder "wasn't good enough" — browser recording felt like "absolute ****"; (2) the mobile layout is zero-sum ("see yourself more, see the text less — defeats the point of the teleprompter"); (3) iPhone-market reality: Ghana creators are iPhone-majority, mostly iPhone 11s — no split-screen, no overlay, so script+native-camera on one iPhone is impossible; (4) green light: "try your implementation, do it very well… or I'll remove everything"; (5) mid-build: video takes must AUTO-SAVE exactly like audio takes, and "the integration must be so tight" or it's not worth doing.
+
+1. **SOLO MODE — real video takes** (`src/app/teleprompter/page.tsx`): when the camera is live, REC now merges the camera video track + fresh mic track into one MediaStream and records via MediaRecorder with **explicit `videoBitsPerSecond: 8 Mbps` / `audioBitsPerSecond: 128 kbps`** (the fix for the mushy ~1-2 Mbps browser default that got the old attempt parked) and a video mime probe ordered H.264/AAC mp4 → VP9 → VP8 webm (iOS Safari gets mp4). Camera off = the classic voice-only take, untouched. The camera preview's tracks are never stopped by the recorder (all three cleanup sites guard `cameraStream` tracks) — preview survives the take.
+2. **Identical auto-save semantics (owner ruling #5):** video takes ride the SAME onstop pipeline as audio — AUTO-DOWNLOAD the instant recording stops (`creatorskit-take-*.mp4|.webm`, ext from blob type) + `saveHandoffSession` pre-save to IndexedDB so the 1-Click Captions handoff (script + media + wpm) works even if the tab closes; `handleOneClickCaptions` fileName ext now derives from `recordedBlob.type`. Take prompt, studio panel, and mobile dock all render a **video preview player** for video takes (never a dead audio player) with correct download extensions.
+3. **Camera-aware REC labeling:** all three REC controls (HUD quick button, settings button, mobile dock) show a Camera icon + "REC VIDEO"/"REC VID" when the camera is live, Mic + "RECORD MIC"/"REC" otherwise; tooltips updated. During a video take a fixed **"▲ LOOK AT THE LENS"** yellow eyeline chip pins at the top of the screen (safe-area aware, pointer-events none).
+4. **CREW MODE — second-screen script mirror** (the only script+native-camera flow that works on iPhone): new monitor-icon button in the HUD opens the CREW modal — builds a payload-encoded link (`lz-string` compressToEncodedURIComponent of {script, speed, fontSize}; nothing touches a server) to **`/teleprompter/mirror`** (NEW page + noindex layout): dark full-screen auto-scroller with yellow read-line at 30%, tap-anywhere pause/resume, speed −/+/restart HUD, dt-based rAF crawl (px/s = speed×38), empty state explaining how to generate a fresh link. Flow: send the link to a laptop/second phone (WhatsApp/AirDrop), press play, put the iPhone on the tripod, film at native quality. `/teleprompter/mirror` inherits fullscreen chrome via the `/teleprompter` prefix match; noindex → sitemap untouched.
+
+**Rationale recorded (owner's own analysis, upheld):** browser recording never beats the iPhone camera — so SOLO is honestly labeled draft-tier browser quality, and CREW removes the quality fight entirely by letting the native camera record while CreatorsKit owns the script.
+
+**Verification:** filtered `npx tsc --noEmit` — only the4 known pre-existing errors (stale `.next/dev` validator lines cleared pre-build). `npm run build` **exit 0, 54/54 pages** incl. new `/teleprompter/mirror ○ (Static)`; postbuild ORT strip clean; no EBUSY.
+
+**Still open (unchanged):** the Stage-0 launch checklist remains THE next-session directive. Pre-launch audits unchanged: (a) "Made with CreatorsKit" footer on all shared document kinds, (b) OG share previews for WhatsApp/X.
+
+### Step 2l (continued) — DISCOVERABILITY FIX + three live rulings (owner tested the build)
+
+**Owner report (voice):** "Turbopack's filesystem cache has been deleted… And I cannot see any difference at all — how would I initiate the [mode], and is it on mobile? It was a small bar where this would be most useful — but is it on mobile?" then (laptop): "I press the button and it doesn't do anything."
+
+**Root cause (hard fact, not cache):** `startCamera()`/`stopCamera()` had **zero call sites** — no button anywhere turned the camera on — and the live-preview `<video>` elements didn't exist in the JSX at all (refs were only ever assigned by the srcObject effect). FILM MODE was uninitiatable: REC always fell through to audio-only, so nothing visibly changed on any device. Fixes in `src/app/teleprompter/page.tsx`:
+
+1. **Live camera preview layers on the stage:** corner-PiP (`zIndex 30`, safe-area-aware top, `clamp(96px,24vw,190px)`, 3:4, brutalist border) and full-bleed background (`zIndex 1`, behind the text column) — both `muted playsInline pointerEvents:none`, driven by the existing cameraStream effect. Mobile defaults full-bg (unchanged), toggle switches PIP ↔ FULL BG.
+2. **CAM toggle — one obvious tap, everywhere:** `toggleFilmCamera()` (no-ops while a take records) wired to (a) the **mobile floating pill** — round Video/VideoOff button, yellow when live, sits between CREW and the speed chip; (b) the **desktop transport dock** — labeled `CAM`/`CAM ON` pill before REC plus a round **CREW MonitorSmartphone button** (CREW was mobile-pill-only before); (c) the mobile Studio Controls sheet.
+3. **Mobile bottom sheet "FILM MODE — Camera + Second Screen" section (first thing in the sheet):** CAMERA + SECOND SCREEN action grid, PIP/FULL BG layout toggle, EYELINE ON/OFF toggle, camera-device `<select>` when >1 camera (switching is suppressed mid-take), one-line explainer ("REC now films VIDEO + your mic and auto-saves exactly like an audio take"), sheet tints yellow while the camera is live. `startCamera` failures now `alert()` like the mic path instead of console-only.
+
+**Rulings folded in mid-verification (owner, live voice):**
+
+- **Camera lifecycle = mic lifecycle:** "the way immediately when you exit the application the mic stops interfering with everything on your phone — the camera should also do the same thing." → new `killCameraNow()` (stops tracks + clears `cameraActive`/`cameraStream` so no zombie state) fires on `visibilitychange→hidden`, `pagehide`/`beforeunload`, AND the unmount cleanup (which previously never stopped `cameraStream` — the lens could stay on after leaving the page).
+- **EYELINE is a setting:** "do you want your eyeline to show or not — a setting, eyeline yes, eyeline no" + "there should be a line to show where your eye should be looking." → EYELINE ON/OFF buttons in the mobile FILM MODE section and the desktop LAYOUT tab (above the height scrubber); the mobile resize handler now only defaults it OFF on FIRST mobile init (`hasInitializedDefaultsRef` guard) — the user's choice and saved setting win thereafter; and **turning the camera ON auto-raises the eyeline** so a look-line always appears the moment filming starts.
+- **AI voice listening is sacred:** "make sure the video rendering in no way possible ever stops Teleprompter from doing its job of the AI voice listening." → `startCamera` getUserMedia is now `audio: false` (never open a second mic to compete with Web Speech recognition and the dedicated recording mic — video takes merge the mic stream separately; previews are muted elements, decode is off-main-thread).
+
+**Verification:** filtered `npx tsc --noEmit` — only the 4 known pre-existing errors, zero new. `npm run build` **exit 0, 54/54 pages** (`/teleprompter` + `/teleprompter/mirror` both Static), ORT strip clean, no EBUSY. Owner was ALSO looking at a stale dev preview (Turbopack cache had been wiped after an internal error) — advised a hard reload / dev-server restart alongside this fix. **Commit + push still pending for Cloudflare** (carries the Session 14 edge-runtime fix and all of FILM MODE).
 
 ---
 

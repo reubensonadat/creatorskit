@@ -35,7 +35,11 @@ import {
   Pipette,
   Sparkles,
   Wand2,
+  MonitorSmartphone,
+  Video,
+  VideoOff,
 } from 'lucide-react';
+import { compressToEncodedURIComponent as lzCompress } from 'lz-string';
 import { useRouter } from 'next/navigation';
 import StudioToolsDropdown from '@/components/nav/SiteNav';
 import { TactileScrubber } from '@/components/tactile-scrubber';
@@ -388,7 +392,9 @@ Control your speed, adjust your font size, and download your voice recording in 
         setCameraLayout('full-bg');
         setShowSettings(false);
         setFontSize((f) => Math.max(32, Math.min(f, 56)));
-        setShowEyelineGuide(false);
+        // Only default the eyeline OFF on first mobile init — after that the
+        // user's EYELINE yes/no choice (and their saved setting) wins.
+        if (!hasInitializedDefaultsRef.current) setShowEyelineGuide(false);
         setCircularFocusLens(false);
         setBgDimOpacity(0.45);
       }
@@ -405,6 +411,17 @@ Control your speed, adjust your font size, and download your voice recording in 
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  // FILM MODE (owner ruling 2026-10-04): with the camera live, REC captures
+  // video + mic (SOLO take); camera off keeps the classic voice-only take.
+  const [takeIsVideo, setTakeIsVideo] = useState(false);
+  const [mirrorOpen, setMirrorOpen] = useState(false);
+  // CREW MODE: payload-encoded link that opens this script + speed on a second
+  // screen (laptop / friend's phone) while the phone films on the native
+  // camera app — the only way to script + film simultaneously on iPhone.
+  const mirrorLink = () =>
+    `${typeof window !== 'undefined' ? window.location.origin : 'https://creatorskit.win'}/teleprompter/mirror?d=${lzCompress(
+      JSON.stringify({ s: script, v: speed, f: fontSize }),
+    )}`;
 
   // 1. Web Speech AI Auto-Scroll State
   const [speechFollowEnabled, setSpeechFollowEnabled] = useState(true);
@@ -1201,11 +1218,26 @@ Control your speed, adjust your font size, and download your voice recording in 
   // Immediately kill speech recognition and all microphone tracks so mobile OS
   // (Android / Samsung Galaxy, iOS) NEVER gets stuck in IN_CALL / telephony mode.
   useEffect(() => {
+    // Owner ruling 2026-10-04: the camera must release the instant the app is
+    // exited or backgrounded, exactly like the mic — no glowing indicator,
+    // no camera locked away from the rest of the phone.
+    const killCameraNow = () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => {
+          t.stop();
+          t.enabled = false;
+        });
+        setCameraStream(null);
+        setCameraActive(false);
+      }
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         setIsPlaying(false);
         isPlayingRef.current = false;
         releaseAllAudioAndMic();
+        killCameraNow();
       }
     };
 
@@ -1213,12 +1245,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       setIsPlaying(false);
       isPlayingRef.current = false;
       releaseAllAudioAndMic();
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((t) => {
-          t.stop();
-          t.enabled = false;
-        });
-      }
+      killCameraNow();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -1247,6 +1274,17 @@ Control your speed, adjust your font size, and download your voice recording in 
           });
         } catch { }
         micStreamRef.current = null;
+      }
+      // The lens dies with the page too — never leak the camera to the OS.
+      if (cameraStream) {
+        try {
+          cameraStream.getTracks().forEach((track) => {
+            track.stop();
+            track.enabled = false;
+          });
+        } catch { }
+        setCameraStream(null);
+        setCameraActive(false);
       }
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try { audioContextRef.current.close().catch(() => { }); } catch { }
@@ -1647,13 +1685,17 @@ Control your speed, adjust your font size, and download your voice recording in 
       const targetId = deviceId || selectedCameraId;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: targetId ? { deviceId: { exact: targetId } } : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: true,
+        // NEVER open audio here (owner ruling 2026-10-04): a second mic
+        // stream would compete with AI voice listening and the dedicated
+        // recording mic. Video takes merge the mic stream separately.
+        audio: false,
       });
       setCameraStream(stream);
       setCameraActive(true);
       if (targetId) setSelectedCameraId(targetId);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Camera initiation failed:', err);
+      alert(err?.message ? `Camera access error: ${err.message}` : 'Camera access denied. Grant camera permission, then try again (HTTPS or localhost required).');
     }
   };
 
@@ -1662,6 +1704,20 @@ Control your speed, adjust your font size, and download your voice recording in 
     setCameraStream(null);
     setCameraActive(false);
     setIsRecording(false);
+  };
+
+  // FILM MODE entry point (owner ruling 2026-10-04): one obvious tap toggles
+  // the camera. While a take rolls we never rip tracks out of the recorder.
+  const toggleFilmCamera = async () => {
+    if (isRecording) return;
+    if (cameraActive) {
+      stopCamera();
+      return;
+    }
+    await startCamera();
+    // Owner ruling 2026-10-04: the moment the camera is live, a line must
+    // show where the eyes should sit — raise the eyeline with the camera.
+    setShowEyelineGuide(true);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -1680,7 +1736,11 @@ Control your speed, adjust your font size, and download your voice recording in 
       // 1. Immediately turn off all microphone, recording streams and speech recognition
       if (recordingStreamRef.current) {
         try {
+          // FILM MODE: never stop the camera preview's tracks — only tracks
+          // this recorder owns (mic, or nothing when a video take is live).
+          const camTracks = new Set(cameraStream ? cameraStream.getTracks() : []);
           recordingStreamRef.current.getTracks().forEach((track) => {
+            if (camTracks.has(track)) return;
             track.stop();
             track.enabled = false;
           });
@@ -1716,7 +1776,7 @@ Control your speed, adjust your font size, and download your voice recording in 
       await saveHandoffSession({
         script: script,
         mediaBlob: recordedBlob,
-        fileName: `teleprompter_take_${Date.now()}.webm`,
+        fileName: `teleprompter_take_${Date.now()}.${recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`,
         title: 'Teleprompter Studio Take',
         wpm: Math.round(speed * 125),
       });
@@ -1724,7 +1784,14 @@ Control your speed, adjust your font size, and download your voice recording in 
     } catch (err) {
       console.warn('1-Click handoff fallback:', err);
       if (recordingStreamRef.current) {
-        try { recordingStreamRef.current.getTracks().forEach((t) => { t.stop(); t.enabled = false; }); } catch { }
+        try {
+          const camTracks = new Set(cameraStream ? cameraStream.getTracks() : []);
+          recordingStreamRef.current.getTracks().forEach((t) => {
+            if (camTracks.has(t)) return;
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
         recordingStreamRef.current = null;
       }
       if (micStreamRef.current) {
@@ -1746,9 +1813,20 @@ Control your speed, adjust your font size, and download your voice recording in 
       setRecordedBlob(null);
       setHandoffSuccessNotice(false);
       setShowTakePrompt(false);
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl);
+        setRecordedVideoUrl(null);
+      }
+      // SOLO take when the camera is live, classic voice take otherwise.
+      const wantVideo =
+        cameraActive && cameraStream !== null && cameraStream.getVideoTracks().length > 0;
+      setTakeIsVideo(wantVideo);
 
       let stream = recordingStreamRef.current;
-      const isStreamActive = stream && stream.active && stream.getAudioTracks().some((t) => t.readyState === 'live');
+      const isStreamActive =
+        stream && stream.active &&
+        stream.getAudioTracks().some((t) => t.readyState === 'live') &&
+        (!wantVideo || stream.getVideoTracks().some((t) => t.readyState === 'live'));
 
       if (!isStreamActive) {
         const audioConstraints: MediaTrackConstraints = {
@@ -1789,6 +1867,18 @@ Control your speed, adjust your font size, and download your voice recording in 
         return;
       }
 
+      // SOLO take: merge the live camera video track(s) with the fresh mic
+      // track into one recording stream. The preview <video> elements keep
+      // playing cameraStream directly — the recorder gets its own stream.
+      if (wantVideo && cameraStream) {
+        const merged = new MediaStream([
+          ...cameraStream.getVideoTracks(),
+          ...stream.getAudioTracks(),
+        ]);
+        recordingStreamRef.current = merged;
+        stream = merged;
+      }
+
       if (typeof MediaRecorder === 'undefined') {
         alert('MediaRecorder is not supported in this browser environment.');
         return;
@@ -1796,14 +1886,25 @@ Control your speed, adjust your font size, and download your voice recording in 
 
       audioChunksRef.current = [];
 
-      // Universal audio mime-type detection (Chrome, Firefox, Safari iOS & Android)
-      const mimeCandidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/aac',
-        'audio/ogg;codecs=opus',
-      ];
+      // Universal mime detection (Chrome, Firefox, Safari iOS & Android).
+      // FILM MODE: video takes probe H.264/AAC mp4 first (iOS Safari) then
+      // VP9/VP8 webm — at 8 Mbps, the fix for the mushy ~1-2 Mbps browser
+      // default that made browser takes look unusable.
+      const mimeCandidates = wantVideo
+        ? [
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp8,opus',
+          'video/mp4',
+          'video/webm',
+        ]
+        : [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/aac',
+          'audio/ogg;codecs=opus',
+        ];
       let mime = '';
       for (const cand of mimeCandidates) {
         if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(cand)) {
@@ -1812,8 +1913,11 @@ Control your speed, adjust your font size, and download your voice recording in 
         }
       }
 
-      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      const effectiveMime = mime || recorder.mimeType || 'audio/webm';
+      const recorderOptions: MediaRecorderOptions = wantVideo
+        ? { videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 128_000, ...(mime ? { mimeType: mime } : {}) }
+        : { ...(mime ? { mimeType: mime } : {}) };
+      const recorder = new MediaRecorder(stream, recorderOptions);
+      const effectiveMime = mime || recorder.mimeType || (wantVideo ? 'video/webm' : 'audio/webm');
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -1842,6 +1946,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         setRecordedBlob(finalBlob);
         const url = URL.createObjectURL(finalBlob);
         setRecordedAudioUrl(url);
+        if (wantVideo) setRecordedVideoUrl(url);
         setShowTakePrompt(true);
         setIsRecording(false);
         if (recordingTimerRef.current) {
@@ -1912,7 +2017,11 @@ Control your speed, adjust your font size, and download your voice recording in 
       }
       if (recordingStreamRef.current) {
         try {
+          // FILM MODE: the camera preview's tracks outlive the take — only
+          // stop what this recorder owns.
+          const camTracks = new Set(cameraStream ? cameraStream.getTracks() : []);
           recordingStreamRef.current.getTracks().forEach((t) => {
+            if (camTracks.has(t)) return;
             t.stop();
             t.enabled = false;
           });
@@ -2645,6 +2754,51 @@ Control your speed, adjust your font size, and download your voice recording in 
             </div>
           )}
 
+          {/* 5b. FILM MODE live camera — full-bleed behind the script.
+              The srcObject wiring lives in the cameraStream effect. */}
+          {cameraActive && cameraLayout === 'full-bg' && (
+            <video
+              ref={bgVideoPreviewRef}
+              autoPlay
+              muted
+              playsInline
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                zIndex: 1,
+                background: '#000',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
+          {/* 5c. FILM MODE live camera — corner PiP: frame yourself while you read */}
+          {cameraActive && cameraLayout === 'corner-pip' && (
+            <video
+              ref={videoPreviewRef}
+              autoPlay
+              muted
+              playsInline
+              style={{
+                position: 'absolute',
+                top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+                right: 14,
+                width: 'clamp(96px, 24vw, 190px)',
+                aspectRatio: '3 / 4',
+                objectFit: 'cover',
+                zIndex: 30,
+                border: '2px solid #000',
+                borderRadius: 10,
+                boxShadow: '0 6px 24px rgba(0,0,0,0.55)',
+                background: '#000',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
           {/* 6. Main Prompter Reading Column */}
           <div
             onClick={() => {
@@ -2780,6 +2934,32 @@ Control your speed, adjust your font size, and download your voice recording in 
                 {isPlaying ? <Pause size={20} strokeWidth={3} /> : <Play size={20} strokeWidth={3} />}
               </button>
 
+              {/* Eyeline guide: while a SOLO video take rolls, the lens sits at
+                  the top of the screen — hold your eyes there. */}
+              {isRecording && takeIsVideo && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 90,
+                    pointerEvents: 'none',
+                    background: '#FFE500',
+                    border: '2px solid #000',
+                    color: '#000',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    fontSize: '0.62rem',
+                    padding: '3px 9px',
+                    letterSpacing: '0.08em',
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  ▲ LOOK AT THE LENS
+                </div>
+              )}
+
               {/* Quick Record Button */}
               <button
                 onClick={(e) => {
@@ -2806,9 +2986,65 @@ Control your speed, adjust your font size, and download your voice recording in 
                   marginLeft: 4,
                   marginRight: 2,
                 }}
-                title={isRecording ? 'Stop Recording' : 'Record Audio Take'}
+                title={isRecording ? 'Stop Recording' : cameraActive ? 'Record Video Take (camera + mic)' : 'Record Audio Take'}
               >
-                <Mic size={16} className={isRecording ? 'animate-pulse' : ''} />
+                {cameraActive ? (
+                  <Camera size={16} className={isRecording ? 'animate-pulse' : ''} />
+                ) : (
+                  <Mic size={16} className={isRecording ? 'animate-pulse' : ''} />
+                )}
+              </button>
+
+              {/* CREW MODE: mirror the script to a second screen while the
+                  phone films on the native camera app. */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMirrorOpen(true);
+                }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  border: '1.5px solid #000',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  marginRight: 2,
+                }}
+                title="Send this script to a second screen (film on your camera app at full quality)"
+              >
+                <MonitorSmartphone size={16} />
+              </button>
+
+              {/* FILM MODE: camera on/off — while live, REC films video + mic */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFilmCamera();
+                }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  border: cameraActive ? '1.5px solid #FFE500' : '1.5px solid #000',
+                  background: cameraActive ? '#FFE500' : 'rgba(255, 255, 255, 0.12)',
+                  color: cameraActive ? '#000000' : '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  marginRight: 2,
+                  boxShadow: cameraActive && isRecording ? '0 0 12px rgba(255,229,0,0.8)' : 'none',
+                }}
+                title={cameraActive ? 'Camera live — REC films video + mic. Tap to stop.' : 'FILM MODE: turn the camera on so REC films video + mic'}
+              >
+                {cameraActive ? <VideoOff size={16} /> : <Video size={16} />}
               </button>
 
               {/* Speed indicator */}
@@ -2872,6 +3108,163 @@ Control your speed, adjust your font size, and download your voice recording in 
                     </button>
                   </div>
 
+                  {/* 0. FILM MODE — SOLO camera + CREW second screen (owner
+                      ruling 2026-10-04: one obvious tap, mobile first) */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      padding: 10,
+                      border: '2px solid #000',
+                      borderRadius: 10,
+                      background: cameraActive ? '#FEF9C3' : '#ffffff',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#71717a' }}>
+                      Film Mode — Camera + Second Screen
+                    </span>
+                    <p style={{ margin: 0, fontSize: '0.62rem', fontFamily: 'monospace', color: '#52525b', lineHeight: 1.5 }}>
+                      {cameraActive
+                        ? 'CAMERA LIVE — REC now films VIDEO + your mic and auto-saves exactly like an audio take.'
+                        : 'Tap CAMERA to film yourself reading — REC switches from mic-only to video + mic.'}
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFilmCamera();
+                        }}
+                        style={{
+                          minHeight: 44,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: cameraActive ? '#FFE500' : '#ffffff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.68rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        {cameraActive ? <VideoOff size={15} /> : <Video size={15} />}
+                        {cameraActive ? 'CAMERA ON' : 'CAMERA'}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileControlsOpen(false);
+                          setMirrorOpen(true);
+                        }}
+                        style={{
+                          minHeight: 44,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: '#ffffff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          fontSize: '0.68rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                        title="Send this script to a second screen (film on your camera app at full quality)"
+                      >
+                        <MonitorSmartphone size={15} />
+                        SECOND SCREEN
+                      </button>
+                    </div>
+                    {cameraActive && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCameraLayout(cameraLayout === 'full-bg' ? 'corner-pip' : 'full-bg');
+                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 40,
+                            border: '2px solid #000',
+                            borderRadius: 8,
+                            background: '#ffffff',
+                            color: '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.62rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          {cameraLayout === 'full-bg' ? '▣ PIP CORNER' : '▣ FULL BG'}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEyelineGuide((s) => !s);
+                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 40,
+                            border: '2px solid #000',
+                            borderRadius: 8,
+                            background: showEyelineGuide ? '#FFE500' : '#ffffff',
+                            color: '#000',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            fontSize: '0.62rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                          title="Show the EYELINE HORIZON marker — hold your eyes on it while filming"
+                        >
+                          {showEyelineGuide ? 'EYELINE ON' : 'EYELINE OFF'}
+                        </button>
+                      </div>
+                    )}
+                    {cameraActive && cameras.length > 1 && (
+                      <select
+                        value={selectedCameraId}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          // Never swap camera tracks while a take is recording.
+                          if (!isRecording) startCamera(e.target.value);
+                        }}
+                        style={{
+                          width: '100%',
+                          minHeight: 40,
+                          border: '2px solid #000',
+                          borderRadius: 8,
+                          background: '#ffffff',
+                          color: '#000',
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          fontSize: '0.66rem',
+                          padding: '0 8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {cameras.map((c, i) => (
+                          <option key={c.deviceId || i} value={c.deviceId}>
+                            {c.label || `Camera ${i + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
                   {/* 1. Voice Recording & AI Voice Follow Controls */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {/* Voice Recording Action */}
@@ -2906,8 +3299,8 @@ Control your speed, adjust your font size, and download your voice recording in 
                           boxShadow: isRecording ? '0 0 12px rgba(239,68,68,0.5)' : 'none',
                         }}
                       >
-                        <Mic size={16} />
-                        {isRecording ? `REC (${formatTime(recordingSeconds)})` : 'RECORD MIC'}
+                        {cameraActive ? <Camera size={16} /> : <Mic size={16} />}
+                        {isRecording ? `REC (${formatTime(recordingSeconds)})` : cameraActive ? 'REC VIDEO' : 'RECORD MIC'}
                       </button>
                     </div>
 
@@ -2979,10 +3372,18 @@ Control your speed, adjust your font size, and download your voice recording in 
                           The recording lives only in this browser tab. Download it now, discard it, or keep
                           it in the studio for the 1-click captions handoff.
                         </p>
+                        {takeIsVideo && recordedVideoUrl && (
+                          <video
+                            src={recordedVideoUrl}
+                            controls
+                            playsInline
+                            style={{ width: '100%', border: '2px solid #000', background: '#000', maxHeight: 240, display: 'block' }}
+                          />
+                        )}
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <a
                             href={recordedAudioUrl}
-                            download={`creatorskit-take-${Date.now()}.webm`}
+                            download={`creatorskit-take-${Date.now()}.${takeIsVideo && recordedBlob && recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`}
                             onClick={() => setShowTakePrompt(false)}
                             style={{
                               border: '2px solid #000',
@@ -3001,8 +3402,13 @@ Control your speed, adjust your font size, and download your voice recording in 
                           <button
                             onClick={() => {
                               URL.revokeObjectURL(recordedAudioUrl);
+                              if (recordedVideoUrl) {
+                                URL.revokeObjectURL(recordedVideoUrl);
+                                setRecordedVideoUrl(null);
+                              }
                               setRecordedAudioUrl(null);
                               setRecordedBlob(null);
+                              setTakeIsVideo(false);
                               setHandoffSuccessNotice(false);
                               setShowTakePrompt(false);
                               // Also drop the pre-saved handoff so a discarded
@@ -3040,14 +3446,126 @@ Control your speed, adjust your font size, and download your voice recording in 
                     </div>
                   )}
 
+                  {/* CREW MODE — script mirror to a second screen */}
+                  {mirrorOpen && (
+                    <div
+                      style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 80,
+                        background: 'rgba(0,0,0,0.55)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                      }}
+                      onClick={() => setMirrorOpen(false)}
+                    >
+                      <div
+                        style={{
+                          background: '#fff',
+                          border: '2.5px solid #000',
+                          boxShadow: '4px 4px 0 #000',
+                          padding: 20,
+                          maxWidth: 430,
+                          width: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem' }}>
+                          SECOND SCREEN — CREW MODE
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.76rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.55 }}>
+                          Film on your phone's camera app at full quality while this script scrolls on a
+                          laptop or a second phone. Send this link there (WhatsApp it to yourself or type
+                          it), open it, press play, then put the phone on the tripod and hit record.
+                        </p>
+                        <div
+                          style={{
+                            border: '1.5px dashed #000',
+                            padding: '8px 10px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.64rem',
+                            wordBreak: 'break-all',
+                            background: '#f4f4f5',
+                          }}
+                        >
+                          {mirrorLink()}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(mirrorLink()).catch(() => { });
+                            }}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#FFE500',
+                              color: '#000',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            COPY LINK
+                          </button>
+                          <button
+                            onClick={() => window.open(mirrorLink(), '_blank')}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#fff',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            OPEN HERE
+                          </button>
+                          <button
+                            onClick={() => setMirrorOpen(false)}
+                            style={{
+                              border: '2px solid #000',
+                              background: '#f4f4f5',
+                              padding: '9px 14px',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            DONE
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Recorded Audio Download / Preview Player (If available) */}
                   {recordedAudioUrl && (
                     <div style={{ background: '#fef3c7', border: '1.5px solid #d97706', padding: '8px 10px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {takeIsVideo && recordedVideoUrl && (
+                        <video
+                          src={recordedVideoUrl}
+                          controls
+                          playsInline
+                          style={{ width: '100%', maxHeight: 200, border: '1.5px solid #000', background: '#000', display: 'block' }}
+                        />
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <RecordedAudioPlayer url={recordedAudioUrl} />
+                        {takeIsVideo ? (
+                          <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.7rem' }}>VIDEO TAKE READY</span>
+                        ) : (
+                          <RecordedAudioPlayer url={recordedAudioUrl} />
+                        )}
                         <a
                           href={recordedAudioUrl}
-                          download={`creatorskit-take-${Date.now()}.webm`}
+                          download={`creatorskit-take-${Date.now()}.${takeIsVideo && recordedBlob && recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`}
                           style={{
                             padding: '6px 10px',
                             background: '#000',
@@ -3253,6 +3771,60 @@ Control your speed, adjust your font size, and download your voice recording in 
               <RotateCcw size={14} />
             </button>
 
+            {/* 2b. FILM MODE: camera toggle — with the camera live, REC
+                captures video + mic (SOLO MODE entry point) */}
+            <button
+              onClick={toggleFilmCamera}
+              style={{
+                height: 36,
+                minHeight: 36,
+                maxHeight: 36,
+                minWidth: 86,
+                padding: '0 10px',
+                fontSize: '0.72rem',
+                borderRadius: 18,
+                border: '1.5px solid #000',
+                background: cameraActive ? '#FFE500' : '#ffffff',
+                color: '#000000',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                boxShadow: cameraActive ? '0 0 10px rgba(255,229,0,0.6)' : 'none',
+              }}
+              title={cameraActive ? 'Camera live — REC films video + mic. Click to stop the camera.' : 'FILM MODE: turn the camera on so REC films video + mic'}
+            >
+              {cameraActive ? <VideoOff size={14} /> : <Video size={14} />}
+              <span>{cameraActive ? 'CAM ON' : 'CAM'}</span>
+            </button>
+
+            {/* 2c. CREW MODE: mirror this script to a second screen while the
+                phone films on its native camera app */}
+            <button
+              onClick={() => setMirrorOpen(true)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '1.5px solid #000',
+                background: '#fff',
+                color: '#000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="CREW MODE: send this script to a second screen (film on your camera app at full quality)"
+            >
+              <MonitorSmartphone size={14} />
+            </button>
+
             {/* 3. Pure Voice Audio Recorder */}
             <button
               onClick={() => {
@@ -3281,10 +3853,14 @@ Control your speed, adjust your font size, and download your voice recording in 
                 flexShrink: 0,
                 boxShadow: isRecording ? '0 0 10px rgba(239,68,68,0.5)' : 'none',
               }}
-              title="Record High-Quality Voice Track"
+              title={cameraActive ? 'Record Video Take (camera + mic)' : 'Record High-Quality Voice Track'}
             >
-              <Mic size={14} className={isRecording ? 'animate-pulse' : ''} />
-              <span>{isRecording ? formatTime(recordingSeconds) : 'REC'}</span>
+              {cameraActive ? (
+                <Camera size={14} className={isRecording ? 'animate-pulse' : ''} />
+              ) : (
+                <Mic size={14} className={isRecording ? 'animate-pulse' : ''} />
+              )}
+              <span>{isRecording ? formatTime(recordingSeconds) : cameraActive ? 'REC VID' : 'REC'}</span>
             </button>
 
             {/* Recorded Audio Download & Captions (Compact, Never Balloons Dock) */}
@@ -3318,7 +3894,7 @@ Control your speed, adjust your font size, and download your voice recording in 
                 </button>
                 <a
                   href={recordedAudioUrl}
-                  download={`creatorskit-take-${Date.now()}.webm`}
+                  download={`creatorskit-take-${Date.now()}.${takeIsVideo && recordedBlob && recordedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`}
                   style={{
                     width: 36,
                     height: 36,
@@ -3811,6 +4387,29 @@ Control your speed, adjust your font size, and download your voice recording in 
                             ))}
                           </div>
                         </div>
+
+                       {/* Eyeline ON/OFF (owner ruling 2026-10-04): the
+                           horizon marker needs a visible yes/no setting */}
+                       <button
+                         onClick={() => setShowEyelineGuide((s) => !s)}
+                         style={{
+                           minHeight: 38,
+                           border: '2px solid #000',
+                           borderRadius: 6,
+                           background: showEyelineGuide ? '#FFE500' : '#ffffff',
+                           color: '#000',
+                           fontFamily: 'monospace',
+                           fontWeight: 900,
+                           fontSize: '0.66rem',
+                           cursor: 'pointer',
+                           display: 'flex',
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           gap: 6,
+                         }}
+                       >
+                         {showEyelineGuide ? 'EYELINE: ON' : 'EYELINE: OFF'}
+                       </button>
 
                         <TactileScrubber
                           label="Eyeline Horizon Height"
