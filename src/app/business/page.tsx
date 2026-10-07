@@ -101,6 +101,33 @@ function BusinessSuiteContent() {
   const [signatureFont, setSignatureFont] = useState('Caveat');
   const [primaryColor, setPrimaryColor] = useState('#162a45');
   const [accentColor, setAccentColor] = useState('#e15b3c');
+  // PAPER view (owner ruling 2026-10-07): print-accurate preview — the
+  // sheet renders at TRUE print size (820px design width, A4-tall) and is
+  // scaled down to fit whatever column it's in (mirrors receipt-printer's
+  // DocumentPaper scaleToFit), so it looks exactly like the printed page,
+  // beautifully contained — even with the ad rail narrowing the column.
+  const [paperMode, setPaperMode] = useState(false);
+  const [paperScale, setPaperScale] = useState(1);
+  const [paperHeight, setPaperHeight] = useState<number | null>(null);
+
+  // Measure the preview column and the unscaled sheet; keep scale synced.
+  useEffect(() => {
+    if (!paperMode) return;
+    const sheet = printAreaRef.current;
+    const col = sheet?.parentElement;
+    if (!sheet || !col) return;
+    const measure = () => {
+      const avail = col.clientWidth;
+      const next = Math.min(1, avail / 820);
+      setPaperScale(next);
+      setPaperHeight(sheet.scrollHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(col);
+    ro.observe(sheet);
+    return () => ro.disconnect();
+  }, [paperMode, activeTab]);
   // ─── BRANDING TOGGLE (Powered by CreatorsKit badge on printed documents) ──
   const [brandingOn, setBrandingOn] = useState(true);
   // ─── COLLAPSIBLE BUILDER SECTIONS ─────────────────────────────────────
@@ -2491,8 +2518,39 @@ function BusinessSuiteContent() {
                   {activeTab === 'invoice' ? 'INVOICE' : activeTab === 'receipt' ? 'RECEIPT' : activeTab === 'agreement' ? 'CONTRACT' : 'LETTERHEAD'}
                 </span>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
-                  Live Document Preview
+                  {paperMode ? 'Paper View — Exactly How It Prints' : 'Live Document Preview'}
                 </span>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    marginLeft: 10,
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  {(['edit', 'paper'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPaperMode(m === 'paper')}
+                      style={{
+                        background: (m === 'paper') === paperMode ? '#000' : '#fff',
+                        color: (m === 'paper') === paperMode ? '#fff' : '#000',
+                        border: 'none',
+                        padding: '5px 10px',
+                        fontSize: '0.62rem',
+                        fontWeight: 900,
+                        fontFamily: 'monospace',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {m === 'edit' ? '✎ Edit' : '▤ Paper'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2577,18 +2635,45 @@ function BusinessSuiteContent() {
               className="ck-noprint"
               style={{ fontSize: '0.62rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', color: '#666', textAlign: 'center', marginBottom: 8, letterSpacing: '0.04em' }}
             >
-              ✎ Tap Any Text In The Document To Edit It Directly — Edits Are Included In Your Export
+              {paperMode
+                ? '▤ Paper View — Margins, Aspect & Line Breaks Match The Print · Switch To Edit To Change Anything'
+                : '✎ Tap Any Text In The Document To Edit It Directly — Edits Are Included In Your Export'}
             </div>
 
             {/* ─── LIVE BRANDED DOCUMENT CANVAS (PRINTABLE + DIRECTLY EDITABLE) ─── */}
             <div
               ref={printAreaRef}
               id="printable-document"
-              contentEditable
+              className={paperMode && activeTab !== 'receipt' ? 'ck-paper-doc' : undefined}
+              contentEditable={!paperMode}
               suppressContentEditableWarning
               spellCheck={false}
               style={
-                activeTab === 'receipt'
+                paperMode && activeTab !== 'receipt'
+                  ? {
+                      // PAPER view: true 820px sheet, A4-tall, scaled to fit
+                      // the column (receipt-printer DocumentPaper mechanics).
+                      background: '#ffffff',
+                      border: '1px solid #e4e4e7',
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                      width: 820,
+                      maxWidth: 'none',
+                      flex: '0 0 auto',
+                      // NOTE: no forced A4 min-height — the sheet is exactly
+                      // as tall as its content (owner: no wasted paper at
+                      // the bottom).
+                      // shrink the LAYOUT box to the scaled width (centered),
+                      // then visually scale from the same center:
+                      marginLeft: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                      marginRight: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                      marginBottom: paperHeight ? -(paperHeight * (1 - paperScale)) : undefined,
+                      transform: paperScale < 1 ? `scale(${paperScale})` : undefined,
+                      transformOrigin: 'top center',
+                      overflowX: 'visible',
+                      padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
+                      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    }
+                  : activeTab === 'receipt'
                   ? {}
                   : {
                     background: '#ffffff',

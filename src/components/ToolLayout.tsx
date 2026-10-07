@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChevronLeft, X, PanelLeftOpen } from "lucide-react";
 
@@ -57,7 +57,19 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
   //  · rail  → the ONE desktop banner (300×600, ≥1600px), tools that opt out
   //    (sync-slate, video-grabber, recipient/gift pages) get none
   //  · mobileAnchor → the ONE phone banner (320×50 sticky bottom, ≤768px)
+  const router = useRouter();
   const adPlan = adPlanFor(pathname);
+
+  // PWA back button (owner ruling 2026-10-07): go to the LAST place the
+  // user was — browser history — not always home. Deep link / fresh app
+  // start with no history → home is the fallback.
+  const handleTopbarBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  };
 
   return (
     <div
@@ -98,8 +110,9 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
           >
             <PanelLeftOpen size={16} />
           </button>
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={handleTopbarBack}
             className="tool-layout-topbar-home"
             style={{
               display: "flex",
@@ -115,11 +128,12 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
               fontWeight: 900,
               fontSize: "0.72rem",
               fontFamily: "monospace",
+              cursor: "pointer",
             }}
           >
             <ChevronLeft size={14} />
-            HOME
-          </Link>
+            BACK
+          </button>
           <div className="tool-layout-title-group">
             <h1 style={{ fontSize: "0.95rem", fontWeight: 900, letterSpacing: "-0.03em", color: "#000", margin: 0 }}>
               {currentTool?.label || "Tool"}

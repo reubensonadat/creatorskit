@@ -11,6 +11,11 @@ import { SITE_BASE_URL } from "@/lib/seo";
 // the tag renders nothing and zero GA requests are made.
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
+// App font (owner ruling 2026-10-07): Raleway variable (with italics) —
+// loaded ahead of the big tool-font bundle so body text settles early.
+const RALEWAY_FONTS_CSS =
+  "https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&display=swap";
+
 const GOOGLE_FONTS_CSS =
   "https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Anonymous+Pro:wght@400;700&family=Anton&family=Archivo+Black&family=Bangers&family=Barlow+Condensed:wght@700;900&family=Bebas+Neue&family=Black+Ops+One&family=Bodoni+Moda:opsz,wght@6..96,700;6..96,900&family=Cabin:wght@700&family=Caveat:wght@700&family=Cinzel:wght@700;900&family=Cormorant+Garamond:wght@700&family=Courier+Prime:wght@700&family=Covered+By+Your+Grace&family=Cutive+Mono&family=DM+Sans:wght@700;900&family=DM+Serif+Display&family=EB+Garamond:wght@700;800&family=Fira+Code:wght@700&family=Fjalla+One&family=IBM+Plex+Mono:wght@700&family=Indie+Flower&family=Inter:wght@800;900&family=Kalam:wght@700&family=Libre+Baskerville:wght@700&family=Lora:wght@700&family=Merriweather:wght@700;900&family=Monoton&family=Montserrat:wght@800;900&family=Newsreader:opsz,wght@6..72,700;6..72,800&family=Nunito+Sans:wght@800;900&family=Old+Standard+TT:wght@700&family=Oswald:wght@700&family=Outfit:wght@800;900&family=Permanent+Marker&family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@800&family=Poppins:wght@800;900&family=Prata&family=Righteous&family=Roboto:wght@900&family=Roboto+Mono:wght@700&family=Rock+Salt&family=Russo+One&family=Shadows+Into+Light&family=Source+Code+Pro:wght@700;900&family=Space+Grotesk:wght@700&family=Space+Mono:wght@700&family=Special+Elite&family=Syne:wght@800&family=Ultra&family=VT323&family=Work+Sans:wght@800;900&display=swap";
 
@@ -74,6 +79,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Fetch the (very large) fonts CSS early, but never block first paint on it */}
         <link rel="preload" as="style" href={GOOGLE_FONTS_CSS} crossOrigin="anonymous" />
+        <AsyncFontLoader href={RALEWAY_FONTS_CSS} />
         <AsyncFontLoader href={GOOGLE_FONTS_CSS} />
       </head>
       <body className="antialiased bg-background text-foreground" style={{ margin: 0 }} suppressHydrationWarning>

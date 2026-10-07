@@ -1,4 +1,3 @@
-
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -1483,7 +1482,11 @@ html {
   text-size-adjust: 100%;
 }
 
+/* App font (owner ruling 2026-10-07): Raleway variable, loaded async ahead
+   of the tool-font bundle (root layout). Monospace UI labels keep their
+   mono stacks — the brutalist system stays intact. */
 body {
+  font-family: 'Raleway', 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1606,6 +1609,19 @@ label,
   .redirect-side {
     display: none !important;
   }
+}
+
+/* ── Business Suite: PAPER view (print-accurate document preview) ──────────
+   Toggled per document (owner ruling 2026-10-07). Mechanism mirrors
+   receipt-printer.tsx DocumentPaper: the sheet renders at TRUE print size
+   (820px design width, A4-tall), then the page scales it to fit the column
+   (transform: scale, origin top center, negative-margin footprint
+   compensation) — so what you see is exactly the printed sheet, beautifully
+   contained at any screen width, ad rail included. */
+.ck-paper-doc {
+  border: none !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 18px 44px -10px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 2px;
 }
 
 @media (max-width: 640px) {
