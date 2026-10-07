@@ -8,6 +8,7 @@ import ToolLayout from "@/components/ToolLayout";
 import AdBlockDetector from "@/components/AdBlockDetector";
 import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
 import { ExternalAdGateHost } from "@/components/ExternalAdGate";
+import { AdGateHost } from "@/components/AdGate";
 import { TOOL_CHROME } from "@/data/tools";
 import { recordVisitForPath } from "@/lib/app-home";
 
@@ -49,6 +50,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <Toaster />
       <PwaInstallPrompt />
       <ExternalAdGateHost />
+      <AdGateHost />
     </>
   );
 }

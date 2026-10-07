@@ -22,6 +22,11 @@ export interface ToolItem {
   icon: string;
   /** hrefs this tool can hand its output to (docs/TOOL_INTEGRATION_PLAN.md §4) */
   handoffs?: string[];
+  /** Reserved: full-bleed canvas editors may opt out of desktop ad rails
+   *  in future. Currently unused — the owner ruling (2026-10-07) is ONE
+   *  right-side rail on ≥1600px viewports for every embedded tool. */
+  fullBleed?: boolean;
+  adRail?: 'single' | 'dual';
   isFlagship?: boolean;
   isExternal?: boolean;
   externalUrl?: string;

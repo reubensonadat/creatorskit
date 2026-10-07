@@ -1,3 +1,4 @@
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -1542,6 +1543,89 @@ label,
 @page {
   size: auto;
   margin: 8mm 10mm;
+}
+
+/* ── Desktop ad rail (ToolLayout) ──────────────────────────────────────────
+   THE one desktop banner: a single right-side 300×600 rail on ≥1440px
+   viewports (per-tool on/off in src/data/ads.ts). One rail only — at
+   1440px the workspace still keeps 1440-52-316 = 1072px of usable width,
+   which is why the gate could drop from 1600 back to 1440 once dual rails
+   were abandoned. Below 1440px (small laptops, tablets, phones) the rail
+   vanishes and the tool owns the whole workspace. */
+.tool-layout-ad-rail {
+  display: none;
+}
+
+@media (min-width: 1440px) {
+  .tool-layout-has-rails .tool-layout-ad-rail {
+    display: flex;
+  }
+
+  /* One right rail → only the right margin is reserved. */
+  .tool-layout-has-rails .tool-layout-main {
+    padding-right: 316px;
+  }
+}
+
+/* ── Mobile anchor ad (ToolLayout, per-tool plan) ─────────────────────────
+   The ONE phone banner: sticky 320×50 at the bottom, phones only (≤768px).
+   Desktops and tablets never see it; tools can opt out via src/data/ads.ts.
+   Rendered under the consent bar (lower z-index) until it is answered. */
+.ck-anchor-ad {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .ck-anchor-ad {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 50px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #ffffff;
+    border-top: 2px solid #000000;
+    z-index: 90;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ── /redirect page — mobile fixes ────────────────────────────────────────
+   The 3-column ad stage (220px 1fr 220px) is desktop-only; below 900px the
+   skyscraper rails hide and the stage stacks to one column. Small phones get
+   tighter paddings so the interstitial card never overflows sideways. */
+@media (max-width: 900px) {
+  .redirect-stage {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .redirect-side {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .redirect-page {
+    padding: 14px 12px 48px !important;
+  }
+
+  .redirect-card {
+    padding: 26px 16px !important;
+    gap: 14px !important;
+  }
+
+  .redirect-card h2 {
+    font-size: 1.25rem !important;
+  }
+
+  .redirect-leaderboard {
+    min-height: 80px !important;
+    padding: 10px !important;
+  }
 }
 
 @media print {

@@ -15,6 +15,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import {
   LayoutGrid,
@@ -127,13 +128,20 @@ export default function SiteNav({
 }: SiteNavProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [dropPos, setDropPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The menu is portaled to <body> (see below), so the outside-click
+      // check must cover BOTH the pill root and the portaled menu.
+      const inside = rootRef.current?.contains(t) || menuRef.current?.contains(t);
+      if (!inside) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -150,6 +158,29 @@ export default function SiteNav({
       window.removeEventListener('popstate', onPopState);
     };
   }, [open]);
+
+  // Portal positioning — anchored to the pill's live viewport rect. Recomputed
+  // on open + on resize/scroll so the menu stays glued while the page moves.
+  useEffect(() => {
+    if (!open) return;
+    const position = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.min(320, window.innerWidth - 32);
+      const left =
+        align === 'right'
+          ? Math.max(16, Math.min(r.right - width, window.innerWidth - width - 16))
+          : Math.min(r.left, window.innerWidth - width - 16);
+      setDropPos({ top: r.bottom + 6, left });
+    };
+    position();
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+    };
+  }, [open, align]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -171,6 +202,7 @@ export default function SiteNav({
   return (
     <div ref={rootRef} style={{ position: 'relative', zIndex: 100 }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         aria-label="Open tools menu"
         aria-expanded={open}
@@ -202,26 +234,31 @@ export default function SiteNav({
         />
       </button>
 
-      {open && (
-        <div
-          className="sitenav-drop"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            ...(align === 'right' ? { right: 0, left: 'auto' } : { left: 0, right: 'auto' }),
-            width: 320,
-            maxWidth: 'calc(100vw - 32px)',
-            maxHeight: 'min(480px, calc(100vh - 120px))',
-            display: 'flex',
-            flexDirection: 'column',
-            background: isDark ? '#141417' : '#ffffff',
-            border: isDark ? '1px solid #27272a' : '2px solid #000000',
-            borderRadius: 6,
-            boxShadow: isDark ? '0 12px 36px rgba(0,0,0,0.85)' : '4px 4px 0 #000000',
-            zIndex: 150,
-            overflow: 'hidden',
-          }}
-        >
+      {open &&
+        dropPos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="sitenav-drop"
+            style={{
+              // Portaled to <body> with fixed coords — no ancestor stacking
+              // context can bury the menu behind page UI ever again.
+              position: 'fixed',
+              top: dropPos.top,
+              left: dropPos.left,
+              width: 320,
+              maxWidth: 'calc(100vw - 32px)',
+              maxHeight: 'min(480px, calc(100vh - 120px))',
+              display: 'flex',
+              flexDirection: 'column',
+              background: isDark ? '#141417' : '#ffffff',
+              border: isDark ? '1px solid #27272a' : '2px solid #000000',
+              borderRadius: 6,
+              boxShadow: isDark ? '0 12px 36px rgba(0,0,0,0.85)' : '4px 4px 0 #000000',
+              zIndex: 2147483000,
+              overflow: 'hidden',
+            }}
+          >
           {/* Search */}
           <div
             style={{
@@ -385,8 +422,9 @@ export default function SiteNav({
             <span>All tools home</span>
             <span style={{ color: '#71717a' }}>CK.win</span>
           </Link>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

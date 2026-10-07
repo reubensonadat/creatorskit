@@ -56,7 +56,7 @@ function RedirectInterstitialContent() {
   const progressPercent = secondsLeft !== null ? ((5 - secondsLeft) / 5) * 100 : 100;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F4F4F5', padding: '24px 16px 60px' }}>
+    <div className="redirect-page" style={{ minHeight: '100vh', background: '#F4F4F5', padding: '24px 16px 60px' }}>
       {/* Top Header Bar */}
       <div style={{ maxWidth: 1280, margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link href="/" className="brutalist-button" style={{ padding: '6px 14px', fontSize: '0.78rem', textDecoration: 'none' }}>
@@ -81,6 +81,7 @@ function RedirectInterstitialContent() {
       <div style={{ maxWidth: 1280, margin: '0 auto 20px' }}>
         <div
           id="ad-sector-top"
+          className="redirect-leaderboard"
           style={{
             width: '100%',
             minHeight: 110,
@@ -106,6 +107,7 @@ function RedirectInterstitialContent() {
 
       {/* 3-COLUMN AD & REDIRECT STAGE */}
       <div
+        className="redirect-stage"
         style={{
           maxWidth: 1280,
           margin: '0 auto',
@@ -118,6 +120,7 @@ function RedirectInterstitialContent() {
         {/* LEFT SKYSCRAPER AD SECTOR (Google Adsense) */}
         <div
           id="ad-sector-left"
+          className="redirect-side"
           style={{
             minHeight: 480,
             background: '#ffffff',
@@ -141,7 +144,7 @@ function RedirectInterstitialContent() {
 
         {/* CENTER INTERSTITIAL BOX */}
         <div
-          className="brutalist-card"
+          className="brutalist-card redirect-card"
           style={{
             padding: '40px 32px',
             background: '#ffffff',
@@ -260,6 +263,7 @@ function RedirectInterstitialContent() {
         {/* RIGHT SKYSCRAPER AD SECTOR (Google Adsense) */}
         <div
           id="ad-sector-right"
+          className="redirect-side"
           style={{
             minHeight: 480,
             background: '#ffffff',
@@ -286,6 +290,7 @@ function RedirectInterstitialContent() {
       <div style={{ maxWidth: 1280, margin: '20px auto 0' }}>
         <div
           id="ad-sector-bottom"
+          className="redirect-leaderboard"
           style={{
             width: '100%',
             minHeight: 110,

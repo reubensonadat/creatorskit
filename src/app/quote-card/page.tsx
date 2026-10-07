@@ -23,6 +23,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { REMIX_ICONS_LIST, type IconDefinition } from '@/lib/remix-icons';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
+import { gateAction } from '@/components/AdGate';
 import { standardizeSourceImage } from '@/lib/background-removal';
 
 import { putHandoffImage, takeHandoffImage } from '@/lib/tool-handoff';
@@ -1983,7 +1984,12 @@ export default function QuoteCardPage() {
     };
 
     // --- export --------------------------------------------------------------
-    const handleExport = async (format: 'png' | 'jpg', scale: 1 | 2) => {
+    // Download gated behind a sponsor pause (owner ruling 2026-10-07).
+    const handleExport = (format: 'png' | 'jpg', scale: 1 | 2) =>
+        gateAction('/quote-card', 'Download', 'download', 0, () => {
+            void handleExportUngated(format, scale);
+        });
+    const handleExportUngated = async (format: 'png' | 'jpg', scale: 1 | 2) => {
         if ((!bgImage && !colorCardStarted) || exporting) return;
         setExporting(true);
         setExportNote('Preparing…');
@@ -2126,7 +2132,12 @@ export default function QuoteCardPage() {
     };
 
     /** Deck export: render every card clean, bundle a ZIP (lazy jszip per §7). */
-    const handleExportDeck = async () => {
+    // Deck export gated behind the same sponsor pause.
+    const handleExportDeck = () =>
+        gateAction('/quote-card', 'Download deck', 'download', 0, () => {
+            void handleExportDeckUngated();
+        });
+    const handleExportDeckUngated = async () => {
         if (exporting || sendingHandoff || deckExporting) return;
         const deck = deckWithWorkingState();
         if (deck.length < 2) return; // single card → the plain PNG buttons cover it

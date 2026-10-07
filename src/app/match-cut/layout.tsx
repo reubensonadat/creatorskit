@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
+import ToolSeoBlock, { MATCH_CUT_SEO } from '@/components/ToolSeoBlock';
 
 export const metadata: Metadata = toolMetadata({
     title: 'Text Match CUT — Word-Anchor Kinetic Typography Transitions | CreatorsKit',
@@ -77,6 +78,10 @@ export default function MatchCutLayout({ children }: { children: React.ReactNode
                 <script key={i} type="application/ld+json" dangerouslySetInnerHTML={jsonLd(ld)} />
             ))}
             {children}
+            {/* Crawlable long-form content below the tool UI — the answer to
+                "separate description pages?": depth on the REAL url, not thin
+                duplicate routes. Pattern for every flagship tool. */}
+            <ToolSeoBlock content={MATCH_CUT_SEO} />
         </>
     );
 }

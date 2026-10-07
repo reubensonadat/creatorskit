@@ -44,6 +44,8 @@ import {
 
 import { saveState, loadState, clearTool } from '@/lib/local-memory';
 
+import { gateAction } from '@/components/AdGate';
+
 export type TakeStatus = 'GOOD' | 'HOLD' | 'NG' | 'FALSE_START' | 'DIRECTOR_PICK';
 
 export interface TakeRecord {
@@ -652,7 +654,11 @@ export default function ProductionSyncSlatePage() {
   }, [triggerClap, startCountdown, takes]);
 
   // Export DaVinci / Premiere EDL Timeline Markers
-  const exportEDL = () => {
+  // Log export gated behind a sponsor pause — the ONLY ad surface on this
+  // pro tool (owner ruling: no banners anywhere near the working slate).
+  const exportEDL = () =>
+    gateAction('/sync-slate', 'Export EDL', 'download', 0, exportEDLUngated);
+  const exportEDLUngated = () => {
     let edlContent = `TITLE: ${production} SHOT LOG\nFCM: NON-DROP FRAME\n\n`;
     takes.forEach((t, i) => {
       const eventNum = String(i + 1).padStart(3, '0');
@@ -670,8 +676,10 @@ export default function ProductionSyncSlatePage() {
     URL.revokeObjectURL(url);
   };
 
-  // Export CSV
-  const exportCSV = () => {
+  // Export CSV (same gate)
+  const exportCSV = () =>
+    gateAction('/sync-slate', 'Export CSV', 'download', 0, exportCSVUngated);
+  const exportCSVUngated = () => {
     const headers = ['Take #', 'Scene', 'Roll', 'Timecode', 'Timestamp', 'Status', 'Tail Slate', 'Notes', 'Production', 'Director', 'DP', 'FPS'];
     const rows = takes.map((t) => [
       t.takeNumber,

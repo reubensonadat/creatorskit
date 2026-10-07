@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import NextStepRow from '@/components/NextStepRow';
+import { gateAction } from '@/components/AdGate';
 import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
@@ -690,7 +691,11 @@ export default function TextHighlighterPage() {
   };
 
   // Single Frame PNG Download
-  const handleDownloadSingleFrame = () => {
+  // Downloads gated behind a sponsor pause (owner correction 2026-10-07:
+  // generate stays free, the export moment carries the ad).
+  const handleDownloadSingleFrame = () =>
+    gateAction('/text-highlighter', 'Download frame', 'download', 0, handleDownloadSingleFrameUngated);
+  const handleDownloadSingleFrameUngated = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
@@ -702,7 +707,11 @@ export default function TextHighlighterPage() {
   // Export High-Definition Video via deterministic WebCodecs encoding.
   // Renders each frame exactly once with explicit timestamps — constant frame
   // rate, zero dropped frames, High-profile H.264 + offline-rendered AAC audio.
-  const handleExportVideo = async () => {
+  const handleExportVideo = () =>
+    gateAction('/text-highlighter', 'Download video', 'download', 0, () => {
+      void handleExportVideoUngated();
+    });
+  const handleExportVideoUngated = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 

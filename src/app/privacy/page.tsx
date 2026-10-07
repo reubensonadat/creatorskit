@@ -94,15 +94,17 @@ const SECTIONS: LegalSection[] = [
         id: '07',
         title: 'Analytics & measurement',
         items: [
-            { label: 'Count pages, never people', text: 'If site analytics is enabled, it is aggregate, cookie-free page counting only: how many times a page was opened, from roughly where, on what kind of device. No cookies, no individual visitor identities, no cross-site profiles, no replay recording.' },
-            { label: 'Why even this is minimal', text: 'We need rough numbers to know which tools people find useful — that is all. Our operating principle, from the business plan this product is built on: count events, never people.' },
+            { label: 'Your choice comes first', text: 'The first time you visit, a small banner asks you to Accept or Deny analytics and advertising cookies. Until you Accept, Google Analytics runs in consent-denied mode: it stores no cookies and sets no identifiers. Deny, and it stays that way — every tool works identically either way. Your choice is remembered in your browser (localStorage key "ck_consent_v1") and you can change it anytime by clearing site data.' },
+            { label: 'Google Analytics 4 (after you Accept)', text: 'If you accept, Google Analytics 4 counts how often pages and tools are opened, from roughly where and on what kind of device, using Google’s cookies (such as _ga) under Google’s privacy terms. You can review or reset them in your browser and in Google’s activity controls. We enable IP anonymization and do not use GA to build advertising profiles.' },
+            { label: 'How many said yes or no', text: 'To know the accept/deny ratio, GA4 receives a cookieless consent signal when the banner is answered — including for people who deny. That signal carries no identifier and stores nothing on your device; it exists purely so we can see, in aggregate, how visitors feel about tracking.' },
+            { label: 'Count events, never people', text: 'Analytics answers one question: which tools do people find useful. No replay recording, no session recording, no cross-site profiles, no personal data exports. Our operating principle, from the business plan this product is built on: count events, never people.' },
         ],
     },
     {
         id: '08',
         title: 'Cookies and local storage',
         items: [
-            { label: 'No cookies of our own', text: 'We do not use cookies to identify, remember, or follow you across visits or sites. There is no "accept cookies" wall because there are no cookies to accept.' },
+            { label: 'No cookies of our own', text: 'We set no cookies ourselves — none. The only cookies ever present come from Google Analytics and ad networks, and only if you accepted them in the banner. Deny and your browser stays cookie-free from us.' },
             { label: 'Functional storage only', text: 'The site’s storage (IndexedDB + localStorage, described in section 3) is strictly functional — remembering your work and settings between visits. It is readable by you (via /your-data) and removable at any time from your browser settings.' },
             { label: 'Do Not Track', text: 'Because we do not track you in the first place, Do Not Track and Global Privacy Control signals are respected by default — there is nothing on our side to switch off.' },
         ],

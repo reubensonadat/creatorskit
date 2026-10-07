@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import { NATIVE_TOOLS, CURATED_DIRECTORY } from '@/data/tools';
 import { hapticTap } from '@/lib/haptics';
+import AdBanner from '@/components/AdBanner';
 
 export default function Home() {
   return (
@@ -247,7 +248,7 @@ export default function Home() {
               gap: 8,
               padding: "13px 22px",
               background: "#000000",
-              color: "#FFE500",
+              color: "#ffffff",
               border: "2px solid #000000",
               borderRadius: "4px",
               fontWeight: 900,
@@ -659,6 +660,12 @@ export default function Home() {
       </div>
 
       {/* ─── SITE FOOTER (legal + data transparency) ─────────────────────── */}
+      {/* Below-fold leaderboard — the one homepage ad slot (owner ruling:
+          clean first impression, monetize the exit scroll). */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(16px, 5vw, 24px)" }}>
+        <AdBanner slot="leaderboard" />
+      </div>
+
       <footer style={{ maxWidth: 1200, margin: "0 auto", padding: "28px clamp(16px, 5vw, 24px) 40px" }}>
         <div style={{ height: 2, background: "#000000", marginBottom: 22 }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>

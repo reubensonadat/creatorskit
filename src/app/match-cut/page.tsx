@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import NextStepRow from '@/components/NextStepRow';
+import { gateAction } from '@/components/AdGate';
 import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
 import {
   Play,
@@ -574,7 +575,11 @@ export default function TextMatchCutStudioPage() {
   };
 
   // Download Single Still Frame PNG
-  const handleDownloadSingleFrame = () => {
+  // Downloads gated behind a sponsor pause (owner correction 2026-10-07:
+  // generate stays free, the export/download moment carries the ad).
+  const handleDownloadSingleFrame = () =>
+    gateAction('/match-cut', 'Download frame', 'download', 0, handleDownloadSingleFrameUngated);
+  const handleDownloadSingleFrameUngated = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
@@ -583,8 +588,12 @@ export default function TextMatchCutStudioPage() {
     link.click();
   };
 
-  // Export PNG Sequence ZIP
-  const handleExportZip = async () => {
+  // Export PNG Sequence ZIP (gated)
+  const handleExportZip = () =>
+    gateAction('/match-cut', 'Download PNG sequence', 'download', 0, () => {
+      void handleExportZipUngated();
+    });
+  const handleExportZipUngated = async () => {
     setIsExporting(true);
     setExportProgress('Rendering PNG sequence...');
     try {
@@ -625,7 +634,11 @@ export default function TextMatchCutStudioPage() {
   // Every frame is rendered exactly once with an explicit timestamp — no
   // real-time MediaRecorder capture, so no dropped frames, no stutter, and a
   // constant frame rate at High-profile H.264 quality (with offline AAC audio).
-  const handleExportVideo = async () => {
+  const handleExportVideo = () =>
+    gateAction('/match-cut', 'Download video', 'download', 0, () => {
+      void handleExportVideoUngated();
+    });
+  const handleExportVideoUngated = async () => {
     if (cuts.length === 0) return;
     setIsExporting(true);
     setIsPlaying(false);

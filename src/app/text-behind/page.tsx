@@ -28,6 +28,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { REMIX_ICONS_LIST, type IconDefinition } from '@/lib/remix-icons';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { TactileScrubber } from '@/components/tactile-scrubber';
+import { gateAction } from '@/components/AdGate';
 import {
     removeBackgroundBrowser,
     standardizeSourceImage,
@@ -1731,7 +1732,13 @@ export default function TextBehindPage() {
     };
 
     // --- export --------------------------------------------------------------
-    const handleExport = async (format: 'png' | 'jpg', scale: 1 | 2) => {
+    // Download is gated behind a sponsor pause (owner ruling 2026-10-07) —
+    // cooldown 0 here because exports are rare, deliberate actions.
+    const handleExport = (format: 'png' | 'jpg', scale: 1 | 2) =>
+        gateAction('/text-behind', 'Download', 'download', 0, () => {
+            void handleExportUngated(format, scale);
+        });
+    const handleExportUngated = async (format: 'png' | 'jpg', scale: 1 | 2) => {
         if (!bgImage || exporting) return;
         setExporting(true);
         setExportNote('Preparing…');
