@@ -88,7 +88,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
           zIndex: 50,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, marginRight: 8, overflow: "hidden" }}>
           {/* Mobile sidebar toggle */}
           <button
             className="tool-layout-mobile-sidebar-toggle"
@@ -118,7 +118,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
               display: "flex",
               alignItems: "center",
               gap: 4,
-              padding: "6px 12px",
+              padding: "6px 10px",
               border: "2px solid #000",
               background: "#fff",
               color: "#000",
@@ -134,11 +134,36 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             <ChevronLeft size={14} />
             BACK
           </button>
-          <div className="tool-layout-title-group">
-            <h1 style={{ fontSize: "0.95rem", fontWeight: 900, letterSpacing: "-0.03em", color: "#000", margin: 0 }}>
+          <div className="tool-layout-title-group" style={{ minWidth: 0, overflow: "hidden", flex: 1 }}>
+            <h1
+              title={currentTool?.label || "Tool"}
+              style={{
+                fontSize: "0.92rem",
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                color: "#000",
+                margin: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "block",
+              }}
+            >
               {currentTool?.label || "Tool"}
             </h1>
-            <div style={{ fontSize: "0.6rem", fontFamily: "monospace", fontWeight: 700, color: "#888", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <div
+              style={{
+                fontSize: "0.58rem",
+                fontFamily: "monospace",
+                fontWeight: 700,
+                color: "#888",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {currentTool?.hint}
             </div>
           </div>

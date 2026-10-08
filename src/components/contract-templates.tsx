@@ -69,7 +69,13 @@ export interface ContractData {
 
   // Signatures
   serviceProviderSignName?: string;
+  creatorSignDrawing?: string;
   clientSignName?: string;
+  clientSignTitle?: string;
+  clientSignDate?: string;
+  clientSignDrawing?: string;
+  isSigned?: boolean;
+  signedAuditId?: string;
 
   // Typography & Styling
   headingFont?: string;
@@ -82,6 +88,262 @@ export interface ContractData {
 interface ContractTemplateProps {
   data: ContractData;
   showBranding?: boolean;
+}
+
+export function DocumentLockedIcon({
+  size = 20,
+  color = 'currentColor',
+  style,
+  className,
+}: {
+  size?: number;
+  color?: string;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill={color}
+      viewBox="0 0 256 256"
+      className={className}
+      style={{ flexShrink: 0, ...style }}
+    >
+      <path d="M120,176h-8v-4a28,28,0,0,0-56,0v4H48a8,8,0,0,0-8,8v40a8,8,0,0,0,8,8h72a8,8,0,0,0,8-8V184A8,8,0,0,0,120,176Zm-48-4a12,12,0,0,1,24,0v4H72Zm40,44H56V192h56ZM213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40v88a8,8,0,0,0,16,0V40h88V88a8,8,0,0,0,8,8h48V216H160a8,8,0,0,0,0,16h40a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160Z" />
+    </svg>
+  );
+}
+
+export function DocumentUnlockedIcon({
+  size = 20,
+  color = 'currentColor',
+  style,
+  className,
+}: {
+  size?: number;
+  color?: string;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill={color}
+      viewBox="0 0 256 256"
+      className={className}
+      style={{ flexShrink: 0, ...style }}
+    >
+      <path d="M120,176h-8v-4a28,28,0,0,0-56,0,8,8,0,0,0,16,0,12,12,0,0,1,24,0v4H48a8,8,0,0,0-8,8v40a8,8,0,0,0,8,8h72a8,8,0,0,0,8-8V184A8,8,0,0,0,120,176Zm-8,40H56V192h56ZM213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40v88a8,8,0,0,0,16,0V40h88V88a8,8,0,0,0,8,8h48V216H160a8,8,0,0,0,0,16h40a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160Z" />
+    </svg>
+  );
+}
+
+function ClientSignatureSpace({
+  data,
+  borderStyle = '1.5px solid #000',
+}: {
+  data: ContractData;
+  borderStyle?: string;
+}) {
+  const isDigitallySigned = Boolean(data.isSigned || data.clientSignName || data.clientSignDrawing);
+  const signatureFont = data.signatureFont || 'Caveat';
+
+  useEffect(() => {
+    if (isDigitallySigned && signatureFont) {
+      injectInvoiceGoogleFont(signatureFont);
+    }
+  }, [isDigitallySigned, signatureFont]);
+
+  return (
+    <div
+      style={{
+        minHeight: 64,
+        borderBottom: borderStyle,
+        marginBottom: 6,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        position: 'relative',
+        paddingBottom: 4,
+      }}
+    >
+      {isDigitallySigned ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {data.clientSignDrawing ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={data.clientSignDrawing}
+              alt="Client digital signature"
+              style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain', alignSelf: 'flex-start' }}
+            />
+          ) : (
+            <span
+              style={{
+                fontFamily: signatureFont,
+                fontSize: '26px',
+                color: '#1e3a8a',
+                lineHeight: 1.1,
+                transform: 'rotate(-2deg)',
+                display: 'inline-block',
+                fontWeight: 600,
+              }}
+            >
+              {data.clientSignName || data.clientContact || data.clientName}
+            </span>
+          )}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: '8px',
+              fontFamily: 'monospace',
+              fontWeight: 800,
+              color: '#047857',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              padding: '2px 6px',
+              borderRadius: 3,
+              width: 'fit-content',
+              marginTop: 3,
+            }}
+          >
+            <DocumentLockedIcon size={12} color="#047857" />
+            <span>LOCKED &amp; EXECUTED eSIGNATURE</span>
+            <span style={{ color: '#065f46' }}>· {data.signedAuditId || 'CK-ESIGN-SECURE'}</span>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: '8px',
+            fontFamily: 'monospace',
+            fontWeight: 700,
+            color: '#6b7280',
+            background: '#f9fafb',
+            border: '1px dashed #d1d5db',
+            padding: '3px 6px',
+            borderRadius: 3,
+            width: 'fit-content',
+            marginBottom: 2,
+          }}
+        >
+          <DocumentUnlockedIcon size={11} color="#9ca3af" />
+          <span>UNLOCKED &bull; AWAITING RECEIVER SIGNATURE</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreatorSignatureSpace({
+  data,
+  borderStyle = '1.5px solid #000',
+}: {
+  data: ContractData;
+  borderStyle?: string;
+}) {
+  const signatureFont = data.signatureFont || 'Caveat';
+  const signName = data.serviceProviderSignName;
+  const isSecondPartySigned = Boolean(data.isSigned || data.clientSignName || data.clientSignDrawing);
+  const isFirstPartySigned = Boolean(data.creatorSignDrawing || signName);
+
+  useEffect(() => {
+    if (signName && signatureFont) {
+      injectInvoiceGoogleFont(signatureFont);
+    }
+  }, [signName, signatureFont]);
+
+  return (
+    <div
+      style={{
+        minHeight: 64,
+        borderBottom: borderStyle,
+        marginBottom: 6,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        position: 'relative',
+        paddingBottom: 4,
+      }}
+    >
+      {data.creatorSignDrawing ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={data.creatorSignDrawing}
+          alt="Service Provider digital signature"
+          style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain', alignSelf: 'flex-start' }}
+        />
+      ) : signName ? (
+        <span
+          style={{
+            fontFamily: signatureFont,
+            fontSize: '26px',
+            color: '#111827',
+            lineHeight: 1,
+            transform: 'rotate(-1.5deg)',
+            display: 'inline-block',
+            fontWeight: 600,
+          }}
+        >
+          {signName}
+        </span>
+      ) : null}
+
+      {isFirstPartySigned && (
+        <div style={{ marginTop: 3 }}>
+          {isSecondPartySigned ? (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '8px',
+                fontFamily: 'monospace',
+                fontWeight: 800,
+                color: '#047857',
+                background: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                padding: '2px 6px',
+                borderRadius: 3,
+                width: 'fit-content',
+              }}
+            >
+              <DocumentLockedIcon size={12} color="#047857" />
+              <span>FIRST PARTY EXECUTED &bull; LOCKED</span>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '8px',
+                fontFamily: 'monospace',
+                fontWeight: 800,
+                color: '#b45309',
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                padding: '2px 6px',
+                borderRadius: 3,
+                width: 'fit-content',
+              }}
+            >
+              <DocumentUnlockedIcon size={12} color="#d97706" />
+              <span>FIRST PARTY SIGNED &bull; UNLOCKED (PENDING RECEIVER)</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* =========================================================================
@@ -333,14 +595,7 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
             <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#374151' }}>
               Service Provider Signature:
             </div>
-            {/* Fixed-height blank signature space with solid line for manual pen signing */}
-            <div
-              style={{
-                height: 64,
-                borderBottom: '1.5px solid #000',
-                marginBottom: 6,
-              }}
-            />
+            <CreatorSignatureSpace data={data} borderStyle="1.5px solid #000" />
             <div style={{ fontWeight: 700, fontSize: '10.5px' }}>
               Name: {data.creatorName}
             </div>
@@ -357,22 +612,15 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
             <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#374151' }}>
               Client Signature:
             </div>
-            {/* Fixed-height blank signature space with solid line for manual pen signing */}
-            <div
-              style={{
-                height: 64,
-                borderBottom: '1.5px solid #000',
-                marginBottom: 6,
-              }}
-            />
+            <ClientSignatureSpace data={data} borderStyle="1.5px solid #000" />
             <div style={{ fontWeight: 700, fontSize: '10.5px' }}>
-              Name: {data.clientContact || data.clientName}
+              Name: {data.clientSignName || data.clientContact || data.clientName}
             </div>
             <div style={{ fontSize: '9.5px', color: '#6b7280' }}>
-              Title: Authorized Representative
+              Title: {data.clientSignTitle || 'Authorized Representative'}
             </div>
             <div style={{ fontSize: '9.5px', color: '#6b7280' }}>
-              Date: _______________
+              Date: {data.clientSignDate || '_______________'}
             </div>
           </div>
         </div>
@@ -635,14 +883,7 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
             <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#111827' }}>
               PARTY A SIGNATURE:
             </div>
-            {/* Fixed-height blank signature space with solid line for manual pen signing */}
-            <div
-              style={{
-                height: 64,
-                borderBottom: '1.5px solid #111827',
-                marginBottom: 6,
-              }}
-            />
+            <CreatorSignatureSpace data={data} borderStyle="1.5px solid #111827" />
             <div style={{ fontWeight: 700, fontSize: '10.5px' }}>
               {data.creatorName}
             </div>
@@ -656,19 +897,15 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
             <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#111827' }}>
               PARTY B SIGNATURE:
             </div>
-            {/* Fixed-height blank signature space with solid line for manual pen signing */}
-            <div
-              style={{
-                height: 64,
-                borderBottom: '1.5px solid #111827',
-                marginBottom: 6,
-              }}
-            />
+            <ClientSignatureSpace data={data} borderStyle="1.5px solid #111827" />
             <div style={{ fontWeight: 700, fontSize: '10.5px' }}>
-              {data.clientContact || data.clientName}
+              {data.clientSignName || data.clientContact || data.clientName}
             </div>
             <div style={{ fontSize: '9.5px', color: '#6b7280' }}>
-              Date: _______________
+              Title: {data.clientSignTitle || 'Authorized Representative'}
+            </div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>
+              Date: {data.clientSignDate || '_______________'}
             </div>
           </div>
         </div>
@@ -832,15 +1069,7 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
           <div style={{ fontSize: '9.5px', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
             FOR CREATOR:
           </div>
-          {/* Fixed-height blank signature space with solid line for manual pen signing */}
-          <div
-            style={{
-              height: 64,
-              borderBottom: '1.5px solid #000',
-              marginTop: 4,
-              marginBottom: 6,
-            }}
-          />
+          <CreatorSignatureSpace data={data} borderStyle="1.5px solid #000" />
           <div style={{ fontWeight: 800 }}>{data.creatorName}</div>
           <div style={{ fontSize: '9.5px', color: '#666' }}>Date: {data.effectiveDate}</div>
         </div>
@@ -849,19 +1078,16 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
           <div style={{ fontSize: '9.5px', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
             FOR BRAND / AGENCY:
           </div>
-          {/* Fixed-height blank signature space with solid line for manual pen signing */}
-          <div
-            style={{
-              height: 64,
-              borderBottom: '1.5px solid #000',
-              marginTop: 4,
-              marginBottom: 6,
-            }}
-          />
+          <ClientSignatureSpace data={data} borderStyle="1.5px solid #000" />
           <div style={{ fontWeight: 800 }}>
-            {data.clientContact ? `${data.clientContact} (${data.clientName})` : data.clientName}
+            {data.clientSignName || (data.clientContact ? `${data.clientContact} (${data.clientName})` : data.clientName)}
           </div>
-          <div style={{ fontSize: '9.5px', color: '#666' }}>Date: _______________</div>
+          <div style={{ fontSize: '9.5px', color: '#666' }}>
+            {data.clientSignTitle ? `Title: ${data.clientSignTitle}` : 'Authorized Representative'}
+          </div>
+          <div style={{ fontSize: '9.5px', color: '#666' }}>
+            Date: {data.clientSignDate || '_______________'}
+          </div>
         </div>
       </div>
 
@@ -983,7 +1209,8 @@ export function FullLegalDocumentAgreement({ data, showBranding = true }: Contra
       {/* All Document Sections */}
       {sections.map((section, sIdx) => {
         const isRepeatedTitle = section.heading.trim().toUpperCase() === contractTitle.trim().toUpperCase();
-        if (isRepeatedTitle && sIdx === 0) return null;
+        if (isRepeatedTitle && sIdx === 0 && (!section.lines || section.lines.length === 0)) return null;
+        const displayHeading = isRepeatedTitle && sIdx === 0 ? 'RECITALS & PREAMBLE' : section.heading;
 
         return (
           <div
@@ -994,7 +1221,7 @@ export function FullLegalDocumentAgreement({ data, showBranding = true }: Contra
               breakInside: 'avoid',
             }}
           >
-            {section.heading && (
+            {displayHeading && (
               <div
                 style={{
                   display: 'flex',
@@ -1015,7 +1242,7 @@ export function FullLegalDocumentAgreement({ data, showBranding = true }: Contra
                     color: '#000',
                   }}
                 >
-                  {section.heading}
+                  {displayHeading}
                 </div>
               </div>
             )}
@@ -1084,13 +1311,7 @@ export function FullLegalDocumentAgreement({ data, showBranding = true }: Contra
             <div style={{ fontSize: '9.5px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#000' }}>
               PARTY A: FIRST PARTY / OWNER
             </div>
-            <div
-              style={{
-                height: 54,
-                borderBottom: '1.5px solid #000',
-                marginBottom: 8,
-              }}
-            />
+            <CreatorSignatureSpace data={data} borderStyle="1.5px solid #000" />
             <div style={{ fontWeight: 800, fontSize: '10.5px' }}>{data.creatorName}</div>
             <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Title: Authorized Representative / Owner</div>
             <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Date: {data.effectiveDate}</div>
@@ -1101,16 +1322,10 @@ export function FullLegalDocumentAgreement({ data, showBranding = true }: Contra
             <div style={{ fontSize: '9.5px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#000' }}>
               PARTY B: SECOND PARTY / OPERATOR
             </div>
-            <div
-              style={{
-                height: 54,
-                borderBottom: '1.5px solid #000',
-                marginBottom: 8,
-              }}
-            />
-            <div style={{ fontWeight: 800, fontSize: '10.5px' }}>{data.clientContact || data.clientName}</div>
-            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Title: Authorized Operator / Partner</div>
-            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Date: _______________</div>
+            <ClientSignatureSpace data={data} borderStyle="1.5px solid #000" />
+            <div style={{ fontWeight: 800, fontSize: '10.5px' }}>{data.clientSignName || data.clientContact || data.clientName}</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Title: {data.clientSignTitle || 'Authorized Operator / Partner'}</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Date: {data.clientSignDate || '_______________'}</div>
           </div>
         </div>
       </div>

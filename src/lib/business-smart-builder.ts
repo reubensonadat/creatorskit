@@ -318,11 +318,22 @@ export function reconstructDocumentFromText(rawText: string): ParsedDocumentData
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const isHeading = (
-      (line === line.toUpperCase() && line.length > 3 && line.length < 80 && !line.includes(':') && !line.startsWith('•') && !/^\d+[\s,.]/.test(line)) ||
-      /^(?:section|article|[0-9]+\.)\s+[A-Z]/i.test(line)
+      // Uppercase heading line (not a short code or single word)
+      (line === line.toUpperCase() && line.length >= 3 && line.length <= 80 && !line.includes(':') && !line.startsWith('•') && !/^\d+[\s,.]/.test(line)) ||
+      // Section / Article / Clause / Schedule prefix
+      /^(?:section|article|clause|schedule|exhibit|appendix)\s+([0-9ivxlcdm]+|\w+)[:.\s\-]/i.test(line) ||
+      // Numbered header: "1. Scope", "2. Payment Terms"
+      /^[0-9]+\.\s+[A-Z][a-zA-Z\s\-_/&]{2,60}$/.test(line) ||
+      // Roman numerals: "I. Purpose", "II. Term"
+      /^[IVXLCDM]+\.\s+[A-Z][a-zA-Z\s\-_/&]{2,60}$/.test(line) ||
+      // Standard legal and commercial headings
+      /^(?:recitals|definitions|scope\s+of\s+work|deliverables|compensation|payment\s+terms|intellectual\s+property|confidentiality|term\s+and\s+termination|termination|governing\s+law|jurisdiction|representations\s+and\s+warranties|indemnification|limitation\s+of\s+liability|miscellaneous|execution\s+and\s+signatures|signatures)[:.\s]*$/i.test(line)
     );
 
-    if (isHeading && currentSection.lines.length > 0) {
+    if (isHeading && (currentSection.heading || currentSection.lines.length > 0)) {
+      if (!currentSection.heading && currentSection.lines.length > 0) {
+        currentSection.heading = 'PREAMBLE & RECITALS';
+      }
       sections.push({ ...currentSection });
       currentSection = { heading: line, lines: [] };
     } else if (isHeading && !currentSection.heading) {
@@ -332,20 +343,25 @@ export function reconstructDocumentFromText(rawText: string): ParsedDocumentData
     }
   }
   if (currentSection.heading || currentSection.lines.length > 0) {
+    if (!currentSection.heading && sections.length > 0) {
+      currentSection.heading = 'GENERAL TERMS';
+    }
     sections.push(currentSection);
   }
-  if (sections.length > 1) {
+  if (sections.length > 0) {
     result.documentSections = sections;
   }
 
   // 1. Detect Document Category
-  const isAgreement = /agreement|contract|operating\s+agreement|revenue[\s\-_]*sharing|commercial\s+terms|memorandum|nda/i.test(rawText) || sections.length >= 3;
+  const isAgreement = /agreement|contract|operating\s+agreement|revenue[\s\-_]*sharing|commercial\s+terms|memorandum|nda|terms\s+of\s+service/i.test(rawText) || sections.length >= 2;
   const isReceipt = !isAgreement && /receipt|proof of payment|received from|amount received|paid in full/i.test(rawText);
   const isLetterhead = !isAgreement && /letterhead|proposal|pitch kit|media kit|campaign proposal/i.test(rawText);
 
   if (isAgreement) {
     result.docType = 'agreement';
-    if (/revenue[\s\-_]*sharing|operating|commercial|fleet|business/i.test(rawText) || sections.length >= 3) {
+    if (sections.length >= 2) {
+      result.contractTemplate = 'full-legal';
+    } else if (/revenue[\s\-_]*sharing|operating|commercial|fleet|business/i.test(rawText)) {
       result.contractTemplate = 'business';
     } else if (/creator|influencer|sponsorship|social/i.test(rawText)) {
       result.contractTemplate = 'creator';

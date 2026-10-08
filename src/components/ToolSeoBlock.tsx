@@ -72,6 +72,46 @@ export const MATCH_CUT_SEO: ToolSeoContent = {
   ],
 };
 
+export const BUSINESS_DOC_SIGNER_SEO: ToolSeoContent = {
+  kicker: 'FREE DOCUMENT SIGNER & DOCUSIGN ALTERNATIVE',
+  h2: 'Free Online Document Signer & Contract Maker — No Account, No Monthly Fees',
+  intro: [
+    'CreatorsKit Business Suite is the 100% free DocuSign alternative for independent creators, agencies, freelancers, and businesses. Upload your existing Word documents (.docx), paste contract text, or generate fresh agreements, invoices, and receipts in seconds.',
+    'Unlike DocuSign, HelloSign, or Adobe Sign that charge $10 to $40 per month and cap your envelope sends, CreatorsKit gives you unlimited document signing completely free. Everything is saved locally on your device with your Brand Kit — no signup required, no cloud tracking, and zero subscription paywalls.',
+  ],
+  featuresTitle: 'Why Creators & Businesses Choose CreatorsKit over DocuSign',
+  features: [
+    { title: '100% Free Forever with Zero Envelope Limits', text: 'Sign 5 documents, 50 documents, or 500 documents a month without paying a dime. No trial periods that expire, no envelope limits, and no credit card required.' },
+    { title: 'Upload & Auto-Format Any Document', text: 'Drop in a Word document (.docx) or paste plain text clauses. CreatorsKit automatically parses recitals, numbered articles, terms, and builds dual execution signature boxes in our Full Legal Blueprint layout.' },
+    { title: 'Universal Brand Kit Integration', text: 'Draw or type your signature once in your Brand Kit. It stays securely on your device, auto-signs your documents, and ports to your new phone with encrypted device transfer.' },
+    { title: 'Interactive Client E-Sign Links', text: 'Share a live interactive link so clients and brand partners can countersign on their phone with a finger or stylus. Locked execution audit badges guarantee non-tampering.' },
+    { title: 'Built-in Mobile Money & Bank Payments', text: 'Specifically built for modern commerce: invoices and contracts feature MTN, Telecel, AT Money, and bank transfer spaces with one-tap zero-space copy for African and global creators.' },
+    { title: 'Local-First Privacy & Zero Server Snooping', text: 'Your confidential legal clauses, rates, and client details never sit unencrypted on third-party servers. Your device owns your documents.' },
+  ],
+  stepsTitle: 'How to Upload, Format & Sign Documents Free Online',
+  steps: [
+    'Open the Business Suite and pick your document kind (Invoice, Receipt, Agreement, or Letterhead).',
+    'Import your existing document: drop a Word file (.docx) or paste your contract clauses into the text box.',
+    'Let the Smart Builder organize your text into clean numbered sections, recitals, and dual signature blocks.',
+    'Sign as Party A with your saved Brand Kit signature (canvas drawing or cursive script).',
+    'Export a crisp, print-ready PDF or copy a secure client link for Party B to review and countersign.',
+  ],
+  faqTitle: 'Free Document Signer & DocuSign Alternative — FAQ',
+  faq: [
+    { q: 'Is CreatorsKit really a free alternative to DocuSign?', a: 'Yes. DocuSign charges $10-$40 per user each month and limits you to just 5 envelopes on personal plans. CreatorsKit is completely free with no limits, no account creation, and no subscription.' },
+    { q: 'Are electronic signatures legally binding?', a: 'Yes. Under the US ESIGN Act, UETA, European eIDAS, and electronic transaction acts worldwide, digital signatures executed with intent are legally recognized on commercial agreements, service contracts, and invoices.' },
+    { q: 'Can I upload my own contract or agreement?', a: 'Yes. You can upload any Microsoft Word (.docx) file, text document (.txt, .md), or paste agreement text directly. CreatorsKit instantly extracts your clauses and arranges them into our Full Legal agreement format with signing spaces.' },
+    { q: 'Where is my signature stored?', a: 'Your signature is stored securely in your browser localStorage under your Brand Kit. It never touches our servers unless you choose to send an encrypted client link.' },
+    { q: 'Can my client sign on their mobile phone?', a: 'Yes. When you generate a share link, your client opens a mobile-optimized signing interface where they can draw their signature with their finger, date it, and download the countersigned PDF.' },
+  ],
+  relatedTitle: 'Explore More Creator Business Tools',
+  related: [
+    { href: '/brand-kit', label: 'Brand Kit', hint: 'Store your logo, colors, fonts, and signature' },
+    { href: '/your-data', label: 'Your Data', hint: 'Transfer your signed documents to a new phone' },
+    { href: '/invoice', label: 'Quick Invoice', hint: 'Generate simple one-off invoices in seconds' },
+  ],
+};
+
 const styles = {
   wrap: {
     maxWidth: 1200,

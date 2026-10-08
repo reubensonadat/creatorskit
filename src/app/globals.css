@@ -872,9 +872,19 @@
     font-size: 0.6rem !important;
   }
 
+  .tool-layout-title-group {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    flex: 1 !important;
+  }
+
   .tool-layout-title-group h1 {
     font-size: 0.78rem !important;
     margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: block !important;
   }
 
   .tool-layout-title-group div {

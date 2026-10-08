@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { BLOG_POSTS, type BlogPost } from '@/data/blog-posts';
 import { inferYouTubeCategory } from './youtube-categories';
 import { relativeStringToISODate } from './date-utils';
+import { decodeReceipt, encodeReceipt } from './receipt/receipt-link';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lnfzixiwmdxoqoueadkq.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuZnppeGl3bWR4b3FvdWVhZGtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDY1NDksImV4cCI6MjEwMzUyMjU0OX0.Y-VNay9jo6n20wQBMl0lTkzVnmjQqhcMiysNW66i76A';
@@ -131,6 +132,95 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
   }
 
   return null;
+}
+
+export interface SignatureData {
+  clientName: string;
+  clientTitle?: string;
+  signatureDrawing?: string;
+  auditId?: string;
+}
+
+/**
+ * Updates a document in Supabase, local API, and localStorage with digital execution signatures.
+ */
+export async function updateReceiptSignature(
+  id: string,
+  signature: SignatureData
+): Promise<StoredReceipt | null> {
+  const existing = await getReceiptByShortId(id);
+  if (!existing) return null;
+
+  try {
+    let payload = decodeReceipt(existing.payload_string);
+    if (payload) {
+      const now = new Date();
+      const signedDate = now.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+      const auditId = signature.auditId || `CK-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+
+      payload = {
+        ...payload,
+        x: {
+          ...(payload.x || {}),
+          isSigned: true,
+          sigClient: signature.clientName,
+          sigClientTitle: signature.clientTitle || 'Authorized Representative',
+          sigClientDate: signedDate,
+          sigClientDrawing: signature.signatureDrawing,
+          signedAuditId: auditId,
+        },
+      };
+
+      const updatedPayloadString = encodeReceipt(payload);
+      const updatedRecord: StoredReceipt = {
+        ...existing,
+        payload_string: updatedPayloadString,
+        metadata: {
+          ...(existing.metadata || {}),
+          signed: true,
+          signed_by: signature.clientName,
+          signed_title: signature.clientTitle,
+          signed_at: now.toISOString(),
+          audit_id: auditId,
+        },
+      };
+
+      // 1. Update localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`ck_doc_${id}`, JSON.stringify(updatedRecord));
+        } catch {}
+
+        // 2. Update local API
+        fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedRecord),
+        }).catch(() => {});
+      }
+
+      // 3. Update Supabase
+      try {
+        await supabase
+          .from('receipts')
+          .update({
+            payload_string: updatedPayloadString,
+            metadata: updatedRecord.metadata,
+          })
+          .eq('id', id);
+      } catch {}
+
+      return updatedRecord;
+    }
+  } catch (e) {
+    console.error('Error updating receipt signature:', e);
+  }
+
+  return existing;
 }
 
 // ═══════════════════════════════════════════════════════════════

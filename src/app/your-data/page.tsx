@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Database, Eye, EyeOff, Trash2, Download, RefreshCw, ShieldCheck, HardDrive } from "lucide-react";
+import { Database, Eye, EyeOff, Trash2, Download, RefreshCw, ShieldCheck, HardDrive, Smartphone, ArrowDownToLine, Palette } from "lucide-react";
 import {
   listMemory,
   loadAssets,
@@ -19,6 +19,7 @@ import {
   clearTool,
   type MemoryToolSummary,
 } from "@/lib/local-memory";
+import { backupToDeviceTransfer, restoreFromDeviceTransfer, type BackupResult } from "@/lib/device-transfer";
 
 interface DetailRow {
   name: string;
@@ -58,7 +59,32 @@ export default function YourDataPage() {
   const [exporting, setExporting] = useState(false);
   const objectUrlsRef = useRef<string[]>([]);
 
+  // Phone migration (the ONLY opt-in cloud copy in CreatorsKit — see device-transfer.ts)
+  const [backupPin, setBackupPin] = useState("");
+  const [backupPin2, setBackupPin2] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
+  const [backupError, setBackupError] = useState("");
+  const [restoreCode, setRestoreCode] = useState("");
+  const [restorePin, setRestorePin] = useState("");
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState("");
+  const [restoreOk, setRestoreOk] = useState(false);
+
   const label = { fontSize: "0.66rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.04em", textTransform: "uppercase" as const };
+
+  const inputStyle = {
+    width: "100%",
+    boxSizing: "border-box" as const,
+    border: "2px solid #000",
+    background: "#fff",
+    padding: "9px 10px",
+    fontFamily: "monospace",
+    fontWeight: 800,
+    fontSize: "0.85rem",
+    color: "#000",
+    outline: "none",
+  };
 
   const flash = (msg: string) => {
     setNote(msg);
@@ -185,6 +211,70 @@ export default function YourDataPage() {
     }
   };
 
+  const runBackup = async () => {
+    if (backupBusy) return;
+    setBackupError("");
+    setBackupResult(null);
+    if (!/^\d{4}$/.test(backupPin)) {
+      setBackupError("Pick a 4-digit PIN first.");
+      return;
+    }
+    if (backupPin !== backupPin2) {
+      setBackupError("The two PINs don't match.");
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      const result = await backupToDeviceTransfer(backupPin);
+      setBackupResult(result);
+      setBackupPin("");
+      setBackupPin2("");
+    } catch (e) {
+      setBackupError(e instanceof Error ? e.message : "Backup failed — try again.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const copyTransferCode = async () => {
+    if (!backupResult) return;
+    try {
+      await navigator.clipboard.writeText(backupResult.code);
+      flash("Recovery code copied.");
+    } catch {
+      flash("Copy failed — write it down by hand.");
+    }
+  };
+
+  const runRestore = async () => {
+    if (restoreBusy) return;
+    setRestoreMsg("");
+    setRestoreOk(false);
+    if (!restoreCode.trim()) {
+      setRestoreMsg("Enter the recovery code from your old phone.");
+      return;
+    }
+    if (!/^\d{4}$/.test(restorePin)) {
+      setRestoreMsg("Enter the 4-digit PIN you set on the old phone.");
+      return;
+    }
+    setRestoreBusy(true);
+    try {
+      const stats = await restoreFromDeviceTransfer(restoreCode, restorePin);
+      setRestoreOk(true);
+      setRestoreMsg(
+        `Restored ${stats.lsKeys} setting${stats.lsKeys === 1 ? "" : "s"}, ${stats.states} tool state${stats.states === 1 ? "" : "s"} and ${stats.assetsIncluded} file${stats.assetsIncluded === 1 ? "" : "s"} — reopen your tools and everything is back.`
+      );
+      setRestoreCode("");
+      setRestorePin("");
+      await refresh();
+    } catch (e) {
+      setRestoreMsg(e instanceof Error ? e.message : "Restore failed — try again.");
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
   const totalBytes = (rows ?? []).reduce((a, r) => a + r.bytes, 0);
   const totalAssets = (rows ?? []).reduce((a, r) => a + r.assets, 0);
 
@@ -224,6 +314,150 @@ export default function YourDataPage() {
               FULL PRIVACY POLICY →
             </Link>
           </div>
+        </div>
+
+        {/* Phone migration — opt-in encrypted copy that deletes itself in 7 days */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 20 }}>
+          <div className="brutalist-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Smartphone size={15} style={{ color: "#000" }} />
+              <span style={{ fontWeight: 900, fontSize: "0.92rem", color: "#000" }}>MOVE TO A NEW PHONE</span>
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#555", lineHeight: 1.6, fontWeight: 500 }}>
+              Changing phones? One tap packs <strong>everything on this page</strong> into a single encrypted copy — locked
+              with a 4-digit PIN only you know — that <strong>deletes itself after 7 days</strong>. Nothing uploads until
+              you physically press the button.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={{ ...label, color: "#666", marginBottom: 4 }}>NEW 4-DIGIT PIN</div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={4}
+                  value={backupPin}
+                  onChange={(e) => setBackupPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="••••"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <div style={{ ...label, color: "#666", marginBottom: 4 }}>CONFIRM PIN</div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={4}
+                  value={backupPin2}
+                  onChange={(e) => setBackupPin2(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="••••"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <button
+              className="brutalist-button brutalist-button-primary"
+              disabled={backupBusy}
+              onClick={() => void runBackup()}
+              style={{ fontSize: "0.78rem", padding: "10px 16px", cursor: backupBusy ? "wait" : "pointer" }}
+            >
+              <Smartphone size={14} /> {backupBusy ? "ENCRYPTING…" : "BACK UP MY DATA"}
+            </button>
+            {backupError && (
+              <div style={{ border: "2px solid #b91c1c", background: "rgba(185,28,28,0.06)", padding: "8px 10px", fontSize: "0.74rem", fontWeight: 700, color: "#b91c1c", lineHeight: 1.5 }}>
+                {backupError}
+              </div>
+            )}
+            {backupResult && (
+              <div style={{ border: "2px solid #000", background: "#fff", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ ...label, color: "#666" }}>YOUR RECOVERY CODE — WRITE IT DOWN</div>
+                <div style={{ fontSize: "1.05rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.12em", background: "#000", color: "#fff", padding: "10px 12px", textAlign: "center" }}>
+                  {backupResult.code}
+                </div>
+                <button className="brutalist-button" onClick={() => void copyTransferCode()} style={{ fontSize: "0.7rem", padding: "7px 12px" }}>
+                  <Download size={12} /> COPY CODE
+                </button>
+                <div style={{ fontSize: "0.7rem", fontFamily: "monospace", fontWeight: 700, color: "#555", lineHeight: 1.8 }}>
+                  PACKED {backupResult.stats.lsKeys} SETTINGS · {backupResult.stats.states} TOOL STATES · {backupResult.stats.assetsIncluded} FILES
+                  {backupResult.stats.assetsSkipped > 0 ? ` · ${backupResult.stats.assetsSkipped} BIG FILE${backupResult.stats.assetsSkipped === 1 ? "" : "S"} LEFT ON THIS PHONE` : ""}
+                  <br />
+                  DELETES ITSELF {formatDate(Date.parse(backupResult.expiresAt))}
+                </div>
+                <div style={{ fontSize: "0.7rem", color: "#666", lineHeight: 1.6, fontWeight: 500 }}>
+                  On the new phone: open this page → “Restore on this phone” → enter this code plus this PIN. After 7 days
+                  the copy is gone — and nobody, not even us, can read it without your PIN.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="brutalist-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <ArrowDownToLine size={15} style={{ color: "#000" }} />
+              <span style={{ fontWeight: 900, fontSize: "0.92rem", color: "#000" }}>RESTORE ON THIS PHONE</span>
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#555", lineHeight: 1.6, fontWeight: 500 }}>
+              New phone? Enter the recovery code from the old one, plus the PIN you set there. Your settings, drafts and
+              files land straight onto this device — the copy stays restorable for 7 days from the moment it was made.
+            </div>
+            <div>
+              <div style={{ ...label, color: "#666", marginBottom: 4 }}>RECOVERY CODE</div>
+              <input
+                value={restoreCode}
+                onChange={(e) => setRestoreCode(e.target.value.toUpperCase().replace(/[^A-Z0-9 -]/g, "").slice(0, 13))}
+                placeholder="CK-XXXX-XXXX"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{ ...inputStyle, letterSpacing: "0.1em" }}
+              />
+            </div>
+            <div>
+              <div style={{ ...label, color: "#666", marginBottom: 4 }}>4-DIGIT PIN</div>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={restorePin}
+                onChange={(e) => setRestorePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="••••"
+                style={inputStyle}
+              />
+            </div>
+            <button
+              className="brutalist-button brutalist-button-primary"
+              disabled={restoreBusy}
+              onClick={() => void runRestore()}
+              style={{ fontSize: "0.78rem", padding: "10px 16px", cursor: restoreBusy ? "wait" : "pointer" }}
+            >
+              <ArrowDownToLine size={14} /> {restoreBusy ? "RESTORING…" : "RESTORE MY DATA"}
+            </button>
+            {restoreMsg && (
+              <div style={{ border: `2px solid ${restoreOk ? "#16a34a" : "#b91c1c"}`, background: restoreOk ? "rgba(22,163,74,0.06)" : "rgba(185,28,28,0.06)", padding: "8px 10px", fontSize: "0.74rem", fontWeight: 700, color: restoreOk ? "#16a34a" : "#b91c1c", lineHeight: 1.5 }}>
+                {restoreMsg}
+              </div>
+            )}
+            <div style={{ fontSize: "0.66rem", color: "#999", fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.03em" }}>
+              RESTORING REPLACES THIS DEVICE'S COPY OF THOSE SETTINGS & FILES.
+            </div>
+          </div>
+        </div>
+
+        {/* Brand Kit — the universal identity every tool pulls from */}
+        <div className="brutalist-card" style={{ padding: 16, display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          <Palette size={18} style={{ color: "#000", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 900, fontSize: "0.85rem", color: "#000" }}>BRAND KIT — YOUR IDENTITY, EVERYWHERE</div>
+            <div style={{ fontSize: "0.74rem", color: "#666", lineHeight: 1.5 }}>
+              Save your logo, colors, fonts and MoMo/bank details once — invoices and tools open pre-filled. Moves to a
+              new phone with everything else.
+            </div>
+          </div>
+          <Link href="/brand-kit" className="brutalist-button" style={{ fontSize: "0.72rem", padding: "8px 14px", textDecoration: "none" }}>
+            MANAGE →
+          </Link>
         </div>
 
         {/* Global actions */}

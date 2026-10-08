@@ -68,7 +68,7 @@ export default function ShortLinkClientView() {
 
     return (
         <div style={{ minHeight: '100vh', background: '#09090b' }}>
-            <ClientDocumentPrinter data={data} />
+            <ClientDocumentPrinter data={data} docId={params?.id} />
             {/* Stage 0 growth loop (docs/BUSINESS_MODEL_PLAN.md §8): every
                 shared invoice/receipt/agreement advertises the free suite. */}
             <footer

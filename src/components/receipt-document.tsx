@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import QRCode from 'qrcode';
+import { formatPhoneNumberForDisplay } from '@/lib/phone-format';
 
 /**
  * ReceiptDocument — the canonical THERMAL receipt layout.
@@ -161,7 +162,7 @@ export default function ReceiptDocument({
                     {data.creatorHandle} · {data.creatorLocation}
                 </div>
                 <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', opacity: MUTED_OPACITY }}>
-                    {data.creatorPhone}
+                    {formatPhoneNumberForDisplay(data.creatorPhone)}
                 </div>
             </div>
 

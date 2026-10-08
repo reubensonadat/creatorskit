@@ -313,6 +313,19 @@ export const HIDDEN_TOOLS: ToolItem[] = [
     status: 'live',
     icon: 'LayoutGrid',
   },
+  // The universal creator identity (2026-10-08): save your brand once —
+  // logo, colors, fonts, MoMo & bank — and consuming tools open pre-filled.
+  // Hidden from grids (it's plumbing, not a destination); entry points are
+  // /your-data and the business suite. Rides the device transfer for free.
+  {
+    label: 'Brand Kit',
+    href: '/brand-kit',
+    hint: 'YOUR IDENTITY, EVERYWHERE',
+    desc: 'Save your brand once — logo, colors, fonts, MoMo & bank details — and every tool starts pre-filled',
+    chrome: 'embedded',
+    status: 'live',
+    icon: 'Palette',
+  },
   // (Space Planner was fully removed 2026-10-02 — route deleted, /space-planner
   // 301s to / in next.config.ts. Post-mortem: docs/BUSINESS_MODEL_PLAN.md.)
 ];

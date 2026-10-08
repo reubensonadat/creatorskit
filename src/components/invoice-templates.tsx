@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { numberToWords, injectInvoiceGoogleFont } from '@/lib/invoice-fonts';
+import { formatPhoneNumberForDisplay } from '@/lib/phone-format';
 
 export type InvoiceTemplateId = 'navy' | 'ledger' | 'slate' | 'brutalist';
 
@@ -67,6 +68,7 @@ export interface InvoiceData {
   revisionRounds: number;
   turnaroundDays: number;
   signatureName?: string;
+  signatureDrawing?: string;
   customNotes?: string;
 
   // Typography & Color Customization
@@ -75,6 +77,59 @@ export interface InvoiceData {
   signatureFont?: string;
   primaryColor?: string;
   accentColor?: string;
+}
+
+function InvoiceSignatureSpace({
+  drawing,
+  name,
+  font = 'Caveat',
+  borderStyle = '1.5px solid #000',
+}: {
+  drawing?: string;
+  name?: string;
+  font?: string;
+  borderStyle?: string;
+}) {
+  useEffect(() => {
+    if (name && font) {
+      injectInvoiceGoogleFont(font);
+    }
+  }, [name, font]);
+
+  return (
+    <div
+      style={{
+        minHeight: 52,
+        borderBottom: borderStyle,
+        marginBottom: 4,
+        display: 'flex',
+        alignItems: 'flex-end',
+        paddingBottom: 2,
+      }}
+    >
+      {drawing ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={drawing}
+          alt="Authorized signature"
+          style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain' }}
+        />
+      ) : name ? (
+        <span
+          style={{
+            fontFamily: font,
+            fontSize: '24px',
+            color: '#111827',
+            lineHeight: 1,
+            transform: 'rotate(-2deg)',
+            display: 'inline-block',
+          }}
+        >
+          {name}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 interface InvoiceTemplateProps {
@@ -201,7 +256,7 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
             {data.paymentType === 'momo' && (
               <>
                 <div><strong>Network:</strong> {data.momoNetwork}</div>
-                <div><strong>MoMo Number:</strong> {data.momoNumber}</div>
+                <div><strong>MoMo Number:</strong> {formatPhoneNumberForDisplay(data.momoNumber)}</div>
                 <div><strong>Account Name:</strong> {data.momoName || data.creatorName}</div>
               </>
             )}
@@ -331,13 +386,12 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>
             AUTHORIZED SIGNATURE:
           </div>
-          {/* Fixed blank manual signing space with solid underline */}
-          <div
-            style={{
-              height: 64,
-              borderBottom: '1.5px solid #000',
-              marginBottom: 4,
-            }}
+          {/* Signature space supporting real drawn or electronic cursive signature */}
+          <InvoiceSignatureSpace
+            drawing={data.signatureDrawing}
+            name={data.signatureName}
+            font={data.signatureFont}
+            borderStyle="1.5px solid #000"
           />
           <div style={{ fontWeight: 800, fontSize: '10px' }}>{data.creatorName}</div>
           <div style={{ fontSize: '9px', color: '#6b7280' }}>Date: {data.issueDate}</div>
@@ -523,7 +577,7 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
           </div>
           <div style={{ fontSize: '10px', color: '#374151', lineHeight: 1.5 }}>
             {data.paymentType === 'momo' && (
-              <div>MoMo: <strong>{data.momoNetwork} - {data.momoNumber}</strong> ({data.momoName || data.creatorName})</div>
+              <div>MoMo: <strong>{data.momoNetwork} - {formatPhoneNumberForDisplay(data.momoNumber)}</strong> ({data.momoName || data.creatorName})</div>
             )}
             {data.paymentType === 'bank' && (
               <div>Bank: <strong>{data.bankName}</strong> · Acct: <strong>{data.bankAccountNumber}</strong> ({data.bankAccountName || data.creatorName})</div>
@@ -540,7 +594,12 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#6b7280' }}>
             AUTHORIZED SIGNATURE:
           </div>
-          <div style={{ height: 64, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
+          <InvoiceSignatureSpace
+            drawing={data.signatureDrawing}
+            name={data.signatureName}
+            font={data.signatureFont}
+            borderStyle="1.5px solid #000"
+          />
           <div style={{ fontWeight: 800, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>
@@ -635,7 +694,7 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
           <div style={{ fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', fontSize: '9px', marginBottom: 3 }}>
             PAYMENT CHANNEL
           </div>
-          {data.paymentType === 'momo' && <div>MoMo: {data.momoNetwork} - {data.momoNumber}</div>}
+          {data.paymentType === 'momo' && <div>MoMo: {data.momoNetwork} - {formatPhoneNumberForDisplay(data.momoNumber)}</div>}
           {data.paymentType === 'bank' && <div>Bank: {data.bankName} ({data.bankAccountNumber})</div>}
           {data.paymentType === 'paystack' && <div>Paystack: {data.paystackLink}</div>}
           {data.paymentType === 'wire' && <div>SWIFT: {data.wireSwift}</div>}
@@ -702,7 +761,12 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
           <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280' }}>
             SIGNATURE:
           </div>
-          <div style={{ height: 64, borderBottom: '1.5px solid #000', marginBottom: 4 }} />
+          <InvoiceSignatureSpace
+            drawing={data.signatureDrawing}
+            name={data.signatureName}
+            font={data.signatureFont}
+            borderStyle="1.5px solid #000"
+          />
           <div style={{ fontWeight: 800, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>
@@ -838,7 +902,7 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
             PAYMENT DETAILS
           </div>
           <div style={{ fontSize: '10px', lineHeight: 1.5 }}>
-            {data.paymentType === 'momo' && <div>MoMo: <strong>{data.momoNetwork} - {data.momoNumber}</strong></div>}
+            {data.paymentType === 'momo' && <div>MoMo: <strong>{data.momoNetwork} - {formatPhoneNumberForDisplay(data.momoNumber)}</strong></div>}
             {data.paymentType === 'bank' && <div>Bank: <strong>{data.bankName} - {data.bankAccountNumber}</strong></div>}
             {data.paymentType === 'paystack' && <div>Pay Online: {data.paystackLink}</div>}
             {data.paymentType === 'wire' && <div>SWIFT: {data.wireSwift}</div>}
@@ -849,7 +913,12 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
           <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>
             AUTHORIZED SIGNATURE:
           </div>
-          <div style={{ height: 64, borderBottom: '2px solid #000', marginBottom: 4 }} />
+          <InvoiceSignatureSpace
+            drawing={data.signatureDrawing}
+            name={data.signatureName}
+            font={data.signatureFont}
+            borderStyle="2px solid #000"
+          />
           <div style={{ fontWeight: 900, fontSize: '10px' }}>{data.creatorName}</div>
         </div>
       </div>

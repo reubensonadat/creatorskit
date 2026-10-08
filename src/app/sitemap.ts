@@ -31,6 +31,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
         // ── Everyday creator business tools ─────────────────────────────────
         entry('/business', 0.9, 'daily'),
+        entry('/brand-kit', 0.85, 'daily'),
         entry('/invoice', 0.85, 'weekly'),
         entry('/receipt', 0.8, 'weekly'),
 

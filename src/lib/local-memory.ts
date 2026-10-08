@@ -220,3 +220,37 @@ export async function listMemory(): Promise<MemoryToolSummary[]> {
     }
     return Array.from(byTool.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
+
+/** Every asset record across all tools (device-transfer collector reads them all). */
+export async function loadAllRecords(): Promise<MemoryRecord[]> {
+    try {
+        const db = await openDb();
+        const recs = await new Promise<MemoryRecord[]>((resolve, reject) => {
+            const tx = db.transaction(ASSETS, 'readonly');
+            const req = tx.objectStore(ASSETS).getAll();
+            req.onsuccess = () => resolve(req.result as MemoryRecord[]);
+            req.onerror = () => reject(req.error ?? new Error('read failed'));
+        });
+        db.close();
+        return recs;
+    } catch {
+        return [];
+    }
+}
+
+/** Every persisted tool state (device-transfer collector reads them all). */
+export async function loadAllStates(): Promise<MemoryStateRecord[]> {
+    try {
+        const db = await openDb();
+        const recs = await new Promise<MemoryStateRecord[]>((resolve, reject) => {
+            const tx = db.transaction(STATES, 'readonly');
+            const req = tx.objectStore(STATES).getAll();
+            req.onsuccess = () => resolve(req.result as MemoryStateRecord[]);
+            req.onerror = () => reject(req.error ?? new Error('read failed'));
+        });
+        db.close();
+        return recs;
+    } catch {
+        return [];
+    }
+}

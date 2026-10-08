@@ -92,3 +92,46 @@ CREATE POLICY "Public update access for bouquets"
   ON digital_bouquets FOR UPDATE
   USING (true)
   WITH CHECK (true);
+
+-- =========================================================================
+-- CREATORKIT: DEVICE-TO-DEVICE DATA TRANSFER SCHEMA (7-day encrypted copy)
+-- Mirror of supabase/migrations/20261008210000_device_transfer.sql
+-- Egress guardrails: 50-live-row ceiling + ~2 MB payload cap (client-enforced)
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS user_data_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,                   -- Recovery code e.g. "CK-7XK2-9QM4" (shown once at backup)
+  payload TEXT NOT NULL,                       -- base64 AES-GCM ciphertext of the transfer JSON (≤ ~2 MB)
+  salt TEXT NOT NULL,                          -- base64 PBKDF2 salt (key derivation)
+  iv TEXT NOT NULL,                            -- base64 AES-GCM nonce
+  pin_check TEXT NOT NULL,                     -- hex sha256(PIN + salt2) — fast wrong-PIN rejection
+  salt2 TEXT NOT NULL,                         -- base64 salt for the PIN verifier
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Lookups are always by recovery code
+CREATE INDEX IF NOT EXISTS idx_user_data_transfers_code ON user_data_transfers(code);
+CREATE INDEX IF NOT EXISTS idx_user_data_transfers_expires ON user_data_transfers(expires_at);
+
+-- Row Level Security
+ALTER TABLE user_data_transfers ENABLE ROW LEVEL SECURITY;
+
+-- Allow public insert so phone A can create a transfer (code = the secret)
+DROP POLICY IF EXISTS "Public insert access for transfers" ON user_data_transfers;
+CREATE POLICY "Public insert access for transfers"
+  ON user_data_transfers FOR INSERT
+  WITH CHECK (true);
+
+-- Allow public read so phone B can fetch by code (payload is PIN-encrypted)
+DROP POLICY IF EXISTS "Public read access for transfers" ON user_data_transfers;
+CREATE POLICY "Public read access for transfers"
+  ON user_data_transfers FOR SELECT
+  USING (true);
+
+-- Allow public delete ONLY of already-expired rows (lazy TTL sweep)
+DROP POLICY IF EXISTS "Public delete of expired transfers" ON user_data_transfers;
+CREATE POLICY "Public delete of expired transfers"
+  ON user_data_transfers FOR DELETE
+  USING (expires_at < now());

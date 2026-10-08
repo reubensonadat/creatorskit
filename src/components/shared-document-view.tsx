@@ -13,6 +13,7 @@ import InvoiceDocumentRenderer, { type InvoiceData, type InvoiceTemplateId } fro
 import ContractDocumentRenderer, { type ContractData, type ContractTemplateId } from '@/components/contract-templates';
 import LetterheadDocumentRenderer, { type LetterheadData, type LetterheadTemplateId } from '@/components/letterhead-templates';
 import { receiptTotals, type ReceiptPayload } from '@/lib/receipt/receipt-link';
+import { formatPhoneNumberForDisplay } from '@/lib/phone-format';
 
 export default function SharedDocumentView({
     data,
@@ -77,6 +78,7 @@ export default function SharedDocumentView({
             revisionRounds: Number(x.rr || 0),
             turnaroundDays: Number(x.td || 0),
             signatureName: x.sig || undefined,
+            signatureDrawing: x.csig || undefined,
             customNotes: x.nts || undefined,
             headingFont: x.hf,
             bodyFont: x.bf,
@@ -125,7 +127,13 @@ export default function SharedDocumentView({
             killFeePercentage: x.kill !== undefined ? Number(x.kill) : undefined,
             customTerms: x.cust || undefined,
             serviceProviderSignName: x.sig || data.n,
-            clientSignName: '',
+            creatorSignDrawing: x.csig || undefined,
+            clientSignName: x.sigClient || x.clientSignName || '',
+            clientSignTitle: x.sigClientTitle || x.clientSignTitle || '',
+            clientSignDate: x.sigClientDate || x.clientSignDate || '',
+            clientSignDrawing: x.sigClientDrawing || x.clientSignDrawing || undefined,
+            isSigned: Boolean(x.isSigned || x.sigClient || x.sigClientDrawing),
+            signedAuditId: x.signedAuditId || undefined,
             headingFont: x.hf,
             bodyFont: x.bf,
             signatureFont: x.sf,
@@ -193,7 +201,7 @@ export default function SharedDocumentView({
         paymentType: data.pt,
         payChannel:
             data.pt === 'momo'
-                ? `MoMo · ${data.mn || 'Mobile Money'} · ${data.mu || ''}`.trim()
+                ? `MoMo · ${data.mn || 'Mobile Money'} · ${formatPhoneNumberForDisplay(data.mu) || ''}`.trim()
                 : data.pt === 'bank'
                   ? `Bank · ${data.bn || 'Bank'} · ${data.ba || ''}`.trim()
                   : data.pt === 'paystack'

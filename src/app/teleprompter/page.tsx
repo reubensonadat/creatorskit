@@ -57,6 +57,7 @@ import {
   type VoiceMatchEngine,
 } from '@/lib/teleprompter/voice-matching-engine';
 import { registerMediaStream, registerSpeechRecognition } from '@/lib/media-cleanup';
+import { listScripts, saveScript, deleteScript, countWords, type SavedScript } from '@/lib/teleprompter-scripts';
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | '4:5' | '4:3';
 export type CameraLayoutMode = 'corner-pip' | 'full-bg' | 'off';
@@ -332,6 +333,47 @@ When you pause to take a breath or emphasize a point, the auto-scroll smoothly f
 Control your speed, adjust your font size, and download your voice recording in one tap!`
   );
 
+  // ─── MY SCRIPTS — the script library that rides the device transfer ────────
+  const [myScripts, setMyScripts] = useState<SavedScript[]>([]);
+  const [scriptLibMsg, setScriptLibMsg] = useState('');
+  const [confirmDeleteScriptId, setConfirmDeleteScriptId] = useState<string | null>(null);
+  const scriptLibMsgTimer = useRef<number | null>(null);
+
+  const flashLib = (msg: string) => {
+    setScriptLibMsg(msg);
+    if (scriptLibMsgTimer.current) window.clearTimeout(scriptLibMsgTimer.current);
+    scriptLibMsgTimer.current = window.setTimeout(() => setScriptLibMsg(''), 2200);
+  };
+
+  const handleSaveCurrentScript = () => {
+    const res = saveScript(script);
+    if (!res.ok) {
+      flashLib(res.error);
+      return;
+    }
+    setMyScripts(listScripts());
+    flashLib(res.duplicate ? 'Already saved — bumped to the top.' : `Saved "${res.script.title}".`);
+  };
+
+  const handleLoadScript = (s: SavedScript) => {
+    setScript(s.text);
+    setConfirmDeleteScriptId(null);
+    setIsPlaying(false);
+    handleResetScroll();
+    flashLib(`Loaded "${s.title}".`);
+  };
+
+  const handleDeleteScript = (id: string) => {
+    if (confirmDeleteScriptId !== id) {
+      setConfirmDeleteScriptId(id);
+      window.setTimeout(() => setConfirmDeleteScriptId((cur) => (cur === id ? null : cur)), 2600);
+      return;
+    }
+    setMyScripts(deleteScript(id));
+    setConfirmDeleteScriptId(null);
+    flashLib('Script deleted.');
+  };
+
   // Playback & Speed Controls
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(2.2);
@@ -590,6 +632,8 @@ Control your speed, adjust your font size, and download your voice recording in 
       if (savedScript && savedScript.trim().length > 0) {
         setScript(savedScript);
       }
+      // My Scripts library — loads with everything else (rides device transfer)
+      setMyScripts(listScripts());
       // §4: a pending hand-off (e.g. the sync-slate take rundown) wins over
       // the restored script — it is the user's most recent intent.
       takeHandoffText('teleprompter').then((incoming) => {
@@ -5040,7 +5084,62 @@ Control your speed, adjust your font size, and download your voice recording in 
               SEND TO AUTO CAPTIONS →
             </button>
 
-            {/* Stage Direction / Cues Quick Helper */}
+          {/* MY SCRIPTS — the library that remembers every script (rides device transfer) */}
+          <div style={{ background: '#fff', border: '2px solid #000', borderRadius: 6, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', color: '#52525b' }}>
+                MY SCRIPTS {myScripts.length > 0 ? `(${myScripts.length})` : ''}
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveCurrentScript}
+                disabled={!script.trim()}
+                style={{ padding: '5px 10px', background: '#FFE500', border: '1.5px solid #000', borderRadius: 4, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.62rem', cursor: script.trim() ? 'pointer' : 'not-allowed', opacity: script.trim() ? 1 : 0.5 }}
+              >
+                ＋ SAVE CURRENT
+              </button>
+            </div>
+            {scriptLibMsg && (
+              <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#16a34a' }}>{scriptLibMsg}</div>
+            )}
+            {myScripts.length === 0 ? (
+              <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#71717a', lineHeight: 1.5 }}>
+                Nothing saved yet — write or paste a script, then SAVE CURRENT. Your scripts stay on this device and
+                travel to your new phone with Your Data → Move to a new phone.
+              </span>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                {myScripts.map((s) => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1.5px solid #000', borderRadius: 4, padding: '6px 8px', background: '#fff' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 900, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {s.title}
+                      </div>
+                      <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#71717a' }}>
+                        {countWords(s.text)} WORDS · SAVED {new Date(s.updatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleLoadScript(s)}
+                      style={{ padding: '5px 8px', background: '#f4f4f5', border: '1.5px solid #000', borderRadius: 4, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.58rem', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                      LOAD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteScript(s.id)}
+                      style={{ padding: '5px 8px', background: confirmDeleteScriptId === s.id ? '#b91c1c' : '#f4f4f5', color: confirmDeleteScriptId === s.id ? '#fff' : '#000', border: '1.5px solid #000', borderRadius: 4, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.58rem', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                      {confirmDeleteScriptId === s.id ? 'ARE YOU SURE?' : '✕'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Stage Direction / Cues Quick Helper */}
             <div style={{ background: '#f4f4f5', padding: '10px 12px', borderRadius: 6, border: '1.5px solid #e4e4e7', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 800, textTransform: 'uppercase', color: '#52525b' }}>
