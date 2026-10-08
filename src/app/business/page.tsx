@@ -5178,7 +5178,7 @@ function BusinessSuiteContent() {
               </div>
 
               {/* 1-Click Preset Buttons */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, borderBottom: '1px dashed #ccc', paddingBottom: 10 }}>
+              <div className="ck-form-grid-2" style={{ marginBottom: 12, borderBottom: '1px dashed #ccc', paddingBottom: 10 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
                     TAX / VAT (%)
@@ -5454,7 +5454,7 @@ function BusinessSuiteContent() {
                       <option value="M-Pesa">M-Pesa (Kenya/East Africa)</option>
                     </select>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                  <div className="ck-form-grid-2">
                     <div>
                       <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace' }}>MOMO NUMBER</label>
                       <input
@@ -5493,7 +5493,7 @@ function BusinessSuiteContent() {
                       style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                     />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                  <div className="ck-form-grid-2">
                     <div>
                       <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace' }}>ACCOUNT NUMBER</label>
                       <input
@@ -5536,7 +5536,7 @@ function BusinessSuiteContent() {
 
               {paymentType === 'wire' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div className="ck-form-grid-2">
                     <div>
                       <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace' }}>SWIFT / BIC CODE</label>
                       <input
@@ -5578,7 +5578,7 @@ function BusinessSuiteContent() {
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div className="ck-form-grid-2" style={{ marginBottom: 10 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
                     UPFRONT DEPOSIT (%)
@@ -5610,7 +5610,7 @@ function BusinessSuiteContent() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div className="ck-form-grid-2" style={{ marginBottom: 10 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
                     USAGE RIGHTS
