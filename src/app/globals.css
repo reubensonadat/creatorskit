@@ -1624,6 +1624,24 @@ label,
   border-radius: 2px;
 }
 
+/* Edit/Paper mode toggle — mobile-safe (owner bug report 2026-10-08):
+   never shrinks or clips; the long label yields its space on phones. */
+.ck-doc-mode-toggle {
+  flex: 0 0 auto;
+  margin-left: 10px;
+}
+.ck-doc-mode-label {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .ck-doc-mode-label {
+    display: none;
+  }
+  .ck-doc-mode-toggle {
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .redirect-page {
     padding: 14px 12px 48px !important;

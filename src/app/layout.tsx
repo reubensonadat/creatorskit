@@ -32,8 +32,8 @@ export const metadata: Metadata = {
   // Homepage canonical — every other route sets its own via toolMetadata().
   alternates: { canonical: "/" },
   title: "CreatorsKit — Tools for Creators who ship",
-  description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser & offline as a PWA.",
-  keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools", "PWA", "space planner", "teleprompter"],
+  description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser & offline as a PWA.",
+  keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools", "PWA", "teleprompter", "match cut", "auto captions", "quote card", "invoice generator"],
   authors: [{ name: "CreatorsKit" }],
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -53,14 +53,14 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "CreatorsKit — Tools for Creators who ship",
-    description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
+    description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser.",
     siteName: "CreatorsKit",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "CreatorsKit — Tools for Creators who ship",
-    description: "14 brutalist tools for video, photo, audio & design. No subscriptions. Runs in your browser.",
+    description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser.",
   },
 };
 
@@ -81,18 +81,32 @@ export default function RootLayout({
         <link rel="preload" as="style" href={GOOGLE_FONTS_CSS} crossOrigin="anonymous" />
         <AsyncFontLoader href={RALEWAY_FONTS_CSS} />
         <AsyncFontLoader href={GOOGLE_FONTS_CSS} />
-      </head>
-      <body className="antialiased bg-background text-foreground" style={{ margin: 0 }} suppressHydrationWarning>
-        {/* Consent Mode v2 — denied by default. This inline runs BEFORE the
-            GA script (raw scripts execute during parse; GoogleAnalytics loads
-            afterInteractive), so nothing is stored before the banner choice.
-            Returning visitors with a stored "granted" are re-granted here. */}
+        {/* Consent Mode v2 — region-scoped (owner ruling 2026-10-08):
+            worldwide default GRANTED (no cookie-consent law in Ghana/US/most
+            of the world → ads + analytics live by default), EEA+UK default
+            DENIED until the banner choice. An explicit DENY denies analytics
+            storage + personalization — with "Limited ads" enabled in AdSense,
+            denied visitors still get cookieless NON-personalized ads, so a
+            denial never means $0 revenue. This MUST remain the FIRST Google
+            script in the document: adsbygoogle.js (below) and GA4 both read
+            these defaults, so parse order is what makes them binding. */}
         <script
           id="ck-consent-default"
           dangerouslySetInnerHTML={{
-            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:500});try{var c=localStorage.getItem('ck_consent_v1');if(c==='granted'||c==='denied'){gtag('consent','update',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c,functionality_storage:'granted',security_storage:'granted'});}}catch(e){}`,
+            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',functionality_storage:'granted',security_storage:'granted'});var EEA=['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE','CH','GB','UK'];for(var i=0;i<EEA.length;i++){gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:500,region:EEA[i]});}try{var c=localStorage.getItem('ck_consent_v1');if(c==='granted'||c==='denied'){gtag('consent','update',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c,functionality_storage:'granted',security_storage:'granted'});}}catch(e){}`,
           }}
         />
+        {/* Google AdSense loader — installed 2026-10-08 (pub ID
+            ca-pub-7897650446063664; publisher IDs are public by design).
+            Google's exact snippet, on every page as required for account
+            review. Deliberately AFTER the consent default above. */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7897650446063664"
+          crossOrigin="anonymous"
+        />
+      </head>
+      <body className="antialiased bg-background text-foreground" style={{ margin: 0 }} suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
         {GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null}
         <ConsentGate />

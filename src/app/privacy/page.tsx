@@ -94,8 +94,9 @@ const SECTIONS: LegalSection[] = [
         id: '07',
         title: 'Analytics & measurement',
         items: [
-            { label: 'Your choice comes first', text: 'The first time you visit, a small banner asks you to Accept or Deny analytics and advertising cookies. Until you Accept, Google Analytics runs in consent-denied mode: it stores no cookies and sets no identifiers. Deny, and it stays that way — every tool works identically either way. Your choice is remembered in your browser (localStorage key "ck_consent_v1") and you can change it anytime by clearing site data.' },
-            { label: 'Google Analytics 4 (after you Accept)', text: 'If you accept, Google Analytics 4 counts how often pages and tools are opened, from roughly where and on what kind of device, using Google’s cookies (such as _ga) under Google’s privacy terms. You can review or reset them in your browser and in Google’s activity controls. We enable IP anonymization and do not use GA to build advertising profiles.' },
+            { label: 'Your choice comes first', text: 'A small banner lets you Accept or Deny analytics and advertising cookies. Where you visit from decides the starting point: in Europe (EEA and the UK), nothing is stored until you choose — until you Accept, Google Analytics and ads run in consent-denied mode with no cookies and no identifiers. Everywhere else, anonymous measurement runs from your first visit, and the banner lets you switch it off at any time. Your choice is remembered in your browser (localStorage key "ck_consent_v1"); change it anytime by clearing site data.' },
+            { label: 'Google Analytics 4 (when measurement is on)', text: 'Google Analytics 4 counts how often pages and tools are opened, from roughly where and on what kind of device, using Google’s cookies (such as _ga) under Google’s privacy terms where cookies are allowed. You can review or reset them in your browser and in Google’s activity controls. We enable IP anonymization and do not use GA to build advertising profiles.' },
+            { label: 'What Deny means', text: 'Deny and Google’s tags store nothing: no analytics cookies, no ad cookies, no identifiers — and any previously set Google cookies are deleted. Ads do not disappear; they simply become non-personalized ("limited ads" served without cookies), because ads are what keep every tool free. Every tool works identically either way.' },
             { label: 'How many said yes or no', text: 'To know the accept/deny ratio, GA4 receives a cookieless consent signal when the banner is answered — including for people who deny. That signal carries no identifier and stores nothing on your device; it exists purely so we can see, in aggregate, how visitors feel about tracking.' },
             { label: 'Count events, never people', text: 'Analytics answers one question: which tools do people find useful. No replay recording, no session recording, no cross-site profiles, no personal data exports. Our operating principle, from the business plan this product is built on: count events, never people.' },
         ],
@@ -104,7 +105,7 @@ const SECTIONS: LegalSection[] = [
         id: '08',
         title: 'Cookies and local storage',
         items: [
-            { label: 'No cookies of our own', text: 'We set no cookies ourselves — none. The only cookies ever present come from Google Analytics and ad networks, and only if you accepted them in the banner. Deny and your browser stays cookie-free from us.' },
+            { label: 'No cookies of our own', text: 'We set no cookies ourselves — none. The only cookies ever present come from Google Analytics and ad networks, and only where your consent allows them: in Europe not until you Accept, elsewhere until you Deny. Deny and Google’s tags delete their cookies — your browser stays cookie-free from us.' },
             { label: 'Functional storage only', text: 'The site’s storage (IndexedDB + localStorage, described in section 3) is strictly functional — remembering your work and settings between visits. It is readable by you (via /your-data) and removable at any time from your browser settings.' },
             { label: 'Do Not Track', text: 'Because we do not track you in the first place, Do Not Track and Global Privacy Control signals are respected by default — there is nothing on our side to switch off.' },
         ],
@@ -115,6 +116,7 @@ const SECTIONS: LegalSection[] = [
         items: [
             { label: 'Why ads exist here', text: 'Ads keep every tool free. Advertising appears only in reserved slots on free pages (such as side and footer banners) — never inside a tool’s workflow before an export, and never blocking your file.' },
             { label: 'Ad networks and their cookies', text: 'Ad slots are served by advertising networks (such as Google AdSense when live). Those networks may set their own cookies or similar technologies subject to their own privacy policies — including to measure or personalize ads. You can review and control Google’s ad settings at Google’s “Ads Settings” page, and most browsers let you limit third-party cookies entirely.' },
+            { label: 'Non-personalized mode', text: 'If you deny consent — or live where consent is required and have not given it — ad slots do not go blank. They switch to non-personalized "limited ads" served without cookies. You get the same free tools; the ads simply stop being tailored to anyone.' },
             { label: 'Sponsored screens on mobile', text: 'On mobile, occasionally a short sponsored screen appears before an external site opens, plus a once-per-session banner. These are house features to keep the service free; they collect nothing beyond what section 4 already describes.' },
             { label: 'Future rewarded ads', text: 'If we ever add “watch an ad for one extra AI use” flows, this section will say so plainly before it ships.' },
         ],
@@ -192,7 +194,7 @@ export default function PrivacyPage() {
         <LegalPage
             badge="PRIVACY POLICY"
             title="Your data stays yours"
-            updated="OCTOBER 3, 2026"
+            updated="OCTOBER 8, 2026"
             intro={INTRO}
             sections={SECTIONS}
             sibling={{ href: '/terms', label: 'TERMS OF SERVICE' }}

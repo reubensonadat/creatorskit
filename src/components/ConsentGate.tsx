@@ -64,8 +64,8 @@ export default function ConsentGate() {
                     Cookies — your call
                 </div>
                 <p style={{ margin: 0, fontSize: '0.78rem', lineHeight: 1.55, color: '#3f3f46' }}>
-                    Accept to let Google Analytics & ads remember anonymous stats (which pages, which tools) and set their cookies. Deny and
-                    nothing is stored — the tools keep working exactly the same.{' '}
+                    Accept = personalized ads + anonymous stats (which pages, which tools) with cookies. Deny = no cookies, no stats, ads become
+                    non-personalized only — the tools keep working exactly the same.{' '}
                     <Link href="/privacy" style={{ color: '#000', fontWeight: 800, textDecoration: 'underline' }}>
                         Privacy policy
                     </Link>

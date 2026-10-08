@@ -173,3 +173,93 @@ This beats everything else after month 2:
 5. When approved → AdSense → Sites → connect — the ad slots the codebase
    already reserves (rails, anchor, gate) are where units get placed.
 6. Reach the $100 threshold → verify identity + address PIN → payments monthly.
+
+### Where the banners come from (how AdSense serving works)
+
+You do NOT design or download banners. AdSense is a live auction:
+
+1. You paste a small **ad unit code snippet** (`<ins class="adsbygoogle" …>` + one
+   script) into a page slot. That's it — the snippet is an empty box.
+2. Every visitor loads that box; Google runs a real-time auction among
+   advertisers targeting that visitor (context, location, device) and fills
+   the box with the winning banner automatically. Different people see
+   different ads.
+3. You earn per click (mostly) and per thousand impressions (sometimes).
+
+### CRITICAL after approval — enable "Limited ads" (Deny ≠ $0)
+
+The consent model shipped in the codebase (`src/app/layout.tsx`) is
+**region-scoped**: worldwide defaults are GRANTED; EEA+UK visitors get
+denied-until-choice defaults stacked via the `region` parameter. That is
+what stops "deny" from meaning zero revenue — but it ONLY pays if you flip
+one switch in AdSense after approval:
+
+**AdSense → Privacy & messaging → "Limited ads" → ON.**
+
+With it ON, a visitor who denies consent still sees non-personalized ads
+served WITHOUT cookies (Google calls these "limited ads") — a Deny costs
+personalization revenue, not ALL revenue. Without it, denied visitors in
+regulated regions can end up seeing no ads at all. Do this the same day
+the account is approved. Never turn it off.
+
+### Two ways to fill our reserved slots — USE BOTH
+
+**STATUS 2026-10-08 — the AdSense script is INSTALLED:**
+Google's loader (`?client=ca-pub-7897650446063664`) now sits in the
+`<head>` of `src/app/layout.tsx`, AFTER the Consent Mode default script
+(order matters — consent defaults only bind Google tags that load after
+them). `public/ads.txt` authorizes the account. Review can proceed once
+the site is deployed on creatorskit.win.
+
+**Are our mock placements still needed? YES — more than ever.**
+Google's script is just the ENGINE. It serves ads two ways:
+
+- **Auto ads** = "Google decides where". Zero code, zero control — Google
+  can inject ads into spots we'd never allow (that's how tool layouts get
+  ruined by sites that use it blindly).
+- **Manual units** = "we decide where". Our placeholders (right rail
+  `AdRailSlot`, mobile anchor, homepage leaderboard) are PRE-BUILT manual
+  slots: when approved, each dashed box swaps for a real `<ins>` unit and
+  a real ad appears EXACTLY there — never inside a workflow, never on
+  bouquet/gift pages (those have no slots at all).
+
+So the placements are not replaced by the script — they are the reason we
+keep control of it. Plan: manual units fill our slots (precision), Auto
+in-page fills content gaps (fallback).
+
+**A. Auto ads — format ruling (owner question 2026-10-08):**
+The AdSense setup screen offers these formats. Ruling:
+
+- **In-page ("ads over page content without affecting layout")**: **ON** —
+  fills content gaps; the only auto format we allow.
+  - Sub-format **Banner ads** (within main content): **ON** — earns on the
+    blog + homepage sections; Google's placer favors text-rich pages, so
+    tool canvases are naturally avoided. If one ever lands badly inside a
+    tool page after launch, flip this sub-format OFF in AdSense (remote,
+    no code) — that is the one-week review check.
+  - Sub-format **Multiplex** (ad grid at page bottom, if offered): **ON** —
+    appended at the bottom, cannot interrupt any workflow.
+- **Anchor ads**: **OFF** — WE already own the bottom slot (our 320×50
+  `.ck-anchor-ad`); Google's anchor would double-stack on mobile.
+- **Side rail ads**: **OFF** — WE already own the right side (our 300×600
+  `AdRailSlot`); Google's rail would duplicate it.
+- **Vignette ads**: **OFF** — full-screen interruptions are banned on this
+  site (owner ruling; the adblock wall was already downgraded to a toast).
+
+**B. Manual display units (precision, add in week 2+):**
+Ads → By ad unit → Display ads → create:
+- one **300×600** unit → its `<ins>` snippet replaces the `AdRailSlot`
+  placeholder in `src/components/ToolLayout.tsx` (id `ck-rail-right-300x600`)
+- one **320×50** unit → the mobile anchor placeholder
+  (id `ck-anchor-mobile-320x50`, class `.ck-anchor-ad`)
+- one **responsive/728×90** unit → the homepage leaderboard + /redirect page
+
+The placeholders were built for exactly this swap: the dashed "AdSense-ready"
+boxes become real units, still wrapped in our region-scoped Consent Mode
+rules (worldwide: ads serve by default; EEA+UK: nothing stored until the
+visitor chooses, and a Deny falls back to cookieless limited ads — see the
+Limited ads step above).
+
+**What NOT to do:** no units inside tool workflows, nothing beyond the plan
+in `src/data/ads.ts`, nothing on bouquet/gift pages. More ads ≠ more money —
+RPM collapses when users bounce.

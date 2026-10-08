@@ -2517,16 +2517,16 @@ function BusinessSuiteContent() {
                 >
                   {activeTab === 'invoice' ? 'INVOICE' : activeTab === 'receipt' ? 'RECEIPT' : activeTab === 'agreement' ? 'CONTRACT' : 'LETTERHEAD'}
                 </span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
+                <span className="ck-doc-mode-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: '#555' }}>
                   {paperMode ? 'Paper View — Exactly How It Prints' : 'Live Document Preview'}
                 </span>
                 <div
+                  className="ck-doc-mode-toggle"
                   style={{
                     display: 'inline-flex',
                     border: '2px solid #000',
                     borderRadius: 4,
                     overflow: 'hidden',
-                    marginLeft: 10,
                     boxShadow: '2px 2px 0 #000',
                   }}
                 >
@@ -2681,7 +2681,10 @@ function BusinessSuiteContent() {
                     boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
                     maxWidth: 820,
                     width: '100%',
-                    margin: '0 auto',
+                    // longhand only (React: don't mix shorthand/non-shorthand
+                    // across renders with the paper branch above)
+                    marginLeft: 'auto',
+                    marginRight: 'auto',
                     minHeight: 700,
                     overflowX: 'auto',
                     padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
