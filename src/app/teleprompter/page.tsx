@@ -56,6 +56,7 @@ import {
   type TranscriptHypothesis,
   type VoiceMatchEngine,
 } from '@/lib/teleprompter/voice-matching-engine';
+import { registerMediaStream, registerSpeechRecognition } from '@/lib/media-cleanup';
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | '4:5' | '4:3';
 export type CameraLayoutMode = 'corner-pip' | 'full-bg' | 'off';
@@ -529,6 +530,8 @@ Control your speed, adjust your font size, and download your voice recording in 
   const peakHoldRef = useRef<{ level: number; time: number }>({ level: -60, time: 0 });
 
   // Voice & Video recording refs
+  const isMountedRef = useRef<boolean>(true);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const bgVideoPreviewRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -572,6 +575,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   speechDampingRef.current = speechDamping;
   audioMeterActiveRef.current = audioMeterActive;
   noiseFloorDbRef.current = noiseFloorDb;
+  cameraStreamRef.current = cameraStream;
 
   const formatTime = (total: number) => {
     const m = Math.floor(total / 60).toString().padStart(2, '0');
@@ -840,7 +844,7 @@ Control your speed, adjust your font size, and download your voice recording in 
   const wakeLockListenerRef = useRef<(() => void) | null>(null);
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const releaseAllAudioAndMic = useCallback(() => {
+  const releaseAllAudioAndMic = useCallback((forceAll: boolean = false) => {
     // Invalidate any scheduled restarts from the session being stopped
     recognitionRestartRef.current.gen++;
     if (recognitionRestartRef.current.timer) {
@@ -864,10 +868,19 @@ Control your speed, adjust your font size, and download your voice recording in 
     // 1. Abort and release SpeechRecognition instance immediately
     if (speechRecognitionRef.current) {
       try {
-        speechRecognitionRef.current.onend = null;
-        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onstart = null;
+        speechRecognitionRef.current.onaudiostart = null;
+        speechRecognitionRef.current.onsoundstart = null;
+        speechRecognitionRef.current.onspeechstart = null;
+        speechRecognitionRef.current.onspeechend = null;
+        speechRecognitionRef.current.onsoundend = null;
+        speechRecognitionRef.current.onaudioend = null;
         speechRecognitionRef.current.onresult = null;
+        speechRecognitionRef.current.onnomatch = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.abort();
+        try { speechRecognitionRef.current.stop(); } catch { }
       } catch { }
       speechRecognitionRef.current = null;
     }
@@ -877,9 +890,18 @@ Control your speed, adjust your font size, and download your voice recording in 
     }
     setSpeechStatus('idle');
 
-    // 2. Stop and release audio meter mic tracks (unless currently recording a voice take)
+    // 2. Stop and release audio meter mic tracks & recording streams
+    if (forceAll && mediaRecorderRef.current) {
+      try {
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch { }
+      mediaRecorderRef.current = null;
+    }
+
     const isVoiceTakeRecording =
-      mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording';
+      !forceAll && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording';
 
     if (!isVoiceTakeRecording && micStreamRef.current) {
       try {
@@ -901,10 +923,29 @@ Control your speed, adjust your font size, and download your voice recording in 
       recordingStreamRef.current = null;
     }
 
-    // 3. Suspend Web Audio Context so mobile OS (Android/Samsung Galaxy) completely exits in-call/telephony mode
-    if (audioContextRef.current && audioContextRef.current.state === 'running') {
+    if (forceAll && cameraStreamRef.current) {
       try {
-        audioContextRef.current.suspend().catch(() => { });
+        cameraStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
+      } catch { }
+      cameraStreamRef.current = null;
+    }
+
+    // 3. Suspend or close Web Audio Context so mobile/desktop completely exits audio capture mode
+    if (audioAnimFrameRef.current) {
+      cancelAnimationFrame(audioAnimFrameRef.current);
+      audioAnimFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        if (forceAll && audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close().catch(() => { });
+          audioContextRef.current = null;
+        } else if (audioContextRef.current.state === 'running') {
+          audioContextRef.current.suspend().catch(() => { });
+        }
       } catch { }
     }
     audioMeterActiveRef.current = false;
@@ -974,6 +1015,7 @@ Control your speed, adjust your font size, and download your voice recording in 
 
     try {
       const recognition = new SpeechRecognitionClass();
+      registerSpeechRecognition(recognition);
       // Mobile keeps continuous: false — Android's engine goes DEAF inside a
       // continuous session after 5-10s (drops transcripts without ending), so
       // short utterance sessions + onend restarts are the reliable model there.
@@ -1003,6 +1045,7 @@ Control your speed, adjust your font size, and download your voice recording in 
         restart.attempt++;
         restart.timer = setTimeout(() => {
           restart.timer = null;
+          if (!isMountedRef.current) return;
           if (gen !== recognitionRestartRef.current.gen) return; // stale session
           if (!(speechFollowRef.current && isPlayingRef.current)) return;
           try {
@@ -1163,6 +1206,13 @@ Control your speed, adjust your font size, and download your voice recording in 
       speechActivityRef.current = Date.now();
       if (!watchdogTimerRef.current) {
         watchdogTimerRef.current = setInterval(() => {
+          if (!isMountedRef.current) {
+            if (watchdogTimerRef.current) {
+              clearInterval(watchdogTimerRef.current);
+              watchdogTimerRef.current = null;
+            }
+            return;
+          }
           if (!(speechFollowRef.current && isPlayingRef.current)) return;
           if (Date.now() - speechActivityRef.current < 12000) return;
           speechActivityRef.current = Date.now(); // don't re-fire every 4s
@@ -1222,29 +1272,31 @@ Control your speed, adjust your font size, and download your voice recording in 
   }, [speechFollowEnabled, isPlaying, cameraActive, startSpeechRecognition, stopSpeechRecognition]);
 
   // ── LIFECYCLE & BACKGROUND MIC TEARDOWN ──
-  // When leaving the tab, switching apps, locking the phone, or navigating away:
-  // Immediately kill speech recognition and all microphone tracks so mobile OS
-  // (Android / Samsung Galaxy, iOS) NEVER gets stuck in IN_CALL / telephony mode.
+  // When leaving the tab, switching apps, locking the phone, or navigating away (unmounting):
+  // Immediately kill speech recognition and all microphone/camera tracks so mobile/desktop OS
+  // NEVER has an active microphone or camera leaking into the next page.
   useEffect(() => {
-    // Owner ruling 2026-10-04: the camera must release the instant the app is
-    // exited or backgrounded, exactly like the mic — no glowing indicator,
-    // no camera locked away from the rest of the phone.
+    isMountedRef.current = true;
+
     const killCameraNow = () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((t) => {
-          t.stop();
-          t.enabled = false;
-        });
-        setCameraStream(null);
-        setCameraActive(false);
+      if (cameraStreamRef.current) {
+        try {
+          cameraStreamRef.current.getTracks().forEach((t) => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
+        cameraStreamRef.current = null;
       }
+      setCameraStream(null);
+      setCameraActive(false);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         setIsPlaying(false);
         isPlayingRef.current = false;
-        releaseAllAudioAndMic();
+        releaseAllAudioAndMic(true);
         killCameraNow();
       }
     };
@@ -1252,7 +1304,7 @@ Control your speed, adjust your font size, and download your voice recording in 
     const handlePageLeave = () => {
       setIsPlaying(false);
       isPlayingRef.current = false;
-      releaseAllAudioAndMic();
+      releaseAllAudioAndMic(true);
       killCameraNow();
     };
 
@@ -1261,94 +1313,14 @@ Control your speed, adjust your font size, and download your voice recording in 
     window.addEventListener('beforeunload', handlePageLeave);
 
     return () => {
+      isMountedRef.current = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageLeave);
       window.removeEventListener('beforeunload', handlePageLeave);
-      releaseAllAudioAndMic();
-      if (recordingStreamRef.current) {
-        try {
-          recordingStreamRef.current.getTracks().forEach((track) => {
-            track.stop();
-            track.enabled = false;
-          });
-        } catch { }
-        recordingStreamRef.current = null;
-      }
-      if (micStreamRef.current) {
-        try {
-          micStreamRef.current.getTracks().forEach((track) => {
-            track.stop();
-            track.enabled = false;
-          });
-        } catch { }
-        micStreamRef.current = null;
-      }
-      // The lens dies with the page too — never leak the camera to the OS.
-      if (cameraStream) {
-        try {
-          cameraStream.getTracks().forEach((track) => {
-            track.stop();
-            track.enabled = false;
-          });
-        } catch { }
-        setCameraStream(null);
-        setCameraActive(false);
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try { audioContextRef.current.close().catch(() => { }); } catch { }
-        audioContextRef.current = null;
-      }
-      if (speechRecognitionRef.current) {
-        try {
-          speechRecognitionRef.current.onend = null;
-          speechRecognitionRef.current.onerror = null;
-          speechRecognitionRef.current.onresult = null;
-          speechRecognitionRef.current.abort();
-        } catch { }
-        speechRecognitionRef.current = null;
-      }
-
-      // Racing-restart guard: an onend/backoff timer that fires just after
-      // this cleanup can resurrect the recognition session (or the VU mic)
-      // in the background — the browser's mic indicator then stays lit on
-      // the NEXT page (Auto Captions never touches the mic itself). Sweep
-      // again shortly after teardown and stop anything that came back.
-      setTimeout(() => {
-        try {
-          recognitionRestartRef.current.gen++;
-          if (recognitionRestartRef.current.timer) {
-            clearTimeout(recognitionRestartRef.current.timer);
-            recognitionRestartRef.current.timer = null;
-          }
-          if (watchdogTimerRef.current) {
-            clearInterval(watchdogTimerRef.current);
-            watchdogTimerRef.current = null;
-          }
-          if (speechRecognitionRef.current) {
-            try {
-              speechRecognitionRef.current.onend = null;
-              speechRecognitionRef.current.onerror = null;
-              speechRecognitionRef.current.onresult = null;
-              speechRecognitionRef.current.abort();
-            } catch { }
-            speechRecognitionRef.current = null;
-          }
-          if (micStreamRef.current) {
-            micStreamRef.current.getTracks().forEach((t) => t.stop());
-            micStreamRef.current = null;
-          }
-          if (recordingStreamRef.current) {
-            recordingStreamRef.current.getTracks().forEach((t) => t.stop());
-            recordingStreamRef.current = null;
-          }
-          if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-            try { audioContextRef.current.close().catch(() => { }); } catch { }
-            audioContextRef.current = null;
-          }
-        } catch { }
-      }, 400);
+      releaseAllAudioAndMic(true);
+      killCameraNow();
     };
-  }, [releaseAllAudioAndMic, cameraStream]);
+  }, [releaseAllAudioAndMic]);
 
   // ─────────────────────────────────────────────────────────────
   // 2. 60FPS EXQUISITE SMOOTH EASING ANIMATION LOOP
@@ -1470,15 +1442,25 @@ Control your speed, adjust your font size, and download your voice recording in 
   // 3. LIVE WEB AUDIO VU METER & REAL-TIME DECIBEL MONITOR
   // ─────────────────────────────────────────────────────────────
   const stopAudioAnalysis = useCallback(() => {
-    if (audioAnimFrameRef.current) cancelAnimationFrame(audioAnimFrameRef.current);
+    if (audioAnimFrameRef.current) {
+      cancelAnimationFrame(audioAnimFrameRef.current);
+      audioAnimFrameRef.current = null;
+    }
     if (audioContextRef.current) {
       try {
-        audioContextRef.current.close();
+        if (audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close().catch(() => { });
+        }
       } catch { }
       audioContextRef.current = null;
     }
     if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      try {
+        micStreamRef.current.getTracks().forEach((t) => {
+          t.stop();
+          t.enabled = false;
+        });
+      } catch { }
       micStreamRef.current = null;
     }
     setAudioMeterActive(false);
@@ -1489,6 +1471,8 @@ Control your speed, adjust your font size, and download your voice recording in 
 
   const startAudioAnalysis = useCallback(async (deviceId?: string) => {
     try {
+      if (!isMountedRef.current) return;
+
       const isMobileDevice =
         typeof window !== 'undefined' &&
         (window.innerWidth < 1024 || 'ontouchstart' in window || /android|iphone|ipad|ipod/i.test(navigator.userAgent));
@@ -1501,7 +1485,13 @@ Control your speed, adjust your font size, and download your voice recording in 
       }
 
       if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        try {
+          micStreamRef.current.getTracks().forEach((t) => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
+        micStreamRef.current = null;
       }
 
       const audioConstraints: MediaTrackConstraints = {
@@ -1515,6 +1505,19 @@ Control your speed, adjust your font size, and download your voice recording in 
         audio: audioConstraints,
         video: false,
       });
+
+      // If unmounted while userMedia was pending, kill tracks immediately!
+      if (!isMountedRef.current) {
+        try {
+          stream.getTracks().forEach((t) => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
+        return;
+      }
+
+      registerMediaStream(stream);
       micStreamRef.current = stream;
 
       const AudioContextClass =
@@ -1753,7 +1756,27 @@ Control your speed, adjust your font size, and download your voice recording in 
         // switches fall back to "any camera" instead of going black.
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
+
+      if (!isMountedRef.current) {
+        if (stream) {
+          try {
+            stream.getTracks().forEach((t) => {
+              t.stop();
+              t.enabled = false;
+            });
+          } catch { }
+        }
+        return;
+      }
+
+      if (cameraStreamRef.current) {
+        try {
+          cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+        } catch { }
+      }
       if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
+      registerMediaStream(stream);
+      cameraStreamRef.current = stream;
       setCameraStream(stream);
       setCameraActive(true);
       if (targetId) setSelectedCameraId(targetId);
@@ -1765,6 +1788,15 @@ Control your speed, adjust your font size, and download your voice recording in 
   };
 
   const stopCamera = () => {
+    if (cameraStreamRef.current) {
+      try {
+        cameraStreamRef.current.getTracks().forEach((t) => {
+          t.stop();
+          t.enabled = false;
+        });
+      } catch { }
+      cameraStreamRef.current = null;
+    }
     if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
     setCameraStream(null);
     setCameraActive(false);
@@ -1935,6 +1967,20 @@ Control your speed, adjust your font size, and download your voice recording in 
             video: false,
           });
         }
+
+        if (!isMountedRef.current) {
+          if (stream) {
+            try {
+              stream.getTracks().forEach((t) => {
+                t.stop();
+                t.enabled = false;
+              });
+            } catch { }
+          }
+          return;
+        }
+
+        registerMediaStream(stream);
         recordingStreamRef.current = stream;
 
         const isMobileDevice =

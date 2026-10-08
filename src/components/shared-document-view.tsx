@@ -106,6 +106,8 @@ export default function SharedDocumentView({
             endDate: x.ced || undefined,
             currency: data.cu,
             sym,
+            fullDocumentText: x.fdt || undefined,
+            documentSections: x.fsec || undefined,
             scopeDescription: x.csd || undefined,
             items,
             totalAmount: total,

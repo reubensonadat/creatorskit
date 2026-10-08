@@ -263,3 +263,68 @@ Limited ads step above).
 **What NOT to do:** no units inside tool workflows, nothing beyond the plan
 in `src/data/ads.ts`, nothing on bouquet/gift pages. More ads ≠ more money —
 RPM collapses when users bounce.
+
+---
+
+## BACKLOG RULING — 2026-10-08 — Resume/CV builder (owner idea)
+
+**Idea:** free Resume/CV builder in the Business Suite + auto-generated
+shareable "resume link" web page per user.
+
+**Verdict: PARKED (owner ruling 2026-10-08, final).** The clarified idea
+was sound — builder + PDF free forever, small one-time fee (10 GHS via
+Paystack) ONLY for the hosted personal resume page
+(creatorskit.win/resume/…) that makes the owner look more professional.
+But the owner's own objection stands and wins: building a real resume
+takes people MONTHS because of the CONTENT (what to write, what to omit,
+what their career even is) — not the layout. A template tool can't solve
+that, and shipping one that pretends to creates exactly the
+promise-vs-delivery discrepancy worth avoiding. Revisit only after launch
+data shows demand; do not build pre- or peri-launch. For the record, it
+WAS the best-fit expansion mechanically — it reuses:
+
+- Document templates machinery (invoice/receipt/agreement/letterhead) →
+  resume templates are the same pattern: sections, fonts, paper themes.
+- Paper view (print-accurate 820px scaling) → already built.
+- PDF/PNG export (`saveDocumentAsImage`, client-document-printer) → already built.
+- Share links (encoded + Supabase short links) → the "resume link website"
+  is the invoice share-link pattern wearing different clothes. Ad-free
+  recipient page + "Made with CreatorsKit" badge, same as invoice rules.
+
+**Positioning (critical — do not fight head-on):**
+"resume builder" head terms are owned by Zety/Canva/Resume.io with huge
+budgets. Attack the long tail where our model is the weapon:
+- "free resume builder no sign up"
+- "resume builder no watermark free download"
+- "CV builder Ghana" / "CV format Nigeria" (Gh/Ng job market LOVES CVs and
+  WhatsApp-shareable links)
+- "ATS friendly resume free"
+The differentiator every competitor refuses: no account, no paywall, no
+watermark on download. They charge $3–30 for a PDF; we give it free.
+
+**Monetization (per existing law, no new thinking):**
+- Right rail in the editor (business-suite plan: rail only, no anchor)
+- AdGate sponsored pause on PDF/PNG download + print actions
+- Resume VIEW pages (recipient-style): ad-free, badge only
+- Career/jobs advertisers = high RPM; this can out-earn the rest of the suite
+
+**Build order:** do NOT delay launch for this. Ship site → review window →
+then resume builder as the Phase 2 flagship alongside ToolSeoBlock rollout.
+Start with 3 templates (clean ATS, modern two-column, classic serif).
+
+**Honest effort note (owner correction 2026-10-08):** this is a real build,
+not a copy-paste of the suite — resume users are the pickiest document
+audience there is. Sections editor + 3 templates + print/export + share
+page = days of focused work even with the existing machinery. Plan it as a
+flagship project, not a weekend tweak.
+
+**Payment model ruling (owner idea: 10 GHS via Paystack):**
+Paystack is the right rail for it (Ghana-native, MoMo + cards, handles
+GHS micro-payments fine). But the structure must protect the free promise:
+- **Free forever:** the builder, PDF download, print, no watermark — this
+  IS the SEO weapon; paywalling it turns us into Zety-lite.
+- **Paid (10 GHS, one-time):** premium template pack(s) and/or long-lived
+  hosted resume link. Value exchanged = real (design work / hosting).
+- **Timing:** no payments before launch. Paystack needs business KYC +
+  webhooks + expiry logic — build it only when traffic proves demand.
+  v1 ships free + ads exactly like every other tool.

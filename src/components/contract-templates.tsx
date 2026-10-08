@@ -3,7 +3,12 @@
 import React, { useEffect } from 'react';
 import { injectInvoiceGoogleFont } from '@/lib/invoice-fonts';
 
-export type ContractTemplateId = 'service' | 'business' | 'creator';
+export type ContractTemplateId = 'service' | 'business' | 'creator' | 'full-legal';
+
+export interface DocumentSection {
+  heading: string;
+  lines: string[];
+}
 
 export interface ContractItem {
   id: string;
@@ -34,6 +39,10 @@ export interface ContractData {
   endDate?: string;
   currency: string;
   sym: string;
+
+  // Full Document Preservation (Multi-Page Legal Documents)
+  fullDocumentText?: string;
+  documentSections?: DocumentSection[];
 
   // Deliverables & Scope
   scopeDescription?: string;
@@ -877,6 +886,258 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
 }
 
 /* =========================================================================
+   TEMPLATE 4: FULL LEGAL DOCUMENT AGREEMENT (Comprehensive Multi-Page)
+   Engineered for multi-page real-world legal agreements, operating contracts,
+   revenue sharing agreements, and NDAs. Renders all articles, sections,
+   vehicle/schedule specs, and execution blocks with strict print pagination.
+   ========================================================================= */
+export function FullLegalDocumentAgreement({ data, showBranding = true }: ContractTemplateProps) {
+  const headingFont = data.headingFont || 'Inter';
+  const bodyFont = data.bodyFont || 'Inter';
+
+  useEffect(() => {
+    injectInvoiceGoogleFont(headingFont);
+    injectInvoiceGoogleFont(bodyFont);
+  }, [headingFont, bodyFont]);
+
+  const contractTitle = data.contractTitle || 'OPERATING AND REVENUE-SHARING AGREEMENT';
+  const sections = data.documentSections || [];
+
+  return (
+    <div
+      className="full-legal-document-wrapper"
+      style={{
+        background: '#ffffff',
+        color: '#111827',
+        fontFamily: `${bodyFont}, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+        padding: 'clamp(24px, 4vw, 44px)',
+        fontSize: '11px',
+        lineHeight: 1.7,
+        width: '100%',
+        maxWidth: 820,
+        boxSizing: 'border-box',
+        margin: '0 auto',
+      }}
+    >
+      {/* Header Banner */}
+      <div style={{ textAlign: 'center', marginBottom: 28, borderBottom: '2px solid #000', paddingBottom: 20 }}>
+        <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#6b7280', marginBottom: 6 }}>
+          Official Commercial Agreement &bull; Ref: {data.contractNumber || 'AGR-EXEC'}
+        </div>
+        <h1
+          style={{
+            fontFamily: `${headingFont}, sans-serif`,
+            fontSize: '1.45rem',
+            fontWeight: 900,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            margin: '0 0 10px',
+            color: '#000000',
+            lineHeight: 1.25,
+          }}
+        >
+          {contractTitle}
+        </h1>
+        <div style={{ fontSize: '10px', fontWeight: 600, color: '#374151' }}>
+          Effective Date: <strong style={{ color: '#000' }}>{data.effectiveDate}</strong>
+          {data.endDate && <span> &bull; Expiration: <strong style={{ color: '#000' }}>{data.endDate}</strong></span>}
+          {data.governingLaw && <span> &bull; Jurisdiction: <strong style={{ color: '#000' }}>{data.governingLaw}</strong></span>}
+        </div>
+      </div>
+
+      {/* Recitals & Parties Overview Box */}
+      <div
+        style={{
+          border: '1px solid #000',
+          padding: '14px 18px',
+          marginBottom: 24,
+          background: '#fafafa',
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
+        }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 4 }}>
+              Party A &bull; First Party / Owner
+            </div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#000' }}>{data.creatorName}</div>
+            {data.creatorEmail && <div style={{ fontSize: '10px', color: '#4b5563' }}>{data.creatorEmail}</div>}
+            {data.creatorPhone && <div style={{ fontSize: '10px', color: '#4b5563' }}>{data.creatorPhone}</div>}
+            {data.creatorAddress && <div style={{ fontSize: '10px', color: '#4b5563' }}>{data.creatorAddress}</div>}
+          </div>
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6b7280', marginBottom: 4 }}>
+              Party B &bull; Second Party / Operator / Client
+            </div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#000' }}>{data.clientName}</div>
+            {data.clientContact && data.clientContact !== data.clientName && (
+              <div style={{ fontSize: '10px', color: '#4b5563' }}>Attn: {data.clientContact}</div>
+            )}
+            {data.clientEmail && <div style={{ fontSize: '10px', color: '#4b5563' }}>{data.clientEmail}</div>}
+            {data.clientAddress && <div style={{ fontSize: '10px', color: '#4b5563' }}>{data.clientAddress}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* All Document Sections */}
+      {sections.map((section, sIdx) => {
+        const isRepeatedTitle = section.heading.trim().toUpperCase() === contractTitle.trim().toUpperCase();
+        if (isRepeatedTitle && sIdx === 0) return null;
+
+        return (
+          <div
+            key={sIdx}
+            style={{
+              marginBottom: 20,
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+            }}
+          >
+            {section.heading && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 8,
+                  borderBottom: '1px solid #e5e7eb',
+                  paddingBottom: 4,
+                  marginBottom: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: `${headingFont}, sans-serif`,
+                    fontSize: '11.5px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#000',
+                  }}
+                >
+                  {section.heading}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {section.lines.map((line, lIdx) => {
+                const kvMatch = line.match(/^([A-Za-z0-9\s]{2,25}):\s+(.+)$/);
+                if (kvMatch && !line.startsWith('Note:') && line.length < 90) {
+                  return (
+                    <div
+                      key={lIdx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '160px 1fr',
+                        padding: '3px 8px',
+                        background: lIdx % 2 === 0 ? '#f9fafb' : '#ffffff',
+                        borderLeft: '2px solid #000',
+                        fontSize: '10.5px',
+                      }}
+                    >
+                      <strong style={{ color: '#111827' }}>{kvMatch[1]}</strong>
+                      <span style={{ color: '#374151' }}>{kvMatch[2]}</span>
+                    </div>
+                  );
+                }
+
+                const isBullet = /^[\u2022\-\*\u25AA]\s+/.test(line) || /^[a-z0-9]\.\s+/i.test(line);
+                return (
+                  <p
+                    key={lIdx}
+                    style={{
+                      margin: 0,
+                      paddingLeft: isBullet ? 14 : 0,
+                      textIndent: isBullet ? -14 : 0,
+                      fontSize: '10.5px',
+                      color: '#1f2937',
+                      lineHeight: 1.65,
+                      textAlign: 'justify',
+                    }}
+                  >
+                    {line}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Signature Execution Block */}
+      <div
+        style={{
+          marginTop: 36,
+          borderTop: '2px solid #000',
+          paddingTop: 20,
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
+        }}
+      >
+        <div style={{ fontSize: '10px', fontWeight: 700, marginBottom: 18, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          IN WITNESS WHEREOF, the Parties hereto have executed this Agreement as of the date first above written.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36 }}>
+          {/* Party A */}
+          <div>
+            <div style={{ fontSize: '9.5px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#000' }}>
+              PARTY A: FIRST PARTY / OWNER
+            </div>
+            <div
+              style={{
+                height: 54,
+                borderBottom: '1.5px solid #000',
+                marginBottom: 8,
+              }}
+            />
+            <div style={{ fontWeight: 800, fontSize: '10.5px' }}>{data.creatorName}</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Title: Authorized Representative / Owner</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Date: {data.effectiveDate}</div>
+          </div>
+
+          {/* Party B */}
+          <div>
+            <div style={{ fontSize: '9.5px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#000' }}>
+              PARTY B: SECOND PARTY / OPERATOR
+            </div>
+            <div
+              style={{
+                height: 54,
+                borderBottom: '1.5px solid #000',
+                marginBottom: 8,
+              }}
+            />
+            <div style={{ fontWeight: 800, fontSize: '10.5px' }}>{data.clientContact || data.clientName}</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Title: Authorized Operator / Partner</div>
+            <div style={{ fontSize: '9.5px', color: '#6b7280' }}>Date: _______________</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Branding */}
+      {showBranding && (
+        <div
+          style={{
+            textAlign: 'center',
+            marginTop: 32,
+            paddingTop: 12,
+            borderTop: '1px solid #f3f4f6',
+            fontSize: '9px',
+            fontFamily: 'monospace',
+            color: '#a1a1aa',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Powered by CreatorsKit &bull; Executed Legal Document
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
    ROUTER RENDERER
    ========================================================================= */
 export default function ContractDocumentRenderer({
@@ -888,7 +1149,12 @@ export default function ContractDocumentRenderer({
   data: ContractData;
   showBranding?: boolean;
 }) {
+  if (data.documentSections && data.documentSections.length > 0) {
+    return <FullLegalDocumentAgreement data={data} showBranding={showBranding} />;
+  }
   switch (templateId) {
+    case 'full-legal':
+      return <FullLegalDocumentAgreement data={data} showBranding={showBranding} />;
     case 'service':
       return <ServiceContract data={data} showBranding={showBranding} />;
     case 'business':

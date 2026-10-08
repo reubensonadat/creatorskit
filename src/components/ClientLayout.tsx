@@ -11,6 +11,7 @@ import { ExternalAdGateHost } from "@/components/ExternalAdGate";
 import { AdGateHost } from "@/components/AdGate";
 import { TOOL_CHROME } from "@/data/tools";
 import { recordVisitForPath } from "@/lib/app-home";
+import { installGlobalMediaSafetyNet, forceStopAllMediaStreams } from "@/lib/media-cleanup";
 
 /**
  * Chrome router. The single source of truth for which routes get which
@@ -28,10 +29,19 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const chrome = chromeFor(pathname);
 
-  // App-home quick tools (owner ruling 2026-10-03): remember every tool
-  // surface visited — feeds /app recents + the mobile bottom bar slots.
+  // Install global media safety net once on mount
+  useEffect(() => {
+    installGlobalMediaSafetyNet();
+  }, []);
+
+  // App-home quick tools + route transition mic/cam leak guard:
+  // When navigating away from any tool (e.g. /teleprompter -> /match-cut),
+  // immediately force-stop any active microphone or camera streams.
   useEffect(() => {
     recordVisitForPath(pathname);
+    return () => {
+      forceStopAllMediaStreams();
+    };
   }, [pathname]);
 
   return (

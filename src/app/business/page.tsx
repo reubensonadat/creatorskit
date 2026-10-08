@@ -16,8 +16,24 @@ import {
   Check,
   ImagePlus,
   X,
+  PenTool,
+  Upload,
+  FileUp,
+  Palette,
+  ArrowRight,
+  Zap,
+  SlidersHorizontal,
+  RefreshCw,
 } from 'lucide-react';
-import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
+import {
+  extractColorsFromImage,
+  parseNaturalPrompt,
+  reconstructDocumentFromText,
+  extractTextFromDocx,
+  type ParsedDocumentData,
+  type DocumentSection,
+} from '@/lib/business-smart-builder';
+import { ThinkingOrb } from 'thinking-orbs';
 import { exportDocumentAsImage } from '@/lib/export-document-image';
 import StudioToolsDropdown from '@/components/nav/SiteNav';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
@@ -152,8 +168,8 @@ function BusinessSuiteContent() {
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 10,
-        background: openSections[id] ? '#FFE500' : '#000',
-        color: openSections[id] ? '#000' : '#fff',
+        background: openSections[id] ? '#000' : '#f9fafb',
+        color: openSections[id] ? '#fff' : '#000',
         border: '2px solid #000',
         boxShadow: '3px 3px 0 #000',
         padding: '10px 14px',
@@ -168,10 +184,11 @@ function BusinessSuiteContent() {
       <span>{openSections[id] ? '▾' : '▸'} {title}</span>
       <span
         style={{
-          background: openSections[id] ? '#000' : '#fff',
-          color: openSections[id] ? '#FFE500' : '#000',
+          background: openSections[id] ? '#fff' : '#000',
+          color: openSections[id] ? '#000' : '#fff',
           padding: '2px 8px',
           fontSize: '0.62rem',
+          border: '1px solid #000',
         }}
       >
         {openSections[id] ? 'ON' : 'OFF'}
@@ -189,6 +206,8 @@ function BusinessSuiteContent() {
   const [contractExclusivity, setContractExclusivity] = useState('None');
   const [contractCustomTerms, setContractCustomTerms] = useState('');
   const [contractKillFee, setContractKillFee] = useState(50);
+  const [fullDocumentText, setFullDocumentText] = useState<string>('');
+  const [documentSections, setDocumentSections] = useState<DocumentSection[]>([]);
 
   // ─── LETTERHEAD TEMPLATE & PROPOSAL STATE ─────────────────────
   const [letterheadTemplate, setLetterheadTemplate] = useState<LetterheadTemplateId>('creative');
@@ -235,7 +254,12 @@ function BusinessSuiteContent() {
 
   const handleSelectContractTemplate = (t: ContractTemplateId) => {
     setContractTemplate(t);
-    if (t === 'service') {
+    if (t === 'full-legal') {
+      setContractTitle('OPERATING AND REVENUE-SHARING AGREEMENT');
+      setHeadingFont('Inter');
+      setBodyFont('Inter');
+      setSignatureFont('Caveat');
+    } else if (t === 'service') {
       setContractTitle('SERVICE CONTRACT');
       setHeadingFont('Inter');
       setBodyFont('Inter');
@@ -345,12 +369,196 @@ function BusinessSuiteContent() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── CONCEPT A & B: SMART BUILDER & COLOR PALETTE EXTRACTION ───
+  type BuilderMode = 'prompt' | 'reconstruct' | 'manual';
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('prompt');
+  const [promptInput, setPromptInput] = useState('');
+  const [promptMode, setPromptMode] = useState<'sentence' | 'guided'>('sentence');
+  const [guidedClient, setGuidedClient] = useState('');
+  const [guidedDeliverable, setGuidedDeliverable] = useState('');
+  const [guidedRate, setGuidedRate] = useState('');
+  const [guidedCurrency, setGuidedCurrency] = useState<CurrencyType>('USD');
+  const [guidedTerms, setGuidedTerms] = useState('50% Upfront, Balance on Delivery (Net 14)');
+  const [reconstructText, setReconstructText] = useState('');
+  const [extractedPalette, setExtractedPalette] = useState<string[]>([]);
+  const [smartStatusMessage, setSmartStatusMessage] = useState<string | null>(null);
+  const [isProcessingDoc, setIsProcessingDoc] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
+
+  const applyParsedDocument = (parsed: ParsedDocumentData, sourceLabel: string) => {
+    if (parsed.clientName) {
+      setClientName(parsed.clientName);
+      setClientContact(parsed.clientName);
+    }
+    if (parsed.currency) setCurrency(parsed.currency);
+    if (parsed.dueDate) setDueDate(parsed.dueDate);
+    if (parsed.issueDate) setIssueDate(parsed.issueDate);
+    if (parsed.invoiceNumber) setInvoiceNumber(parsed.invoiceNumber);
+    if (parsed.receiptNumber) setReceiptNumber(parsed.receiptNumber);
+    if (parsed.depositPercentage !== undefined) setDepositPercentage(parsed.depositPercentage);
+
+    // Agreement / Contract specifics
+    if (parsed.contractTitle) setContractTitle(parsed.contractTitle);
+    if (parsed.contractTemplate) setContractTemplate(parsed.contractTemplate);
+    if (parsed.contractScope) setContractScopeDescription(parsed.contractScope);
+    if (parsed.contractCustomTerms) setContractCustomTerms(parsed.contractCustomTerms);
+    if (parsed.contractGoverningLaw) setContractGoverningLaw(parsed.contractGoverningLaw);
+    if (parsed.fullDocumentText) setFullDocumentText(parsed.fullDocumentText);
+    if (parsed.documentSections && parsed.documentSections.length > 0) {
+      setDocumentSections(parsed.documentSections);
+      setContractTemplate('full-legal');
+    }
+
+    // Letterhead specifics
+    if (parsed.letterheadTitle) setLetterheadTitle(parsed.letterheadTitle);
+    if (parsed.letterheadIntro) setLetterheadIntro(parsed.letterheadIntro);
+
+    const targetTab = parsed.docType || activeTab;
+    if (parsed.docType && parsed.docType !== activeTab) {
+      setActiveTab(parsed.docType);
+    }
+
+    if (parsed.items && parsed.items.length > 0) {
+      setItems(parsed.items);
+      const total = parsed.items.reduce((acc, item) => acc + item.quantity * item.rate, 0);
+
+      // Tailor for Payment Receipt
+      if (targetTab === 'receipt') {
+        setAmountPaid(total > 0 ? total : 3750);
+        if (!parsed.receiptNumber && !receiptNumber) {
+          setReceiptNumber(`REC-${Date.now().toString().slice(-4)}`);
+        }
+      }
+
+      // Tailor for Influencer / Business Agreement
+      if (targetTab === 'agreement') {
+        if (!parsed.contractScope) {
+          const deliverablesList = parsed.items
+            .map((i) => `${i.quantity > 1 ? i.quantity + 'x ' : ''}${i.description}`)
+            .join(', ');
+          setContractScopeDescription(
+            `Production, delivery, and rights licensing for: ${deliverablesList}.`
+          );
+        }
+        if (parsed.depositPercentage !== undefined) {
+          setContractKillFee(parsed.depositPercentage);
+        }
+      }
+
+      // Tailor for Pitch Letterhead
+      if (targetTab === 'letterhead') {
+        if (!parsed.letterheadTitle && parsed.clientName) {
+          setLetterheadTitle(`${parsed.clientName} Campaign Proposal`);
+        }
+        if (!parsed.letterheadIntro) {
+          const deliverablesList = parsed.items
+            .map((i) => `${i.quantity > 1 ? i.quantity + 'x ' : ''}${i.description}`)
+            .join(', ');
+          setLetterheadIntro(
+            `Creative partnership proposal and deliverables overview: ${deliverablesList}.`
+          );
+        }
+      }
+    }
+    if (parsed.notes) setCustomNotes(parsed.notes);
+    if (parsed.extractedColors && parsed.extractedColors.length > 0) {
+      setExtractedPalette(parsed.extractedColors);
+      setPrimaryColor(parsed.extractedColors[0]);
+      if (parsed.extractedColors[1]) setAccentColor(parsed.extractedColors[1]);
+    }
+    setSmartStatusMessage(`Document updated from ${sourceLabel} (${parsed.items.length} items parsed).`);
+    setTimeout(() => setSmartStatusMessage(null), 6000);
+  };
+
+  const handleQuickPromptGenerate = () => {
+    if (!promptInput.trim()) return;
+    const parsed = parseNaturalPrompt(promptInput);
+    applyParsedDocument(parsed, 'Quick Prompt');
+  };
+
+  const handleGuidedGenerate = () => {
+    if (!guidedClient.trim() && !guidedDeliverable.trim()) return;
+    const constructed = `${guidedDeliverable || 'Brand deal deliverables'} for ${guidedClient || 'Brand Partner'} for ${guidedRate || '2500'} ${guidedCurrency}, ${guidedTerms}`;
+    const parsed = parseNaturalPrompt(constructed);
+    if (guidedClient) parsed.clientName = guidedClient;
+    if (guidedCurrency) parsed.currency = guidedCurrency;
+    applyParsedDocument(parsed, 'Guided Q&A');
+  };
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingDoc(true);
+    let paletteColors: string[] = [];
+    if (file.type.startsWith('image/')) {
+      try {
+        paletteColors = await extractColorsFromImage(file);
+        if (paletteColors.length > 0) {
+          setExtractedPalette(paletteColors);
+          setPrimaryColor(paletteColors[0]);
+          if (paletteColors[1]) setAccentColor(paletteColors[1]);
+        }
+      } catch { }
+    }
+
+    try {
+      const isDocx =
+        file.name.toLowerCase().endsWith('.docx') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      if (isDocx) {
+        const text = await extractTextFromDocx(file);
+        const parsed = reconstructDocumentFromText(text || file.name.replace(/\.[^/.]+$/, ''));
+        if (paletteColors.length > 0) parsed.extractedColors = paletteColors;
+        applyParsedDocument(parsed, file.name);
+      } else if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+        const text = await file.text();
+        const parsed = reconstructDocumentFromText(text);
+        if (paletteColors.length > 0) parsed.extractedColors = paletteColors;
+        applyParsedDocument(parsed, file.name);
+      } else {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        const parsed = reconstructDocumentFromText(nameWithoutExt);
+        if (paletteColors.length > 0) parsed.extractedColors = paletteColors;
+        applyParsedDocument(parsed, file.name);
+      }
+    } catch (err) {
+      console.error('Document ingestion error:', err);
+    } finally {
+      setIsProcessingDoc(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleReconstructFromText = () => {
+    if (!reconstructText.trim()) return;
+    setIsProcessingDoc(true);
+    try {
+      const parsed = reconstructDocumentFromText(reconstructText);
+      applyParsedDocument(parsed, 'Pasted Text');
+    } finally {
+      setTimeout(() => setIsProcessingDoc(false), 300);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setLogoUrl(reader.result as string);
     reader.readAsDataURL(file);
+
+    try {
+      const colors = await extractColorsFromImage(file);
+      if (colors.length > 0) {
+        setExtractedPalette(colors);
+        setPrimaryColor(colors[0]);
+        if (colors[1]) setAccentColor(colors[1]);
+        setSmartStatusMessage(`Brand palette extracted from logo (${colors.length} swatches).`);
+        setTimeout(() => setSmartStatusMessage(null), 4000);
+      }
+    } catch { }
     e.target.value = '';
   };
 
@@ -416,6 +624,7 @@ function BusinessSuiteContent() {
 
   // ─── SHAREABLE CLIENT RECEIPT LINK ────────────────────────────
   const [clientLinkCopied, setClientLinkCopied] = useState(false);
+  const [isCopyingLink, setIsCopyingLink] = useState(false);
 
   // Per-tab template extras stored alongside the payload in the database, so
   // shared links render the creator's real invoice/agreement/letterhead template
@@ -457,6 +666,8 @@ function BusinessSuiteContent() {
         csd: contractScopeDescription,
         ce: clientEmail,
         ca: clientAddress,
+        fdt: fullDocumentText || undefined,
+        fsec: documentSections.length > 0 ? documentSections : undefined,
         dep: depositPercentage,
         depr: depositRequired,
         pmd:
@@ -557,6 +768,8 @@ function BusinessSuiteContent() {
   };
 
   const copyClientLink = async () => {
+    if (isCopyingLink) return;
+    setIsCopyingLink(true);
     try {
       const link = await ensureReceiptShortUrl();
       if (navigator.clipboard?.writeText) {
@@ -576,6 +789,8 @@ function BusinessSuiteContent() {
       setTimeout(() => setClientLinkCopied(false), 2500);
     } catch (err) {
       console.error('Failed to copy client link:', err);
+    } finally {
+      setIsCopyingLink(false);
     }
   };
 
@@ -839,6 +1054,8 @@ function BusinessSuiteContent() {
     endDate: contractEndDate || undefined,
     currency,
     sym,
+    fullDocumentText: fullDocumentText || undefined,
+    documentSections: documentSections.length > 0 ? documentSections : undefined,
     scopeDescription: contractScopeDescription || undefined,
     items,
     totalAmount,
@@ -925,15 +1142,15 @@ function BusinessSuiteContent() {
         .ck-tab:active { transform: translate(1px, 1px); }
         #printable-document { outline: none; }
         @media (max-width: 900px) {
-          .ck-page { padding: 12px 12px 96px !important; }
+          .ck-page { padding: 12px 12px 24px !important; }
           .ck-workspace { gap: 16px !important; }
           /* Mobile: live document first, builder controls below it */
           .ck-preview-col { order: -1; }
-          /* Phase-6 Canva pattern: the tab-index cards give way to the bottom bar */
-          .ck-tab-grid { display: none !important; }
-        }
-        @media (min-width: 901px) {
-          .ck-mobile-nav { display: none !important; }
+          .ck-tab-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+          }
         }
         @page {
           size: ${activeTab === 'receipt' ? 'auto' : 'A4 portrait'};
@@ -1064,6 +1281,7 @@ function BusinessSuiteContent() {
 
             <button
               onClick={copyClientLink}
+              disabled={isCopyingLink}
               title="Copy interactive client link that prints live in real-time"
               style={{
                 display: 'inline-flex',
@@ -1077,12 +1295,19 @@ function BusinessSuiteContent() {
                 fontWeight: 900,
                 fontSize: '0.75rem',
                 fontFamily: 'monospace',
-                cursor: 'pointer',
+                cursor: isCopyingLink ? 'wait' : 'pointer',
                 boxShadow: '3px 3px 0 #000',
+                opacity: isCopyingLink ? 0.85 : 1,
               }}
             >
-              {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />}
-              {clientLinkCopied ? 'LINK COPIED!' : 'COPY LINK'}
+              {isCopyingLink ? (
+                <ThinkingOrb size={20} state="working" />
+              ) : clientLinkCopied ? (
+                <Check size={14} />
+              ) : (
+                <Share2 size={14} />
+              )}
+              {isCopyingLink ? 'SAVING LINK...' : clientLinkCopied ? 'LINK COPIED!' : 'COPY LINK'}
             </button>
 
             <button
@@ -1115,8 +1340,8 @@ function BusinessSuiteContent() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '8px 16px',
-                background: '#FFE500',
-                color: '#000',
+                background: '#000',
+                color: '#fff',
                 border: '2px solid #000',
                 borderRadius: '4px',
                 fontWeight: 900,
@@ -1177,7 +1402,7 @@ function BusinessSuiteContent() {
                     fontFamily: 'monospace',
                     fontWeight: 900,
                     fontSize: '0.82rem',
-                    background: isSelected ? '#fef08a' : '#f4f4f5',
+                    background: isSelected ? '#fff' : '#f4f4f5',
                     color: '#000',
                     border: '2px solid #000',
                   }}
@@ -1217,17 +1442,520 @@ function BusinessSuiteContent() {
         >
           {/* ─── LEFT COLUMN: BUILDER & SETTINGS CONTROLS ─── */}
           <div className="ck-noprint" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* ─── CUSTOMIZATION LAYER — collapsible (templates · fonts · colors).
-                  Receipts have no templates, so the whole layer hides on the
-                  receipt tab. ─── */}
-            {activeTab !== 'receipt' && (
-              <>
-                <SectionToggle id="design" title="Customize Design — Templates · Fonts · Colors" />
 
-                {openSections.design && (
+            {/* ─── CREATION MODE SWITCHER (Quick Prompt · Document Ingestion · Manual) ─── */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 5,
+                background: '#fff',
+                padding: 4,
+                border: '2px solid #000',
+                boxShadow: '3px 3px 0 #000',
+              }}
+            >
+              {[
+                { id: 'prompt' as const, label: 'Quick Draft', icon: <PenTool size={12} /> },
+                { id: 'reconstruct' as const, label: 'Import Doc', icon: <FileUp size={12} /> },
+                { id: 'manual' as const, label: 'Manual Form', icon: <SlidersHorizontal size={12} /> },
+              ].map((mode) => {
+                const isActive = builderMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setBuilderMode(mode.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '9px 4px',
+                      background: isActive ? '#000' : '#f9fafb',
+                      color: isActive ? '#fff' : '#000',
+                      border: isActive ? '1.5px solid #000' : '1px solid #e5e7eb',
+                      boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.69rem',
+                      letterSpacing: '0.01em',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {mode.icon}
+                    <span>{mode.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Smart status feedback banner */}
+            {smartStatusMessage && (
+              <div
+                style={{
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: '10px 14px',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>{smartStatusMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setSmartStatusMessage(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Extracted Brand Palette Bar */}
+            {extractedPalette.length > 0 && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Palette size={13} /> Extracted Brand Palette
+                  </span>
+                  <span style={{ fontSize: '0.6rem', color: '#666', fontFamily: 'monospace' }}>Tap to apply as accent</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {extractedPalette.map((color, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setAccentColor(color);
+                        if (idx === 0) setPrimaryColor(color);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: '#f9fafb',
+                        color: '#000',
+                        border: '1.5px solid #000',
+                        boxShadow: '2px 2px 0 #000',
+                        padding: '4px 8px',
+                        fontSize: '0.66rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                      title={`Apply ${color} to document`}
+                    >
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, border: '1px solid #000' }} />
+                      <span>{color.toUpperCase()}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ─── CONCEPT A: QUICK DRAFT MODE ─── */}
+            {builderMode === 'prompt' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '4px 4px 0 #000',
+                  padding: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #000', paddingBottom: 10 }}>
+                  <div>
+                    <span style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <PenTool size={13} /> Quick Document Composer
+                    </span>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.64rem', color: '#555' }}>
+                      Natural language parsing or guided 3-step entry.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', border: '1.5px solid #000', padding: 2, background: '#f4f4f5' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('sentence')}
+                      style={{
+                        padding: '4px 9px',
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        textTransform: 'uppercase',
+                        background: promptMode === 'sentence' ? '#000' : 'transparent',
+                        color: promptMode === 'sentence' ? '#fff' : '#000',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Prompt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptMode('guided')}
+                      style={{
+                        padding: '4px 9px',
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        textTransform: 'uppercase',
+                        background: promptMode === 'guided' ? '#000' : 'transparent',
+                        color: promptMode === 'guided' ? '#fff' : '#000',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Guided
+                    </button>
+                  </div>
+                </div>
+
+                {promptMode === 'sentence' ? (
                   <>
-                    {/* 0. Invoice Template Picker (When on Invoice Tab) */}
-                    {activeTab === 'invoice' && (
+                    <textarea
+                      value={promptInput}
+                      onChange={(e) => setPromptInput(e.target.value)}
+                      placeholder='e.g. 2x TikToks and 1x Reel for Gymshark for $4,500 due in 14 days, 50% deposit'
+                      style={{
+                        width: '100%',
+                        minHeight: 82,
+                        padding: 10,
+                        fontSize: '0.78rem',
+                        fontFamily: 'monospace',
+                        border: '1.5px solid #000',
+                        outline: 'none',
+                        resize: 'vertical',
+                      }}
+                    />
+
+                    {/* Quick suggestion chips */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        Presets (Tap to apply):
+                      </span>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {[
+                          '2x TikToks for $3,000 due in 14 days',
+                          '1x Reel + 3 Stories for GH₵5,000, 50% deposit',
+                          'UGC Video Package for ₦250,000 paid',
+                          'YouTube Integration for £2,200 for TechBrand',
+                        ].map((chip, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setPromptInput(chip)}
+                            style={{
+                              padding: '5px 8px',
+                              background: '#f9fafb',
+                              border: '1px solid #000',
+                              fontSize: '0.63rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleQuickPromptGenerate}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        background: '#000',
+                        color: '#fff',
+                        border: '2px solid #000',
+                        boxShadow: '3px 3px 0 #000',
+                        padding: '11px 16px',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.76rem',
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                        marginTop: 4,
+                      }}
+                    >
+                      <span>Generate Document</span>
+                      <ArrowRight size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        1. WHO IS PAYING YOU? (BRAND / CLIENT)
+                      </label>
+                      <input
+                        type="text"
+                        value={guidedClient}
+                        onChange={(e) => setGuidedClient(e.target.value)}
+                        placeholder="e.g. Gymshark / Spotify / Brand Agency"
+                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        2. WHAT ARE YOU DELIVERING?
+                      </label>
+                      <input
+                        type="text"
+                        value={guidedDeliverable}
+                        onChange={(e) => setGuidedDeliverable(e.target.value)}
+                        placeholder="e.g. 2x TikTok Videos (60s) + 1x Instagram Reel"
+                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          3. TOTAL AMOUNT
+                        </label>
+                        <input
+                          type="number"
+                          value={guidedRate}
+                          onChange={(e) => setGuidedRate(e.target.value)}
+                          placeholder="e.g. 3500"
+                          style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                          CURRENCY
+                        </label>
+                        <select
+                          value={guidedCurrency}
+                          onChange={(e) => setGuidedCurrency(e.target.value as CurrencyType)}
+                          style={{ width: '100%', padding: '7px 6px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
+                        >
+                          <option value="GHS">GHS (GH₵)</option>
+                          <option value="NGN">NGN (₦)</option>
+                          <option value="USD">USD ($)</option>
+                          <option value="GBP">GBP (£)</option>
+                          <option value="EUR">EUR (€)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
+                        PAYMENT TERMS
+                      </label>
+                      <select
+                        value={guidedTerms}
+                        onChange={(e) => setGuidedTerms(e.target.value)}
+                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.72rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
+                      >
+                        <option value="50% Upfront, Balance on Delivery (Net 14)">50% Upfront Deposit, Balance on Delivery (Net 14)</option>
+                        <option value="100% Paid in Full">100% Paid in Full (Proof of Payment)</option>
+                        <option value="Net 30 Days">Net 30 Days</option>
+                        <option value="100% Due Upon Receipt">100% Due Upon Receipt</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGuidedGenerate}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        background: '#000',
+                        color: '#fff',
+                        border: '2px solid #000',
+                        boxShadow: '3px 3px 0 #000',
+                        padding: '11px 16px',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.76rem',
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                        marginTop: 4,
+                      }}
+                    >
+                      <span>Build Document</span>
+                      <ArrowRight size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── CONCEPT B: DOCUMENT INGESTION & COLOR RECONSTRUCTION ─── */}
+            {builderMode === 'reconstruct' && (
+              <div
+                style={{
+                  background: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '4px 4px 0 #000',
+                  padding: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ borderBottom: '1.5px solid #000', paddingBottom: 10 }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FileUp size={14} /> Import Existing Document or Image
+                  </span>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.64rem', color: '#555' }}>
+                    Upload an invoice PDF, Word document, receipt scan, or paste text. Extracts line items and brand colors automatically.
+                  </p>
+                </div>
+
+                <input
+                  type="file"
+                  ref={docFileInputRef}
+                  onChange={handleDocFileUpload}
+                  accept=".pdf,.docx,.txt,image/*"
+                  style={{ display: 'none' }}
+                />
+
+                {/* Dropzone */}
+                <div
+                  onClick={() => !isProcessingDoc && docFileInputRef.current?.click()}
+                  style={{
+                    border: isProcessingDoc ? '2px dashed #000' : '1.5px dashed #000',
+                    background: isProcessingDoc ? '#fefce8' : '#fcfcfd',
+                    padding: '22px 16px',
+                    textAlign: 'center',
+                    cursor: isProcessingDoc ? 'wait' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {isProcessingDoc ? (
+                    <>
+                      <ThinkingOrb size={32} state="working" />
+                      <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', textTransform: 'uppercase' }}>
+                        PROCESSING DOCUMENT...
+                      </span>
+                      <span style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace' }}>
+                        Extracting sections, operational terms, and deliverables
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width: 34, height: 34, background: '#000', color: '#fff', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Upload size={16} />
+                      </div>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.74rem', textTransform: 'uppercase' }}>
+                        Upload Document or Screenshot
+                      </span>
+                      <span style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace' }}>
+                        PDF, DOCX, TXT, PNG, JPG (Pulls deliverables & brand palette)
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Or paste text */}
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.62rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4 }}>
+                    Or Paste Raw Text / Quote:
+                  </span>
+                  <textarea
+                    value={reconstructText}
+                    onChange={(e) => setReconstructText(e.target.value)}
+                    placeholder="Paste invoice line items, WhatsApp agreement, or quote text here..."
+                    style={{
+                      width: '100%',
+                      minHeight: 74,
+                      padding: 8,
+                      fontSize: '0.72rem',
+                      fontFamily: 'monospace',
+                      border: '1.5px solid #000',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleReconstructFromText}
+                    disabled={isProcessingDoc}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      background: '#000',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      boxShadow: '2px 2px 0 #000',
+                      padding: '9px 14px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      cursor: isProcessingDoc ? 'wait' : 'pointer',
+                      marginTop: 6,
+                      width: '100%',
+                      opacity: isProcessingDoc ? 0.85 : 1,
+                    }}
+                  >
+                    {isProcessingDoc ? (
+                      <>
+                        <ThinkingOrb size={20} state="working" />
+                        <span>PARSING TERMS...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Reconstruct Deliverables</span>
+                        <ArrowRight size={13} />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ─── MANUAL / FINE-TUNE FORM CONTROLS ─── */}
+            <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #000', paddingBottom: 6 }}>
+              <span style={{ fontWeight: 900, fontSize: '0.72rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                {builderMode === 'manual' ? 'Granular Form Controls' : 'Fine-Tune Document Fields'}
+              </span>
+              <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#666' }}>
+                {builderMode === 'manual' ? 'All Sections' : 'Optional Override'}
+              </span>
+            </div>
+
+              {/* 0. Customization Layer (Design / Templates / Fonts / Colors) */}
+              {activeTab !== 'receipt' && (
+                <>
+                  <SectionToggle id="design" title="0. Templates, Fonts & Colors" />
+
+                  {openSections.design && (
+                    <>
+                      {/* 0. Invoice Template Picker (When on Invoice Tab) */}
+                      {activeTab === 'invoice' && (
                       <div
                         style={{
                           background: '#fff',
@@ -1261,8 +1989,8 @@ function BusinessSuiteContent() {
                                 style={{
                                   textAlign: 'left',
                                   padding: '10px 10px',
-                                  background: isCurrent ? '#FFE500' : '#f9fafb',
-                                  color: '#000',
+                                  background: isCurrent ? '#000' : '#f9fafb',
+                                  color: isCurrent ? '#fff' : '#000',
                                   border: '2px solid #000',
                                   boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
                                   cursor: 'pointer',
@@ -1274,7 +2002,7 @@ function BusinessSuiteContent() {
                                 <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
                                   {isCurrent ? '✓ ' : ''}{tpl.title}
                                 </div>
-                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                <div style={{ fontSize: '0.65rem', color: isCurrent ? '#d4d4d8' : '#4b5563', lineHeight: 1.25 }}>
                                   {tpl.desc}
                                 </div>
                               </button>
@@ -1413,8 +2141,8 @@ function BusinessSuiteContent() {
                                     height: 18,
                                     borderRadius: '50%',
                                     background: swatch.hex,
-                                    border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #000' : '1px solid #ccc',
-                                    boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 1.5px #FFE500' : 'none',
+                                    border: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '2px solid #fff' : '1px solid #ccc',
+                                    boxShadow: primaryColor.toLowerCase() === swatch.hex.toLowerCase() ? '0 0 0 2px #000' : 'none',
                                     cursor: 'pointer',
                                   }}
                                 />
@@ -1485,7 +2213,7 @@ function BusinessSuiteContent() {
                             CONTRACT LEGAL TEMPLATE
                           </span>
                           <span style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 6px' }}>
-                            3 FORMATS
+                            4 FORMATS
                           </span>
                         </div>
 
@@ -1494,6 +2222,7 @@ function BusinessSuiteContent() {
                             { id: 'service', title: 'Service Contract', desc: 'eSign Legal · Numbered clauses & checkboxes' },
                             { id: 'business', title: 'Business Agreement', desc: 'Editorial · Roman numerals & milestone table' },
                             { id: 'creator', title: 'Creator Sponsorship', desc: 'Deal Memo · Deliverables, deposit & kill fee' },
+                            { id: 'full-legal', title: 'Full Legal Agreement', desc: 'Multi-Page · All sections, schedules & execution' },
                           ].map((tpl) => {
                             const isCurrent = contractTemplate === tpl.id;
                             return (
@@ -1504,8 +2233,8 @@ function BusinessSuiteContent() {
                                 style={{
                                   textAlign: 'left',
                                   padding: '10px 10px',
-                                  background: isCurrent ? '#FFE500' : '#f9fafb',
-                                  color: '#000',
+                                  background: isCurrent ? '#000' : '#f9fafb',
+                                  color: isCurrent ? '#fff' : '#000',
                                   border: '2px solid #000',
                                   boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
                                   cursor: 'pointer',
@@ -1517,13 +2246,36 @@ function BusinessSuiteContent() {
                                 <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
                                   {isCurrent ? '✓ ' : ''}{tpl.title}
                                 </div>
-                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                <div style={{ fontSize: '0.65rem', color: isCurrent ? '#d4d4d8' : '#4b5563', lineHeight: 1.25 }}>
                                   {tpl.desc}
                                 </div>
                               </button>
                             );
                           })}
                         </div>
+
+                        {documentSections.length > 0 && (
+                          <div style={{ marginBottom: 14, background: '#fafafa', border: '1.5px solid #000', padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <label style={{ fontSize: '0.68rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                                INGESTED LEGAL SECTIONS ({documentSections.length} SECTIONS)
+                              </label>
+                              <span style={{ fontSize: '0.62rem', background: '#000', color: '#fff', padding: '2px 6px', fontWeight: 800 }}>
+                                MULTI-PAGE ACTIVE
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#4b5563', marginBottom: 8 }}>
+                              All {documentSections.length} sections and articles are preserved and will print in full across all pages.
+                            </div>
+                            <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e5e7eb', background: '#fff', padding: 6 }}>
+                              {documentSections.map((sec, i) => (
+                                <div key={i} style={{ fontSize: '0.68rem', padding: '3px 0', borderBottom: '1px solid #f3f4f6' }}>
+                                  <strong>{i + 1}. {sec.heading}</strong> ({sec.lines.length} lines)
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Quick Presets */}
                         <div style={{ marginBottom: 14, background: '#fafafa', border: '1px solid #e5e7eb', padding: '8px 10px' }}>
@@ -1702,8 +2454,8 @@ function BusinessSuiteContent() {
                                 style={{
                                   textAlign: 'left',
                                   padding: '10px 10px',
-                                  background: isCurrent ? '#FFE500' : '#f9fafb',
-                                  color: '#000',
+                                  background: isCurrent ? '#000' : '#f9fafb',
+                                  color: isCurrent ? '#fff' : '#000',
                                   border: '2px solid #000',
                                   boxShadow: isCurrent ? '2px 2px 0 #000' : 'none',
                                   cursor: 'pointer',
@@ -1715,7 +2467,7 @@ function BusinessSuiteContent() {
                                 <div style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
                                   {isCurrent ? '✓ ' : ''}{tpl.title}
                                 </div>
-                                <div style={{ fontSize: '0.65rem', color: '#4b5563', lineHeight: 1.25 }}>
+                                <div style={{ fontSize: '0.65rem', color: isCurrent ? '#d4d4d8' : '#4b5563', lineHeight: 1.25 }}>
                                   {tpl.desc}
                                 </div>
                               </button>
@@ -2562,8 +3314,8 @@ function BusinessSuiteContent() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 6,
-                    background: '#FFE500',
-                    color: '#000',
+                    background: '#000',
+                    color: '#fff',
                     border: '2px solid #000',
                     borderRadius: '4px',
                     boxShadow: '2px 2px 0 #000',
@@ -2581,6 +3333,7 @@ function BusinessSuiteContent() {
                 </button>
                 <button
                   onClick={copyClientLink}
+                  disabled={isCopyingLink}
                   title="Copy interactive client link that prints live in real-time"
                   style={{
                     display: 'inline-flex',
@@ -2597,11 +3350,19 @@ function BusinessSuiteContent() {
                     fontSize: '0.74rem',
                     fontWeight: 800,
                     fontFamily: 'monospace',
-                    cursor: 'pointer',
+                    cursor: isCopyingLink ? 'wait' : 'pointer',
                     whiteSpace: 'nowrap',
+                    opacity: isCopyingLink ? 0.85 : 1,
                   }}
                 >
-                  {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'Link Copied' : 'Copy Link'}
+                  {isCopyingLink ? (
+                    <ThinkingOrb size={20} state="working" />
+                  ) : clientLinkCopied ? (
+                    <Check size={14} />
+                  ) : (
+                    <Share2 size={14} />
+                  )}
+                  {isCopyingLink ? 'Saving...' : clientLinkCopied ? 'Link Copied' : 'Copy Link'}
                 </button>
                 <button
                   onClick={sendWhatsAppSummary}
@@ -2750,23 +3511,7 @@ function BusinessSuiteContent() {
         </div>
       </div>
 
-      {/* ── PHASE-6 CANVA PATTERN: consolidated bottom navigation (mobile only) —
-            the four suite documents switch from one thumb-reach bar; the
-            receipt-index tab cards above stay desktop-only. ── */}
-      <div className="ck-mobile-nav ck-noprint">
-        <MobileEditorToolbar
-          categories={[
-            { id: 'invoice', label: 'Invoice', icon: <FileText size={15} /> },
-            { id: 'receipt', label: 'Receipt', icon: <Receipt size={15} /> },
-            { id: 'agreement', label: 'Agreement', icon: <ShieldCheck size={15} /> },
-            { id: 'letterhead', label: 'Letterhead', icon: <Award size={15} /> },
-          ]}
-          active={activeTab}
-          onSelect={(id) => {
-            if (id) setActiveTab(id as TabType);
-          }}
-        />
-      </div>
+
 
       {/* ─── ANIMATED PRINTER OVERLAY (For all documents: Invoices, Receipts, Contracts, Letterheads) ─── */}
       {printStage !== 'idle' && (
@@ -2873,8 +3618,8 @@ function BusinessSuiteContent() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 6,
-                      background: '#FFE500',
-                      color: '#000',
+                      background: '#000',
+                      color: '#fff',
                       border: '2px solid #000',
                       borderRadius: '4px',
                       boxShadow: '3px 3px 0 #000',
@@ -2884,11 +3629,11 @@ function BusinessSuiteContent() {
                       fontWeight: 900,
                       fontFamily: 'monospace',
                       textTransform: 'uppercase',
-                      cursor: 'pointer',
+                      cursor: isSavingImage ? 'wait' : 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Download size={14} /> {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
+                    {isSavingImage ? <ThinkingOrb size={20} state="working" /> : <Download size={14} />} {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
                   </button>
                   <button
                     onClick={handlePrint}
@@ -2924,8 +3669,8 @@ function BusinessSuiteContent() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 6,
-                      background: '#FFE500',
-                      color: '#000',
+                      background: '#000',
+                      color: '#fff',
                       border: '2px solid #000',
                       borderRadius: '4px',
                       boxShadow: '3px 3px 0 #000',
@@ -2960,16 +3705,17 @@ function BusinessSuiteContent() {
                       fontWeight: 800,
                       fontFamily: 'monospace',
                       textTransform: 'uppercase',
-                      cursor: 'pointer',
+                      cursor: isSavingImage ? 'wait' : 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Download size={14} /> {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
+                    {isSavingImage ? <ThinkingOrb size={20} state="working" /> : <Download size={14} />} {isSavingImage ? 'SAVING…' : 'SAVE PICTURE (PNG)'}
                   </button>
                 </>
               )}
               <button
                 onClick={copyClientLink}
+                disabled={isCopyingLink}
                 title="Copy client link that opens this live printer"
                 style={{
                   display: 'inline-flex',
@@ -2987,11 +3733,19 @@ function BusinessSuiteContent() {
                   fontWeight: 800,
                   fontFamily: 'monospace',
                   textTransform: 'uppercase',
-                  cursor: 'pointer',
+                  cursor: isCopyingLink ? 'wait' : 'pointer',
                   whiteSpace: 'nowrap',
+                  opacity: isCopyingLink ? 0.85 : 1,
                 }}
               >
-                {clientLinkCopied ? <Check size={14} /> : <Share2 size={14} />} {clientLinkCopied ? 'LINK COPIED!' : 'COPY CLIENT LINK'}
+                {isCopyingLink ? (
+                  <ThinkingOrb size={20} state="working" />
+                ) : clientLinkCopied ? (
+                  <Check size={14} />
+                ) : (
+                  <Share2 size={14} />
+                )}
+                {isCopyingLink ? 'SAVING LINK...' : clientLinkCopied ? 'LINK COPIED!' : 'COPY CLIENT LINK'}
               </button>
               <button
                 onClick={sendWhatsAppSummary}

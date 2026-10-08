@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Printer, Download, Share2, Check } from 'lucide-react';
+import { ThinkingOrb } from 'thinking-orbs';
 import { exportDocumentAsImage } from '@/lib/export-document-image';
 import { ReceiptPrinter, receiptClipPath } from '@/components/receipt-printer';
 import SharedDocumentView from '@/components/shared-document-view';
@@ -299,9 +300,9 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                                 <button
                                     onClick={saveImage}
                                     disabled={isSavingImage}
-                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: isSavingImage ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
                                 >
-                                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
+                                    {isSavingImage ? <ThinkingOrb size={20} state="working" /> : <Download size={14} />} {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
                                 </button>
                                 <button
                                     onClick={() => window.print()}
@@ -314,16 +315,16 @@ export default function ClientDocumentPrinter({ data }: { data: ReceiptPayload }
                             <>
                                 <button
                                     onClick={() => window.print()}
-                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFE500', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#000', color: '#fff', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
                                 >
                                     <Printer size={14} /> Print / Save PDF
                                 </button>
                                 <button
                                     onClick={saveImage}
                                     disabled={isSavingImage}
-                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '4px', boxShadow: '3px 3px 0 #000', height: 40, padding: '0 12px', fontSize: '0.74rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: isSavingImage ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
                                 >
-                                    <Download size={14} /> {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
+                                    {isSavingImage ? <ThinkingOrb size={20} state="working" /> : <Download size={14} />} {isSavingImage ? 'Saving…' : 'Save Picture (PNG)'}
                                 </button>
                             </>
                         )}

@@ -222,6 +222,21 @@ export default function ProductionSyncSlatePage() {
     };
   }, []);
 
+  // Teardown microphone monitor when leaving the page to prevent mic leaks
+  useEffect(() => {
+    return () => {
+      if (micStreamRef.current) {
+        try {
+          micStreamRef.current.getTracks().forEach((t) => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch { }
+        micStreamRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!hydratedRef.current) return;
     const t = setTimeout(() => {
