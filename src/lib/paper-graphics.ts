@@ -408,8 +408,17 @@ export interface AnchorWord {
  *   2. Token-sequence matching (handles attached quotes/commas/dashes).
  *   3. Keyword fallback — highlights any matching keywords when the full
  *      phrase is not present verbatim.
+ *
+ * `occurrences` (optional) resolves AMBIGUITY: when a phrase appears five
+ * times in the document it maps phraseIndex → the 1-based instance the user
+ * picked, so only THAT instance is tagged — never all five. Without the
+ * map every occurrence matches (legacy behavior).
  */
-export function matchAnchorWords(text: string, phrases: string[]): AnchorWord[] {
+export function matchAnchorWords(
+    text: string,
+    phrases: string[],
+    occurrences?: Record<number, number>
+): AnchorWord[] {
     const cleanText = text.trim();
     const rawWords = cleanText.split(/\s+/).filter(Boolean);
     if (rawWords.length === 0 || phrases.length === 0) {
@@ -418,15 +427,20 @@ export function matchAnchorWords(text: string, phrases: string[]): AnchorWord[] 
 
     const textLower = cleanText.toLowerCase();
 
-    // 1. Substring spans
+    // 1. Substring spans (occurrence-aware: only the picked instance tags)
     const phraseSpans: { start: number; end: number; phraseIndex: number }[] = [];
     phrases.forEach((phrase, pIdx) => {
         const p = phrase.toLowerCase();
+        const wanted = occurrences?.[pIdx]; // 1-based instance the user chose
         let searchPos = 0;
+        let seen = 0;
         while (searchPos < textLower.length && p.length > 0) {
             const idx = textLower.indexOf(p, searchPos);
             if (idx === -1) break;
-            phraseSpans.push({ start: idx, end: idx + p.length, phraseIndex: pIdx });
+            seen += 1;
+            if (wanted === undefined || seen === wanted) {
+                phraseSpans.push({ start: idx, end: idx + p.length, phraseIndex: pIdx });
+            }
             searchPos = idx + p.length;
         }
     });
@@ -454,10 +468,12 @@ export function matchAnchorWords(text: string, phrases: string[]): AnchorWord[] 
         wordObjects.push({ word: w, isAnchor, phraseIndex });
     }
 
-    // 2. Token-sequence matching fallback
+    // 2. Token-sequence matching fallback (occurrence-aware as well)
     phrases.forEach((phrase, pIdx) => {
         const phraseTokens = phrase.toLowerCase().split(/\s+/).map(cleanToken).filter(Boolean);
         if (phraseTokens.length === 0) return;
+        const wanted = occurrences?.[pIdx];
+        let seen = 0;
 
         for (let i = 0; i <= rawWords.length - phraseTokens.length; i++) {
             let matches = true;
@@ -468,9 +484,12 @@ export function matchAnchorWords(text: string, phrases: string[]): AnchorWord[] 
                 }
             }
             if (matches) {
-                for (let k = 0; k < phraseTokens.length; k++) {
-                    wordObjects[i + k].isAnchor = true;
-                    wordObjects[i + k].phraseIndex = pIdx;
+                seen += 1;
+                if (wanted === undefined || seen === wanted) {
+                    for (let k = 0; k < phraseTokens.length; k++) {
+                        wordObjects[i + k].isAnchor = true;
+                        wordObjects[i + k].phraseIndex = pIdx;
+                    }
                 }
             }
         }
@@ -491,6 +510,61 @@ export function matchAnchorWords(text: string, phrases: string[]): AnchorWord[] 
     }
 
     return wordObjects;
+}
+
+// ---------------------------------------------------------------------------
+// Phrase occurrence resolution — the "which instance?" machinery.
+// When a phrase appears multiple times in a document the studio refuses to
+// guess: it lists every occurrence with surrounding context so the creator
+// picks the exact instance the marker should sweep.
+// ---------------------------------------------------------------------------
+
+export interface PhraseOccurrence {
+    /** 1-based instance number, in reading order. */
+    index: number;
+    /** ±context snippet with the match bracketed, whitespace-collapsed. */
+    context: string;
+}
+
+/** Canonical key for per-phrase instance selections (stable across edits). */
+export function normalizePhraseKey(s: string): string {
+    return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function buildOccurrenceContext(text: string, idx: number, len: number, radius = 26): string {
+    const flat = text.replace(/\s+/g, ' ').trim();
+    // Re-locate inside the flattened text (offsets shift by whitespace only).
+    const before = flat.slice(0, idx).replace(/\s+/g, ' ');
+    const needleStart = before.length;
+    const start = Math.max(0, needleStart - radius);
+    const end = Math.min(flat.length, needleStart + len + radius);
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < flat.length ? '…' : '';
+    const matched = flat.slice(needleStart, needleStart + len) || text.slice(idx, idx + len);
+    return `${prefix}${flat.slice(start, needleStart)}[${matched}]${flat.slice(needleStart + len, end)}${suffix}`;
+}
+
+/**
+ * Finds every occurrence of `phrase` inside `text` (case-insensitive,
+ * substring semantics identical to the engine's span matcher) and returns
+ * them numbered with context snippets for the resolver UI.
+ */
+export function findPhraseOccurrences(text: string, phrase: string): PhraseOccurrence[] {
+    const needle = phrase.trim().toLowerCase();
+    if (!needle) return [];
+    const hay = text.toLowerCase();
+    const out: PhraseOccurrence[] = [];
+    let pos = 0;
+    while (pos <= hay.length) {
+        const idx = hay.indexOf(needle, pos);
+        if (idx === -1) break;
+        out.push({
+            index: out.length + 1,
+            context: buildOccurrenceContext(text, idx, needle.length),
+        });
+        pos = idx + needle.length;
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------

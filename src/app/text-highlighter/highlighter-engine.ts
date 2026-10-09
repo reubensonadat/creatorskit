@@ -21,6 +21,7 @@ import {
     getDocBufferCanvas,
     getNoisePattern,
     matchAnchorWords,
+    normalizePhraseKey,
     parseAnchorPhrases,
     wrapSimpleText,
     type AnchorWord,
@@ -31,6 +32,7 @@ import {
 import { buildPhraseBodySentence } from './highlighter-presets';
 import { clamp01 } from '@/lib/motion/easing';
 import { renderPaperTransition } from '@/lib/motion/paper-transition';
+import { easeHighlightSweep } from '@/lib/studio-sounds';
 
 // Re-exported for the highlighter page's convenience.
 export { PAPER_THEMES } from '@/lib/paper-graphics';
@@ -97,6 +99,31 @@ export interface HighlighterRenderOptions {
     // scrolls and whip-out (default 1.3 × axis length). Raise it to scroll
     // "more of the page" between screens.
     paperTravel?: number;
+
+    // ── Sticky sequence memory ─────────────────────────────────────────────
+    // Phrases already swept on EARLIER screens of the sequence, pipe-joined.
+    // They stay fully drawn (faintly dimmed) while the active phrase sweeps —
+    // the marker never erases what it already marked. Empty ⇒ classic mode.
+    persistedPhrases?: string;
+
+    // ── Instance resolution ────────────────────────────────────────────────
+    // normalizePhraseKey(phrase) → 1-based occurrence (reading order). When a
+    // phrase appears five times in the document the studio asks WHICH one;
+    // only the picked instance gets tagged. Absent key ⇒ all occurrences.
+    anchorInstances?: Record<string, number>;
+    /** Document Scan Mode: 'cover' zooms the picture to FILL the chosen aspect
+     *  ratio — the WHOLE picture stays visible and artificial paper fills
+     *  the rest of the frame; default 'contain' shows the whole page. */
+    scanPageFit?: 'contain' | 'cover';
+    /** Document Scan Mode: set false to disable the automatic camera zoom
+     *  choreography — highlights still animate on a static full-page view. */
+    scanAutoCamera?: boolean;
+    /** Document Scan Mode FILL finish: 'paper' extends the theme sheet,
+     *  'edge' tints the extension with the photo's sampled border color,
+     *  'blur' fills the frame with a blurred copy of the page. */
+    scanFillStyle?: 'paper' | 'edge' | 'blur';
+    /** Sampled border color of the scan (eyedropper) — used by 'edge'. */
+    scanEdgeColor?: string;
 }
 
 interface HeadlineLine {
@@ -108,19 +135,20 @@ interface HeadlineLine {
 /**
  * Wraps the journal headline naturally and computes exact anchor word
  * positions across multiple lines & phrases — the sweep then flows through
- * these chunks line by line.
+ * these chunks line by line. `occurrences` carries the per-phrase instance
+ * picks so ambiguous phrases tag ONLY the chosen occurrence.
  */
 function wrapHeadlineWithAnchor(
     ctx: CanvasRenderingContext2D,
     text: string,
-    anchorInput: string,
-    maxWidth: number
+    phrases: string[],
+    maxWidth: number,
+    occurrences?: Record<number, number>
 ): HeadlineLine[] {
     const cleanText = text.trim();
     if (!cleanText) return [];
 
-    const phrases = parseAnchorPhrases(anchorInput, 512); // highlighter anchors may be long
-    const wordObjects: AnchorWord[] = matchAnchorWords(cleanText, phrases);
+    const wordObjects: AnchorWord[] = matchAnchorWords(cleanText, phrases, occurrences);
 
     const lines: HeadlineLine[] = [];
     let currentLineWords: { word: string; isAnchor: boolean; phraseIndex: number; w: number }[] = [];
@@ -218,19 +246,43 @@ function collectSweepChunks(
 /**
  * Draws one block's sweep chunks with sequential per-phrase windowing —
  * phrase 1 sweeps, a beat of pause, then phrase 2, and so on.
+ *
+ * `settledCount` leading phrase indices are STICKY MEMORIES from earlier
+ * screens: they render fully drawn at ~88% ink so the live stroke stays the
+ * hero while the page keeps everything the marker already marked.
  */
 function drawSweepChunks(
     ctx: CanvasRenderingContext2D,
     chunks: SweepChunk[],
     fontSize: number,
     progress: number,
-    options: HighlighterRenderOptions
+    options: HighlighterRenderOptions,
+    settledCount = 0
 ) {
     if (chunks.length === 0) return;
-    const numPhrases = Math.max(...chunks.map((c) => c.phraseIndex)) + 1;
+    const activeIdxs = chunks.filter((c) => c.phraseIndex >= settledCount).map((c) => c.phraseIndex);
+    if (activeIdxs.length === 0) {
+        chunks.forEach((chunk) => {
+            drawAnchorHighlight(ctx, chunk.x, chunk.y + fontSize * 0.5, chunk.w, fontSize, {
+                ...options,
+                highlightProgress: 1,
+                markerOpacity: options.markerOpacity * 0.88,
+            });
+        });
+        return;
+    }
+    const numPhrases = Math.max(...activeIdxs) + 1 - settledCount;
 
     chunks.forEach((chunk) => {
-        const pIdx = chunk.phraseIndex;
+        if (chunk.phraseIndex < settledCount) {
+            drawAnchorHighlight(ctx, chunk.x, chunk.y + fontSize * 0.5, chunk.w, fontSize, {
+                ...options,
+                highlightProgress: 1,
+                markerOpacity: options.markerOpacity * 0.88,
+            });
+            return;
+        }
+        const pIdx = chunk.phraseIndex - settledCount;
         const phraseWindowStart = pIdx / numPhrases;
         const phraseSweepEnd = (pIdx + (numPhrases > 1 ? 0.78 : 1.0)) / numPhrases;
 
@@ -333,6 +385,23 @@ export function renderHighlighterStory(
     const anchor = (options.anchorPhrase || '').trim();
     const headlineRaw = (cut.headline || '').trim() || '10x faster turnaround times';
 
+    // ── SEQUENCE PHRASE COMPOSITION ────────────────────────────────────────
+    // settled = phrases swept on earlier screens (sticky memory, drawn dim);
+    // active = the phrase(s) being swept on the CURRENT screen. Layout is
+    // computed from the COMBINED list so word positions are identical on
+    // every screen — memories never shift when the page scrolls.
+    const settledPhrases = parseAnchorPhrases(options.persistedPhrases || '', 512);
+    const activePhrases = parseAnchorPhrases(anchor, 512);
+    const combinedPhrases = [...settledPhrases, ...activePhrases];
+    const settledCount = settledPhrases.length;
+    const occurrenceMap: Record<number, number> | undefined = options.anchorInstances ? {} : undefined;
+    if (occurrenceMap) {
+        combinedPhrases.forEach((p, i) => {
+            const occ = options.anchorInstances?.[normalizePhraseKey(p)];
+            if (occ && occ > 0) occurrenceMap[i] = occ;
+        });
+    }
+
     const bodyParas = (cut.bodyParagraphs && cut.bodyParagraphs.length > 0)
         ? cut.bodyParagraphs
         : BACKGROUND_BODY_PARAGRAPHS;
@@ -355,7 +424,7 @@ export function renderHighlighterStory(
     // Measure and wrap the journal sentence; anchor words may span lines.
     ctx.font = headlineFont;
     const maxHeadlineW = isSingleLine ? 99999 : pageWidth;
-    const headlineLines = wrapHeadlineWithAnchor(ctx, headlineRaw, anchor, maxHeadlineW);
+    const headlineLines = wrapHeadlineWithAnchor(ctx, headlineRaw, combinedPhrases, maxHeadlineW, occurrenceMap);
 
     // If no anchor matched in headline, tag the whole headline
     const anyAnchor = headlineLines.some((l) => l.words.some((w) => w.isAnchor));
@@ -378,17 +447,27 @@ export function renderHighlighterStory(
     const strapLineH = Math.round(strapFontPx * 1.4);
     let strapLines: HeadlineLine[] = [];
     if (sector === 'top-masthead') {
-        const anchorPhrases = parseAnchorPhrases(anchor || headlineRaw, 512);
-        const strapText = (anchorPhrases.length > 0 ? anchorPhrases : [headlineRaw])
+        const strapPhrases = combinedPhrases.length > 0 ? combinedPhrases : parseAnchorPhrases(headlineRaw, 512);
+        const strapText = (strapPhrases.length > 0 ? strapPhrases : [headlineRaw])
             .map((p) => p.toUpperCase())
             .join('  ·  ');
         ctx.font = `900 ${strapFontPx}px ${chosenFont}`;
-        strapLines = wrapHeadlineWithAnchor(ctx, strapText, strapText, pageWidth * 0.9);
-        // The strapline IS the phrase — every word is sweepable.
-        strapLines.forEach((l) => l.words.forEach((w) => {
-            w.isAnchor = true;
-            w.phraseIndex = 0;
-        }));
+        strapLines = wrapHeadlineWithAnchor(
+            ctx,
+            strapText,
+            strapPhrases.length > 0 ? strapPhrases : [strapText],
+            pageWidth * 0.9,
+            occurrenceMap
+        );
+        // The strapline IS the phrases — every word sweepable with its own
+        // phraseIndex so sticky memories stay separate from the live stroke.
+        const anyStrapAnchor = strapLines.some((l) => l.words.some((w) => w.isAnchor));
+        if (!anyStrapAnchor) {
+            strapLines.forEach((l) => l.words.forEach((w) => {
+                w.isAnchor = true;
+                w.phraseIndex = 0;
+            }));
+        }
     }
     // ABSOLUTE header anchoring: the masthead block stays at its default
     // position; the strapline's footprint pushes ONLY the headline (and
@@ -456,7 +535,7 @@ export function renderHighlighterStory(
         //   2. Otherwise PREPEND a natural journal sentence with the
         //      phrase(s) embedded verbatim and sweep that.
         // ─────────────────────────────────────────────────────────────
-        const phrases = parseAnchorPhrases(anchor, 512);
+        const phrases = combinedPhrases;
         const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
         const carriesAllPhrases = (para: string) =>
             phrases.length > 0 && phrases.every((p) => norm(para).includes(norm(p)));
@@ -471,12 +550,12 @@ export function renderHighlighterStory(
                 // via a hash of the cut id) with the phrase(s) embedded
                 // verbatim becomes the first body paragraph.
                 const variantSeed = (cut.id || 'body').split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-                sweepText = buildPhraseBodySentence(anchor, variantSeed);
+                sweepText = buildPhraseBodySentence(combinedPhrases.join(' | '), variantSeed);
                 sweepBodyParas = [sweepText, ...bodyParas];
             }
 
             ctx.font = bodyFont;
-            bodySweepLines = wrapHeadlineWithAnchor(ctx, sweepText, anchor, pageWidth * 0.94);
+            bodySweepLines = wrapHeadlineWithAnchor(ctx, sweepText, combinedPhrases, pageWidth * 0.94, occurrenceMap);
 
             // Guarantee: every phrase must have produced a highlight span.
             // If any phrase missed (degenerate punctuation edge case), fall
@@ -493,7 +572,7 @@ export function renderHighlighterStory(
         } else if (bodyParas[0]) {
             // No anchor configured at all — sweep the opening paragraph.
             ctx.font = bodyFont;
-            bodySweepLines = wrapHeadlineWithAnchor(ctx, bodyParas[0], '', pageWidth * 0.94);
+            bodySweepLines = wrapHeadlineWithAnchor(ctx, bodyParas[0], [], pageWidth * 0.94);
             bodySweepLines.forEach((l) => l.words.forEach((w) => {
                 w.isAnchor = true;
                 w.phraseIndex = 0;
@@ -524,15 +603,18 @@ export function renderHighlighterStory(
             ? bodyLineHeight
             : headlineLineHeight;
 
-    // Anchor center in document space — bbox of the ACTIVE sector's stroke.
+    // Anchor center in document space — bbox of the LIVE stroke only. Settled
+    // memories from earlier screens must not pull the camera away from the
+    // phrase being swept right now.
+    const cameraChunks = activeChunks.filter((c) => c.phraseIndex >= settledCount);
     let docAnchorCenterX: number;
     let docAnchorCenterY: number;
-    if (activeChunks.length > 0) {
+    if (cameraChunks.length > 0) {
         let minX = Infinity;
         let maxX = -Infinity;
         let minY = Infinity;
         let maxY = -Infinity;
-        activeChunks.forEach((c) => {
+        cameraChunks.forEach((c) => {
             minX = Math.min(minX, c.x);
             maxX = Math.max(maxX, c.x + c.w);
             minY = Math.min(minY, c.y);
@@ -660,7 +742,7 @@ export function renderHighlighterStory(
             ctx.fillText(line.text, pageLeftX + pageWidth / 2, strapTop + i * strapLineH + strapFontPx * 0.85);
         });
 
-        drawSweepChunks(ctx, strapChunks, strapFontPx, progress, options);
+        drawSweepChunks(ctx, strapChunks, strapFontPx, progress, options, settledCount);
         ctx.restore();
     }
 
@@ -672,7 +754,7 @@ export function renderHighlighterStory(
     ctx.textBaseline = 'top';
 
     // 1. Sweep highlight — only the center (headline) sector strokes here
-    drawSweepChunks(ctx, headlineChunks, headlineFontSize, progress, options);
+    drawSweepChunks(ctx, headlineChunks, headlineFontSize, progress, options, settledCount);
 
     // 2. Draw Journal Text Words ("Abstract" renders extra-bold in academic theme)
     headlineLines.forEach((line, lineIdx) => {
@@ -759,7 +841,7 @@ export function renderHighlighterStory(
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
 
-        drawSweepChunks(ctx, bodyChunks, bodyFontSize, progress, options);
+        drawSweepChunks(ctx, bodyChunks, bodyFontSize, progress, options, settledCount);
 
         bodySweepLines.forEach((line, lineIdx) => {
             const lineY = bodySweepStartY + lineIdx * bodyLineHeight;
@@ -941,4 +1023,522 @@ export function renderHighlighterStoryWithEntrance(
     }
 
     renderHighlighterStory(targetCanvasCtx, width, height, cut, options, frameIndex);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENT SCAN MODE — import a REAL newspaper photo, OCR it, and sweep the
+// marker over the ACTUAL printed page.
+//
+// This is a deliberately different world from Journal Mode: no synthesized
+// columns, no paper slam — the uploaded clip IS the document. The camera
+// does the storytelling instead: full-page overview → eased dive onto the
+// picked line → marker sweep → hold beat → pull back → dive to the next
+// pick. Every completed stroke STAYS on the page (sticky by design), so by
+// the final beat the reader sees the whole trail of marks, exactly like a
+// physical newspaper worked over with a highlighter.
+//
+// Deterministic Motion-as-Code: sampleScanSequence() is the single clock
+// shared by the live loop and the frame-stepped exporter, so preview pixels
+// always equal export pixels.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One OCR word inside a line — the atom for PART-of-line trims. */
+export interface ScanWordBox {
+    text: string;
+    /** Normalized [0..1] coordinates relative to the source image. */
+    box: { x0: number; y0: number; x1: number; y1: number };
+}
+
+/** One extracted, pickable line of OCR text with its box in image space. */
+export interface ScanLineBox {
+    id: string;
+    text: string;
+    /** Normalized [0..1] coordinates relative to the source image. */
+    box: { x0: number; y0: number; x1: number; y1: number };
+    /** Word-level boxes (when OCR provides them) — powers PART-of-line
+     *  trims, so you can highlight just the middle sentence of a line. */
+    words?: ScanWordBox[];
+    /** Continuous RANGE pick: ordered sub-lines swept by ONE marker
+     *  motion (A→B→C→D, no break between them). `box` is the union. */
+    flow?: ScanLineBox[];
+    /** Page-side trim bookkeeping — the untrimmed box/text before a PART cut. */
+    origBox?: { x0: number; y0: number; x1: number; y1: number };
+    origText?: string;
+}
+
+export interface ScanRenderState {
+    image: CanvasImageSource;
+    imageW: number;
+    imageH: number;
+    /** User-picked lines, in highlight order. */
+    picks: ScanLineBox[];
+}
+
+export interface ScanBeat {
+    pickIndex: number;
+    phase: 'overview' | 'dive' | 'sweep' | 'hold' | 'outro';
+    phaseT: number; // 0..1 within the phase
+}
+
+// Choreography pacing (ms). The full page breathes ONCE, pick 0 dives in
+// ("moving in totally"), then every following pick GLIDES from the previous
+// focus straight to the next — teleprompter-smooth, never a snap between
+// sectors. The wide pull-back only happens at the very end ("moving out
+// totally"). Sweep runs at the user's highlight duration; hold is the ~1.6s
+// read beat.
+export const SCAN_OVERVIEW_MS = 520;
+export const SCAN_DIVE_MS = 480;
+export const SCAN_HOLD_MS = 1600;
+export const SCAN_OUTRO_MS = 900;
+
+export function getPickSweepMs(pick: ScanLineBox | undefined, baseSweepMs: number): number {
+    if (!pick?.flow || pick.flow.length <= 1) return baseSweepMs;
+    // Scale duration naturally with number of segments so multi-line continuous sweeps aren't rushed
+    return Math.round(baseSweepMs * (1 + (pick.flow.length - 1) * 0.75));
+}
+
+/** Dwell per pick: enter (dive or glide) + sweep + hold. */
+export function scanBeatMs(sweepMs: number): number {
+    return SCAN_DIVE_MS + sweepMs + SCAN_HOLD_MS;
+}
+
+export function scanSequenceTotalMs(picksOrCount: number | ScanLineBox[], baseSweepMs: number): number {
+    if (typeof picksOrCount === 'number') {
+        if (picksOrCount <= 0) return SCAN_OVERVIEW_MS + SCAN_OUTRO_MS;
+        return SCAN_OVERVIEW_MS + picksOrCount * scanBeatMs(baseSweepMs) + SCAN_OUTRO_MS;
+    }
+    const picks = picksOrCount;
+    if (picks.length <= 0) return SCAN_OVERVIEW_MS + SCAN_OUTRO_MS;
+    const totalBeats = picks.reduce((acc, p) => acc + (SCAN_DIVE_MS + getPickSweepMs(p, baseSweepMs) + SCAN_HOLD_MS), 0);
+    return SCAN_OVERVIEW_MS + totalBeats + SCAN_OUTRO_MS;
+}
+
+/** Absolute start time of pick `pickIndex`'s sweep (for audio scheduling). */
+export function scanSweepStartMs(pickIndex: number, picksOrCount: number | ScanLineBox[], baseSweepMs: number = 2000): number {
+    let t = SCAN_OVERVIEW_MS;
+    const picks = typeof picksOrCount === 'number' ? null : picksOrCount;
+    const count = picks ? picks.length : (picksOrCount as number);
+    for (let i = 0; i < pickIndex && i < count; i++) {
+        const sweepMs = picks ? getPickSweepMs(picks[i], baseSweepMs) : baseSweepMs;
+        t += SCAN_DIVE_MS + sweepMs + SCAN_HOLD_MS;
+    }
+    return t + SCAN_DIVE_MS;
+}
+
+export function sampleScanSequence(elapsedMs: number, picksOrCount: number | ScanLineBox[], baseSweepMs: number): ScanBeat {
+    const picks = typeof picksOrCount === 'number' ? null : picksOrCount;
+    const count = picks ? picks.length : (picksOrCount as number);
+
+    if (count <= 0) {
+        return {
+            pickIndex: 0,
+            phase: 'overview',
+            phaseT: Math.min(1, elapsedMs / (SCAN_OVERVIEW_MS + SCAN_OUTRO_MS)),
+        };
+    }
+    if (elapsedMs < SCAN_OVERVIEW_MS) {
+        return { pickIndex: 0, phase: 'overview', phaseT: elapsedMs / SCAN_OVERVIEW_MS };
+    }
+    let t = elapsedMs - SCAN_OVERVIEW_MS;
+    for (let i = 0; i < count; i++) {
+        const sweepMs = picks ? getPickSweepMs(picks[i], baseSweepMs) : baseSweepMs;
+        if (t < SCAN_DIVE_MS) return { pickIndex: i, phase: 'dive', phaseT: t / SCAN_DIVE_MS };
+        t -= SCAN_DIVE_MS;
+        if (t < sweepMs) return { pickIndex: i, phase: 'sweep', phaseT: t / sweepMs };
+        t -= sweepMs;
+        if (t < SCAN_HOLD_MS) return { pickIndex: i, phase: 'hold', phaseT: t / SCAN_HOLD_MS };
+        t -= SCAN_HOLD_MS;
+    }
+    return {
+        pickIndex: count - 1,
+        phase: 'outro',
+        phaseT: Math.min(1, Math.max(0, t / SCAN_OUTRO_MS)),
+    };
+}
+
+// Watermark-style 9-sector grid — the camera fallback when a pick's OCR box
+// is degenerate. Order: top-left → top-center → top-right → mid-left →
+// center → mid-right → bottom-left → bottom-center → bottom-right.
+const SCAN_SECTORS = [
+    { x: 0.22, y: 0.16 }, { x: 0.5, y: 0.16 }, { x: 0.78, y: 0.16 },
+    { x: 0.22, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.5 },
+    { x: 0.22, y: 0.84 }, { x: 0.5, y: 0.84 }, { x: 0.78, y: 0.84 },
+];
+
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+/** Runs of picks that read as one continuous block (each line sits directly
+ *  under the previous one) share a single camera focus — the whole block is
+ *  centered mid-screen instead of zooming out and back in between its lines. */
+function scanPickGroupBox(scan: ScanRenderState, pickIndex: number): { x0: number; y0: number; x1: number; y1: number } | null {
+    const picks = scan.picks;
+    const anchor = picks[pickIndex];
+    if (!anchor) return null;
+    const verticallyAdjacent = (a: ScanLineBox, b: ScanLineBox): boolean => {
+        // Next line starts just below where the previous one ends, and the two
+        // share enough horizontal overlap to belong to the same text column.
+        const vGap = b.box.y0 - a.box.y1;
+        const xOverlap = Math.min(a.box.x1, b.box.x1) - Math.max(a.box.x0, b.box.x0);
+        return vGap > -0.015 && vGap < 0.05 && xOverlap > 0.05;
+    };
+    let lo = pickIndex;
+    let hi = pickIndex;
+    while (lo > 0 && verticallyAdjacent(picks[lo - 1], picks[lo])) lo -= 1;
+    while (hi < picks.length - 1 && verticallyAdjacent(picks[hi], picks[hi + 1])) hi += 1;
+    let { x0, y0, x1, y1 } = anchor.box;
+    for (let k = lo; k <= hi; k++) {
+        x0 = Math.min(x0, picks[k].box.x0);
+        y0 = Math.min(y0, picks[k].box.y0);
+        x1 = Math.max(x1, picks[k].box.x1);
+        y1 = Math.max(y1, picks[k].box.y1);
+    }
+    return { x0, y0, x1, y1 };
+}
+
+interface ScanCameraFocus {
+    cx: number;
+    cy: number;
+    s: number;
+}
+
+function scanCameraFocus(
+    scan: ScanRenderState,
+    beat: ScanBeat,
+    pageX: number,
+    pageY: number,
+    pageW: number,
+    pageH: number,
+    width: number,
+    height: number
+): ScanCameraFocus {
+    const overviewCx = pageX + pageW / 2;
+    const overviewCy = pageY + pageH / 2;
+
+    const focusForPick = (idx: number): ScanCameraFocus => {
+        // Vertically-continuous picks (line B directly under line A) form one
+        // block with a SHARED focus: the whole block is centered mid-screen
+        // and the camera never zooms out just to dive back in on the next line.
+        const group = scanPickGroupBox(scan, idx);
+        const box = group && (group.x1 - group.x0) > 0.001 && (group.y1 - group.y0) > 0.001 ? group : scan.picks[idx]?.box;
+        if (!box) {
+            // Degenerate box → sector grid fallback, watermark placement order.
+            const sec = SCAN_SECTORS[idx % SCAN_SECTORS.length];
+            return { cx: pageX + sec.x * pageW, cy: pageY + sec.y * pageH, s: 2.1 };
+        }
+        const pxW = Math.max(8, (box.x1 - box.x0) * pageW);
+        const pxH = Math.max(8, (box.y1 - box.y0) * pageH);
+
+        const isPortrait = height > width;
+        // In 9:16 and mobile portrait formats, extreme zooms crop out the paper and surrounding context.
+        // Guarantee that zoom never exceeds what fits comfortably on screen with safe padding margins.
+        const maxFitZoomW = (width * 0.94) / Math.max(1, pageW);
+        const maxZoomLimit = isPortrait ? Math.min(1.18, maxFitZoomW) : Math.min(2.0, maxFitZoomW);
+        const targetZoomW = (width * 0.82) / pxW;
+        const targetZoomH = (height * 0.48) / pxH;
+        const zoom = Math.min(maxZoomLimit, Math.max(1, Math.min(targetZoomW, targetZoomH)));
+
+        return {
+            cx: pageX + ((box.x0 + box.x1) / 2) * pageW,
+            cy: pageY + ((box.y0 + box.y1) / 2) * pageH,
+            s: zoom,
+        };
+    };
+
+    const target = focusForPick(beat.pickIndex);
+
+    switch (beat.phase) {
+        case 'overview': {
+            // Slow breathing drift on the full page — earlier marks visible.
+            return { cx: overviewCx, cy: overviewCy, s: 1 + 0.015 * beat.phaseT };
+        }
+        case 'dive': {
+            // Pick 0 dives in from the wide page ("moving in totally"). Every
+            // later pick GLIDES from the previous pick's focus straight to the
+            // next — one continuous teleprompter-style camera move, never a
+            // snap between sectors.
+            const e = easeInOutCubic(beat.phaseT);
+            const from: ScanCameraFocus = beat.pickIndex > 0
+                ? focusForPick(beat.pickIndex - 1)
+                : { cx: overviewCx, cy: overviewCy, s: 1 };
+            const glide = beat.pickIndex > 0;
+            const jumpDist = Math.hypot(target.cx - from.cx, target.cy - from.cy) / (Math.hypot(pageW, pageH) || 1);
+            // Same focus (continuous-line block) → no pull-back at all.
+            const pull = jumpDist < 0.02 ? 0 : 0.20 + 0.12 * Math.min(1, jumpDist * 1.5);
+            const arc = glide ? Math.sin(Math.PI * beat.phaseT) : 0;
+            const baseS = from.s + (target.s - from.s) * e;
+            return {
+                cx: from.cx + (target.cx - from.cx) * e,
+                cy: from.cy + (target.cy - from.cy) * e,
+                s: Math.max(1, baseS + (1 - baseS) * pull * arc),
+            };
+        }
+        case 'sweep':
+        case 'hold':
+            return target;
+        case 'outro': {
+            // Final pull-back to the full page ("moving out totally").
+            const e = easeInOutCubic(beat.phaseT);
+            return {
+                cx: target.cx + (overviewCx - target.cx) * e,
+                cy: target.cy + (overviewCy - target.cy) * e,
+                s: target.s + (1.0 - target.s) * e,
+            };
+        }
+    }
+}
+
+/**
+ * Renders one Document Scan frame. The caller drives the clock: compute a
+ * ScanBeat with sampleScanSequence() and pass it in — identical frames for
+ * the live preview and the MP4 exporter.
+ */
+export function renderScanDocumentStory(
+    targetCanvasCtx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    scan: ScanRenderState,
+    options: HighlighterRenderOptions,
+    beat: ScanBeat
+) {
+    const theme: PaperTheme = PAPER_THEMES[options.paperTheme] || PAPER_THEMES.academic;
+    const isDark = options.paperTheme === 'noir';
+
+    const useDof = Boolean(options.depthOfField && typeof document !== 'undefined');
+    const renderBuffer = useDof ? getDocBufferCanvas(width, height, 'main') : null;
+    const ctx = renderBuffer ? renderBuffer.getContext('2d')! : targetCanvasCtx;
+
+    ctx.save();
+
+    const cover = options.scanPageFit === 'cover';
+    const fillStyle = options.scanFillStyle ?? 'blur';
+    const blurBg = fillStyle === 'blur';
+    const edgeBg = fillStyle === 'edge';
+    const edgeColor = options.scanEdgeColor || (isDark ? '#141414' : '#f0ede6');
+
+    // 1. Canvas Backdrop — BLUR, EDGE color, or theme PAPER desk
+    if (blurBg) {
+        ctx.save();
+        const bgScale = Math.max(width / scan.imageW, height / scan.imageH) * 1.08;
+        const bgW = scan.imageW * bgScale;
+        const bgH = scan.imageH * bgScale;
+        try {
+            ctx.filter = `blur(${Math.max(14, Math.round(Math.min(width, height) * 0.05))}px)`;
+        } catch { /* filter unsupported */ }
+        ctx.drawImage(scan.image, (width - bgW) / 2, (height - bgH) / 2, bgW, bgH);
+        try { ctx.filter = 'none'; } catch { /* ignore */ }
+        ctx.restore();
+        // Soft cinematic scrim over blur for contrast & focus
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.fillRect(0, 0, width, height);
+    } else if (edgeBg) {
+        ctx.fillStyle = edgeColor;
+        ctx.fillRect(0, 0, width, height);
+        // Soft vignette so edge fill looks natural and photographic
+        const vignette = ctx.createRadialGradient(
+            width / 2, height / 2, Math.min(width, height) * 0.4,
+            width / 2, height / 2, Math.max(width, height) * 0.95
+        );
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(1, 'rgba(0,0,0,0.25)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, width, height);
+    } else {
+        // Paper desk background
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, width, height);
+        const vignette = ctx.createRadialGradient(
+            width / 2, height / 2, Math.min(width, height) * 0.35,
+            width / 2, height / 2, Math.max(width, height) * 0.88
+        );
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(0.7, isDark ? 'rgba(0,0,0,0.25)' : 'rgba(80,60,30,0.04)');
+        vignette.addColorStop(1, isDark ? 'rgba(0,0,0,0.55)' : 'rgba(70,50,20,0.12)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, width, height);
+    }
+
+    if (options.filmGrain) {
+        const noise = getNoisePattern();
+        const pattern = ctx.createPattern(noise, 'repeat');
+        if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
+    }
+
+    // 2. Fit the scanned page. In both FIT and FILL, the WHOLE scan remains visible and never cropped!
+    // In FIT: comfortable margins so the page sits neatly on the desk/blur/edge background.
+    // In FILL: spans edge-to-edge on the limiting dimension without cropping text.
+    const margin = cover ? 0 : Math.min(width, height) * 0.035;
+    const availW = width - margin * 2;
+    const availH = height - margin * 2;
+    const scale = Math.min(availW / scan.imageW, availH / scan.imageH);
+    const pageW = scan.imageW * scale;
+    const pageH = scan.imageH * scale;
+    const pageX = (width - pageW) / 2;
+    const pageY = (height - pageH) / 2;
+
+    // 3. Camera choreography — AUTO CAMERA can be switched off for a static full-page view
+    const focus = options.scanAutoCamera === false
+        ? { cx: pageX + pageW / 2, cy: pageY + pageH / 2, s: 1 }
+        : scanCameraFocus(scan, beat, pageX, pageY, pageW, pageH, width, height);
+
+    // Smooth vertical pan to eye-level (~44% height) when zoomed in
+    const eyeLevelY = height * 0.44;
+    const zoomInfluence = Math.max(0, Math.min(1, (focus.s - 1) * 2.5));
+    const panY = (eyeLevelY - focus.cy) * zoomInfluence;
+
+    const screenTargetX = focus.cx;
+    const screenTargetY = focus.cy + panY;
+
+    ctx.save();
+    ctx.translate(screenTargetX, screenTargetY);
+    ctx.scale(focus.s, focus.s);
+    if (options.cameraShake) {
+        const jitterSeed = beat.pickIndex + 1;
+        const angle = Math.sin(jitterSeed * 12.9898) * 0.0012;
+        const micro = 1 + Math.cos(jitterSeed * 78.233) * 0.0015;
+        ctx.rotate(angle);
+        ctx.scale(micro, micro);
+    }
+    ctx.translate(-focus.cx, -focus.cy);
+
+    // 4. Physical page rendering — clean image with soft drop shadow, NO ugly white padding boxes!
+    ctx.save();
+    if (blurBg) {
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = Math.max(14, width * 0.018);
+        ctx.shadowOffsetY = Math.max(6, height * 0.008);
+        try {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+        } catch { /* older browsers */ }
+        ctx.drawImage(scan.image, pageX, pageY, pageW, pageH);
+    } else if (edgeBg) {
+        if (!cover) {
+            ctx.shadowColor = 'rgba(0,0,0,0.35)';
+            ctx.shadowBlur = Math.max(12, width * 0.015);
+            ctx.shadowOffsetY = Math.max(4, height * 0.006);
+        }
+        try {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+        } catch { /* older browsers */ }
+        ctx.drawImage(scan.image, pageX, pageY, pageW, pageH);
+    } else {
+        ctx.shadowColor = isDark ? 'rgba(0,0,0,0.55)' : 'rgba(60,45,20,0.28)';
+        ctx.shadowBlur = Math.max(10, width * 0.012);
+        ctx.shadowOffsetY = Math.max(4, width * 0.004);
+        try {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+        } catch { /* older browsers */ }
+        ctx.drawImage(scan.image, pageX, pageY, pageW, pageH);
+    }
+    ctx.restore();
+
+    // 5. Marker strokes over the printed page — sticky by design: every
+    // pick before the active one stays fully drawn (faintly dimmed), the
+    // active pick animates with the beat, future picks stay invisible.
+    scan.picks.forEach((pick, i) => {
+        if (i > beat.pickIndex) return;
+
+        // A RANGE pick carries its sub-lines in `flow` — ONE beat sweeps
+        // the marker through A→B→C→D continuously: each segment lights as
+        // the stroke crosses it, no break between lines. Plain picks are a
+        // single segment.
+        const segments = (pick.flow && pick.flow.length > 0 ? pick.flow : [pick]).map((seg) => {
+            const bx = pageX + seg.box.x0 * pageW;
+            const by = pageY + seg.box.y0 * pageH;
+            const bw = Math.max(4, (seg.box.x1 - seg.box.x0) * pageW);
+            const bh = Math.max(4, (seg.box.y1 - seg.box.y0) * pageH);
+            return { bx, by, bw, bh, fontSize: Math.max(6, bh * 0.82) };
+        });
+
+        let hp = 1;
+        if (i === beat.pickIndex) {
+            hp = beat.phase === 'sweep'
+                ? easeHighlightSweep(beat.phaseT)
+                : (beat.phase === 'overview' || beat.phase === 'dive') ? 0 : 1;
+        }
+        if (hp <= 0) return;
+
+        segments.forEach((seg, segIdx) => {
+            // Continuous flow: stagger the segments across the single sweep.
+            const segHp = segments.length > 1
+                ? Math.max(0, Math.min(1, hp * segments.length - segIdx))
+                : hp;
+            if (segHp <= 0) return;
+            drawAnchorHighlight(ctx, seg.bx, seg.by + seg.bh / 2, seg.bw, seg.fontSize, {
+                ...options,
+                highlightProgress: segHp,
+                markerOpacity: i === beat.pickIndex ? options.markerOpacity : options.markerOpacity * 0.88,
+            });
+        });
+    });
+
+    ctx.restore(); // camera transform
+
+    ctx.restore(); // main save
+
+    const pivotX = screenTargetX;
+    const pivotY = screenTargetY;
+
+    // 6. Tilt-shift DoF — focal center rides the camera focus point.
+    if (useDof && renderBuffer) {
+        const blurCanvas = getDocBufferCanvas(width, height, 'blur');
+        const blurCtx = blurCanvas.getContext('2d')!;
+        blurCtx.clearRect(0, 0, width, height);
+
+        const blurRadius = Math.max(3, Math.round(options.dofIntensity * 14));
+        try {
+            blurCtx.filter = `blur(${blurRadius}px)`;
+        } catch { /* filter unsupported — plain blit */ }
+        blurCtx.drawImage(renderBuffer, 0, 0);
+        try {
+            blurCtx.filter = 'none';
+        } catch { /* ignore */ }
+
+        targetCanvasCtx.clearRect(0, 0, width, height);
+        targetCanvasCtx.drawImage(blurCanvas, 0, 0);
+
+        const mask = getDocBufferCanvas(width, height, 'mask');
+        const mCtx = mask.getContext('2d')!;
+        mCtx.clearRect(0, 0, width, height);
+
+        const innerRadius = Math.min(width, height) * 0.18;
+        const outerRadius = Math.max(width, height) * 0.55;
+        const radialGrad = mCtx.createRadialGradient(
+            pivotX, pivotY, innerRadius,
+            pivotX, pivotY, outerRadius
+        );
+        radialGrad.addColorStop(0, 'rgba(0,0,0,1)');
+        radialGrad.addColorStop(0.35, 'rgba(0,0,0,1)');
+        radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        mCtx.fillStyle = radialGrad;
+        mCtx.fillRect(0, 0, width, height);
+
+        mCtx.globalCompositeOperation = 'source-in';
+        mCtx.drawImage(renderBuffer, 0, 0);
+        mCtx.globalCompositeOperation = 'source-over';
+
+        targetCanvasCtx.drawImage(mask, 0, 0);
+    }
+
+    // 7. Optional crosshair guide at the live camera focus.
+    if (options.showCrosshairGuide) {
+        targetCanvasCtx.save();
+        targetCanvasCtx.strokeStyle = 'rgba(234, 88, 12, 0.7)';
+        targetCanvasCtx.lineWidth = 1.2;
+        targetCanvasCtx.setLineDash([4, 4]);
+        targetCanvasCtx.beginPath();
+        targetCanvasCtx.moveTo(pivotX, 0);
+        targetCanvasCtx.lineTo(pivotX, height);
+        targetCanvasCtx.stroke();
+        targetCanvasCtx.beginPath();
+        targetCanvasCtx.moveTo(0, pivotY);
+        targetCanvasCtx.lineTo(width, pivotY);
+        targetCanvasCtx.stroke();
+        targetCanvasCtx.beginPath();
+        targetCanvasCtx.arc(pivotX, pivotY, 22, 0, Math.PI * 2);
+        targetCanvasCtx.stroke();
+        targetCanvasCtx.restore();
+    }
 }

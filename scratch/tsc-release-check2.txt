@@ -1,4 +1,0 @@
-src/app/teleprompter/page.archive.tsx(976,43): error TS2552: Cannot find name 'characterWidth'. Did you mean 'CharacterData'?
-src/components/MatchCutExportButton.tsx(7,8): error TS2307: Cannot find module '@remotion/web-renderer' or its corresponding type declarations.
-src/components/MatchCutExportButton.tsx(75,5): error TS2307: Cannot find module '@remotion/web-renderer' or its corresponding type declarations.
-src/remotion/MatchCutComposition.tsx(10,8): error TS2307: Cannot find module 'remotion' or its corresponding type declarations.

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import NextStepRow from '@/components/NextStepRow';
 import { gateAction } from '@/components/AdGate';
 import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
+import { loadState, saveState } from '@/lib/local-memory';
 import {
   Play,
   Pause,
@@ -27,17 +28,32 @@ import {
   Type,
   Disc,
   ChevronDown,
+  ScanText,
+  ListOrdered,
+  X,
+  Camera,
+  Pipette,
+  Link2,
+  Unlink,
 } from 'lucide-react';
 import {
   HighlighterRenderOptions,
   PAPER_THEMES,
   renderHighlighterStory,
   renderHighlighterStoryWithEntrance,
+  renderScanDocumentStory,
+  sampleScanSequence,
+  scanSequenceTotalMs,
+  scanSweepStartMs,
+  getPickSweepMs,
   synthesizeCutSound,
   easeHighlightSweep,
   playCutSound,
   NewspaperCut,
+  ScanLineBox,
+  ScanBeat,
 } from './highlighter-engine';
+import { findPhraseOccurrences, normalizePhraseKey } from '@/lib/paper-graphics';
 import {
   exportCanvasVideoToMp4,
   renderOfflineAudio,
@@ -76,6 +92,29 @@ const HIGHLIGHT_COLORS = [
   { name: 'Blood Crimson', hex: '#DC2626' },
   { name: 'Knockout Black', hex: '#111111' },
 ];
+
+/** The slice of working state that survives reloads — the page remembers the
+ *  last thing you made and puts it right back when you return. */
+type TextHighlighterSession = {
+  anchorPhrase: string;
+  cuts: NewspaperCut[];
+  currentCutIndex: number;
+  customHeadline: string;
+  customMasthead: string;
+  customSubhead: string;
+  customByline: string;
+  customBodyText: string;
+  highlightSector: 'top-masthead' | 'center-headline' | 'body-paragraph';
+  stickyHighlights: boolean;
+  phraseInstances: Record<string, number>;
+  scanPageFit: 'contain' | 'cover';
+  scanAutoCamera: boolean;
+  scanFillStyle: 'paper' | 'edge' | 'blur';
+  scanEdgeColor: string | null;
+  scanLines: ScanLineBox[];
+  scanPicks: ScanLineBox[];
+  scanImageDataUrl: string | null;
+};
 
 export default function TextHighlighterPage() {
   // Core Phrase & Cut State
@@ -232,6 +271,46 @@ export default function TextHighlighterPage() {
   const [scrollDuration, setScrollDuration] = useState(0.42);
   const [scrollBlur, setScrollBlur] = useState(0.85);
   const [paperTravel, setPaperTravel] = useState(1.3);
+
+  // §STICKY — marker memory: highlights from earlier screens STAY on the
+  // page while the sequence scrolls to the next phrase. Nothing is erased.
+  const [stickyHighlights, setStickyHighlights] = useState(true);
+
+  // §MATCH RESOLVER — per-phrase instance picks. When a phrase appears
+  // several times in the document the studio asks WHICH occurrence, and
+  // only that one gets swept (see the resolver panel under the phrase box).
+  const [phraseInstances, setPhraseInstances] = useState<Record<string, number>>({});
+
+  // §DOCUMENT SCAN MODE — a real newspaper photo, OCR'd in the browser.
+  // The clip becomes the page; the creator taps extracted LINES in the
+  // order they should be highlighted, and the camera dives to each one.
+  const [scanImage, setScanImage] = useState<HTMLImageElement | null>(null);
+  const [scanImageUrl, setScanImageUrl] = useState<string | null>(null);
+  const [scanPageFit, setScanPageFit] = useState<'contain' | 'cover'>('contain');
+  const [scanAutoCamera, setScanAutoCamera] = useState(true);
+  // Insert position for the pick sequence: set by the "+" buttons between
+  // chips; the next line tapped lands there instead of at the end.
+  const [scanInsertAt, setScanInsertAt] = useState<number | null>(null);
+  // Data-URL twin of the scan photo — persisted so the session survives reloads.
+  const [scanImageDataUrl, setScanImageDataUrl] = useState<string | null>(null);
+  // Range-select: first line of a continuous multi-line grab (index into scanLines).
+  const [scanRangeFrom, setScanRangeFrom] = useState<number | null>(null);
+  // FILL finish: how the artificial extension is styled — PAPER keeps the
+  // theme sheet, EDGE samples the photo's border color (eyedropper) so the
+  // extension blends into the picture, BLUR fills the frame with a blurred
+  // copy of the page.
+  const [scanFillStyle, setScanFillStyle] = useState<'paper' | 'edge' | 'blur'>('blur');
+  const [scanContinuousMode, setScanContinuousMode] = useState(false);
+  const [scanEdgeColor, setScanEdgeColor] = useState<string | null>(null);
+  // PART-of-line trim: which pick index is open in the word trimmer, and
+  // the first word already tapped (null → next tap sets the start).
+  const [scanTrimAt, setScanTrimAt] = useState<number | null>(null);
+  const [scanTrimWord, setScanTrimWord] = useState<number | null>(null);
+  const [scanLines, setScanLines] = useState<ScanLineBox[]>([]);
+  const [scanPicks, setScanPicks] = useState<ScanLineBox[]>([]);
+  const [ocrStatus, setOcrStatus] = useState<string | null>(null);
+  const ocrFileRef = useRef<HTMLInputElement>(null);
+  const scanActive = Boolean(scanImage);
   const sequenceGroups = (() => {
     // Split on direction tokens; each ">" / "<" run starts a new screen.
     const raw = anchorPhrase.split(/(>+|<+)/);
@@ -330,6 +409,28 @@ export default function TextHighlighterPage() {
     return acc + FINAL_HOLD_MS + exitWindowMs + EXIT_TAIL_MS;
   })();
 
+  // ── SCAN-MODE / SEQUENCE REF BRIDGE ───────────────────────────────────────
+  // The rAF loop must always read FRESH values (picks, sticky flag, current
+  // sampleSequence) without re-subscribing every render, so everything the
+  // loop needs per-frame flows through refs assigned on each render.
+  const scanSweepMs = highlightDuration * 1000;
+  const scanTotalMs = scanSequenceTotalMs(scanPicks, scanSweepMs);
+  const scanStateRef = useRef({ active: false, picks: [] as ScanLineBox[], sweepMs: 2000, totalMs: 1200 });
+  const scanBeatRef = useRef<ScanBeat>({ pickIndex: 0, phase: 'overview', phaseT: 0 });
+  const [scanBeatUi, setScanBeatUi] = useState<ScanBeat>({ pickIndex: 0, phase: 'overview', phaseT: 0 });
+  const sampleSequenceRef = useRef(sampleSequence);
+  const stickyRef = useRef(stickyHighlights);
+  const sequenceGroupsRef = useRef(sequenceGroups);
+  // Latest-value bridge for the rAF loop: refs are refreshed after every commit
+  // (in an effect, never during render) so the 60fps loop always reads fresh
+  // values without ever re-subscribing.
+  useEffect(() => {
+    scanStateRef.current = { active: scanActive, picks: scanPicks, sweepMs: scanSweepMs, totalMs: scanTotalMs };
+    sampleSequenceRef.current = sampleSequence;
+    stickyRef.current = stickyHighlights;
+    sequenceGroupsRef.current = sequenceGroups;
+  });
+
   // Typography Scale & Layout
   const [headlineScale, setHeadlineScale] = useState(1.0);
   const [headlineWrapMode, setHeadlineWrapMode] = useState<'single-line' | 'auto-wrap'>('auto-wrap');
@@ -371,19 +472,100 @@ export default function TextHighlighterPage() {
       setCurrentCutIndex(0);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync inputs when cut changes
+  // Sync inputs when the active cut changes — React's "adjust state during
+  // render" pattern (no effect, no cascading re-render).
+  const [syncedCut, setSyncedCut] = useState(currentCut);
+  if (currentCut && currentCut !== syncedCut) {
+    setSyncedCut(currentCut);
+    setCustomHeadline(currentCut.headline || '');
+    setCustomMasthead(currentCut.masthead || 'CREATOR KIT');
+    setCustomSubhead(currentCut.subhead || '');
+    setCustomByline(currentCut.byline || '');
+    setCustomBodyText((currentCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
+  }
+
+  // ─── SESSION MEMORY — the page remembers the last thing you made ─────────
+  const sessionLoadStartedRef = useRef(false);
+  const sessionHydratedRef = useRef(false);
   useEffect(() => {
-    if (currentCut) {
-      setCustomHeadline(currentCut.headline || '');
-      setCustomMasthead(currentCut.masthead || 'CREATOR KIT');
-      setCustomSubhead(currentCut.subhead || '');
-      setCustomByline(currentCut.byline || '');
-      setCustomBodyText((currentCut.bodyParagraphs || BODY_CORPUS).join('\n\n'));
-    }
-  }, [currentCutIndex, cuts]);
+    if (sessionLoadStartedRef.current) return;
+    sessionLoadStartedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const rec = await loadState<TextHighlighterSession>('text-highlighter');
+      if (rec?.state) {
+        const s = rec.state;
+        setAnchorPhrase(String(s.anchorPhrase ?? ''));
+        if (Array.isArray(s.cuts) && s.cuts.length > 0) {
+          const idx = Math.min(Math.max(0, s.currentCutIndex | 0), s.cuts.length - 1);
+          setCuts(s.cuts);
+          setCurrentCutIndex(idx);
+          // Pre-sync so the render-time cut sync above doesn't clobber the
+          // restored custom fields with the cut's own defaults.
+          setSyncedCut(s.cuts[idx] || s.cuts[0]);
+        }
+        setCustomHeadline(String(s.customHeadline ?? ''));
+        setCustomMasthead(String(s.customMasthead ?? 'CREATOR KIT'));
+        setCustomSubhead(String(s.customSubhead ?? ''));
+        setCustomByline(String(s.customByline ?? ''));
+        setCustomBodyText(String(s.customBodyText ?? ''));
+        if (s.highlightSector === 'top-masthead' || s.highlightSector === 'center-headline' || s.highlightSector === 'body-paragraph') {
+          setHighlightSector(s.highlightSector);
+        }
+        setStickyHighlights(Boolean(s.stickyHighlights));
+        if (s.phraseInstances && typeof s.phraseInstances === 'object') setPhraseInstances(s.phraseInstances);
+        if (s.scanPageFit === 'cover') setScanPageFit('cover');
+        if (s.scanAutoCamera === false) setScanAutoCamera(false);
+        if (s.scanFillStyle === 'edge' || s.scanFillStyle === 'blur') setScanFillStyle(s.scanFillStyle);
+        if (typeof s.scanEdgeColor === 'string') setScanEdgeColor(s.scanEdgeColor);
+        if (typeof s.scanImageDataUrl === 'string' && s.scanImageDataUrl && Array.isArray(s.scanLines) && s.scanLines.length > 0) {
+          const img = new Image();
+          img.onload = () => {
+            if (cancelled) return;
+            setScanImage(img);
+            setScanImageUrl(s.scanImageDataUrl as string);
+          };
+          img.src = s.scanImageDataUrl;
+          setScanLines(s.scanLines);
+          setScanPicks(Array.isArray(s.scanPicks) ? s.scanPicks : []);
+        }
+      }
+      if (!cancelled) sessionHydratedRef.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Debounced autosave — nothing to press; the work is simply there when you
+  // come back. (Skipped until hydration finishes so defaults never clobber a
+  // saved session mid-load.)
+  useEffect(() => {
+    if (!sessionHydratedRef.current) return;
+    const t = setTimeout(() => {
+      void saveState<TextHighlighterSession>('text-highlighter', 'Text Highlighter working state', {
+        anchorPhrase,
+        cuts,
+        currentCutIndex,
+        customHeadline,
+        customMasthead,
+        customSubhead,
+        customByline,
+        customBodyText,
+        highlightSector,
+        stickyHighlights,
+        phraseInstances,
+        scanPageFit,
+        scanAutoCamera,
+        scanFillStyle,
+        scanEdgeColor,
+        scanLines,
+        scanPicks,
+        scanImageDataUrl,
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [anchorPhrase, cuts, currentCutIndex, customHeadline, customMasthead, customSubhead, customByline, customBodyText, highlightSector, stickyHighlights, phraseInstances, scanPageFit, scanAutoCamera, scanFillStyle, scanEdgeColor, scanLines, scanPicks, scanImageDataUrl]);
 
   // Update active cut with user edits
   const handleApplyCustomText = () => {
@@ -470,21 +652,37 @@ export default function TextHighlighterPage() {
     exitProgress,
     exitBlur,
     paperTravel,
+    anchorInstances: phraseInstances,
+    scanPageFit,
+    scanAutoCamera,
+    scanFillStyle,
+    scanEdgeColor: scanEdgeColor ?? undefined,
   };
 
-  // Redraw Canvas Frame (optionally with per-frame sequence overrides —
-  // multi-scene phrase/sector/entrance state from the sequence clock)
-  const redraw = useCallback((overrides?: Partial<HighlighterRenderOptions>) => {
+  // Redraw Canvas Frame. Two worlds:
+  //  • DOCUMENT SCAN MODE — the imported photo + camera beat drive it all;
+  //  • JOURNAL MODE — per-frame sequence overrides from the sequence clock.
+  const redraw = useCallback((overrides?: Partial<HighlighterRenderOptions>, scanBeat?: ScanBeat) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    if (scanBeat && scanImage) {
+      renderScanDocumentStory(ctx, canvas.width, canvas.height, {
+        image: scanImage,
+        imageW: scanImage.naturalWidth || 1,
+        imageH: scanImage.naturalHeight || 1,
+        picks: scanPicks,
+      }, { ...renderOptions, ...overrides }, scanBeat);
+      return;
+    }
+
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
     renderHighlighterStoryWithEntrance(ctx, canvas.width, canvas.height, cut, { ...renderOptions, ...overrides }, currentCutIndex);
-  }, [cuts, currentCutIndex, renderOptions]);
+  }, [cuts, currentCutIndex, renderOptions, scanImage, scanPicks]);
 
   // Live Smooth Animation Loop — butter-smooth by construction:
   //  • the canvas is driven DIRECTLY by the sequence clock every frame;
@@ -493,7 +691,11 @@ export default function TextHighlighterPage() {
   //  • the rAF effect depends only on play-state + duration + scroll blur,
   //    so the subscription never tears down once per frame.
   const redrawRef = useRef(redraw);
-  redrawRef.current = redraw;
+  // Refreshed after every commit so the loop below always draws with the
+  // latest options without re-subscribing.
+  useEffect(() => {
+    redrawRef.current = redraw;
+  });
 
   useEffect(() => {
     let active = true;
@@ -502,11 +704,28 @@ export default function TextHighlighterPage() {
     const loop = (timestamp: number) => {
       if (!active) return;
 
+      const scanState = scanStateRef.current;
+
       let frameOverrides: Partial<HighlighterRenderOptions> | undefined;
       if (isPlaying) {
         if (!animStartTimeRef.current) animStartTimeRef.current = timestamp;
+
+        // ── DOCUMENT SCAN MODE clock ──────────────────────────────────
+        if (scanState.active) {
+          const elapsed = (timestamp - animStartTimeRef.current) % Math.max(600, scanState.totalMs);
+          scanBeatRef.current = sampleScanSequence(elapsed, scanState.picks, scanState.sweepMs);
+          if (timestamp - lastStateSync > 100) {
+            lastStateSync = timestamp;
+            setScanBeatUi(scanBeatRef.current);
+          }
+          redrawRef.current(undefined, scanBeatRef.current);
+          animFrameRef.current = requestAnimationFrame(loop);
+          return;
+        }
+
+        // ── JOURNAL MODE sequence clock ───────────────────────────────
         const elapsed = (timestamp - animStartTimeRef.current) % sequenceTotalMs;
-        const seq = sampleSequence(elapsed);
+        const seq = sampleSequenceRef.current(elapsed);
         // UI-only sync at ~10 Hz — the overrides below carry the truth to
         // the canvas at full frame rate.
         if (timestamp - lastStateSync > 100) {
@@ -519,8 +738,14 @@ export default function TextHighlighterPage() {
         // Inter-screen scrolls are PURE glides: their own blur setting, ZERO
         // tilt wobble, no zoom, no settle bounce — the sheet flies flat.
         const isSceneScroll = seq.screenIndex > 0 && seq.entranceDir !== 'none';
+        // STICKY MEMORY: phrases swept on earlier screens stay on the page,
+        // faintly dimmed, while the live phrase sweeps on the new screen.
+        const settledJoin = stickyRef.current && seq.screenIndex > 0
+          ? sequenceGroupsRef.current.slice(0, seq.screenIndex).flatMap((g) => g.phrases).join(' | ')
+          : '';
         frameOverrides = {
           anchorPhrase: seq.phrase,
+          persistedPhrases: settledJoin,
           entranceDirection: seq.entranceDir,
           entranceProgress: seq.entP,
           highlightProgress: seq.hp,
@@ -532,7 +757,7 @@ export default function TextHighlighterPage() {
         };
       }
 
-      redrawRef.current(frameOverrides);
+      redrawRef.current(frameOverrides, scanState.active ? scanBeatRef.current : undefined);
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
@@ -542,7 +767,6 @@ export default function TextHighlighterPage() {
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, sequenceTotalMs, scrollBlur]);
 
   // ─── ZERO-LEARNING-CURVE SEQUENCING ───────────────────────────────────────
@@ -616,7 +840,7 @@ export default function TextHighlighterPage() {
     applyPresetVibe(p);
   };
 
-  // SHUFFLE VIBE — instant personality roulette from the 30-vibe deck.
+  // SHUFFLE VIBE — instant personality roulette from the 50-vibe deck.
   // Never touches the user's text: roll until it feels right, hit GENERATE.
   const [lastVibeId, setLastVibeId] = useState<string | null>(null);
   const handleShuffleVibe = () => {
@@ -625,6 +849,522 @@ export default function TextHighlighterPage() {
     if (!p) return;
     setLastVibeId(p.id);
     applyPresetVibe(p, { keepText: true });
+  };
+
+  // ── DOCUMENT SCAN MODE ─────────────────────────────────────────────────────
+  // Newspaper photo → browser OCR → extracted lines you tap, in the exact
+  // order you want them highlighted. The uploaded clip becomes the page and
+  // the camera dives to each pick; every mark stays on the paper.
+  // Eyedropper: average the border pixels of the scan (downscaled for
+  // speed) → the artificial FILL extension blends into the photo instead
+  // of reading as a foreign sheet.
+  // Eyedropper: sample border pixels of the scan using IQR to reject outlier bars/ads
+  const sampleEdgeColor = (img: HTMLImageElement): string | null => {
+    try {
+      const size = 32;
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const cc = c.getContext('2d', { willReadFrequently: true });
+      if (!cc) return null;
+      cc.drawImage(img, 0, 0, size, size);
+      const d = cc.getImageData(0, 0, size, size).data;
+      const pixels: { r: number; g: number; b: number; lum: number }[] = [];
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const edge = x < 3 || y < 3 || x >= size - 3 || y >= size - 3;
+          if (!edge) continue;
+          const k = (y * size + x) * 4;
+          const r = d[k];
+          const g = d[k + 1];
+          const b = d[k + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          pixels.push({ r, g, b, lum });
+        }
+      }
+      if (pixels.length === 0) return null;
+      // Sort by luminance and sample IQR (20%..80%) to ignore navigation bars / notches
+      pixels.sort((a, b) => a.lum - b.lum);
+      const start = Math.floor(pixels.length * 0.2);
+      const end = Math.floor(pixels.length * 0.8);
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = start; i < end; i++) {
+        r += pixels[i].r;
+        g += pixels[i].g;
+        b += pixels[i].b;
+        n++;
+      }
+      if (!n) return null;
+      const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v / n))).toString(16).padStart(2, '0');
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const pickScreenColor = async () => {
+    if (typeof window !== 'undefined' && 'EyeDropper' in window) {
+      try {
+        const eyeDropper = new (window as any).EyeDropper();
+        const res = await eyeDropper.open();
+        if (res?.sRGBHex) {
+          setScanEdgeColor(res.sRGBHex);
+          setScanFillStyle('edge');
+        }
+      } catch {
+        // user cancelled / pressed ESC
+      }
+    }
+  };
+
+  const handleOcrImport = async (file: File) => {
+    let url = '';
+    try {
+      setOcrStatus('Reading image…');
+      url = URL.createObjectURL(file);
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Could not decode the image'));
+        img.src = url;
+      });
+
+      setOcrStatus('Loading OCR engine — the language model downloads once…');
+      const Tesseract = await import('tesseract.js');
+      type OcrWorker = {
+        recognize: (image: HTMLImageElement, opts?: unknown, out?: unknown) => Promise<{ data: unknown }>;
+        terminate: () => Promise<unknown>;
+      };
+      const createOcrWorker = (Tesseract as unknown as {
+        createWorker: (
+          lang?: string,
+          oem?: number,
+          opts?: { logger?: (m: { status?: string; progress?: number }) => void }
+        ) => Promise<OcrWorker>;
+      }).createWorker;
+      const worker = await createOcrWorker('eng', 1, {
+        logger: (m) => {
+          if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+            setOcrStatus(`Reading the page… ${Math.round(m.progress * 100)}%`);
+          }
+        },
+      });
+      const result = await worker.recognize(img, {}, { blocks: true, text: true });
+      await worker.terminate();
+
+      // Data-URL twin for session persistence (IndexedDB-friendly).
+      let dataUrl = '';
+      try {
+        dataUrl = await new Promise<string>((resolve) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => resolve('');
+          r.readAsDataURL(file);
+        });
+      } catch { dataUrl = ''; }
+      const iw = img.naturalWidth || 1;
+      const ih = img.naturalHeight || 1;
+      const lines: ScanLineBox[] = [];
+      const data = result.data as any;
+      const pushLine = (
+        text: unknown,
+        bbox?: { x0: number; y0: number; x1: number; y1: number },
+        words?: { text?: unknown; bbox?: { x0: number; y0: number; x1: number; y1: number } }[]
+      ) => {
+        const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length < 2 || !bbox) return;
+        // Keep the word boxes — they power PART-of-line trims later.
+        let normWords = (words || [])
+          .map((w) => ({
+            text: String(w.text ?? '').trim(),
+            box: w.bbox
+              ? { x0: w.bbox.x0 / iw, y0: w.bbox.y0 / ih, x1: w.bbox.x1 / iw, y1: w.bbox.y1 / ih }
+              : null,
+          }))
+          .filter((w): w is { text: string; box: { x0: number; y0: number; x1: number; y1: number } } => w.text.length > 0 && w.box !== null);
+
+        // Fallback: if OCR didn't provide individual words, synthesize them from line text!
+        if (normWords.length < 2) {
+          const rawWs = t.split(/\s+/).filter(Boolean);
+          if (rawWs.length > 0) {
+            const totalChars = rawWs.reduce((acc, w) => acc + w.length, 0) + (rawWs.length - 1);
+            const lineX0 = bbox.x0 / iw;
+            const lineX1 = bbox.x1 / iw;
+            const totalW = lineX1 - lineX0;
+            let cur = lineX0;
+            normWords = rawWs.map((w) => {
+              const wFrac = w.length / totalChars;
+              const wW = wFrac * totalW;
+              const spW = (1 / totalChars) * totalW;
+              const wb = {
+                text: w,
+                box: {
+                  x0: cur,
+                  y0: bbox.y0 / ih,
+                  x1: Math.min(lineX1, cur + wW),
+                  y1: bbox.y1 / ih,
+                },
+              };
+              cur += wW + spW;
+              return wb;
+            });
+          }
+        }
+
+        lines.push({
+          id: `scan-line-${lines.length}`,
+          text: t,
+          box: { x0: bbox.x0 / iw, y0: bbox.y0 / ih, x1: bbox.x1 / iw, y1: bbox.y1 / ih },
+          words: normWords.length > 0 ? normWords : undefined,
+        });
+      };
+      if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+        data.blocks.forEach((b: any) => b?.paragraphs?.forEach((p: any) => p?.lines?.forEach((l: any) => pushLine(l?.text, l?.bbox, Array.isArray(l?.words) ? l.words : undefined))));
+      } else if (Array.isArray(data.lines) && data.lines.length > 0) {
+        data.lines.forEach((l: any) => pushLine(l?.text, l?.bbox, Array.isArray(l?.words) ? l.words : undefined));
+      } else if (Array.isArray(data.words) && data.words.length > 0) {
+        // Fallback: cluster loose words into visual lines by vertical bands.
+        const words = (data.words as any[]).filter((w) => w?.text?.trim() && w?.bbox);
+        const bands: { y: number; items: any[] }[] = [];
+        words.forEach((w) => {
+          const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+          const band = bands.find((bd) => Math.abs(bd.y - cy) < (w.bbox.y1 - w.bbox.y0) * 0.7);
+          if (band) {
+            band.items.push(w);
+            band.y = band.items.reduce((s, it) => s + (it.bbox.y0 + it.bbox.y1) / 2, 0) / band.items.length;
+          } else {
+            bands.push({ y: cy, items: [w] });
+          }
+        });
+        bands.sort((a, b) => a.y - b.y).forEach((bd) => {
+          const items = [...bd.items].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+          const x0 = Math.min(...items.map((w) => w.bbox.x0));
+          const y0 = Math.min(...items.map((w) => w.bbox.y0));
+          const x1 = Math.max(...items.map((w) => w.bbox.x1));
+          const y1 = Math.max(...items.map((w) => w.bbox.y1));
+          pushLine(items.map((w) => w.text).join(' '), { x0, y0, x1, y1 }, items.map((w) => ({ text: w.text, bbox: w.bbox })));
+        });
+      }
+
+      if (lines.length === 0) {
+        setOcrStatus('No readable text found — try a sharper, brighter photo of the article.');
+        setTimeout(() => setOcrStatus(null), 4000);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      const sampled = sampleEdgeColor(img);
+      setScanEdgeColor(sampled);
+      setScanFillStyle('blur'); // Default to modern ambient blur fill on import
+      setScanImage(img);
+      setScanImageUrl(url);
+      setScanImageDataUrl(dataUrl || null);
+      setScanLines(lines);
+      setScanPicks([]);
+      setPhraseInstances({});
+      setSidebarTab('style');
+      scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+      setIsPlaying(false);
+      setOcrStatus(`Extracted ${lines.length} lines — tap the ones you want highlighted, in order.`);
+    } catch (err) {
+      console.warn('OCR import failed:', err);
+      const isDecode = err instanceof Error && err.message.includes('decode');
+      const heic = /\.hei[cf]$/i.test(file.name) || /image\/hei[cf]/i.test(file.type);
+      setOcrStatus(
+        isDecode
+          ? heic
+            ? 'This looks like an HEIC photo — export it as JPG/PNG from your photos app and retry.'
+            : 'That image could not be decoded — try a JPG or PNG photo of the article.'
+          : 'OCR failed — the engine downloads once, so check your connection and retry.'
+      );
+      setTimeout(() => setOcrStatus(null), 4500);
+      if (url) URL.revokeObjectURL(url);
+    }
+  };
+
+  const toggleScanPick = (line: ScanLineBox) => {
+    // Flow (RANGE) picks own several lines at once — tapping any member
+    // line removes (or re-adds) the whole block.
+    const ownsLine = (p: ScanLineBox) => p.id === line.id || (p.flow || []).some((f) => f.id === line.id);
+    const idx = scanPicks.findIndex(ownsLine);
+    let next: ScanLineBox[];
+    if (idx >= 0) {
+      next = scanPicks.filter((p) => !ownsLine(p));
+      setScanInsertAt(null);
+    } else if (scanContinuousMode && scanPicks.length > 0) {
+      // Continuous mode: append this line directly into the ongoing continuous sweep!
+      const allFlow: ScanLineBox[] = [];
+      scanPicks.forEach((p) => {
+        if (p.flow && p.flow.length > 0) allFlow.push(...p.flow);
+        else allFlow.push(p);
+      });
+      allFlow.push(line);
+      const u = allFlow.reduce(
+        (acc, l) => ({
+          x0: Math.min(acc.x0, l.box.x0),
+          y0: Math.min(acc.y0, l.box.y0),
+          x1: Math.max(acc.x1, l.box.x1),
+          y1: Math.max(acc.y1, l.box.y1),
+        }),
+        { x0: 1, y0: 1, x1: 0, y1: 0 }
+      );
+      const mergedPick: ScanLineBox = {
+        id: `flow-continuous-${Date.now()}`,
+        text: allFlow.map((l) => l.text).join(' / '),
+        box: u,
+        flow: allFlow,
+        words: allFlow.flatMap((l) => l.words || []),
+      };
+      next = [mergedPick];
+      setScanInsertAt(null);
+    } else if (scanInsertAt != null && scanInsertAt <= scanPicks.length) {
+      // Insert exactly between two picks — no re-tapping the whole sequence.
+      next = [...scanPicks.slice(0, scanInsertAt), line, ...scanPicks.slice(scanInsertAt)];
+      setScanInsertAt(null);
+    } else {
+      next = [...scanPicks, line];
+    }
+    setScanPicks(next);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    if (next.length > 0) {
+      animStartTimeRef.current = performance.now();
+      setIsPlaying(true);
+      if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, next.length);
+    }
+  };
+
+  // Grab a CONTINUOUS run of lines in one shot: RANGE on the first line,
+  // RANGE on the last — the whole block becomes ONE "flow" pick, swept by
+  // a single continuous A→B→C→D marker motion in a single beat.
+  const applyScanRange = (fromIdx: number, toIdx: number) => {
+    const lo = Math.min(fromIdx, toIdx);
+    const hi = Math.max(fromIdx, toIdx);
+    const rangeLines = scanLines.slice(lo, hi + 1);
+    if (rangeLines.length === 0) {
+      setScanRangeFrom(null);
+      return;
+    }
+    const u = rangeLines.reduce(
+      (acc, l) => ({
+        x0: Math.min(acc.x0, l.box.x0),
+        y0: Math.min(acc.y0, l.box.y0),
+        x1: Math.max(acc.x1, l.box.x1),
+        y1: Math.max(acc.y1, l.box.y1),
+      }),
+      { x0: 1, y0: 1, x1: 0, y1: 0 }
+    );
+    const flowPick: ScanLineBox = {
+      id: `flow-${rangeLines[0].id}-${rangeLines[rangeLines.length - 1].id}-${Date.now()}`,
+      text: rangeLines.map((l) => l.text).join(' / '),
+      box: u,
+      flow: rangeLines,
+      words: rangeLines.flatMap((l) => l.words || []),
+    };
+
+    // Remove any previous individual picks that were within this range
+    const rangeIds = new Set(rangeLines.map((l) => l.id));
+    const filteredPicks = scanPicks.filter(
+      (p) => !rangeIds.has(p.id) && !(p.flow || []).some((f) => rangeIds.has(f.id))
+    );
+
+    const next = [...filteredPicks, flowPick];
+    setScanPicks(next);
+    setScanRangeFrom(null);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    animStartTimeRef.current = performance.now();
+    setIsPlaying(true);
+    if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, next.length);
+  };
+
+  const mergeScanPicks = (i: number) => {
+    if (i < 0 || i >= scanPicks.length - 1) return;
+    const a = scanPicks[i];
+    const b = scanPicks[i + 1];
+    const flowA = a.flow && a.flow.length > 0 ? a.flow : [a];
+    const flowB = b.flow && b.flow.length > 0 ? b.flow : [b];
+    const mergedFlow = [...flowA, ...flowB];
+    const u = mergedFlow.reduce(
+      (acc, l) => ({
+        x0: Math.min(acc.x0, l.box.x0),
+        y0: Math.min(acc.y0, l.box.y0),
+        x1: Math.max(acc.x1, l.box.x1),
+        y1: Math.max(acc.y1, l.box.y1),
+      }),
+      { x0: 1, y0: 1, x1: 0, y1: 0 }
+    );
+    const mergedPick: ScanLineBox = {
+      id: `flow-${mergedFlow[0].id}-${mergedFlow[mergedFlow.length - 1].id}-${Date.now()}`,
+      text: mergedFlow.map((l) => l.text).join(' / '),
+      box: u,
+      flow: mergedFlow,
+      words: mergedFlow.flatMap((l) => l.words || []),
+    };
+    const next = [...scanPicks.slice(0, i), mergedPick, ...scanPicks.slice(i + 2)];
+    setScanPicks(next);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    animStartTimeRef.current = performance.now();
+    setIsPlaying(true);
+  };
+
+  const splitScanPick = (i: number) => {
+    const p = scanPicks[i];
+    if (!p?.flow || p.flow.length <= 1) return;
+    const individualPicks = p.flow;
+    const next = [...scanPicks.slice(0, i), ...individualPicks, ...scanPicks.slice(i + 1)];
+    setScanPicks(next);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    animStartTimeRef.current = performance.now();
+    setIsPlaying(true);
+  };
+
+  const mergeAllPicks = () => {
+    if (scanPicks.length <= 1) return;
+    const allFlow: ScanLineBox[] = [];
+    scanPicks.forEach((p) => {
+      if (p.flow && p.flow.length > 0) allFlow.push(...p.flow);
+      else allFlow.push(p);
+    });
+    const u = allFlow.reduce(
+      (acc, l) => ({
+        x0: Math.min(acc.x0, l.box.x0),
+        y0: Math.min(acc.y0, l.box.y0),
+        x1: Math.max(acc.x1, l.box.x1),
+        y1: Math.max(acc.y1, l.box.y1),
+      }),
+      { x0: 1, y0: 1, x1: 0, y1: 0 }
+    );
+    const mergedPick: ScanLineBox = {
+      id: `flow-all-${Date.now()}`,
+      text: allFlow.map((l) => l.text).join(' / '),
+      box: u,
+      flow: allFlow,
+      words: allFlow.flatMap((l) => l.words || []),
+    };
+    setScanPicks([mergedPick]);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    animStartTimeRef.current = performance.now();
+    setIsPlaying(true);
+  };
+
+  const splitAllPicks = () => {
+    const allIndividual: ScanLineBox[] = [];
+    scanPicks.forEach((p) => {
+      if (p.flow && p.flow.length > 0) allIndividual.push(...p.flow);
+      else allIndividual.push(p);
+    });
+    setScanPicks(allIndividual);
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    animStartTimeRef.current = performance.now();
+    setIsPlaying(true);
+  };
+
+  // ── PART-of-line trim ("break the line") ─────────────────────────────────
+  // Tap words to narrow the highlight box to that span ("middle sentence inside line").
+  const openTrimForLine = (line: ScanLineBox) => {
+    if (!line.words || line.words.length === 0) {
+      const ws = line.text.split(/\s+/).filter(Boolean);
+      const totalChars = ws.reduce((acc, w) => acc + w.length, 0) + (ws.length - 1);
+      const lineX0 = line.box.x0;
+      const lineX1 = line.box.x1;
+      const totalW = lineX1 - lineX0;
+      let cur = lineX0;
+      line.words = ws.map((w) => {
+        const wFrac = w.length / totalChars;
+        const wW = wFrac * totalW;
+        const spW = (1 / totalChars) * totalW;
+        const wb = { text: w, box: { x0: cur, y0: line.box.y0, x1: Math.min(lineX1, cur + wW), y1: line.box.y1 } };
+        cur += wW + spW;
+        return wb;
+      });
+    }
+    const idx = scanPicks.findIndex((p) => p.id === line.id || (p.flow || []).some((f) => f.id === line.id));
+    if (idx >= 0) {
+      if (scanPicks[idx].flow && scanPicks[idx].flow!.length > 1) {
+        splitScanPick(idx);
+        setTimeout(() => {
+          const newIdx = scanPicks.findIndex((p) => p.id === line.id);
+          if (newIdx >= 0) {
+            setScanTrimAt(newIdx);
+            setScanTrimWord(null);
+          }
+        }, 50);
+        return;
+      }
+      setScanTrimAt(scanTrimAt === idx ? null : idx);
+      setScanTrimWord(null);
+      return;
+    }
+    const at = scanInsertAt != null && scanInsertAt <= scanPicks.length ? scanInsertAt : scanPicks.length;
+    toggleScanPick(line);
+    setScanTrimAt(at);
+    setScanTrimWord(null);
+  };
+
+  const handleTrimWord = (wordIdx: number) => {
+    if (scanTrimAt == null) return;
+    const pick = scanPicks[scanTrimAt];
+    if (!pick?.words || pick.words.length === 0) return;
+
+    if (scanTrimWord == null) {
+      // First tap: highlight just this single word immediately
+      const w = pick.words[wordIdx];
+      setScanTrimWord(wordIdx);
+      setScanPicks(scanPicks.map((p, i) => i === scanTrimAt
+        ? {
+            ...p,
+            origBox: p.origBox ?? p.box,
+            origText: p.origText ?? p.text,
+            box: { ...p.box, x0: w.box.x0, x1: w.box.x1 },
+            text: w.text,
+          }
+        : p));
+      return;
+    }
+
+    // Second tap: expand span from first tap to second tap
+    const lo = Math.min(scanTrimWord, wordIdx);
+    const hi = Math.max(scanTrimWord, wordIdx);
+    const ws = pick.words.slice(lo, hi + 1);
+    const x0 = Math.min(...ws.map((w) => w.box.x0));
+    const x1 = Math.max(...ws.map((w) => w.box.x1));
+    setScanPicks(scanPicks.map((p, i) => i === scanTrimAt
+      ? {
+          ...p,
+          origBox: p.origBox ?? p.box,
+          origText: p.origText ?? p.text,
+          box: { ...p.box, x0, x1 },
+          text: ws.map((w) => w.text).join(' '),
+        }
+      : p));
+    setScanTrimWord(null);
+  };
+
+  const resetScanTrim = () => {
+    if (scanTrimAt == null) return;
+    setScanPicks(scanPicks.map((p, i) => (i === scanTrimAt && p.origBox
+      ? { ...p, box: p.origBox, text: p.origText ?? p.text, origBox: undefined, origText: undefined }
+      : p)));
+    setScanTrimWord(null);
+  };
+
+  const exitScanMode = () => {
+    if (scanImageUrl?.startsWith('blob:')) URL.revokeObjectURL(scanImageUrl);
+    setScanImage(null);
+    setScanImageUrl(null);
+    setScanInsertAt(null);
+    setScanRangeFrom(null);
+    setScanTrimAt(null);
+    setScanTrimWord(null);
+    setScanFillStyle('blur');
+    setScanContinuousMode(false);
+    setScanEdgeColor(null);
+    setScanImageDataUrl(null);
+    setScanLines([]);
+    setScanPicks([]);
+    setOcrStatus(null);
+    if (ocrFileRef.current) ocrFileRef.current.value = '';
+    scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+    handleReplay();
   };
 
   const tokenChipStyle = {
@@ -670,6 +1410,11 @@ export default function TextHighlighterPage() {
     setEntranceProgress(entranceWindowMs > 0 ? 0 : 1);
     setExitProgress(0);
     setIsPlaying(true);
+    if (scanActive) {
+      scanBeatRef.current = { pickIndex: 0, phase: 'overview', phaseT: 0 };
+      if (soundEffect !== 'mute' && scanPicks.length > 0) playCutSound(soundEffect, soundVolume, highlightDuration, scanPicks.length);
+      return;
+    }
     const screensCount = sequenceGroups.length;
     if (soundEffect !== 'mute') playCutSound(soundEffect, soundVolume, highlightDuration, screensCount);
   };
@@ -699,7 +1444,7 @@ export default function TextHighlighterPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    link.download = `highlighter-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.png`;
+    link.download = scanActive ? 'newspaper-scan-highlight.png' : `highlighter-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -723,7 +1468,9 @@ export default function TextHighlighterPage() {
     try {
       // 60fps constant frame rate — buttery sweep, matching the live preview.
       const fps = 60;
-      const totalFrames = Math.max(40, Math.round((sequenceTotalMs / 1000) * fps));
+      const exportSweepMs = highlightDuration * 1000;
+      const exportTotalMs = scanActive ? scanSequenceTotalMs(scanPicks, exportSweepMs) : sequenceTotalMs;
+      const totalFrames = Math.max(40, Math.round((exportTotalMs / 1000) * fps));
       const currentCut = cuts[currentCutIndex] || cuts[0];
 
       // Make sure webfonts are ready before any frame renders — an explicit
@@ -749,6 +1496,15 @@ export default function TextHighlighterPage() {
           audioBuffer = await renderOfflineAudio({
             durationSec: totalFrames / fps,
             schedule: (ctx, dest) => {
+              if (scanActive) {
+                // One marker pass per picked line, fired at the exact second
+                // each scan sweep begins (after the overview + camera dive).
+                scanPicks.forEach((pick, i) => {
+                  const pickDur = getPickSweepMs(pick, exportSweepMs) / 1000;
+                  synthesizeCutSound(ctx, dest, soundEffect, soundVolume, scanSweepStartMs(i, scanPicks, exportSweepMs) / 1000, pickDur, 1);
+                });
+                return;
+              }
               // One marker pass per screen — each sweep gets its own sound at
               // the exact second its screen starts (after any slam/scroll).
               let cursor = entranceWindowMs;
@@ -775,8 +1531,22 @@ export default function TextHighlighterPage() {
         audioBuffer,
         onProgress: (p) => setExportProgress(`Encoding ${exportResLabel} video: ${Math.round(p * 100)}%`),
         renderFrame: (frameIndex, ctx) => {
+          const frameMs = (frameIndex / fps) * 1000;
+
+          // ── DOCUMENT SCAN MODE — same deterministic clock as the loop. ──
+          if (scanActive && scanImage) {
+            const beat = sampleScanSequence(frameMs, scanPicks, exportSweepMs);
+            renderScanDocumentStory(ctx, ctx.canvas.width, ctx.canvas.height, {
+              image: scanImage,
+              imageW: scanImage.naturalWidth || 1,
+              imageH: scanImage.naturalHeight || 1,
+              picks: scanPicks,
+            }, renderOptions, beat);
+            return;
+          }
+
           // Same deterministic sequence clock as the live loop.
-          const seq = sampleSequence((frameIndex / fps) * 1000);
+          const seq = sampleSequence(frameMs);
           if (frameIndex % 10 === 0) {
             setEntranceProgress(seq.entP);
             setHighlightProgress(seq.hp);
@@ -786,6 +1556,9 @@ export default function TextHighlighterPage() {
           const frameRenderOptions: HighlighterRenderOptions = {
             ...renderOptions,
             anchorPhrase: seq.phrase,
+            persistedPhrases: stickyHighlights && seq.screenIndex > 0
+              ? sequenceGroups.slice(0, seq.screenIndex).flatMap((g) => g.phrases).join(' | ')
+              : '',
             highlightProgress: seq.hp,
             entranceDirection: seq.entranceDir,
             entranceProgress: seq.entP,
@@ -803,10 +1576,10 @@ export default function TextHighlighterPage() {
       });
 
       const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
-      downloadBlob(
-        result.blob,
-        `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.${ext}`
-      );
+      const exportName = scanActive
+        ? 'newspaper-scan-highlighter'
+        : `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}`;
+      downloadBlob(result.blob, `${exportName}.${ext}`);
       setLastExportBlob(result.blob);
       setExportProgress(null);
     } catch (err) {
@@ -893,7 +1666,7 @@ export default function TextHighlighterPage() {
               margin: 0,
             }}
           >
-            Cinematic slow-motion marker, circle, underline, and box highlighter animations. Choose from 52 Google Fonts and customize circular lens blur.
+            Cinematic slow-motion marker, circle, underline, and box highlighter animations. 50 curated script presets, sticky multi-phrase sequences that never erase, ambiguous-match instance picking, and real newspaper-photo OCR import with camera-dive choreography.
           </p>
         </div>
       </div>
@@ -953,13 +1726,22 @@ export default function TextHighlighterPage() {
                     borderRadius: '50%',
                   }}
                 />
-                <span style={{ color: '#000', fontWeight: 900 }}>
-                  ANIMATION: {Math.round(highlightProgress * 100)}%
-                </span>
-                <span style={{ color: '#aaa' }}>|</span>
-                <span style={{ textTransform: 'uppercase', color: '#333', fontWeight: 800 }}>
-                  {cuts[currentCutIndex]?.masthead || 'NEWSPAPER'}
-                </span>
+                {scanActive ? (
+                  <span style={{ color: '#000', fontWeight: 900 }}>
+                    PICK {Math.min(scanBeatUi.pickIndex + 1, Math.max(scanPicks.length, 1))}/{Math.max(scanPicks.length, 1)} ·{' '}
+                    {scanPicks.length === 0 ? 'TAP LINES BELOW' : scanBeatUi.phase.toUpperCase()}
+                  </span>
+                ) : (
+                  <>
+                    <span style={{ color: '#000', fontWeight: 900 }}>
+                      ANIMATION: {Math.round(highlightProgress * 100)}%
+                    </span>
+                    <span style={{ color: '#aaa' }}>|</span>
+                    <span style={{ textTransform: 'uppercase', color: '#333', fontWeight: 800 }}>
+                      {cuts[currentCutIndex]?.masthead || 'NEWSPAPER'}
+                    </span>
+                  </>
+                )}
               </div>
 
               <div className="tool-viewport-meta-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1026,6 +1808,115 @@ export default function TextHighlighterPage() {
                     </button>
                   ))}
                 </div>
+                {scanActive && (
+                  <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 3, overflow: 'hidden' }} title="Scan page fit — FILL keeps the WHOLE picture visible and extends the page with matching paper to fill the aspect ratio; FIT shows the whole page with a desk margin">
+                    {[{ id: 'contain' as const, label: 'FIT' }, { id: 'cover' as const, label: 'FILL' }].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setScanPageFit(f.id)}
+                        style={{
+                          padding: '3px 7px',
+                          border: 'none',
+                          background: scanPageFit === f.id ? '#000' : '#fff',
+                          color: scanPageFit === f.id ? '#FFE500' : '#000',
+                          fontFamily: 'monospace',
+                          fontSize: '0.62rem',
+                          fontWeight: 900,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {scanActive && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 3, overflow: 'hidden' }} title="Scan canvas background — BLUR fills the frame with a blurred ambient copy of the page; EDGE blends the canvas with the photo's edge color; PAPER uses the newspaper desk theme">
+                      {[{ id: 'blur' as const, label: 'BLUR' }, { id: 'edge' as const, label: 'EDGE' }, { id: 'paper' as const, label: 'PAPER' }].map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setScanFillStyle(f.id)}
+                          style={{
+                            padding: '3px 7px',
+                            border: 'none',
+                            background: scanFillStyle === f.id ? '#000' : '#fff',
+                            color: scanFillStyle === f.id ? '#FFE500' : '#000',
+                            fontFamily: 'monospace',
+                            fontSize: '0.62rem',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                    {scanFillStyle === 'edge' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#fff', border: '1.5px solid #000', borderRadius: 3, padding: '1px 4px' }}>
+                        <button
+                          type="button"
+                          onClick={pickScreenColor}
+                          title="EyeDropper — click anywhere on the page/screen to sample the exact background color"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            padding: '2px 4px',
+                            background: '#FFE500',
+                            border: '1px solid #000',
+                            borderRadius: 2,
+                            cursor: 'pointer',
+                            fontSize: '0.58rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                          }}
+                        >
+                          <Pipette size={10} /> PICK
+                        </button>
+                        <input
+                          type="color"
+                          value={scanEdgeColor || '#141414'}
+                          onChange={(e) => setScanEdgeColor(e.target.value)}
+                          title="Choose edge fill color"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            padding: 0,
+                            border: '1px solid #000',
+                            borderRadius: 2,
+                            cursor: 'pointer',
+                            background: 'none',
+                          }}
+                        />
+                        {scanImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const c = sampleEdgeColor(scanImage);
+                              if (c) setScanEdgeColor(c);
+                            }}
+                            title="Auto sample border color from image"
+                            style={{
+                              padding: '2px 3px',
+                              background: '#fff',
+                              border: '1px solid #ccc',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              fontSize: '0.55rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 900,
+                            }}
+                          >
+                            ↻
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1506,191 +2397,829 @@ export default function TextHighlighterPage() {
 
         {/* Right Column: Customization Sidebar */}
         <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Target Phrase Box */}
-          <div
-            className="brutalist-card"
-            style={{
-              padding: 14,
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-              borderRadius: 4,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 900,
-                  fontFamily: 'monospace',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: '#000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Crosshair size={14} style={{ color: '#000' }} />
-                Highlighted Phrase
-              </label>
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  color: '#000',
-                  background: '#FFE500',
-                  padding: '2px 6px',
-                  border: '1px solid #000',
-                  borderRadius: 4,
-                }}
-              >
-                {anchorPhrase.trim().length} CHARS • {anchorPhrase.trim().split(/\s+/).filter(Boolean).length} WORDS
-              </span>
+          {ocrStatus && (
+            <div style={{ padding: '6px 10px', border: '2px solid #000', borderRadius: 4, background: '#fef08a', fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900, color: '#000', letterSpacing: '0.04em' }}>
+              {ocrStatus}
             </div>
+          )}
 
-            <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
-              <input
-                ref={anchorInputRef}
-                type="text"
-                value={anchorPhrase}
-                onChange={(e) => setAnchorPhrase(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAutoGenerate();
-                  }
-                }}
-                placeholder="Enter words, sentence, or passage to highlight..."
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  border: '2px solid #000',
-                  borderRadius: 4,
-                  background: '#fff',
-                  fontSize: '0.86rem',
-                  fontWeight: 800,
-                  color: '#000',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={handleAutoGenerate}
-                disabled={isGenerating}
-                className="brutalist-button brutalist-button-primary"
-                style={{
-                  fontSize: '0.8rem',
-                  fontWeight: 900,
-                  padding: '10px 18px',
-                  borderRadius: 4,
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  boxShadow: '3px 3px 0 #000',
-                  textTransform: 'uppercase',
-                  transform: isGenerating ? 'scale(0.96)' : 'none',
-                  transition: 'transform 0.1s ease',
-                }}
-              >
-                <Zap size={15} className={isGenerating ? 'animate-bounce' : ''} />
-                {isGenerating ? 'GENERATING...' : 'GENERATE'}
-              </button>
-            </div>
-            {/* ONE-TAP SEQUENCE TOKENS — zero syntax to learn: tap a chip and
-                the token drops in at the cursor. Structure without typing. */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
-              <button onClick={() => insertAnchorToken(' | ')} style={tokenChipStyle}>
-                + PHRASE <span style={{ background: '#FFE500', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'|'}</span>
-              </button>
-              <button onClick={() => insertAnchorToken(' > ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
-                ↓ SCROLL DOWN <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'>'}</span>
-              </button>
-              <button onClick={() => insertAnchorToken(' < ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
-                ↑ SCROLL UP <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'<'}</span>
-              </button>
-            </div>
-
-            {/* LIVE STRUCTURE READOUT — the parsed screens as chips, so users
-                SEE what the video will do instead of parsing symbols. */}
-            {sequenceGroups.length > 1 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                {sequenceGroups.map((g, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      fontSize: '0.6rem',
-                      fontFamily: 'monospace',
-                      fontWeight: 900,
-                      textTransform: 'uppercase',
-                      color: '#000',
-                      background: i === 0 ? '#FFE500' : '#fff',
-                      border: '1.5px solid #000',
-                      borderRadius: 999,
-                      padding: '2px 9px',
-                    }}
-                  >
-                    {i === 0 ? '' : g.scrollIn === 'down' ? '↓ ' : '↑ '}SCREEN {i + 1} · {g.phrases.length} PHRASE{g.phrases.length === 1 ? '' : 'S'}
-                  </span>
-                ))}
+          {/* SCAN MODE — a totally different right-panel view for imported newspaper images. No generated paper: the user's photo IS the page. */}
+          {scanActive ? (
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 14,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                borderRadius: 4,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: '#000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Camera size={14} style={{ color: '#000' }} />
+                  Document Scan Mode
+                </label>
+                <button
+                  onClick={exitScanMode}
+                  title="Exit scan mode"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 8px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#FFE500',
+                    color: '#000',
+                    fontSize: '0.64rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <X size={12} /> EXIT
+                </button>
               </div>
-            )}
 
-            {/* Presets */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-              <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
-                Tool Presets:
-              </span>
-              {/* SHUFFLE VIBE — instant personality roulette. Keeps your text;
-                  rolls a new look + motion recipe from the full deck. */}
-              <button
-                onClick={handleShuffleVibe}
-                style={{
-                  padding: '5px 12px',
-                  border: '2px solid #000',
-                  borderRadius: 4,
-                  background: '#000',
-                  color: '#FFE500',
-                  fontSize: '0.64rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  cursor: 'pointer',
-                  boxShadow: '2px 2px 0 #000',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                🎲 SHUFFLE VIBE · {PRESET_TOPICS.length} DECK
-              </button>
-              {PRESET_TOPICS.map((p) => {
-                const isActive = anchorPhrase.toLowerCase() === p.anchor.toLowerCase();
-                return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {scanImage && scanImageUrl && (
+                  <img src={scanImageUrl} alt="Imported page" style={{ width: 52, height: 52, objectFit: 'cover', border: '2px solid #000', borderRadius: 4 }} />
+                )}
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    color: '#000',
+                    background: '#FFE500',
+                    padding: '2px 6px',
+                    border: '1px solid #000',
+                    borderRadius: 4,
+                  }}
+                >
+                  {scanLines.length} LINES READ • {scanPicks.length} PICKED
+                </span>
+              </div>
+
+              {/* AUTO CAMERA & CONTINUOUS MODE */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={scanAutoCamera}
+                    onChange={(e) => setScanAutoCamera(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: '#FFE500', cursor: 'pointer' }}
+                  />
+                  Auto Camera
+                  <span style={{ marginLeft: 'auto', fontSize: '0.56rem', color: '#888' }}>
+                    {scanAutoCamera ? 'ZOOM CHOREOGRAPHY ON' : 'STATIC FULL PAGE'}
+                  </span>
+                </label>
+
+                <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }}>
                   <button
-                    key={p.id}
-                    onClick={() => handleLoadPreset(p.id)}
-                    style={{
-                      padding: '4px 10px',
-                      border: '1.5px solid #000',
-                      borderRadius: 4,
-                      background: isActive ? '#FFE500' : '#ffffff',
-                      color: '#000000',
-                      fontFamily: 'monospace',
-                      fontWeight: 900,
-                      fontSize: '0.66rem',
-                      cursor: 'pointer',
-                      textTransform: 'uppercase',
-                      boxShadow: isActive ? '2px 2px 0 #000' : 'none',
-                      transition: 'all 0.12s',
+                    type="button"
+                    onClick={() => {
+                      setScanContinuousMode(true);
+                      mergeAllPicks();
                     }}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      border: 'none',
+                      borderRight: '1.5px solid #000',
+                      background: scanContinuousMode ? '#000' : '#fff',
+                      color: scanContinuousMode ? '#FFE500' : '#000',
+                      fontFamily: 'monospace',
+                      fontSize: '0.62rem',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                    title="Continuous Mode: highlights all lines ABCD in ONE fluid continuous sweep without intermediate holds"
                   >
-                    {p.name}
+                    <Zap size={11} /> CONTINUOUS FLOW
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScanContinuousMode(false);
+                      splitAllPicks();
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      border: 'none',
+                      background: !scanContinuousMode ? '#000' : '#fff',
+                      color: !scanContinuousMode ? '#FFE500' : '#000',
+                      fontFamily: 'monospace',
+                      fontSize: '0.62rem',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                    title="Step-by-step Mode: dives to each picked line individually with a hold"
+                  >
+                    <ListOrdered size={11} /> STEP BY STEP
+                  </button>
+                </div>
+              </div>
+
+              {scanPicks.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                    <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ListOrdered size={12} /> HIGHLIGHT ORDER ({scanPicks.length})
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {scanPicks.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={mergeAllPicks}
+                          title="Merge ALL picked lines into ONE seamless continuous sweep (ABCD... with NO hold or pause between them)"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            padding: '2px 7px',
+                            border: '1.5px solid #000',
+                            borderRadius: 3,
+                            background: '#FFE500',
+                            color: '#000',
+                            fontSize: '0.58rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            boxShadow: '1px 1px 0 #000',
+                          }}
+                        >
+                          <Link2 size={10} /> MERGE ALL CONTINUOUS
+                        </button>
+                      )}
+                      {scanPicks.some((p) => p.flow && p.flow.length > 1) && (
+                        <button
+                          type="button"
+                          onClick={splitAllPicks}
+                          title="Split merged continuous lines back into step-by-step individual lines with holds"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            padding: '2px 7px',
+                            border: '1.5px solid #000',
+                            borderRadius: 3,
+                            background: '#fff',
+                            color: '#000',
+                            fontSize: '0.58rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Unlink size={10} /> SPLIT TO STEPS
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setScanPicks([])}
+                        style={{
+                          padding: '2px 6px',
+                          border: '1.5px solid #000',
+                          borderRadius: 3,
+                          background: '#fff',
+                          color: '#000',
+                          fontSize: '0.58rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        CLEAR
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {scanPicks.map((pick, i) => (
+                      <span key={pick.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '3px 8px',
+                            border: '1.5px solid #000',
+                            borderRadius: 999,
+                            background: pick.flow && pick.flow.length > 1 ? '#FFF066' : '#FFE500',
+                            color: '#000',
+                            fontSize: '0.62rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                          }}
+                        >
+                          <span
+                            onClick={() => toggleScanPick(pick)}
+                            title={pick.flow ? 'Remove continuous group' : 'Remove from sequence'}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {i + 1}. {pick.flow && pick.flow.length > 1 ? `[${pick.flow.length}L CONTINUOUS ⇉] ` : ''}{pick.text.slice(0, 22)}✕
+                          </span>
+                          {pick.flow && pick.flow.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => splitScanPick(i)}
+                              title="Unmerge into separate lines"
+                              style={{
+                                border: '1px solid #000',
+                                borderRadius: 999,
+                                background: '#fff',
+                                color: '#000',
+                                padding: '1px 4px',
+                                fontSize: '0.52rem',
+                                cursor: 'pointer',
+                                fontWeight: 900,
+                              }}
+                            >
+                              SPLIT
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScanTrimAt(scanTrimAt === i ? null : i);
+                              setScanTrimWord(null);
+                            }}
+                            title="BREAK / TRIM — highlight only a middle sentence or specific words"
+                            style={{
+                              border: scanTrimAt === i ? '1.5px solid #000' : '1px solid #777',
+                              borderRadius: 3,
+                              background: scanTrimAt === i ? '#FFE500' : '#fff',
+                              color: '#000',
+                              padding: '1px 4px',
+                              fontSize: '0.55rem',
+                              cursor: 'pointer',
+                              fontWeight: 900,
+                            }}
+                          >
+                            ✂
+                          </button>
+                        </div>
+                        {i < scanPicks.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => mergeScanPicks(i)}
+                            title={`Join pick ${i + 1} and ${i + 2} into ONE continuous sweep without holds`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 2,
+                              padding: '2px 6px',
+                              border: '1.5px solid #000',
+                              borderRadius: 4,
+                              background: '#FFE500',
+                              color: '#000',
+                              fontSize: '0.58rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 900,
+                              cursor: 'pointer',
+                              boxShadow: '1px 1px 0 #000',
+                            }}
+                          >
+                            <Link2 size={10} /> + JOIN ⇉
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setScanInsertAt(scanInsertAt === scanPicks.length ? null : scanPicks.length)}
+                      title="Insert next tapped line at the END"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 20,
+                        height: 20,
+                        padding: 0,
+                        border: scanInsertAt === scanPicks.length ? '2px solid #000' : '1.5px dashed #999',
+                        borderRadius: 999,
+                        background: scanInsertAt === scanPicks.length ? '#FFE500' : '#fff',
+                        color: '#000',
+                        fontSize: '0.68rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* PART-of-line trimmer — tap the first word, then the last;
+                  the pick narrows to that word span ("break the line"). */}
+              {scanTrimAt != null && scanPicks[scanTrimAt] && (() => {
+                const pick = scanPicks[scanTrimAt];
+                const words = pick.words && pick.words.length > 0 ? pick.words : pick.text.split(/\s+/).map((t) => ({ text: t, box: pick.box }));
+                return (
+                  <div style={{ border: '2px solid #000', borderRadius: 4, padding: 8, background: '#fffbe6', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span>
+                        BREAK LINE / TRIM — TAP WORDS TO HIGHLIGHT: &ldquo;{pick.text.slice(0, 40)}&rdquo;
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScanTrimAt(null);
+                          setScanTrimWord(null);
+                        }}
+                        style={{ padding: '2px 8px', border: '1.5px solid #000', borderRadius: 3, background: '#000', color: '#FFE500', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                      >
+                        DONE ✓
+                      </button>
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {words.map((w, wi) => (
+                        <button
+                          key={wi}
+                          type="button"
+                          onClick={() => handleTrimWord(wi)}
+                          style={{
+                            padding: '3px 8px',
+                            border: scanTrimWord === wi ? '2px solid #000' : '1px solid #777',
+                            borderRadius: 3,
+                            background: scanTrimWord === wi ? '#FFE500' : '#fff',
+                            color: '#000',
+                            fontSize: '0.65rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: scanTrimWord === wi ? '2px 2px 0 #000' : 'none',
+                          }}
+                        >
+                          {w.text}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={resetScanTrim}
+                        disabled={!scanPicks[scanTrimAt]?.origBox}
+                        style={{
+                          padding: '3px 8px',
+                          border: '1.5px solid #000',
+                          borderRadius: 3,
+                          background: '#fff',
+                          color: '#000',
+                          fontSize: '0.58rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          cursor: scanPicks[scanTrimAt]?.origBox ? 'pointer' : 'not-allowed',
+                          opacity: scanPicks[scanTrimAt]?.origBox ? 1 : 0.4,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        RESTORE FULL LINE ↺
+                      </button>
+                      <span style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', textTransform: 'uppercase' }}>
+                        {scanTrimWord == null ? 'TAP A WORD TO HIGHLIGHT IT, OR TWO WORDS FOR A PHRASE' : 'TAP SECOND WORD TO SET RANGE'}
+                      </span>
+                    </div>
+                  </div>
                 );
-              })}
+              })()}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {scanInsertAt != null ? (
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase', background: '#FFE500', border: '1.5px solid #000', borderRadius: 4, padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span>INSERT AT POSITION {scanInsertAt + 1} — TAP A LINE</span>
+                    <button
+                      onClick={() => setScanInsertAt(null)}
+                      style={{ padding: '1px 6px', border: '1.5px solid #000', borderRadius: 3, background: '#fff', color: '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                      CANCEL
+                    </button>
+                  </span>
+                ) : scanRangeFrom != null ? (
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase', background: '#FFE500', border: '1.5px solid #000', borderRadius: 4, padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span>RANGE START AT LINE {scanRangeFrom + 1} — TAP RANGE ON THE LAST LINE</span>
+                    <button
+                      onClick={() => setScanRangeFrom(null)}
+                      style={{ padding: '1px 6px', border: '1.5px solid #000', borderRadius: 3, background: '#fff', color: '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                      CANCEL
+                    </button>
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
+                    TAP LINES IN THE ORDER YOU WANT THEM HIGHLIGHTED — OR RANGE TO GRAB A CONTINUOUS BLOCK
+                  </span>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', paddingRight: 2 }}>
+                  {scanLines.map((line, lineIdx) => {
+                    // Flow (RANGE) picks mark every member line as picked.
+                    const pickIdx = scanPicks.findIndex((p) => p.id === line.id || (p.flow || []).some((f) => f.id === line.id));
+                    const rangeActive = scanRangeFrom != null && scanRangeFrom !== lineIdx;
+                    return (
+                      <div key={line.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
+                        <button
+                          onClick={() => toggleScanPick(line)}
+                          style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            textAlign: 'left',
+                            padding: '6px 8px',
+                            border: pickIdx >= 0 ? '2px solid #000' : scanRangeFrom === lineIdx ? '2px dashed #000' : '1.5px solid #ccc',
+                            borderRadius: 4,
+                            background: pickIdx >= 0 ? '#FFE500' : '#fff',
+                            color: '#000',
+                            fontSize: '0.72rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span
+                            style={{
+                              minWidth: 20,
+                              textAlign: 'center',
+                              padding: '1px 4px',
+                              border: '1px solid #000',
+                              borderRadius: 3,
+                              background: pickIdx >= 0 ? '#000' : 'transparent',
+                              color: pickIdx >= 0 ? '#FFE500' : '#999',
+                              fontSize: '0.6rem',
+                              fontWeight: 900,
+                            }}
+                          >
+                            {pickIdx >= 0 ? pickIdx + 1 : '+'}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.text}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (scanRangeFrom == null) setScanRangeFrom(lineIdx);
+                            else applyScanRange(scanRangeFrom, lineIdx);
+                          }}
+                          title={scanRangeFrom == null ? 'Start a continuous multi-line selection here' : 'End the range here — every line in between joins the sequence'}
+                          style={{
+                            padding: '6px 3px',
+                            borderTop: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                            borderRight: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                            borderBottom: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                            borderLeft: 'none',
+                            borderTopRightRadius: 4,
+                            borderBottomRightRadius: 4,
+                            background: rangeActive ? '#FFE500' : '#f4f4f0',
+                            color: '#000',
+                            fontSize: '0.54rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            letterSpacing: '0.02em',
+                            cursor: 'pointer',
+                            writingMode: 'vertical-rl',
+                          }}
+                        >
+                          {scanRangeFrom === lineIdx ? 'END ⇃' : 'RANGE ⇂'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openTrimForLine(line)}
+                          title="BREAK / TRIM — highlight only a piece or middle sentence of this line"
+                          style={{
+                            padding: '6px 8px',
+                            border: scanTrimAt != null && scanTrimAt === pickIdx ? '2px solid #000' : '1.5px solid #999',
+                            borderRadius: 4,
+                            background: scanTrimAt != null && scanTrimAt === pickIdx ? '#FFE500' : '#f4f4f0',
+                            color: '#000',
+                            fontSize: '0.54rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 900,
+                            letterSpacing: '0.02em',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ✂ BREAK / TRIM
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              className="brutalist-card"
+              style={{
+                padding: 14,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                borderRadius: 4,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: '#000',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Crosshair size={14} style={{ color: '#000' }} />
+                  Highlighted Phrase
+                </label>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    color: '#000',
+                    background: '#FFE500',
+                    padding: '2px 6px',
+                    border: '1px solid #000',
+                    borderRadius: 4,
+                  }}
+                >
+                  {anchorPhrase.trim().length} CHARS • {anchorPhrase.trim().split(/\s+/).filter(Boolean).length} WORDS
+                </span>
+              </div>
+
+              <div className="tool-anchor-row" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  ref={anchorInputRef}
+                  type="text"
+                  value={anchorPhrase}
+                  onChange={(e) => setAnchorPhrase(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAutoGenerate();
+                    }
+                  }}
+                  placeholder="Enter words, sentence, or passage to highlight..."
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#fff',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    color: '#000',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={handleAutoGenerate}
+                  disabled={isGenerating}
+                  className="brutalist-button brutalist-button-primary"
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 900,
+                    padding: '10px 18px',
+                    borderRadius: 4,
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '3px 3px 0 #000',
+                    textTransform: 'uppercase',
+                    transform: isGenerating ? 'scale(0.96)' : 'none',
+                    transition: 'transform 0.1s ease',
+                  }}
+                >
+                  <Zap size={15} className={isGenerating ? 'animate-bounce' : ''} />
+                  {isGenerating ? 'GENERATING...' : 'GENERATE'}
+                </button>
+              </div>
+              {/* ONE-TAP SEQUENCE TOKENS — zero syntax to learn: tap a chip and
+                the token drops in at the cursor. Structure without typing. */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
+                <button onClick={() => insertAnchorToken(' | ')} style={tokenChipStyle}>
+                  + PHRASE <span style={{ background: '#FFE500', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'|'}</span>
+                </button>
+                <button onClick={() => insertAnchorToken(' > ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
+                  ↓ SCROLL DOWN <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'>'}</span>
+                </button>
+                <button onClick={() => insertAnchorToken(' < ')} style={{ ...tokenChipStyle, background: '#000', color: '#fff' }}>
+                  ↑ SCROLL UP <span style={{ background: '#FFE500', color: '#000', border: '1px solid #000', padding: '0 4px', borderRadius: 2 }}>{'<'}</span>
+                </button>
+              </div>
+
+              {/* LIVE STRUCTURE READOUT — the parsed screens as chips, so users
+                SEE what the video will do instead of parsing symbols. */}
+              {sequenceGroups.length > 1 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {sequenceGroups.map((g, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        fontSize: '0.6rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        textTransform: 'uppercase',
+                        color: '#000',
+                        background: i === 0 ? '#FFE500' : '#fff',
+                        border: '1.5px solid #000',
+                        borderRadius: 999,
+                        padding: '2px 9px',
+                      }}
+                    >
+                      {i === 0 ? '' : g.scrollIn === 'down' ? '↓ ' : '↑ '}SCREEN {i + 1} · {g.phrases.length} PHRASE{g.phrases.length === 1 ? '' : 'S'}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* MULTI-INSTANCE RESOLVER — when a phrase matches several spots in the copy,
+                the studio asks WHICH one to light up instead of hitting them all. */}
+              {(() => {
+                const sectorText =
+                  highlightSector === 'center-headline'
+                    ? customHeadline
+                    : highlightSector === 'body-paragraph'
+                      ? customBodyText
+                      : '';
+                if (!sectorText) return null;
+                const allPhrases = sequenceGroups.flatMap((g) => g.phrases);
+                const ambiguous = allPhrases
+                  .map((phrase) => ({ phrase, occ: findPhraseOccurrences(sectorText, phrase) }))
+                  .filter((r) => r.occ.length > 1);
+                if (ambiguous.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
+                      MULTIPLE MATCHES — PICK WHICH ONE
+                    </span>
+                    {ambiguous.map(({ phrase, occ }) => {
+                      const current = phraseInstances[normalizePhraseKey(phrase)] ?? 1;
+                      return (
+                        <div key={phrase} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase' }}>
+                            &ldquo;{phrase}&rdquo; × {occ.length}
+                          </span>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {occ.map((o) => (
+                              <button
+                                key={o.index}
+                                onClick={() =>
+                                  setPhraseInstances((prev) => ({ ...prev, [normalizePhraseKey(phrase)]: o.index }))
+                                }
+                                style={{
+                                  padding: '2px 7px',
+                                  border: current === o.index ? '2px solid #000' : '1px solid #999',
+                                  borderRadius: 3,
+                                  background: current === o.index ? '#FFE500' : '#fff',
+                                  color: '#000',
+                                  fontSize: '0.58rem',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                #{o.index} {o.context}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* OCR IMPORT — snap a photo of a real article, extract the text,
+                then tap the lines in the order you want them highlighted. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <button
+                  onClick={() => ocrFileRef.current?.click()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    width: '100%',
+                    padding: '7px 10px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#FFE500',
+                    color: '#000',
+                    fontSize: '0.68rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                  }}
+                >
+                  <ScanText size={13} /> Import newspaper image
+                </button>
+                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#888', fontWeight: 700 }}>
+                  Photo of an article → OCR → tap the lines to highlight, in order.
+                </span>
+                <input
+                  ref={ocrFileRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleOcrImport(f);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {/* Presets */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
+                  Tool Presets:
+                </span>
+                {/* SHUFFLE VIBE — instant personality roulette. Keeps your text;
+                  rolls a new look + motion recipe from the full deck. */}
+                <button
+                  onClick={handleShuffleVibe}
+                  style={{
+                    padding: '5px 12px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#000',
+                    color: '#FFE500',
+                    fontSize: '0.64rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  🎲 SHUFFLE VIBE · {PRESET_TOPICS.length} DECK
+                </button>
+                {PRESET_TOPICS.map((p) => {
+                  const isActive = anchorPhrase.toLowerCase() === p.anchor.toLowerCase();
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleLoadPreset(p.id)}
+                      style={{
+                        padding: '4px 10px',
+                        border: '1.5px solid #000',
+                        borderRadius: 4,
+                        background: isActive ? '#FFE500' : '#ffffff',
+                        color: '#000000',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.66rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                        boxShadow: isActive ? '2px 2px 0 #000' : 'none',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Tab Navigation Bar (All 4 tabs sit strictly on ONE single line) */}
           <div className="tool-tab-bar" style={{ display: 'flex', border: '3px solid #000', background: '#000', boxShadow: '4px 4px 0 rgba(0,0,0,0.15)', overflow: 'hidden' }}>
@@ -1699,38 +3228,40 @@ export default function TextHighlighterPage() {
               { id: 'typography' as const, label: 'Fonts (52)', icon: Type },
               { id: 'scene' as const, label: 'Optics & Scene', icon: Disc },
               { id: 'text' as const, label: 'Story Copy', icon: FileText },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = sidebarTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setSidebarTab(tab.id as any)}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 4,
-                    padding: '10px 3px',
-                    border: 'none',
-                    background: isActive ? '#ffffff' : 'transparent',
-                    color: isActive ? '#000000' : '#ffffff',
-                    fontWeight: 900,
-                    fontFamily: 'monospace',
-                    fontSize: '0.62rem',
-                    textTransform: 'uppercase',
-                    cursor: 'pointer',
-                    letterSpacing: '0.01em',
-                    transition: 'all 0.15s',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Icon size={12} style={{ flexShrink: 0 }} />
-                  <span style={{ whiteSpace: 'nowrap' }}>{tab.label}</span>
-                </button>
-              );
-            })}
+            ]
+              .filter((tab) => !scanActive || tab.id === 'style' || tab.id === 'scene')
+              .map((tab) => {
+                const Icon = tab.icon;
+                const isActive = sidebarTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSidebarTab(tab.id as any)}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      padding: '10px 3px',
+                      border: 'none',
+                      background: isActive ? '#ffffff' : 'transparent',
+                      color: isActive ? '#000000' : '#ffffff',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      fontSize: '0.62rem',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      letterSpacing: '0.01em',
+                      transition: 'all 0.15s',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Icon size={12} style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap' }}>{tab.label}</span>
+                  </button>
+                );
+              })}
           </div>
 
           {/* TAB 1: Style & Ink Controls */}
@@ -2305,6 +3836,26 @@ export default function TextHighlighterPage() {
                 </div>
                 <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 700, color: '#666', lineHeight: 1.5 }}>
                   {'Type > in the phrase box to scroll DOWN to the next phrase, < to scroll UP. Use | to highlight more phrases on the SAME screen. The paper, theme and sector never change.'}
+                </div>
+
+                {/* STICKY HIGHLIGHTS — marker memory. When ON, earlier screens keep
+                    their ink while the sequence scrolls to the next phrase. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '2px solid #eee' }}>
+                  <label style={{ fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={stickyHighlights}
+                      onChange={(e) => setStickyHighlights(e.target.checked)}
+                      style={{ width: 16, height: 16, accentColor: '#FFE500', cursor: 'pointer' }}
+                    />
+                    Keep Earlier Highlights
+                    <span style={{ marginLeft: 'auto', fontSize: '0.58rem', color: '#888' }}>
+                      {stickyHighlights ? 'MARKER MEMORY ON' : 'EACH SCREEN CLEAN'}
+                    </span>
+                  </label>
+                  <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', fontWeight: 700, color: '#666', lineHeight: 1.5 }}>
+                    When ON, highlights from earlier screens STAY on the page while the marker scrolls to the next phrase — nothing is ever erased, just like a real marker on paper.
+                  </div>
                 </div>
                 {scrollTransitions && sequenceActive && (
                   <>
