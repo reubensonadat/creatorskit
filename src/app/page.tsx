@@ -11,9 +11,10 @@ export default function Home() {
     <div style={{ background: "#f4f4f5", minHeight: "100vh", color: "#000000", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
       {/* ─── HERO ────────────────────────────────────────────────────────── */}
       <section style={{ padding: "clamp(48px, 10vw, 96px) clamp(16px, 5vw, 24px) clamp(30px, 6vw, 64px)", maxWidth: 1200, margin: "0 auto" }}>
-        {/* Headline */}
+        {/* Headline — carries "Free" (SEO audit 2026-10-10): the modifier
+            every real query for this page includes. */}
         <h1 style={{ fontSize: "clamp(2.5rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, color: "#000000", marginBottom: 24 }}>
-          Tools for
+          Free Tools for
           <br />
           Creators &amp; Influencers
         </h1>

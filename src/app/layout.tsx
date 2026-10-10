@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import ClientLayout from "@/components/ClientLayout";
 import AsyncFontLoader from "@/components/AsyncFontLoader";
@@ -32,7 +33,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_BASE_URL),
   // Homepage canonical — every other route sets its own via toolMetadata().
   alternates: { canonical: "/" },
-  title: "CreatorsKit — Tools for Creators who ship",
+  // SEO audit 2026-10-10: lead with the highest-intent modifier ("free")
+  // — the old brand-first title matched zero real queries.
+  title: "Free Creator Tools — Video, Captions, Invoices & More | CreatorsKit",
   description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser & offline as a PWA.",
   keywords: ["creator tools", "video editor", "photo editor", "AI tools", "free tools", "browser tools", "PWA", "teleprompter", "match cut", "auto captions", "quote card", "invoice generator"],
   authors: [{ name: "CreatorsKit" }],
@@ -53,15 +56,17 @@ export const metadata: Metadata = {
     apple: "/logo.png",
   },
   openGraph: {
-    title: "CreatorsKit — Tools for Creators who ship",
+    title: "CreatorsKit — 20+ Free Creator Tools. No Signup. No Watermark.",
     description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser.",
     siteName: "CreatorsKit",
     type: "website",
+    images: [{ url: "/og/home.png", width: 1200, height: 630, alt: "CreatorsKit — 20+ free creator tools, no signup, no watermark" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "CreatorsKit — Tools for Creators who ship",
+    title: "CreatorsKit — 20+ Free Creator Tools. No Signup. No Watermark.",
     description: "20+ free tools for video, photo, audio, design & business — match cuts, auto captions, quote cards, invoices and more. No subscriptions. Runs in your browser.",
+    images: ["/og/home.png"],
   },
 };
 
@@ -90,9 +95,12 @@ export default function RootLayout({
             denied visitors still get cookieless NON-personalized ads, so a
             denial never means $0 revenue. This MUST remain the FIRST Google
             script in the document: adsbygoogle.js (below) and GA4 both read
-            these defaults, so parse order is what makes them binding. */}
-        <script
+            these defaults, so parse order is what makes them binding.
+            beforeInteractive injects it into the initial server HTML and runs
+            it before any Next.js module, so it always wins the race. */}
+        <Script
           id="ck-consent-default"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',functionality_storage:'granted',security_storage:'granted'});var EEA=['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE','CH','GB','UK'];for(var i=0;i<EEA.length;i++){gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:500,region:EEA[i]});}try{var c=localStorage.getItem('ck_consent_v1');if(c==='granted'||c==='denied'){gtag('consent','update',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c,functionality_storage:'granted',security_storage:'granted'});}}catch(e){}`,
           }}
@@ -100,11 +108,38 @@ export default function RootLayout({
         {/* Google AdSense loader — installed 2026-10-08 (pub ID
             ca-pub-7897650446063664; publisher IDs are public by design).
             Google's exact snippet, on every page as required for account
-            review. Deliberately AFTER the consent default above. */}
-        <script
-          async
+            review. afterInteractive injects it client-side after hydration,
+            so the consent defaults above are always parsed first. */}
+        <Script
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7897650446063664"
+          strategy="afterInteractive"
           crossOrigin="anonymous"
+        />
+        {/* Site-wide structured data (SEO audit 2026-10-10): WebSite +
+            Organization entities — the site-level graph Google uses to tie
+            every tool page to one publisher. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@graph': [
+                {
+                  '@type': 'WebSite',
+                  name: 'CreatorsKit',
+                  url: SITE_BASE_URL,
+                  description: '20+ free browser tools for creators — video, photo, audio, design & business.',
+                },
+                {
+                  '@type': 'Organization',
+                  name: 'CreatorsKit',
+                  url: SITE_BASE_URL,
+                  logo: `${SITE_BASE_URL}/logo.png`,
+                  slogan: 'Tools for Creators who ship',
+                },
+              ],
+            }),
+          }}
         />
       </head>
       <body className="antialiased bg-background text-foreground" style={{ margin: 0 }} suppressHydrationWarning>

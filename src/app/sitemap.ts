@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { SITE_BASE_URL } from '@/lib/seo';
+import { BLOG_POSTS } from '@/data/blog-posts';
 
 export default function sitemap(): MetadataRoute.Sitemap {
     const now = new Date();
@@ -48,6 +49,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
         // ── Utility tools ───────────────────────────────────────────────────
         entry('/resizer', 0.75, 'weekly'),
         entry('/watermark', 0.75, 'weekly'),
+        entry('/compressor', 0.7, 'weekly'),
         entry('/carousel-slicer', 0.7, 'weekly'),
 
         // ── Promoted orphans (docs/TOOL_INTEGRATION_PLAN.md §5) ─────────────
@@ -56,6 +58,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/color-gradient', 0.6, 'weekly'),
 
         entry('/blog', 0.7, 'daily'),
+
+        // ── Research posts — every article must be discoverable ────────────
+        // (SEO audit 2026-10-10: they were previously absent, leaving 13
+        // indexable URLs with zero sitemap discovery path.)
+        ...BLOG_POSTS.map((p) => entry(`/blog/${p.slug}`, 0.6, 'weekly')),
 
         // ── Secondary / in development ──────────────────────────────────────
         entry('/video-grabber', 0.6, 'monthly'),

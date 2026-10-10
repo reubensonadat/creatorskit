@@ -38,15 +38,30 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const post = (await fetchPostBySlugFromDatabase(slug)) || BLOG_POSTS.find((p) => p.slug === slug);
   if (!post) return { title: 'Post Not Found — CreatorsKit' };
 
+  // SEO audit 2026-10-10: every blog post now ships a self-canonical URL,
+  // a preview image (cover → YouTube thumb → generated brand card) and
+  // Twitter card imagery — none of which existed before.
+  const ogImage =
+    post.coverImage ||
+    (post.youtubeId ? `https://img.youtube.com/vi/${post.youtubeId}/maxresdefault.jpg` : '/og/blog.png');
+
   return {
     title: `${post.title} — CreatorsKit Research`,
     description: post.excerpt,
+    alternates: { canonical: `/blog/${slug}` },
     openGraph: {
       title: post.title,
       description: post.excerpt,
       type: 'article',
       publishedTime: post.date,
       authors: [post.author.name],
+      images: [{ url: ogImage, width: 1200, height: 630, alt: post.title }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description: post.excerpt,
+      images: [ogImage],
     },
   };
 }
@@ -63,8 +78,27 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const allPosts = (await fetchPostsFromDatabase()) || BLOG_POSTS;
   const otherPosts = allPosts.filter((p) => p.slug !== post.slug);
 
+  // Article structured data (SEO audit 2026-10-10) — feeds Google's entity
+  // understanding of the research blog: headline, author, publisher, dates.
+  const ogImage =
+    post.coverImage ||
+    (post.youtubeId ? `https://img.youtube.com/vi/${post.youtubeId}/maxresdefault.jpg` : '/og/blog.png');
+  const articleLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.title,
+    description: post.excerpt,
+    image: [ogImage],
+    datePublished: post.date,
+    dateModified: post.date,
+    author: { '@type': 'Person', name: post.author.name },
+    publisher: { '@type': 'Organization', name: 'CreatorsKit', url: 'https://creatorskit.win' },
+    mainEntityOfPage: `https://creatorskit.win/blog/${post.slug}`,
+  };
+
   return (
     <div style={{ background: '#f5f5f5', minHeight: '100vh', color: '#000000', padding: 'clamp(16px, 3vw, 36px) clamp(12px, 3vw, 24px) 100px' }}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }} />
       {/* ── Top Leaderboard Monetization Ad ── */}
       <div style={{ maxWidth: 1200, margin: '0 auto 20px' }}>
         <AdBanner slot="leaderboard" />

@@ -73,6 +73,16 @@ export function buildKeywords(bases: string[], extras: string[] = [], limit = 21
     return out;
 }
 
+/**
+ * Default OG card for a tool path — pre-generated PNGs in /public/og
+ * (regenerate with: node scripts/generate-og-images.mjs). '/' maps to
+ * home.png; '/teleprompter/mirror' would map to teleprompter-mirror.png.
+ */
+export function ogImagePath(path: string): string {
+    const name = path.replace(/^\//, '').replace(/\//g, '-') || 'home';
+    return `/og/${name}.png`;
+}
+
 export interface ToolMetaInput {
     title: string;
     description: string;
@@ -87,7 +97,13 @@ export interface ToolMetaInput {
 
 export function toolMetadata(input: ToolMetaInput): Metadata {
     const url = `${SITE_BASE_URL}${input.path}`;
-    const ogImage = input.ogImage ? `${SITE_BASE_URL}${input.ogImage}` : undefined;
+    // Every indexable tool now ships a branded OG card by default (SEO audit
+    // fix #6): explicit screenshots still win, generated card is the floor.
+    const ogImage = input.ogImage
+        ? `${SITE_BASE_URL}${input.ogImage}`
+        : input.noIndex
+          ? undefined
+          : `${SITE_BASE_URL}${ogImagePath(input.path)}`;
     return {
         title: input.title,
         description: input.description,

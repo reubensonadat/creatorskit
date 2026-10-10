@@ -1092,6 +1092,15 @@ export default function TextMatchCutStudioPage() {
     }
   };
 
+  // Export base name — in REAL PAPER mode the file is named after what is
+  // actually ON it: the first picked word/line, slugified and capped. No
+  // more default names that have nothing to do with the content.
+  const scanExportBase = (): string => {
+    const first = paperSource === 'real' ? (scanPicks[0]?.text || scanLines[0]?.text || '') : '';
+    const slug = first.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return slug || 'match-cut';
+  };
+
   // Download Single Still Frame PNG
   // Downloads gated behind a sponsor pause (owner correction 2026-10-07:
   // generate stays free, the export/download moment carries the ad).
@@ -1101,7 +1110,9 @@ export default function TextMatchCutStudioPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    link.download = `match-cut-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}-frame-${currentCutIndex + 1}.png`;
+    link.download = paperSource === 'real'
+      ? `${scanExportBase()}-frame-${currentCutIndex + 1}.png`
+      : `match-cut-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}-frame-${currentCutIndex + 1}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -1146,14 +1157,14 @@ export default function TextMatchCutStudioPage() {
         }
         const dataUrl = exportCanvas.toDataURL('image/png');
         const base64Data = dataUrl.split(',')[1];
-        zip.file(`match-cut-${String(i + 1).padStart(2, '0')}.png`, base64Data, { base64: true });
+        zip.file(`${paperSource === 'real' ? scanExportBase() : 'match-cut'}-${String(i + 1).padStart(2, '0')}.png`, base64Data, { base64: true });
       }
 
       setExportProgress('Packing ZIP archive...');
       const content = await zip.generateAsync({ type: 'blob' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(content);
-      link.download = `match-cuts-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}-pngs.zip`;
+      link.download = `${paperSource === 'real' ? scanExportBase() : `match-cuts-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}`}-pngs.zip`;
       link.click();
       setExportProgress(null);
     } catch (err) {
@@ -1293,7 +1304,7 @@ export default function TextMatchCutStudioPage() {
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, '') || 'match-cut';
       const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
-      downloadBlob(result.blob, `match-cut-${cleanAnchor}.${ext}`);
+      downloadBlob(result.blob, paperSource === 'real' ? `${scanExportBase()}.${ext}` : `match-cut-${cleanAnchor}.${ext}`);
       // Keep the render around so the NEXT → row can hand the FILE to resizer (§4).
       setLastVideoBlob(result.blob);
 

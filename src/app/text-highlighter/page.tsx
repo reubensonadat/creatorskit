@@ -1519,6 +1519,15 @@ export default function TextHighlighterPage() {
     }
   };
 
+  // Export base name — in scan mode the file is named after what is
+  // actually ON it: the first picked line, slugified and capped. No more
+  // meaningless default names that have nothing to do with the content.
+  const scanExportBase = (): string => {
+    const first = scanActive ? (scanPicks[0]?.text || scanLines[0]?.text || '') : '';
+    const slug = first.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return slug || 'newspaper-highlight';
+  };
+
   // Single Frame PNG Download
   // Downloads gated behind a sponsor pause (owner correction 2026-10-07:
   // generate stays free, the export moment carries the ad).
@@ -1528,7 +1537,7 @@ export default function TextHighlighterPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    link.download = scanActive ? 'newspaper-scan-highlight.png' : `highlighter-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.png`;
+    link.download = scanActive ? `${scanExportBase()}.png` : `highlighter-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -1661,7 +1670,7 @@ export default function TextHighlighterPage() {
 
       const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
       const exportName = scanActive
-        ? 'newspaper-scan-highlighter'
+        ? scanExportBase()
         : `highlighter-animation-${anchorPhrase.toLowerCase().replace(/\s+/g, '-')}`;
       downloadBlob(result.blob, `${exportName}.${ext}`);
       setLastExportBlob(result.blob);

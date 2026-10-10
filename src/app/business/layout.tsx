@@ -3,9 +3,9 @@ import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcru
 import ToolSeoBlock, { BUSINESS_DOC_SIGNER_SEO } from '@/components/ToolSeoBlock';
 
 export const metadata: Metadata = toolMetadata({
-    title: 'Free Document Signer & Contract Suite — Free DocuSign Alternative | CreatorsKit',
+    title: 'Online Document Signer, Invoice Maker & Receipt Printer — Free Business Suite | CreatorsKit',
     description:
-        '100% Free online document signer, contract maker, and influencer business suite. Upload Word (.docx) or agreements to auto-format and e-sign free. No signup, no limits.',
+        'Free online business suite: document signer, contract maker, invoice maker and receipt printer. Upload Word (.docx) to auto-format and e-sign free — no signup, no limits, no watermark.',
     path: '/business',
     keywords: buildKeywords(
         [
@@ -55,7 +55,7 @@ export const metadata: Metadata = toolMetadata({
 
 const lds = [
     softwareAppJsonLd({
-        name: 'CreatorsKit Free Document Signer & Business Suite',
+        name: 'CreatorsKit Business Suite — Online Document Signer, Invoice Maker & Receipt Printer',
         description:
             'Free DocuSign alternative and creator document suite: upload, auto-format, and e-sign agreements, brand-deal invoices, and receipts. 100% free with no monthly subscription.',
         path: '/business',
@@ -75,7 +75,7 @@ const lds = [
             { name: 'Free Invoice Generator', url: `${SITE_BASE_URL}/invoice` },
         ],
     }),
-    breadcrumbJsonLd('/business', 'Free Document Signer & Business Suite'),
+    breadcrumbJsonLd('/business', 'Business Suite — Signer, Invoice & Receipt Maker'),
     faqJsonLd([
         {
             q: 'Is CreatorsKit really a 100% free alternative to DocuSign?',

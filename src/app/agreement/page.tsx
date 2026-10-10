@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation';
+import { permanentRedirect } from 'next/navigation';
 
+// permanentRedirect (308): /agreement is a legacy alias of the Business
+// Suite agreement tab — consolidate all ranking signals there.
 export default function AgreementPage() {
-  redirect('/business?tab=agreement');
+  permanentRedirect('/business?tab=agreement');
 }

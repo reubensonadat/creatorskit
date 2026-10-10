@@ -118,7 +118,7 @@ export const HIGHLIGHTER_SEO: ToolSeoContent = {
 
 export const BUSINESS_DOC_SIGNER_SEO: ToolSeoContent = {
   kicker: 'FREE DOCUMENT SIGNER & DOCUSIGN ALTERNATIVE',
-  h2: 'Free Online Document Signer & Contract Maker — No Account, No Monthly Fees',
+  h2: 'Free Online Document Signer, Invoice Maker & Receipt Printer — No Account, No Monthly Fees',
   intro: [
     'CreatorsKit Business Suite is the 100% free DocuSign alternative for independent creators, agencies, freelancers, and businesses. Upload your existing Word documents (.docx), paste contract text, or generate fresh agreements, invoices, and receipts in seconds.',
     'Unlike DocuSign, HelloSign, or Adobe Sign that charge $10 to $40 per month and cap your envelope sends, CreatorsKit gives you unlimited document signing completely free. Everything is saved locally on your device with your Brand Kit — no signup required, no cloud tracking, and zero subscription paywalls.',

@@ -10,6 +10,14 @@ import ShortLinkClientView from './client-view';
  */
 export const runtime = 'edge';
 
+// noindex (SEO audit 2026-10-10): /r/<id> are private share links for
+// generated documents (invoices, receipts, agreements) — client viewers,
+// never search entry points. Keeps crawl budget on real landing pages and
+// prevents other people's documents from entering the index.
+export const metadata = {
+    robots: { index: false, follow: false },
+};
+
 export default function ShortReceiptPage() {
   return <ShortLinkClientView />;
 }
