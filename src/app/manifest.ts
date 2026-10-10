@@ -9,9 +9,12 @@ export default function manifest(): MetadataRoute.Manifest {
     // Installed PWA opens straight into the app home (tool launcher), not
     // the marketing landing page — owner ruling 2026-10-03.
     start_url: '/app',
+    id: '/',
+    scope: '/',
     display: 'standalone',
-    background_color: '#090D16',
-    theme_color: '#000000',
+    display_override: ['standalone', 'minimal-ui'],
+    background_color: '#ffffff',
+    theme_color: '#ffffff',
     orientation: 'any',
     icons: [
       {

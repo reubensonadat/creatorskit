@@ -41,6 +41,14 @@ export const metadata: Metadata = toolMetadata({
             'creator business documents free',
             'paid partnership contract maker',
             'sponsorship payment receipt',
+            'free hellosign alternative',
+            'free adobe sign alternative',
+            'free esignature tool online',
+            'influencer media kit maker',
+            'creator rate card template free',
+            'free receipt maker online',
+            'ghana invoice generator',
+            'nigeria creator invoice template',
         ],
     ),
 });
@@ -84,6 +92,14 @@ const lds = [
         {
             q: 'Can I receive payment with mobile money on invoices?',
             a: 'Yes. Invoices feature mobile money (MTN, Telecel, AT Money) and bank transfer details with one-tap zero-space copying for fast mobile payment processing.',
+        },
+        {
+            q: 'Where are my business documents stored?',
+            a: 'On your device. Documents live in your browser’s local storage and encrypted device-transfer backups — they are never sitting unencrypted on a third-party cloud server.',
+        },
+        {
+            q: 'Can I send a contract to a client for signature?',
+            a: 'Yes. Generate a live client link and your client can review, sign with a finger, and download the countersigned PDF on any phone — no account needed on their side.',
         },
     ]),
 ];

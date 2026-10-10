@@ -43,6 +43,7 @@ export const MATCH_CUT_SEO: ToolSeoContent = {
   featuresTitle: 'What the tool does',
   features: [
     { title: 'Word-anchor cuts on the beat', text: 'Type or paste your script, tap words onto the timeline, and each anchored word becomes a hard cut point in the exported clip — the signature match-cut feel of viral edits.' },
+    { title: 'Article screenshot mode', text: 'Drop a screenshot of any article — a Wikipedia page, a news story, anything readable — and every word on the page becomes tappable. Tap the words you want and the edit cuts on each one, in your order; a word that appears many times gets a cut for every appearance.' },
     { title: 'Kinetic typography presets', text: 'Punch-in, slide, spin and glitch presets with editable timing curves, so text moves like it was keyframed by hand.' },
     { title: '52 Google Fonts built in', text: 'Broadsheet serifs, condensed posters, mono type — cycle families per cut or lock one voice across the whole edit.' },
     { title: 'TikTok & Shorts export sizes', text: '9:16, 1:1 and 16:9 exports sized for every short-form surface, rendered on your device with no queue.' },
@@ -52,6 +53,7 @@ export const MATCH_CUT_SEO: ToolSeoContent = {
   steps: [
     'Open Text Match CUT and drop in your clip (or pick a demo).',
     'Paste the words you want on screen — the script box drives everything.',
+    'Or drop a screenshot of an article — every word becomes tappable, so you can cut on the exact words you choose.',
     'Tap the timeline where each word should land; snap to beats or to taps.',
     'Choose a typography preset and font, then play it back to check the rhythm.',
     'Export the finished clip — clean, no watermark, straight to your camera roll or laptop.',
@@ -62,6 +64,7 @@ export const MATCH_CUT_SEO: ToolSeoContent = {
     { q: 'Do I need After Effects or Premiere?', a: 'No. Match CUT runs in any modern browser — Chrome on Android, Safari on iPhone, or your desktop. If you can open a web page, you can make the edit.' },
     { q: 'Does my video get uploaded anywhere?', a: 'Never. The tool is fully local: your video is read by the browser, edited on your device, and exported from it. There is no server upload step at all.' },
     { q: 'Can I use it on my phone?', a: 'Yes — the editor is touch-first. Install CreatorsKit as an app (PWA) from your browser menu and Match CUT gets its own icon and offline support.' },
+    { q: 'Can I cut on words from a screenshot of an article?', a: 'Yes. Drop a screenshot of any article and every word becomes tappable. Choose the words and the order; the tool cuts on each one — and a word that appears many times gets its own cut for every appearance.' },
     { q: 'What is a match cut, exactly?', a: 'A match cut is an edit where two shots are joined by a shared element — here, a word that appears in one scene and resolves into the next. In short-form video, word-anchor match cuts keep pacing tight and retention high.' },
   ],
   relatedTitle: 'Pairs well with',
@@ -69,6 +72,47 @@ export const MATCH_CUT_SEO: ToolSeoContent = {
     { href: '/auto-captions', label: 'Auto Captions', hint: 'Generate the word timings from your audio first' },
     { href: '/thumbnail-lab', label: 'Thumbnail Lab', hint: 'Split-test the cover that carries the edit' },
     { href: '/text-highlighter', label: 'Text Highlighter', hint: 'Animated sweeps for talking-head clips' },
+  ],
+};
+
+export const HIGHLIGHTER_SEO: ToolSeoContent = {
+  kicker: 'TEXT HIGHLIGHTER',
+  h2: 'Free Animated Text Highlighter for Videos — Marker, Circle & Box Callouts',
+  intro: [
+    'The CreatorsKit Text Highlighter puts the emphasis effects you see in MrBeast, Hormozi and every high-retention talking-head edit directly in your browser: marker sweeps that paint across words, circles and boxes drawn around the phrase that matters, underline and tape styles — all animated, all frame-accurate.',
+    'Snap a photo of a real newspaper or article and the page becomes your canvas — tap the lines in the order you want them highlighted and the camera dives between them. Everything runs locally on your device; no signup, no watermark, no upload.',
+  ],
+  featuresTitle: 'What the tool does',
+  features: [
+    { title: 'Marker sweeps & pen styles', text: 'Classic highlighter-pen sweeps in seven loud colors, plus underline, double-underline, box and tape styles — the full vocabulary of viral caption emphasis.' },
+    { title: 'Real newspaper & article photos', text: 'Photograph or screenshot any article and every line becomes tappable. Tap lines in order and the camera dives cut-to-cut between your highlights.' },
+    { title: 'Sticky multi-phrase sequences', text: 'Queue several phrases and they highlight one after another without erasing what came before — perfect for step-by-step breakdowns.' },
+    { title: '50 curated script presets', text: 'Pre-written scripts for money, motivation, tech and storytelling clips — load one, tweak the words, ship the video.' },
+    { title: 'Every export size', text: '9:16, 1:1, 16:9 and more, rendered on your device with clean, watermark-free output.' },
+    { title: 'Works offline (PWA)', text: 'Install CreatorsKit once and the Text Highlighter keeps working on flights and dead zones.' },
+  ],
+  stepsTitle: 'How to highlight text in a video',
+  steps: [
+    'Open the Text Highlighter and load a preset script or paste your own words.',
+    'Pick a highlight style — marker, circle, box, underline or tape — and a loud color.',
+    'Set the sweep duration to match your pacing, then play it back.',
+    'For article videos, snap or screenshot the page, drop it in, and tap the lines in the order you want them highlighted.',
+    'Export the clip — free, no watermark, straight from your browser.',
+  ],
+  faqTitle: 'Text Highlighter — FAQ',
+  faq: [
+    { q: 'Is the text highlighter really free?', a: 'Yes. The Text Highlighter is one of CreatorsKit’s free tools — no account, no export limits, no watermark. One unobtrusive ad banner keeps the whole site free.' },
+    { q: 'How do I get the Hormozi or MrBeast caption style?', a: 'Choose the marker style with a loud yellow or green, big condensed type, and fast sweeps — that is the exact recipe the big channels use, and it is two taps here.' },
+    { q: 'Can I highlight a real newspaper or article photo?', a: 'Yes. Take a photo or screenshot of any article, drop it in, and tap the lines you want highlighted. The camera dives between your highlights in the final video.' },
+    { q: 'Does my footage leave my device?', a: 'Never. All rendering happens locally in your browser — there is no server upload step.' },
+    { q: 'Can I use it on my phone?', a: 'Yes — it is touch-first. Install CreatorsKit as an app (PWA) from your browser menu for a home-screen icon and offline support.' },
+    { q: 'Which sizes can I export?', a: '9:16 for TikTok, Reels and Shorts, 1:1 for feed posts, 16:9 for YouTube, plus editorial portrait ratios — all watermark-free.' },
+  ],
+  relatedTitle: 'Pairs well with',
+  related: [
+    { href: '/match-cut', label: 'Text Match CUT', hint: 'Hard word-anchor cuts for the same footage' },
+    { href: '/auto-captions', label: 'Auto Captions', hint: 'Generate word timings from your audio first' },
+    { href: '/thumbnail-lab', label: 'Thumbnail Lab', hint: 'Split-test the cover that carries the edit' },
   ],
 };
 

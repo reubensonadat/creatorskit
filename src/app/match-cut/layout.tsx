@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, jsonLd } from '@/lib/seo';
+import { SITE_BASE_URL, toolMetadata, buildKeywords, softwareAppJsonLd, breadcrumbJsonLd, faqJsonLd, jsonLd } from '@/lib/seo';
 import ToolSeoBlock, { MATCH_CUT_SEO } from '@/components/ToolSeoBlock';
 
 export const metadata: Metadata = toolMetadata({
@@ -45,6 +45,14 @@ export const metadata: Metadata = toolMetadata({
             'velocity edit text',
             'glitch text transition',
             'zoom text transition',
+            'newspaper video effect',
+            'article screenshot to video',
+            'screenshot words video maker',
+            'newspaper zoom transition',
+            'text zoom cut maker',
+            'word pop transition free',
+            'hard cut text editor online',
+            'free kinetic typography no watermark',
         ],
     ),
 });
@@ -69,6 +77,28 @@ const lds = [
         ],
     }),
     breadcrumbJsonLd('/match-cut', 'Text Match CUT'),
+    faqJsonLd([
+        {
+            q: 'Is the text match cut generator really free?',
+            a: 'Yes. Match CUT is one of CreatorsKit’s free tools. There is no account, no export limit and no watermark — the site is supported by a single unobtrusive ad banner, never by charging creators.',
+        },
+        {
+            q: 'Do I need After Effects or Premiere?',
+            a: 'No. Match CUT runs in any modern browser — Chrome on Android, Safari on iPhone, or your desktop. If you can open a web page, you can make the edit.',
+        },
+        {
+            q: 'Does my video get uploaded anywhere?',
+            a: 'Never. The tool is fully local: your video is read by the browser, edited on your device, and exported from it. There is no server upload step at all.',
+        },
+        {
+            q: 'Can I cut on words from a screenshot of an article?',
+            a: 'Yes. Drop a screenshot of any article — a Wikipedia page, a news story, anything readable — and every word becomes tappable. Choose the words and the order; the tool cuts on each one, and a word that appears many times gets a cut for every appearance.',
+        },
+        {
+            q: 'What is a match cut, exactly?',
+            a: 'A match cut is an edit where two shots are joined by a shared element — here, a word that appears in one scene and resolves into the next. In short-form video, word-anchor match cuts keep pacing tight and retention high.',
+        },
+    ]),
 ];
 
 export default function MatchCutLayout({ children }: { children: React.ReactNode }) {

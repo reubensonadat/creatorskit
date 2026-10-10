@@ -6,6 +6,7 @@ import NextStepRow from '@/components/NextStepRow';
 import { gateAction } from '@/components/AdGate';
 import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
 import { ThinkingOrb } from 'thinking-orbs';
+import { loadState, saveState } from '@/lib/local-memory';
 import {
   Play,
   Pause,
@@ -140,6 +141,20 @@ const HIGHLIGHT_COLORS = [
   { name: 'Blood Crimson', hex: '#DC2626' },
   { name: 'Knockout Black', hex: '#111111' },
 ];
+
+/** The slice of working state that survives reloads — refresh the page and
+ *  the paper, the OCR lines and the picks come right back. */
+type MatchCutSession = {
+  paperSource: 'synthetic' | 'real';
+  scanLines: RealPaperLine[];
+  scanPicks: RealPaperPick[];
+  scanFillStyle: 'paper' | 'edge' | 'blur';
+  scanPageChange: boolean;
+  scanEdgeColor: string | null;
+  scanPasteText: string;
+  scanMatchMode: 'exact' | 'contains';
+  scanImageDataUrl: string | null;
+};
 
 export default function TextMatchCutStudioPage() {
   // Core Match Cut State
@@ -320,6 +335,7 @@ export default function TextMatchCutStudioPage() {
   const [scanFillStyle, setScanFillStyle] = useState<'paper' | 'edge' | 'blur'>('blur');
   const [scanPageChange, setScanPageChange] = useState(true);
   const [scanPasteText, setScanPasteText] = useState('');
+  const [scanMatchMode, setScanMatchMode] = useState<'exact' | 'contains'>('contains');
   const [scanRangeFrom, setScanRangeFrom] = useState<number | null>(null);
   const [scanTrimAt, setScanTrimAt] = useState<number | null>(null);
   const [scanTrimWord, setScanTrimWord] = useState<number | null>(null);
@@ -331,6 +347,65 @@ export default function TextMatchCutStudioPage() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const scanFileRef = useRef<HTMLInputElement | null>(null);
   const scanCutTRef = useRef(0);
+
+  // ─── SESSION MEMORY — refresh-safe ────────────────────────────────────────
+  // The paper, the OCR lines and the picks survive a reload: same IndexedDB
+  // slot system the text-highlighter uses, so a refresh never eats your work.
+  const sessionLoadStartedRef = useRef(false);
+  const sessionHydratedRef = useRef(false);
+  useEffect(() => {
+    if (sessionLoadStartedRef.current) return;
+    sessionLoadStartedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const rec = await loadState<MatchCutSession>('match-cut');
+      if (rec?.state) {
+        const s = rec.state;
+        if (s.paperSource === 'real') setPaperSource('real');
+        if (s.scanFillStyle === 'paper' || s.scanFillStyle === 'edge') setScanFillStyle(s.scanFillStyle);
+        setScanPageChange(s.scanPageChange !== false);
+        if (typeof s.scanEdgeColor === 'string') setScanEdgeColor(s.scanEdgeColor);
+        setScanPasteText(String(s.scanPasteText ?? ''));
+        if (s.scanMatchMode === 'exact') setScanMatchMode('exact');
+        if (typeof s.scanImageDataUrl === 'string' && s.scanImageDataUrl && Array.isArray(s.scanLines) && s.scanLines.length > 0) {
+          const img = new Image();
+          img.onload = () => {
+            if (cancelled) return;
+            setScanImage(img);
+            setScanImageUrl(s.scanImageDataUrl as string);
+            setScanImageW(img.naturalWidth);
+            setScanImageH(img.naturalHeight);
+          };
+          img.src = s.scanImageDataUrl;
+          setScanLines(s.scanLines);
+          setScanPicks(Array.isArray(s.scanPicks) ? s.scanPicks : []);
+        }
+      }
+      if (!cancelled) sessionHydratedRef.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Debounced autosave — nothing to press; the work is simply there when you
+  // come back. (Skipped until hydration finishes so defaults never clobber a
+  // saved session mid-load.)
+  useEffect(() => {
+    if (!sessionHydratedRef.current) return;
+    const t = setTimeout(() => {
+      void saveState<MatchCutSession>('match-cut', 'Match-cut working state', {
+        paperSource,
+        scanLines,
+        scanPicks,
+        scanFillStyle,
+        scanPageChange,
+        scanEdgeColor,
+        scanPasteText,
+        scanMatchMode,
+        scanImageDataUrl: scanImageUrl && !scanImageUrl.startsWith('blob:') ? scanImageUrl : null,
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [paperSource, scanLines, scanPicks, scanFillStyle, scanPageChange, scanEdgeColor, scanPasteText, scanMatchMode, scanImageUrl]);
 
   // Average color of the image's outer border ring → the EDGE fill color.
   const sampleEdgeColor = (img: HTMLImageElement): string | null => {
@@ -369,19 +444,25 @@ export default function TextMatchCutStudioPage() {
     setOcrProgress(2);
     setOcrPhase('DECODING IMAGE');
     setOcrStatus('Decoding image…');
-    let url: string | null = null;
     try {
-      url = URL.createObjectURL(file);
+      // dataURL, not a blob URL — blob URLs die on refresh; this way the
+      // session memory below can put the paper right back after a reload.
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error('decode failed'));
+        r.readAsDataURL(file);
+      });
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
         image.onload = () => resolve(image);
         image.onerror = () => reject(new Error('decode failed'));
-        image.src = url!;
+        image.src = dataUrl;
       });
 
-      setOcrPhase('LOADING OCR ENGINE');
+      setOcrPhase('LOADING THE READER');
       setOcrProgress(3);
-      setOcrStatus('Loading OCR engine — the language model downloads once…');
+      setOcrStatus('Loading the reader — it downloads once, then lives on your device…');
       const Tesseract = await import('tesseract.js');
       type OcrWorker = {
         recognize: (image: HTMLImageElement | string, opts?: unknown, out?: unknown) => Promise<{ data: any }>;
@@ -394,7 +475,7 @@ export default function TextMatchCutStudioPage() {
       // slice of the 0–100 bar on the canvas overlay — the orb keeps moving
       // the whole time, so the app never reads as frozen.
       const OCR_PHASES: Record<string, [string, number, number]> = {
-        'loading tesseract core': ['LOADING OCR CORE', 4, 10],
+        'loading tesseract core': ['LOADING READER', 4, 10],
         'initializing tesseract': ['STARTING ENGINE', 10, 16],
         'loading language traineddata': ['DOWNLOADING LANGUAGE MODEL', 16, 55],
         'initializing api': ['PREPARING READER', 55, 62],
@@ -475,14 +556,13 @@ export default function TextMatchCutStudioPage() {
         setOcrBusy(false);
         setOcrStatus('No readable text found — try a sharper, brighter photo of the article.');
         setTimeout(() => setOcrStatus(null), 4000);
-        URL.revokeObjectURL(url);
         return;
       }
 
       if (scanImageUrl?.startsWith('blob:')) URL.revokeObjectURL(scanImageUrl);
       setScanEdgeColor(sampleEdgeColor(img));
       setScanImage(img);
-      setScanImageUrl(url);
+      setScanImageUrl(dataUrl);
       setScanImageW(img.naturalWidth);
       setScanImageH(img.naturalHeight);
       setScanLines(lines);
@@ -503,10 +583,9 @@ export default function TextMatchCutStudioPage() {
           ? heic
             ? 'This looks like an HEIC photo — export it as JPG/PNG from your photos app and retry.'
             : 'That image could not be decoded — try a JPG or PNG screenshot.'
-          : 'OCR failed — the engine downloads once, so check your connection and retry.'
+          : 'Reading failed — the reader downloads once, so check your connection and retry.'
       );
       setTimeout(() => setOcrStatus(null), 4500);
-      if (url) URL.revokeObjectURL(url);
     }
   };
 
@@ -605,12 +684,11 @@ export default function TextMatchCutStudioPage() {
   };
 
   // PASTE WORDS — one word/phrase per line. The whole document is one
-  // flattened word stream, so phrases can wrap across lines. Paste the
-  // SAME word again to step to its NEXT occurrence: "war\nwar\nwar"
-  // cuts three different "war"s, in reading order. Positions already
-  // claimed by an earlier line of the list are skipped, so no word is
-  // ever cut twice. Matching is case- and punctuation-insensitive, and
-  // a pasted word matches ANY word containing it — "war" finds "Warfare".
+  // flattened word stream, so phrases can wrap across lines. Every
+  // occurrence of a pasted word becomes its own cut, in reading order:
+  // paste "war" once and War, Warfare, Warring… all get claimed.
+  // Matching is case- and punctuation-insensitive containment — a
+  // pasted word matches ANY word containing it.
   const applyScanPaste = () => {
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9']/g, '');
     const phrases = scanPasteText.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -622,26 +700,30 @@ export default function TextMatchCutStudioPage() {
 
     const found: RealPaperPick[] = [];
     const used = new Set<string>();
-    const claims = new Map<string, number>();
 
-    const findOccurrence = (wanted: string[], nth: number): RealPaperPick | null => {
-      let seen = 0;
+    // One pasted line → EVERY unused occurrence becomes its own cut, in
+    // reading order: paste "war" once and War, Warfare, Warring… are all
+    // claimed in a single sweep. Words already claimed by an earlier
+    // pasted line are skipped, so nothing is ever cut twice.
+    const findAllOccurrences = (wanted: string[]): RealPaperPick[] => {
+      const picks: RealPaperPick[] = [];
       for (let s = 0; s + wanted.length <= stream.length; s++) {
         let ok = true;
         for (let k = 0; k < wanted.length; k++) {
-          // Containment, not equality — pasting "war" must land on
-          // "Warfare", "Warring", "Wars"… any word that CONTAINS it,
-          // in any case, with or without punctuation.
-          if (!stream[s + k].t.includes(wanted[k])) { ok = false; break; }
+          // MATCH mode — CONTAINS: the word inside longer words too
+          // ("war" lands on "Warfare", "Warring"…). EXACT: the word
+          // itself only. Either way: any case, punctuation-insensitive.
+          const hit = scanMatchMode === 'exact'
+            ? stream[s + k].t === wanted[k]
+            : stream[s + k].t.includes(wanted[k]);
+          if (!hit) { ok = false; break; }
         }
         if (!ok) continue;
-        const startKey = `${stream[s].line.id}:${stream[s].wi}`;
-        if (used.has(startKey)) continue;
-        if (seen < nth) { seen++; continue; }
         const spanWords = stream.slice(s, s + wanted.length);
+        if (spanWords.some((x) => used.has(`${x.line.id}:${x.wi}`))) continue;
         spanWords.forEach((x) => used.add(`${x.line.id}:${x.wi}`));
-        return {
-          id: `p-${found.length}-${spanWords[0].line.id}-${spanWords[0].wi}`,
+        picks.push({
+          id: `p-${found.length + picks.length}-${spanWords[0].line.id}-${spanWords[0].wi}`,
           text: spanWords.map((x) => x.w.text).join(' '),
           box: {
             x0: Math.min(...spanWords.map((x) => x.w.box.x0)),
@@ -649,20 +731,18 @@ export default function TextMatchCutStudioPage() {
             x1: Math.max(...spanWords.map((x) => x.w.box.x1)),
             y1: Math.max(...spanWords.map((x) => x.w.box.y1)),
           },
-        };
+        });
       }
-      return null;
+      return picks;
     };
 
     let missing = 0;
     phrases.forEach((phrase) => {
       const wanted = phrase.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
       if (wanted.length === 0) { missing++; return; }
-      const nth = claims.get(phrase) ?? 0;
-      const pick = findOccurrence(wanted, nth);
-      if (pick) {
-        found.push(pick);
-        claims.set(phrase, nth + 1);
+      const picks = findAllOccurrences(wanted);
+      if (picks.length > 0) {
+        found.push(...picks);
       } else {
         missing++;
       }
@@ -676,8 +756,8 @@ export default function TextMatchCutStudioPage() {
     scanCutTRef.current = 0;
     if (found.length > 0) setIsPlaying(true);
     setOcrStatus(missing > 0
-      ? `Matched ${found.length} of ${phrases.length} — ${missing} not found (check spelling, or the OCR misread it). Paste a word again to step to its next occurrence.`
-      : `Matched all ${found.length} — repeat a word to step through its occurrences.`);
+      ? `${found.length} cuts — every occurrence, in reading order. ${missing} pasted line${missing === 1 ? '' : 's'} not found (check spelling, or the reader misread it).`
+      : `${found.length} cuts — every occurrence, in reading order.`);
     setTimeout(() => setOcrStatus(null), 4500);
   };
 
@@ -1230,49 +1310,6 @@ export default function TextMatchCutStudioPage() {
 
   return (
     <div className="tool-page-padding" style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto', boxSizing: 'border-box', width: '100%' }}>
-      {/* OCR live state — full-screen thinking-orb overlay. While the engine
-          loads and reads, the whole app is covered: nothing can be touched,
-          nothing looks frozen — the scan orb keeps sweeping and the yellow
-          bar carries the real 0–100 progress. */}
-      {ocrBusy && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(20,20,19,0.78)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 12,
-              background: '#fff',
-              border: '2px solid #000',
-              borderRadius: 4,
-              boxShadow: '4px 4px 0 #000',
-              padding: '22px 30px 18px',
-              maxWidth: 'min(420px, 86vw)',
-            }}
-          >
-            <ThinkingOrb state="searching" size={64} theme="light" aria-label="Reading your document" />
-            <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#000', textAlign: 'center' }}>
-              {ocrPhase}
-            </div>
-            <div style={{ width: '100%', height: 12, border: '2px solid #000', background: '#f4f4f0', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${ocrProgress}%`, background: '#FFE500', transition: 'width 160ms linear' }} />
-            </div>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#888' }}>
-              FIRST READ DOWNLOADS THE ENGINE — HANG TIGHT
-            </span>
-          </div>
-        </div>
-      )}
       {/* Top Title Section */}
       <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1482,19 +1519,60 @@ export default function TextMatchCutStudioPage() {
                 overflow: 'hidden',
               }}
             >
-              <canvas
-                ref={canvasRef}
-                width={selectedAspect.width}
-                height={selectedAspect.height}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: 'calc(100vh - 360px)',
-                  width: 'auto',
-                  height: 'auto',
-                  aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
-                  display: 'block',
-                }}
-              />
+              <div style={{ position: 'relative', display: 'inline-flex', maxWidth: '100%' }}>
+                <canvas
+                  ref={canvasRef}
+                  width={selectedAspect.width}
+                  height={selectedAspect.height}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: 'calc(100vh - 360px)',
+                    width: 'auto',
+                    height: 'auto',
+                    aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
+                    display: 'block',
+                  }}
+                />
+                {ocrBusy && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(20,20,19,0.78)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 12,
+                        background: '#fff',
+                        border: '2px solid #000',
+                        borderRadius: 4,
+                        boxShadow: '4px 4px 0 #000',
+                        padding: '22px 30px 18px',
+                        maxWidth: '86%',
+                      }}
+                    >
+                      <ThinkingOrb state="searching" size={64} theme="light" aria-label="Reading your document" />
+                      <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#000', textAlign: 'center' }}>
+                        {ocrPhase}
+                      </div>
+                      <div style={{ width: '100%', height: 12, border: '2px solid #000', background: '#f4f4f0', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${ocrProgress}%`, background: '#FFE500', transition: 'width 160ms linear' }} />
+                      </div>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#888' }}>
+                        FIRST READ DOWNLOADS THE ENGINE — HANG TIGHT
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* REAL PAPER controls live in the right sidebar — the exact deck
@@ -2198,11 +2276,25 @@ export default function TextMatchCutStudioPage() {
               <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
                 Paste Words — One Per Line
               </span>
+              {/* MATCH — your call: EXACT WORD lands on the word itself;
+                  CONTAINS also lands on longer words carrying it (WAR finds
+                  WARFARE). Same segmented control as the FILL picker. */}
+              <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }} title="EXACT WORD = the word itself. CONTAINS = also inside longer words: WAR finds WARFARE.">
+                {([{ id: 'exact' as const, label: 'EXACT WORD' }, { id: 'contains' as const, label: 'CONTAINS' }]).map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setScanMatchMode(m.id)}
+                    style={{ flex: 1, padding: '3px 6px', border: 'none', background: scanMatchMode === m.id ? '#FFE500' : '#f4f4f0', color: '#000', fontFamily: 'monospace', fontSize: '0.56rem', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                 <textarea
                   value={scanPasteText}
                   onChange={(e) => setScanPasteText(e.target.value)}
-                  placeholder={'PASTE WORDS — one word or phrase per line.\nA word matches ANY word containing it: WAR finds WARFARE.\nRepeat a word to step to its NEXT occurrence.\ne.g.\nWAR\nWAR\nWAR'}
+                  placeholder={'PASTE WORDS — one word or phrase per line.\nEvery occurrence becomes its own cut: paste WAR and\nWar, Warfare, Warring… all get cut, in reading order.'}
                   rows={3}
                   style={{ flex: 1, padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, background: '#fff', color: '#000', fontFamily: 'monospace', fontSize: '0.64rem', resize: 'vertical', outline: 'none' }}
                 />
@@ -2567,7 +2659,7 @@ export default function TextMatchCutStudioPage() {
               <ScanText size={13} /> {ocrBusy ? 'Reading your screenshot…' : 'Match-cut my screenshot'}
             </button>
             <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#888', fontWeight: 700 }}>
-              Screenshot of an article → OCR → tap the words to cut on, in order.
+              Screenshot of an article → every word gets read → tap the words to cut on, in order.
             </span>
             <input
               ref={scanFileRef}

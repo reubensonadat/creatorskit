@@ -980,7 +980,7 @@ export default function TextHighlighterPage() {
         img.src = url;
       });
 
-      setOcrStatus('Loading OCR engine — the language model downloads once…');
+      setOcrStatus('Loading the reader — it downloads once, then lives on your device…');
       const Tesseract = await import('tesseract.js');
       type OcrWorker = {
         recognize: (image: HTMLImageElement, opts?: unknown, out?: unknown) => Promise<{ data: unknown }>;
@@ -1158,7 +1158,7 @@ export default function TextHighlighterPage() {
           ? heic
             ? 'This looks like an HEIC photo — export it as JPG/PNG from your photos app and retry.'
             : 'That image could not be decoded — try a JPG or PNG photo of the article.'
-          : 'OCR failed — the engine downloads once, so check your connection and retry.'
+          : 'Reading failed — the reader downloads once, so check your connection and retry.'
       );
       setTimeout(() => setOcrStatus(null), 4500);
       if (url) URL.revokeObjectURL(url);
@@ -1750,7 +1750,7 @@ export default function TextHighlighterPage() {
               margin: 0,
             }}
           >
-            Cinematic slow-motion marker, circle, underline, and box highlighter animations. 50 curated script presets, sticky multi-phrase sequences that never erase, ambiguous-match instance picking, and real newspaper-photo OCR import with camera-dive choreography.
+            Cinematic slow-motion marker, circle, underline, and box highlighter animations. 50 curated script presets, sticky multi-phrase sequences that never erase, ambiguous-match instance picking, and real newspaper-photo import with camera-dive choreography.
           </p>
         </div>
       </div>
@@ -2001,29 +2001,6 @@ export default function TextHighlighterPage() {
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={toggleFullscreen}
-                  style={{
-                    padding: '3px 8px',
-                    border: '1.5px solid #000',
-                    background: isFullscreen ? '#FFE500' : '#fff',
-                    color: '#000',
-                    fontFamily: 'monospace',
-                    fontSize: '0.62rem',
-                    fontWeight: 900,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    borderRadius: 3,
-                    boxShadow: '1px 1px 0 #000',
-                  }}
-                  title="Fullscreen Theater Mode (Desktop Focus — Press F, Esc to exit)"
-                >
-                  {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
-                  {isFullscreen ? 'EXIT (ESC)' : 'FULLSCREEN (F)'}
-                </button>
               </div>
             </div>
 
@@ -3467,7 +3444,7 @@ export default function TextHighlighterPage() {
                   <ScanText size={13} /> Import newspaper image
                 </button>
                 <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#888', fontWeight: 700 }}>
-                  Photo of an article → OCR → tap the lines to highlight, in order.
+                  Photo of an article → every word gets read → tap the lines to highlight, in order.
                 </span>
                 <input
                   ref={ocrFileRef}
