@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ChevronLeft, X, PanelLeftOpen } from "lucide-react";
+import { ChevronLeft, X, PanelLeftOpen, ListChecks } from "lucide-react";
 
 import { SiteNavList, findTool } from "@/components/nav/SiteNav";
 import { adPlanFor } from "@/data/ads";
@@ -134,58 +134,103 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             <ChevronLeft size={14} />
             BACK
           </button>
-          <div className="tool-layout-title-group" style={{ minWidth: 0, overflow: "hidden", flex: 1 }}>
-            <h1
-              title={currentTool?.label || "Tool"}
-              style={{
-                fontSize: "0.92rem",
-                fontWeight: 900,
-                letterSpacing: "-0.03em",
-                color: "#000",
-                margin: 0,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                display: "block",
-              }}
-            >
-              {currentTool?.label || "Tool"}
-            </h1>
-            <div
-              style={{
-                fontSize: "0.58rem",
-                fontFamily: "monospace",
-                fontWeight: 700,
-                color: "#888",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {currentTool?.hint}
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen((v) => !v)}
+            className="tool-layout-title-group"
+            title="Click to switch tools or browse suite"
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              flex: 1,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <div style={{ minWidth: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <h1
+                  title={currentTool?.label || "Tool"}
+                  style={{
+                    fontSize: "0.88rem",
+                    fontWeight: 900,
+                    letterSpacing: "-0.02em",
+                    color: "#000",
+                    margin: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: "block",
+                  }}
+                >
+                  {currentTool?.label || "Tool"}
+                </h1>
+                <span
+                  style={{
+                    fontSize: "0.50rem",
+                    fontFamily: "monospace",
+                    fontWeight: 900,
+                    background: "#FFE500",
+                    color: "#000",
+                    border: "1px solid #000",
+                    padding: "0 4px",
+                    borderRadius: 2,
+                    flexShrink: 0,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  ▾ SWITCH
+                </span>
+              </div>
+              <div
+                className="tool-layout-hint"
+                style={{
+                  fontSize: "0.56rem",
+                  fontFamily: "monospace",
+                  fontWeight: 700,
+                  color: "#888",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {currentTool?.hint}
+              </div>
             </div>
-          </div>
+          </button>
         </div>
         <Link
-          href="/"
+          href="/app"
           className="tool-layout-topbar-ck"
+          title="Browse all 24 creator tools"
           style={{
-            fontSize: "0.7rem",
-            padding: "6px 14px",
-            background: "#000000",
-            color: "#ffffff",
-            border: "2px solid #000",
-            boxShadow: "2px 2px 0 #000",
+            fontSize: "0.62rem",
+            padding: "4px 8px",
+            background: "#FFE500",
+            color: "#000000",
+            border: "1.5px solid #000",
+            boxShadow: "1px 1px 0 #000",
+            borderRadius: "3px",
             fontWeight: 900,
             textDecoration: "none",
             fontFamily: "monospace",
             textTransform: "uppercase",
             letterSpacing: "0.05em",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
-          CK.win
+          <ListChecks size={12} />
+          <span>ALL TOOLS</span>
         </Link>
       </header>
 

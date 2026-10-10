@@ -887,7 +887,7 @@
     display: block !important;
   }
 
-  .tool-layout-title-group div {
+  .tool-layout-title-group .tool-layout-hint {
     display: none !important;
   }
 

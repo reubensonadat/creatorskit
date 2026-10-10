@@ -449,6 +449,7 @@ export default function AppHome() {
     const router = useRouter();
     const { toast } = useToast();
     const [q, setQ] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [recentHrefs, setRecentHrefs] = useState<string[]>([]);
     const [pinHrefs, setPinHrefs] = useState<string[]>([]);
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -547,180 +548,263 @@ export default function AppHome() {
             className="app-bottomnav-pad"
             style={{ background: '#f4f4f5', minHeight: '100vh', color: '#000000' }}
         >
-            {/* ─── HEADER (own chrome — fullscreen route, no marketing Navbar) ─── */}
-            <header style={{ position: 'sticky', top: 0, zIndex: 50, background: '#ffffff', borderBottom: '2px solid #000000' }}>
+            {/* ─── STICKY COMMAND BAR (100% Usable Real Estate — Instant Search & Category Switcher) ─── */}
+            <header
+                style={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 50,
+                    background: '#ffffff',
+                    borderBottom: '2px solid #000000',
+                    boxShadow: '0 2px 0 rgba(0,0,0,0.08)',
+                }}
+            >
                 <div
                     style={{
                         maxWidth: 1200,
                         margin: '0 auto',
-                        padding: '10px 16px',
+                        padding: '8px 12px',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 12,
+                        gap: 8,
                     }}
                 >
-                    <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flexShrink: 0 }}>
-                        <div
-                            style={{
-                                width: 30,
-                                height: 30,
-                                overflow: 'hidden',
-                                border: '2px solid #000000',
-                                background: '#ffffff',
-                                boxShadow: '2px 2px 0 #000000',
-                            }}
-                        >
-                            <img src="/logo.png" alt="CK" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                        <span style={{ fontWeight: 900, fontSize: '0.95rem', letterSpacing: '-0.02em', fontFamily: 'monospace' }}>
-                            CK<span style={{ color: '#71717a' }}>.win</span>
-                        </span>
-                        <span
-                            style={{
-                                background: '#000000',
-                                color: '#ffffff',
-                                fontSize: '0.56rem',
-                                fontFamily: 'monospace',
-                                fontWeight: 900,
-                                letterSpacing: '0.14em',
-                                padding: '3px 8px',
-                            }}
-                        >
-                            APP HOME
-                        </span>
-                    </Link>
-
+                    {/* Back / Site link */}
                     <Link
                         href="/"
                         onClick={() => hapticTap()}
+                        title="Back to CreatorsKit site"
                         style={{
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            gap: 6,
-                            padding: '8px 14px',
+                            gap: 5,
+                            padding: '6px 9px',
                             background: '#ffffff',
-                            color: '#000000',
-                            border: '2px solid #000000',
+                            border: '1.5px solid #000000',
                             borderRadius: '4px',
-                            fontWeight: 900,
-                            fontSize: '0.7rem',
-                            fontFamily: 'monospace',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
                             textDecoration: 'none',
-                            boxShadow: '3px 3px 0 #000000',
-                            transition: 'all 0.12s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                            e.currentTarget.style.boxShadow = '5px 5px 0 #000000';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'none';
-                            e.currentTarget.style.boxShadow = '3px 3px 0 #000000';
+                            color: '#000000',
+                            fontWeight: 900,
+                            fontSize: '0.68rem',
+                            fontFamily: 'monospace',
+                            flexShrink: 0,
+                            boxShadow: '1px 1px 0 #000000',
                         }}
                     >
                         <ArrowLeft size={13} />
-                        Back to Site
+                        <span>SITE</span>
                     </Link>
+
+                    {/* Integrated Search Bar — Immediate usable real estate right at the top */}
+                    <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                        <Search
+                            size={14}
+                            strokeWidth={2.5}
+                            style={{
+                                position: 'absolute',
+                                left: 10,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#000000',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                        <input
+                            ref={searchRef}
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const first = matches[0];
+                                    if (first) {
+                                        hapticOpen();
+                                        router.push(first.href);
+                                    }
+                                }
+                                if (e.key === 'Escape') {
+                                    setQ('');
+                                    e.currentTarget.blur();
+                                }
+                            }}
+                            aria-label="Search tools"
+                            placeholder={`Search ${pool.length} tools — invoice, caption, highlighter…`}
+                            style={{
+                                width: '100%',
+                                boxSizing: 'border-box',
+                                padding: '8px 46px 8px 30px',
+                                background: '#fcfcfc',
+                                color: '#000000',
+                                border: '1.5px solid #000000',
+                                borderRadius: '4px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                outline: 'none',
+                                boxShadow: '2px 2px 0 #000000',
+                            }}
+                        />
+                        {q ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setQ('');
+                                    searchRef.current?.focus();
+                                }}
+                                title="Clear search"
+                                style={{
+                                    position: 'absolute',
+                                    right: 6,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    padding: '2px 5px',
+                                    background: '#000000',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '3px',
+                                    fontSize: '0.62rem',
+                                    fontWeight: 900,
+                                    fontFamily: 'monospace',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                ✕
+                            </button>
+                        ) : (
+                            <span
+                                style={{
+                                    position: 'absolute',
+                                    right: 8,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    fontSize: '0.55rem',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 900,
+                                    color: '#888888',
+                                    border: '1px solid #cccccc',
+                                    padding: '1px 5px',
+                                    borderRadius: '2px',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                /
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Quick Tools Drawer Trigger */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            hapticTap();
+                            setDrawerOpen(true);
+                        }}
+                        title="Browse all tools in drawer"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '6px 9px',
+                            background: '#FFE500',
+                            color: '#000000',
+                            border: '1.5px solid #000000',
+                            borderRadius: '4px',
+                            fontWeight: 900,
+                            fontSize: '0.68rem',
+                            fontFamily: 'monospace',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            boxShadow: '1px 1px 0 #000000',
+                        }}
+                    >
+                        <ListChecks size={13} />
+                        <span>TOOLS ({pool.length})</span>
+                    </button>
+                </div>
+
+                {/* Horizontal Category Strip — instant filter, zero wasted space */}
+                <div
+                    style={{
+                        maxWidth: 1200,
+                        margin: '0 auto',
+                        padding: '2px 12px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        overflowX: 'auto',
+                        whiteSpace: 'nowrap',
+                        scrollbarWidth: 'none',
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedCategory('all');
+                            setQ('');
+                        }}
+                        style={{
+                            padding: '3px 8px',
+                            border: '1.5px solid #000000',
+                            borderRadius: '3px',
+                            background: selectedCategory === 'all' && !q ? '#000000' : '#ffffff',
+                            color: selectedCategory === 'all' && !q ? '#FFE500' : '#000000',
+                            fontFamily: 'monospace',
+                            fontSize: '0.62rem',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                        }}
+                    >
+                        ⚡ ALL ({NATIVE_TOOLS.length})
+                    </button>
+                    {GROUPS.map((g) => {
+                        const count = NATIVE_TOOLS.filter((t) => t.category === g.key).length;
+                        const isSel = selectedCategory === g.key && !q;
+                        return (
+                            <button
+                                key={g.key}
+                                type="button"
+                                onClick={() => {
+                                    setSelectedCategory(g.key as any);
+                                    setQ('');
+                                }}
+                                style={{
+                                    padding: '3px 8px',
+                                    border: '1.5px solid #000000',
+                                    borderRadius: '3px',
+                                    background: isSel ? '#000000' : '#ffffff',
+                                    color: isSel ? '#FFE500' : '#000000',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.62rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                }}
+                            >
+                                {g.label.toUpperCase()} ({count})
+                            </button>
+                        );
+                    })}
                 </div>
             </header>
 
             {/* ─── LAUNCHER ──────────────────────────────────────────────────────── */}
-            <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'clamp(26px, 5vw, 44px) 16px 60px' }}>
-                <h1
-                    style={{
-                        fontSize: 'clamp(1.8rem, 6vw, 3rem)',
-                        fontWeight: 900,
-                        letterSpacing: '-0.03em',
-                        lineHeight: 1.08,
-                        margin: '0 0 10px',
-                    }}
-                >
-                    What are you making?
-                </h1>
-                <p
-                    style={{
-                        fontSize: '0.92rem',
-                        color: '#444444',
-                        fontWeight: 500,
-                        margin: '0 0 24px',
-                        fontFamily: 'monospace',
-                    }}
-                >
-                    Tap a tool — free, no account, everything runs on your device.
-                </p>
-
-                {/* Search */}
-                <div style={{ position: 'relative', marginBottom: 8 }}>
-                    <Search
-                        size={16}
-                        strokeWidth={2.5}
-                        style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#000000', pointerEvents: 'none' }}
-                    />
-                    <input
-                        ref={searchRef}
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                const first = matches[0];
-                                if (first) {
-                                    hapticOpen();
-                                    router.push(first.href);
-                                }
-                            }
-                            if (e.key === 'Escape') {
-                                setQ('');
-                                e.currentTarget.blur();
-                            }
-                        }}
-                        aria-label="Search tools"
-                        placeholder={`Search ${pool.length} tools — invoice, captions, thumbnail…`}
-                        style={{
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            padding: '14px 64px 14px 40px',
-                            background: '#ffffff',
-                            color: '#000000',
-                            border: '2px solid #000000',
-                            borderRadius: '4px',
-                            boxShadow: '3px 3px 0 #000000',
-                            fontSize: '0.9rem',
-                            fontWeight: 600,
-                            fontFamily: 'monospace',
-                            outline: 'none',
-                        }}
-                    />
-                    <span
-                        style={{
-                            position: 'absolute',
-                            right: 14,
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            fontSize: '0.6rem',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
-                            color: '#888888',
-                            border: '1px solid #cccccc',
-                            padding: '2px 6px',
-                        }}
-                    >
-                        /
-                    </span>
-                </div>
+            <main style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 14px 60px' }}>
                 <div
                     style={{
-                        fontSize: '0.6rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.58rem',
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        letterSpacing: '0.08em',
-                        color: '#888888',
-                        margin: '0 0 34px 2px',
+                        letterSpacing: '0.06em',
+                        color: '#71717a',
+                        margin: '0 0 16px 2px',
+                        textTransform: 'uppercase',
                     }}
                 >
-                    LONG-PRESS ANY TOOL TO PIN IT · USE + BELOW TO ATTACH TOOLS TO YOUR BAR
+                    <span>Free browser suite · runs on device</span>
+                    <span>Long-press tool to pin</span>
                 </div>
 
                 {/* Results (searching) */}
@@ -777,6 +861,18 @@ export default function AppHome() {
                             </div>
                         </div>
                     )
+                ) : selectedCategory !== 'all' ? (
+                    <section style={{ marginBottom: 38 }}>
+                        <SectionHead
+                            label={`${GROUPS.find((g) => g.key === selectedCategory)?.label || selectedCategory}`}
+                            count={NATIVE_TOOLS.filter((t) => t.category === selectedCategory).length}
+                        />
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14 }}>
+                            {NATIVE_TOOLS.filter((t) => t.category === selectedCategory).map((t) => (
+                                <ToolCard key={t.href} t={t} pinned={pinnedSet.has(t.href)} onTogglePin={togglePin} />
+                            ))}
+                        </div>
+                    </section>
                 ) : (
                     <>
                         {/* Jump back in — the last few tools actually used */}

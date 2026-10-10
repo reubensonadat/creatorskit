@@ -35,6 +35,8 @@ import {
   Pipette,
   Link2,
   Unlink,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import {
   HighlighterRenderOptions,
@@ -114,6 +116,7 @@ type TextHighlighterSession = {
   scanLines: ScanLineBox[];
   scanPicks: ScanLineBox[];
   scanImageDataUrl: string | null;
+  scanThumbnail?: string | null;
 };
 
 export default function TextHighlighterPage() {
@@ -219,6 +222,49 @@ export default function TextHighlighterPage() {
     window.addEventListener('touchend', onTouchEnd);
   };
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Fullscreen Theater Mode (Desktop Focus & Presentation)
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      if (typeof document !== 'undefined') {
+        if (next && !document.fullscreenElement && typeof document.documentElement.requestFullscreen === 'function') {
+          document.documentElement.requestFullscreen().catch(() => undefined);
+        } else if (!next && document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+          document.exitFullscreen().catch(() => undefined);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreen) {
+        e.preventDefault();
+        setIsFullscreen(false);
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isFullscreen, toggleFullscreen]);
+
   // Visual & Style Options
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4'>('16:9');
   const [highlightColor, setHighlightColor] = useState('#FFE500');
@@ -310,6 +356,7 @@ export default function TextHighlighterPage() {
   const [scanPicks, setScanPicks] = useState<ScanLineBox[]>([]);
   const [ocrStatus, setOcrStatus] = useState<string | null>(null);
   const ocrFileRef = useRef<HTMLInputElement>(null);
+  const [scanThumbnail, setScanThumbnail] = useState<string | null>(null);
   const scanActive = Boolean(scanImage);
   const sequenceGroups = (() => {
     // Split on direction tokens; each ">" / "<" run starts a new screen.
@@ -531,6 +578,9 @@ export default function TextHighlighterPage() {
           setScanLines(s.scanLines);
           setScanPicks(Array.isArray(s.scanPicks) ? s.scanPicks : []);
         }
+        if (typeof s.scanThumbnail === 'string' && s.scanThumbnail) {
+          setScanThumbnail(s.scanThumbnail);
+        }
       }
       if (!cancelled) sessionHydratedRef.current = true;
     })();
@@ -562,10 +612,11 @@ export default function TextHighlighterPage() {
         scanLines,
         scanPicks,
         scanImageDataUrl,
+        scanThumbnail,
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [anchorPhrase, cuts, currentCutIndex, customHeadline, customMasthead, customSubhead, customByline, customBodyText, highlightSector, stickyHighlights, phraseInstances, scanPageFit, scanAutoCamera, scanFillStyle, scanEdgeColor, scanLines, scanPicks, scanImageDataUrl]);
+  }, [anchorPhrase, cuts, currentCutIndex, customHeadline, customMasthead, customSubhead, customByline, customBodyText, highlightSector, stickyHighlights, phraseInstances, scanPageFit, scanAutoCamera, scanFillStyle, scanEdgeColor, scanLines, scanPicks, scanImageDataUrl, scanThumbnail]);
 
   // Update active cut with user edits
   const handleApplyCustomText = () => {
@@ -1056,9 +1107,41 @@ export default function TextHighlighterPage() {
       const sampled = sampleEdgeColor(img);
       setScanEdgeColor(sampled);
       setScanFillStyle('blur'); // Default to modern ambient blur fill on import
+
+      // Create a lightweight JPEG thumbnail (3-4KB) that is guaranteed to persist and never break
+      let thumbDataUrl = '';
+      try {
+        const thumbC = document.createElement('canvas');
+        const maxThumb = 120;
+        const tScale = Math.min(maxThumb / (img.naturalWidth || 1), maxThumb / (img.naturalHeight || 1));
+        thumbC.width = Math.max(20, Math.round((img.naturalWidth || 1) * tScale));
+        thumbC.height = Math.max(20, Math.round((img.naturalHeight || 1) * tScale));
+        const tCtx = thumbC.getContext('2d');
+        if (tCtx) {
+          tCtx.drawImage(img, 0, 0, thumbC.width, thumbC.height);
+          thumbDataUrl = thumbC.toDataURL('image/jpeg', 0.85);
+        }
+      } catch { /* ignore */ }
+
+      // Create a persistent compressed image data URL so the session survives reloads
+      let fullDataUrl = '';
+      try {
+        const fullC = document.createElement('canvas');
+        const maxDim = 1600;
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+        fullC.width = Math.round((img.naturalWidth || 1) * scale);
+        fullC.height = Math.round((img.naturalHeight || 1) * scale);
+        const fCtx = fullC.getContext('2d');
+        if (fCtx) {
+          fCtx.drawImage(img, 0, 0, fullC.width, fullC.height);
+          fullDataUrl = fullC.toDataURL('image/jpeg', 0.85);
+        }
+      } catch { /* ignore */ }
+
+      setScanThumbnail(thumbDataUrl || null);
       setScanImage(img);
       setScanImageUrl(url);
-      setScanImageDataUrl(dataUrl || null);
+      setScanImageDataUrl(fullDataUrl || null);
       setScanLines(lines);
       setScanPicks([]);
       setPhraseInstances({});
@@ -1359,6 +1442,7 @@ export default function TextHighlighterPage() {
     setScanContinuousMode(false);
     setScanEdgeColor(null);
     setScanImageDataUrl(null);
+    setScanThumbnail(null);
     setScanLines([]);
     setScanPicks([]);
     setOcrStatus(null);
@@ -1917,13 +2001,51 @@ export default function TextHighlighterPage() {
                     )}
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  style={{
+                    padding: '3px 8px',
+                    border: '1.5px solid #000',
+                    background: isFullscreen ? '#FFE500' : '#fff',
+                    color: '#000',
+                    fontFamily: 'monospace',
+                    fontSize: '0.62rem',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    borderRadius: 3,
+                    boxShadow: '1px 1px 0 #000',
+                  }}
+                  title="Fullscreen Theater Mode (Desktop Focus — Press F, Esc to exit)"
+                >
+                  {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                  {isFullscreen ? 'EXIT (ESC)' : 'FULLSCREEN (F)'}
+                </button>
               </div>
             </div>
 
             {/* Stage Canvas */}
             <div
               className="tool-canvas-viewport"
-              style={{
+              style={isFullscreen ? {
+                position: 'fixed',
+                inset: 0,
+                zIndex: 99999,
+                background: '#0a0a09',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px 24px 96px',
+                width: '100vw',
+                height: '100vh',
+                border: 'none',
+                boxShadow: 'none',
+                overflow: 'hidden',
+              } : {
                 position: 'relative',
                 width: '100%',
                 maxHeight: 'calc(100vh - 340px)',
@@ -1937,11 +2059,98 @@ export default function TextHighlighterPage() {
                 overflow: 'hidden',
               }}
             >
+              {isFullscreen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    left: 20,
+                    right: 20,
+                    zIndex: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    background: 'rgba(0,0,0,0.85)',
+                    padding: '8px 14px',
+                    borderRadius: 6,
+                    border: '1.5px solid rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', color: '#FFE500', letterSpacing: '0.06em' }}>
+                      THEATER FULLSCREEN · TEXT HIGHLIGHTER
+                    </span>
+                    {scanActive ? (
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.64rem', color: '#fff', background: '#222', padding: '2px 6px', borderRadius: 3 }}>
+                        PICK {Math.min(scanBeatUi.pickIndex + 1, Math.max(scanPicks.length, 1))}/{Math.max(scanPicks.length, 1)} · {scanBeatUi.phase.toUpperCase()}
+                      </span>
+                    ) : (
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.64rem', color: '#fff', background: '#222', padding: '2px 6px', borderRadius: 3 }}>
+                        ANIMATION: {Math.round(highlightProgress * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <select
+                      value={aspectRatio}
+                      onChange={(e) => setAspectRatio(e.target.value as any)}
+                      style={{
+                        padding: '3px 8px',
+                        border: '1px solid #555',
+                        borderRadius: 3,
+                        background: '#181818',
+                        color: '#FFE500',
+                        fontFamily: 'monospace',
+                        fontSize: '0.64rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {ASPECT_RATIOS.map((a) => (
+                        <option key={a.id} value={a.id}>{a.id}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={toggleFullscreen}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 10px',
+                        border: '1.5px solid #000',
+                        borderRadius: 4,
+                        background: '#FFE500',
+                        color: '#000',
+                        fontFamily: 'monospace',
+                        fontSize: '0.66rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        boxShadow: '2px 2px 0 #000',
+                      }}
+                    >
+                      <Minimize2 size={12} /> EXIT (ESC)
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <canvas
                 ref={canvasRef}
                 width={selectedAspect.width}
                 height={selectedAspect.height}
-                style={{
+                style={isFullscreen ? {
+                  maxWidth: 'calc(100vw - 48px)',
+                  maxHeight: 'calc(100vh - 160px)',
+                  width: 'auto',
+                  height: 'auto',
+                  aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
+                  display: 'block',
+                  boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
+                  border: '2px solid rgba(255,255,255,0.1)',
+                } : {
                   maxWidth: '100%',
                   maxHeight: 'calc(100vh - 360px)',
                   width: 'auto',
@@ -1955,7 +2164,26 @@ export default function TextHighlighterPage() {
             {/* Transport & Animation Speed Bar */}
             <div
               className="tool-transport-bar"
-              style={{
+              style={isFullscreen ? {
+                position: 'fixed',
+                bottom: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 100000,
+                width: 'auto',
+                maxWidth: 'calc(100vw - 32px)',
+                marginTop: 0,
+                padding: '8px 16px',
+                border: '2px solid #000',
+                background: '#f4f4f5',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 12,
+                boxShadow: '4px 4px 0 #000',
+                borderRadius: 6,
+              } : {
                 width: '100%',
                 marginTop: 12,
                 padding: '8px 12px',
@@ -2457,9 +2685,25 @@ export default function TextHighlighterPage() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {scanImage && scanImageUrl && (
-                  <img src={scanImageUrl} alt="Imported page" style={{ width: 52, height: 52, objectFit: 'cover', border: '2px solid #000', borderRadius: 4 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {scanImage && (
+                  <div style={{ width: 48, height: 48, borderRadius: 4, border: '2px solid #000', overflow: 'hidden', flexShrink: 0, background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {scanThumbnail ? (
+                      <img src={scanThumbnail} alt="Imported document" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <canvas
+                        ref={(el) => {
+                          if (el && scanImage) {
+                            el.width = 48;
+                            el.height = 48;
+                            const ctx = el.getContext('2d');
+                            if (ctx) ctx.drawImage(scanImage, 0, 0, 48, 48);
+                          }
+                        }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    )}
+                  </div>
                 )}
                 <span
                   style={{
@@ -2468,8 +2712,8 @@ export default function TextHighlighterPage() {
                     fontWeight: 900,
                     color: '#000',
                     background: '#FFE500',
-                    padding: '2px 6px',
-                    border: '1px solid #000',
+                    padding: '3px 8px',
+                    border: '1.5px solid #000',
                     borderRadius: 4,
                   }}
                 >
@@ -2553,29 +2797,30 @@ export default function TextHighlighterPage() {
                     <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <ListOrdered size={12} /> HIGHLIGHT ORDER ({scanPicks.length})
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       {scanPicks.length > 1 && (
                         <button
                           type="button"
                           onClick={mergeAllPicks}
                           title="Merge ALL picked lines into ONE seamless continuous sweep (ABCD... with NO hold or pause between them)"
                           style={{
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
                             gap: 3,
-                            padding: '2px 7px',
+                            padding: '3px 8px',
                             border: '1.5px solid #000',
                             borderRadius: 3,
                             background: '#FFE500',
                             color: '#000',
-                            fontSize: '0.58rem',
+                            fontSize: '0.60rem',
                             fontFamily: 'monospace',
                             fontWeight: 900,
                             cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                             boxShadow: '1px 1px 0 #000',
                           }}
                         >
-                          <Link2 size={10} /> MERGE ALL CONTINUOUS
+                          <Zap size={10} /> MERGE ALL
                         </button>
                       )}
                       {scanPicks.some((p) => p.flow && p.flow.length > 1) && (
@@ -2584,36 +2829,38 @@ export default function TextHighlighterPage() {
                           onClick={splitAllPicks}
                           title="Split merged continuous lines back into step-by-step individual lines with holds"
                           style={{
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
                             gap: 3,
-                            padding: '2px 7px',
+                            padding: '3px 8px',
                             border: '1.5px solid #000',
                             borderRadius: 3,
                             background: '#fff',
                             color: '#000',
-                            fontSize: '0.58rem',
+                            fontSize: '0.60rem',
                             fontFamily: 'monospace',
                             fontWeight: 900,
                             cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          <Unlink size={10} /> SPLIT TO STEPS
+                          <Unlink size={10} /> SPLIT
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={() => setScanPicks([])}
                         style={{
-                          padding: '2px 6px',
+                          padding: '3px 7px',
                           border: '1.5px solid #000',
                           borderRadius: 3,
                           background: '#fff',
                           color: '#000',
-                          fontSize: '0.58rem',
+                          fontSize: '0.60rem',
                           fontFamily: 'monospace',
                           fontWeight: 900,
                           cursor: 'pointer',
+                          whiteSpace: 'nowrap',
                           textTransform: 'uppercase',
                         }}
                       >
@@ -2621,98 +2868,168 @@ export default function TextHighlighterPage() {
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {scanPicks.map((pick, i) => (
-                      <span key={pick.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <React.Fragment key={pick.id}>
                         <div
                           style={{
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            gap: 4,
-                            padding: '3px 8px',
+                            justifyContent: 'space-between',
+                            gap: 6,
+                            padding: '4px 8px',
                             border: '1.5px solid #000',
-                            borderRadius: 999,
+                            borderRadius: 4,
                             background: pick.flow && pick.flow.length > 1 ? '#FFF066' : '#FFE500',
-                            color: '#000',
-                            fontSize: '0.62rem',
-                            fontFamily: 'monospace',
-                            fontWeight: 900,
+                            boxShadow: '1px 1px 0 #000',
                           }}
                         >
-                          <span
-                            onClick={() => toggleScanPick(pick)}
-                            title={pick.flow ? 'Remove continuous group' : 'Remove from sequence'}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            {i + 1}. {pick.flow && pick.flow.length > 1 ? `[${pick.flow.length}L CONTINUOUS ⇉] ` : ''}{pick.text.slice(0, 22)}✕
-                          </span>
-                          {pick.flow && pick.flow.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => splitScanPick(i)}
-                              title="Unmerge into separate lines"
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                            <span
                               style={{
-                                border: '1px solid #000',
-                                borderRadius: 999,
-                                background: '#fff',
-                                color: '#000',
-                                padding: '1px 4px',
-                                fontSize: '0.52rem',
-                                cursor: 'pointer',
+                                fontSize: '0.60rem',
+                                fontFamily: 'monospace',
                                 fontWeight: 900,
+                                background: '#000',
+                                color: '#FFE500',
+                                padding: '1px 4px',
+                                borderRadius: 3,
+                                flexShrink: 0,
                               }}
                             >
-                              SPLIT
+                              {i + 1}
+                            </span>
+                            {pick.flow && pick.flow.length > 1 && (
+                              <span
+                                style={{
+                                  fontSize: '0.52rem',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 900,
+                                  background: '#000',
+                                  color: '#fff',
+                                  padding: '1px 4px',
+                                  borderRadius: 3,
+                                  flexShrink: 0,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {pick.flow.length}L FLOW ⇉
+                              </span>
+                            )}
+                            <span
+                              onClick={() => toggleScanPick(pick)}
+                              title="Click to remove from sequence"
+                              style={{
+                                fontSize: '0.66rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 800,
+                                color: '#000',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                cursor: 'pointer',
+                                flex: 1,
+                              }}
+                            >
+                              {pick.text}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                            {pick.flow && pick.flow.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => splitScanPick(i)}
+                                title="Split into separate lines"
+                                style={{
+                                  border: '1px solid #000',
+                                  borderRadius: 3,
+                                  background: '#fff',
+                                  color: '#000',
+                                  padding: '2px 5px',
+                                  fontSize: '0.54rem',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 900,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                SPLIT
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setScanTrimAt(scanTrimAt === i ? null : i);
+                                setScanTrimWord(null);
+                              }}
+                              title="Trim words / break line"
+                              style={{
+                                border: scanTrimAt === i ? '1.5px solid #000' : '1px solid #000',
+                                borderRadius: 3,
+                                background: scanTrimAt === i ? '#000' : '#fff',
+                                color: scanTrimAt === i ? '#FFE500' : '#000',
+                                padding: '2px 5px',
+                                fontSize: '0.54rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              ✂ TRIM
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setScanTrimAt(scanTrimAt === i ? null : i);
-                              setScanTrimWord(null);
-                            }}
-                            title="BREAK / TRIM — highlight only a middle sentence or specific words"
-                            style={{
-                              border: scanTrimAt === i ? '1.5px solid #000' : '1px solid #777',
-                              borderRadius: 3,
-                              background: scanTrimAt === i ? '#FFE500' : '#fff',
-                              color: '#000',
-                              padding: '1px 4px',
-                              fontSize: '0.55rem',
-                              cursor: 'pointer',
-                              fontWeight: 900,
-                            }}
-                          >
-                            ✂
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleScanPick(pick)}
+                              title="Remove line"
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#000',
+                                cursor: 'pointer',
+                                padding: '1px 3px',
+                                fontWeight: 900,
+                                fontSize: '0.72rem',
+                                lineHeight: 1,
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
+
                         {i < scanPicks.length - 1 && (
-                          <button
-                            type="button"
-                            onClick={() => mergeScanPicks(i)}
-                            title={`Join pick ${i + 1} and ${i + 2} into ONE continuous sweep without holds`}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 2,
-                              padding: '2px 6px',
-                              border: '1.5px solid #000',
-                              borderRadius: 4,
-                              background: '#FFE500',
-                              color: '#000',
-                              fontSize: '0.58rem',
-                              fontFamily: 'monospace',
-                              fontWeight: 900,
-                              cursor: 'pointer',
-                              boxShadow: '1px 1px 0 #000',
-                            }}
-                          >
-                            <Link2 size={10} /> + JOIN ⇉
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '3px 0' }}>
+                            <button
+                              type="button"
+                              onClick={() => mergeScanPicks(i)}
+                              title={`Join pick ${i + 1} and ${i + 2} into ONE continuous sweep without holds`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                padding: '2px 9px',
+                                border: '1.5px solid #000',
+                                borderRadius: 999,
+                                background: '#FFE500',
+                                color: '#000',
+                                fontSize: '0.58rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                boxShadow: '1px 1px 0 #000',
+                              }}
+                            >
+                              <Link2 size={10} /> + JOIN {i + 1} &amp; {i + 2} (CONTINUOUS)
+                            </button>
+                          </div>
                         )}
-                      </span>
+                      </React.Fragment>
                     ))}
+                  </div>
                     <button
                       type="button"
                       onClick={() => setScanInsertAt(scanInsertAt === scanPicks.length ? null : scanPicks.length)}
@@ -2737,7 +3054,6 @@ export default function TextHighlighterPage() {
                       +
                     </button>
                   </div>
-                </div>
               )}
 
               {/* PART-of-line trimmer — tap the first word, then the last;

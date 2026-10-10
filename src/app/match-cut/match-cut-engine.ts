@@ -24,6 +24,7 @@ import {
   matchAnchorWords,
   parseAnchorPhrases,
   wrapSimpleText,
+  type HighlightDrawOptions,
   type NewspaperCut,
   type PaperTheme,
   type PaperThemeKey,
@@ -589,4 +590,223 @@ export function renderNewspaperMatchCut(
   }
 
   ctx.restore();
+}
+
+// ════════════════════════════════════════════════════════════════
+// REAL PAPER SCAN MODE — OCR'd screenshot match-cuts.
+//
+// One uploaded document image → word-level picks → HARD zoom-cuts.
+// Each cut frames a single word (or a 1–2 word span) dead-center on
+// screen at macro zoom, with the framing, tilt and zoom level visibly
+// CHANGING every cut (pageChange) so the sequence feels alive. The
+// marker stamps onto the exact OCR pixel box of the picked words.
+// ════════════════════════════════════════════════════════════════
+
+export interface RealPaperBox { x0: number; y0: number; x1: number; y1: number; } // normalized 0..1
+export interface RealPaperWord { text: string; box: RealPaperBox; }
+export interface RealPaperLine { id: string; text: string; box: RealPaperBox; words?: RealPaperWord[]; }
+export interface RealPaperPick { id: string; text: string; box: RealPaperBox; }
+
+export interface RealPaperRenderOptions {
+  highlightColor: string;
+  highlightStyle: RenderOptions['highlightStyle'];
+  markerOpacity: number;
+  highlightDirection?: 'ltr' | 'rtl';
+  fillStyle: 'paper' | 'edge' | 'blur';
+  edgeColor?: string;
+  filmGrain: boolean;
+  depthOfField: boolean;
+  dofIntensity: number;
+  /** 0..1 progress of the marker sweep inside the current cut. */
+  cutT: number;
+  /** Live pick index — drives the per-cut framing change. */
+  cutIndex: number;
+  /** Alternate zoom / tilt per cut so the page visibly changes every cut. */
+  pageChange: boolean;
+}
+
+function realPaperRng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function realPaperClamp(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/**
+ * REAL PAPER match-cut renderer. Deterministic per (cutIndex, cutT):
+ * preview and MP4 export share the exact same frames.
+ */
+export function renderRealPaperMatchCut(
+  targetCanvasCtx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  image: CanvasImageSource,
+  imageW: number,
+  imageH: number,
+  picks: RealPaperPick[],
+  options: RealPaperRenderOptions
+) {
+  const fillStyle = options.fillStyle ?? 'paper';
+  const blurBg = fillStyle === 'blur';
+
+  const useDof = Boolean(options.depthOfField && typeof document !== 'undefined');
+  const renderBuffer = useDof ? getDocBufferCanvas(width, height, 'main') : null;
+  const ctx = renderBuffer ? renderBuffer.getContext('2d')! : targetCanvasCtx;
+
+  ctx.save();
+  ctx.clearRect(0, 0, width, height);
+
+  // ── 1. Frame finish: blurred page backdrop, sampled edge color, or paper white ──
+  if (blurBg) {
+    ctx.fillStyle = '#0c0b09';
+    ctx.fillRect(0, 0, width, height);
+    const bgScale = Math.max(width / imageW, height / imageH) * 1.08;
+    const bw = imageW * bgScale;
+    const bh = imageH * bgScale;
+    ctx.save();
+    try { ctx.filter = `blur(${Math.max(10, Math.min(width, height) * 0.045)}px)`; } catch { /* filter unsupported */ }
+    ctx.drawImage(image, (width - bw) / 2, (height - bh) / 2, bw, bh);
+    try { ctx.filter = 'none'; } catch { /* ignore */ }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    ctx.fillStyle = fillStyle === 'edge' && options.edgeColor ? options.edgeColor : '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // ── 2. Page geometry — the WHOLE page is always laid out, never source-cropped ──
+  const margin = blurBg ? Math.min(width, height) * 0.02 : 0;
+  const availW = width - margin * 2;
+  const availH = height - margin * 2;
+  const scale = Math.min(availW / imageW, availH / imageH);
+  const pageW = imageW * scale;
+  const pageH = imageH * scale;
+  const pageX = (width - pageW) / 2;
+  const pageY = (height - pageH) / 2;
+
+  // ── 3. Per-cut camera: HARD cut, word dead-center, framing changes every cut ──
+  const hasPicks = picks.length > 0;
+  const cutIdx = hasPicks ? ((options.cutIndex % picks.length) + picks.length) % picks.length : 0;
+  const pick = hasPicks ? picks[cutIdx] : null;
+
+  const r = realPaperRng(cutIdx * 9301 + 49297);
+  const jitter = () => r() - 0.5;
+
+  let zoom = 1;
+  let tilt = 0;
+  let bx = pageX + pageW / 2;
+  let by = pageY + pageH / 2;
+  let bw = pageW;
+  let bh = pageH;
+
+  if (pick) {
+    bx = pageX + pick.box.x0 * pageW;
+    by = pageY + pick.box.y0 * pageH;
+    bw = Math.max(4, (pick.box.x1 - pick.box.x0) * pageW);
+    bh = Math.max(4, (pick.box.y1 - pick.box.y0) * pageH);
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
+
+    // Macro target: the picked span owns 58% (even cuts) / 74% (odd cuts) of the
+    // frame width when pageChange is on — the visible "page is changing" rhythm.
+    const widthFrac = options.pageChange ? (cutIdx % 2 === 0 ? 0.58 : 0.74) : 0.66;
+    zoom = realPaperClamp((width * widthFrac) / Math.max(8, bw), 1.05, 7);
+    zoom = Math.min(zoom, realPaperClamp((height * 0.3) / Math.max(4, bh), 1.05, 7));
+    tilt = options.pageChange ? jitter() * 0.01 : jitter() * 0.004; // ±~0.3° print misregistration
+
+    // Slow push-in inside the cut so even held cuts feel alive.
+    const pushIn = 1 + 0.045 * realPaperClamp(options.cutT, 0, 1);
+
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(tilt);
+    ctx.scale(zoom * pushIn, zoom * pushIn);
+    ctx.translate(-cx, -cy);
+  }
+
+  // Mounted-print hairline around the physical page (skipped for BLUR's soft edge).
+  if (!blurBg) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = Math.max(1, Math.min(width, height) / 900);
+    ctx.strokeRect(pageX, pageY, pageW, pageH);
+    ctx.restore();
+  }
+
+  ctx.drawImage(image, pageX, pageY, pageW, pageH);
+
+  // ── 4. Marker stamp on the exact OCR pixel box of the picked words ──
+  if (pick) {
+    const t = realPaperClamp(options.cutT, 0, 1);
+    const sweep = t * t * (3 - 2 * t); // smoothstep — snappy start, soft land
+    const fontSize = Math.max(10, bh * 0.72);
+    const hlOpts: HighlightDrawOptions = {
+      highlightColor: options.highlightColor,
+      highlightStyle: options.highlightStyle,
+      markerOpacity: options.markerOpacity,
+      paperTheme: 'crisp',
+      animationMode: 'animated-highlight',
+      highlightDirection: options.highlightDirection ?? 'ltr',
+      highlightProgress: sweep,
+    };
+    drawAnchorHighlight(ctx, bx, by + bh / 2, bw, fontSize, hlOpts);
+    ctx.restore(); // camera transform (pick branch only)
+  }
+
+  // ── 5. Vignette + grain over the whole frame ──
+  const vignette = ctx.createRadialGradient(
+    width / 2, height / 2, Math.min(width, height) * 0.4,
+    width / 2, height / 2, Math.max(width, height) * 0.85
+  );
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(1, 'rgba(15,12,6,0.22)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  if (options.filmGrain) {
+    const noise = getNoisePattern();
+    const pattern = ctx.createPattern(noise, 'repeat');
+    if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
+  }
+
+  ctx.restore();
+
+  // ── 6. Macro-lens tilt-shift: crystal focal core dead-center on the word ──
+  if (useDof && renderBuffer) {
+    const blurCanvas = getDocBufferCanvas(width, height, 'blur');
+    const blurCtx = blurCanvas.getContext('2d')!;
+    blurCtx.clearRect(0, 0, width, height);
+    const blurRadius = Math.max(3, Math.round(options.dofIntensity * 14));
+    try { blurCtx.filter = `blur(${blurRadius}px)`; } catch { /* ignore */ }
+    blurCtx.drawImage(renderBuffer, 0, 0);
+    try { blurCtx.filter = 'none'; } catch { /* ignore */ }
+
+    targetCanvasCtx.clearRect(0, 0, width, height);
+    targetCanvasCtx.drawImage(blurCanvas, 0, 0);
+
+    const mask = getDocBufferCanvas(width, height, 'mask');
+    const mCtx = mask.getContext('2d')!;
+    mCtx.clearRect(0, 0, width, height);
+    const radialGrad = mCtx.createRadialGradient(
+      width / 2, height / 2, Math.min(width, height) * 0.16,
+      width / 2, height / 2, Math.max(width, height) * 0.5
+    );
+    radialGrad.addColorStop(0, 'rgba(0,0,0,1)');
+    radialGrad.addColorStop(0.35, 'rgba(0,0,0,1)');
+    radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    mCtx.fillStyle = radialGrad;
+    mCtx.fillRect(0, 0, width, height);
+    mCtx.globalCompositeOperation = 'source-in';
+    mCtx.drawImage(renderBuffer, 0, 0);
+    mCtx.globalCompositeOperation = 'source-over';
+    targetCanvasCtx.drawImage(mask, 0, 0);
+  }
 }

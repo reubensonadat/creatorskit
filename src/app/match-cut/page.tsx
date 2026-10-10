@@ -5,6 +5,7 @@ import Link from 'next/link';
 import NextStepRow from '@/components/NextStepRow';
 import { gateAction } from '@/components/AdGate';
 import { putHandoffImage, takeHandoffText } from '@/lib/tool-handoff';
+import { ThinkingOrb } from 'thinking-orbs';
 import {
   Play,
   Pause,
@@ -28,14 +29,21 @@ import {
   RefreshCw,
   ChevronDown,
   Shuffle,
+  Camera,
+  X,
+  ListOrdered,
+  ScanText,
 } from 'lucide-react';
 import {
   renderNewspaperMatchCut,
+  renderRealPaperMatchCut,
   playCutSound,
   synthesizeCutSound,
   easeHighlightSweep,
   PAPER_THEMES,
   type NewspaperCut,
+  type RealPaperLine,
+  type RealPaperPick,
   type RenderOptions,
 } from './match-cut-engine';
 import {
@@ -297,6 +305,396 @@ export default function TextMatchCutStudioPage() {
   // Match-cut anchors are clamped to ≤23 chars per phrase — the optical lock
   // only works when the camera centers on a short, identical phrase in every
   // paper; long phrases smear the lock point across the whole headline.
+  // ── REAL PAPER scan mode ──────────────────────────────────────────
+  // One uploaded screenshot → OCR → word-level picks → hard zoom-cuts.
+  // Tap ONE word (or a neighbor to widen it to a two-word span), or paste
+  // a word list and let the finder locate each phrase in the document.
+  const [paperSource, setPaperSource] = useState<'synthetic' | 'real'>('synthetic');
+  const [scanImage, setScanImage] = useState<HTMLImageElement | null>(null);
+  const [scanImageUrl, setScanImageUrl] = useState<string | null>(null);
+  const [scanImageW, setScanImageW] = useState(0);
+  const [scanImageH, setScanImageH] = useState(0);
+  const [scanLines, setScanLines] = useState<RealPaperLine[]>([]);
+  const [scanPicks, setScanPicks] = useState<RealPaperPick[]>([]);
+  const [scanEdgeColor, setScanEdgeColor] = useState<string | null>(null);
+  const [scanFillStyle, setScanFillStyle] = useState<'paper' | 'edge' | 'blur'>('blur');
+  const [scanPageChange, setScanPageChange] = useState(true);
+  const [scanPasteText, setScanPasteText] = useState('');
+  const [scanRangeFrom, setScanRangeFrom] = useState<number | null>(null);
+  const [scanTrimAt, setScanTrimAt] = useState<number | null>(null);
+  const [scanTrimWord, setScanTrimWord] = useState<number | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<string | null>(null);
+  // OCR live state — drives the thinking-orb overlay on the canvas so the
+  // app never looks frozen while the engine loads and reads the document.
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrPhase, setOcrPhase] = useState('READING DOCUMENT');
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const scanFileRef = useRef<HTMLInputElement | null>(null);
+  const scanCutTRef = useRef(0);
+
+  // Average color of the image's outer border ring → the EDGE fill color.
+  const sampleEdgeColor = (img: HTMLImageElement): string | null => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 24;
+      c.height = 24;
+      const cx = c.getContext('2d');
+      if (!cx) return null;
+      cx.drawImage(img, 0, 0, 24, 24);
+      const d = cx.getImageData(0, 0, 24, 24).data;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let n = 0;
+      for (let y = 0; y < 24; y++) {
+        for (let x = 0; x < 24; x++) {
+          if (x > 1 && x < 22 && y > 1 && y < 22) continue; // border ring only
+          const i = (y * 24 + x) * 4;
+          r += d[i];
+          g += d[i + 1];
+          b += d[i + 2];
+          n++;
+        }
+      }
+      if (n === 0) return null;
+      const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, '0');
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleScanImport = async (file: File) => {
+    setOcrBusy(true);
+    setOcrProgress(2);
+    setOcrPhase('DECODING IMAGE');
+    setOcrStatus('Decoding image…');
+    let url: string | null = null;
+    try {
+      url = URL.createObjectURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('decode failed'));
+        image.src = url!;
+      });
+
+      setOcrPhase('LOADING OCR ENGINE');
+      setOcrProgress(3);
+      setOcrStatus('Loading OCR engine — the language model downloads once…');
+      const Tesseract = await import('tesseract.js');
+      type OcrWorker = {
+        recognize: (image: HTMLImageElement | string, opts?: unknown, out?: unknown) => Promise<{ data: any }>;
+        terminate: () => Promise<unknown>;
+      };
+      const createOcrWorker = (Tesseract as unknown as {
+        createWorker: (lang?: string, oem?: number, options?: { logger?: (m: { status?: string; progress?: number }) => void }) => Promise<OcrWorker>;
+      }).createWorker;
+      // Every tesseract logger status maps to a friendly phase label plus a
+      // slice of the 0–100 bar on the canvas overlay — the orb keeps moving
+      // the whole time, so the app never reads as frozen.
+      const OCR_PHASES: Record<string, [string, number, number]> = {
+        'loading tesseract core': ['LOADING OCR CORE', 4, 10],
+        'initializing tesseract': ['STARTING ENGINE', 10, 16],
+        'loading language traineddata': ['DOWNLOADING LANGUAGE MODEL', 16, 55],
+        'initializing api': ['PREPARING READER', 55, 62],
+        'recognizing text': ['READING DOCUMENT', 62, 100],
+      };
+      const worker = await createOcrWorker('eng', 1, {
+        logger: (m) => {
+          const phase = OCR_PHASES[m.status ?? ''];
+          if (!phase) return;
+          const p = Math.min(1, Math.max(0, typeof m.progress === 'number' ? m.progress : 0));
+          setOcrPhase(m.status === 'recognizing text' ? `READING DOCUMENT — ${Math.round(p * 100)}%` : phase[0]);
+          setOcrProgress(Math.round(phase[1] + (phase[2] - phase[1]) * p));
+        },
+      });
+
+      // EXACT parity with the text-highlighter's OCR: the raw image goes
+      // straight into recognition — same input, same output options, same
+      // extraction — so any screenshot the highlighter reads, this reads.
+      const iw = img.naturalWidth || 1;
+      const ih = img.naturalHeight || 1;
+      const { data } = await worker.recognize(img, {}, { blocks: true, text: true });
+      await worker.terminate();
+
+      const lines: RealPaperLine[] = [];
+      const pushLine = (
+        text: unknown,
+        bbox?: { x0: number; y0: number; x1: number; y1: number },
+        words?: { text?: unknown; bbox?: { x0: number; y0: number; x1: number; y1: number } }[]
+      ) => {
+        const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length < 2 || !bbox) return;
+        const normWords = (words || [])
+          .map((w) => ({
+            text: String(w.text ?? '').trim(),
+            box: w.bbox ? { x0: w.bbox.x0 / iw, y0: w.bbox.y0 / ih, x1: w.bbox.x1 / iw, y1: w.bbox.y1 / ih } : null,
+          }))
+          .filter((w): w is { text: string; box: { x0: number; y0: number; x1: number; y1: number } } => w.text.length > 0 && w.box !== null);
+        lines.push({
+          id: `scan-line-${lines.length}`,
+          text: t,
+          box: { x0: bbox.x0 / iw, y0: bbox.y0 / ih, x1: bbox.x1 / iw, y1: bbox.y1 / ih },
+          words: normWords.length > 0 ? normWords : undefined,
+        });
+      };
+      if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+        data.blocks.forEach((b: any) => b?.paragraphs?.forEach((p: any) => p?.lines?.forEach((l: any) => pushLine(l?.text, l?.bbox, Array.isArray(l?.words) ? l.words : undefined))));
+      } else if (Array.isArray(data.lines) && data.lines.length > 0) {
+        data.lines.forEach((l: any) => pushLine(l?.text, l?.bbox, Array.isArray(l?.words) ? l.words : undefined));
+      } else if (Array.isArray(data.words) && data.words.length > 0) {
+        const words = (data.words as any[]).filter((w) => w?.text?.trim() && w?.bbox);
+        const bands: { y: number; items: any[] }[] = [];
+        words.forEach((w) => {
+          const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+          const band = bands.find((bd) => Math.abs(bd.y - cy) < (w.bbox.y1 - w.bbox.y0) * 0.7);
+          if (band) {
+            band.items.push(w);
+            band.y = band.items.reduce((s, it) => s + (it.bbox.y0 + it.bbox.y1) / 2, 0) / band.items.length;
+          } else {
+            bands.push({ y: cy, items: [w] });
+          }
+        });
+        bands.sort((a, b) => a.y - b.y).forEach((bd) => {
+          const items = [...bd.items].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+          pushLine(
+            items.map((w) => w.text).join(' '),
+            {
+              x0: Math.min(...items.map((w) => w.bbox.x0)),
+              y0: Math.min(...items.map((w) => w.bbox.y0)),
+              x1: Math.max(...items.map((w) => w.bbox.x1)),
+              y1: Math.max(...items.map((w) => w.bbox.y1)),
+            },
+            items.map((w) => ({ text: w.text, bbox: w.bbox }))
+          );
+        });
+      }
+
+      if (lines.length === 0) {
+        setOcrBusy(false);
+        setOcrStatus('No readable text found — try a sharper, brighter photo of the article.');
+        setTimeout(() => setOcrStatus(null), 4000);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      if (scanImageUrl?.startsWith('blob:')) URL.revokeObjectURL(scanImageUrl);
+      setScanEdgeColor(sampleEdgeColor(img));
+      setScanImage(img);
+      setScanImageUrl(url);
+      setScanImageW(img.naturalWidth);
+      setScanImageH(img.naturalHeight);
+      setScanLines(lines);
+      setPaperSource('real');
+      setScanPicks([]);
+      setCurrentCutIndex(0);
+      scanCutTRef.current = 0;
+      setIsPlaying(true);
+      setOcrBusy(false);
+      setOcrStatus(`Extracted ${lines.length} lines — tap lines in cut order, ✂ BREAK / TRIM to cut on one word, or paste a word list.`);
+      setTimeout(() => setOcrStatus(null), 5000);
+    } catch (err) {
+      console.warn('Scan import failed:', err);
+      const isDecode = err instanceof Error && err.message.includes('decode');
+      const heic = /\.hei[cf]$/i.test(file.name) || /image\/hei[cf]/.test(file.type);
+      setOcrStatus(
+        isDecode
+          ? heic
+            ? 'This looks like an HEIC photo — export it as JPG/PNG from your photos app and retry.'
+            : 'That image could not be decoded — try a JPG or PNG screenshot.'
+          : 'OCR failed — the engine downloads once, so check your connection and retry.'
+      );
+      setTimeout(() => setOcrStatus(null), 4500);
+      if (url) URL.revokeObjectURL(url);
+    }
+  };
+
+  // Which cut (if any) owns this LINE? LINE picks, word-span picks, and
+  // paste picks all trace back to a line — this drives the numbered
+  // position badges on every line row, exactly like the highlighter.
+  const scanPickIndexOfLine = (lineId: string): number =>
+    scanPicks.findIndex((p) => p.id === `l-${lineId}` || p.id.startsWith(`w-${lineId}-`) || (p.id.startsWith('p-') && p.id.includes(`-${lineId}-`)));
+
+  // RANGE — grab a continuous block of lines in one shot: RANGE on the
+  // first line, RANGE on the last — every line in the block becomes its
+  // own hard cut, in reading order (same gesture as the highlighter).
+  const applyScanRange = (from: number, to: number) => {
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const block = scanLines.slice(lo, hi + 1).map((line) => ({ id: `l-${line.id}`, text: line.text, box: line.box }));
+    setScanPicks([...scanPicks.filter((p) => !block.some((b) => b.id === p.id)), ...block]);
+    setCurrentCutIndex(0);
+    scanCutTRef.current = 0;
+    setScanRangeFrom(null);
+  };
+
+  const pickScanLine = (line: RealPaperLine) => {
+    const existing = scanPickIndexOfLine(line.id);
+    if (existing >= 0) {
+      setScanPicks(scanPicks.filter((_, i) => i !== existing));
+      if (scanTrimAt === existing) {
+        setScanTrimAt(null);
+        setScanTrimWord(null);
+      }
+      setCurrentCutIndex(0);
+      scanCutTRef.current = 0;
+      return;
+    }
+    setScanPicks([...scanPicks, { id: `l-${line.id}`, text: line.text, box: line.box }]);
+  };
+
+  const removeScanPick = (idx: number) => {
+    setScanPicks(scanPicks.filter((_, i) => i !== idx));
+    if (scanTrimAt != null) {
+      if (scanTrimAt === idx) {
+        setScanTrimAt(null);
+        setScanTrimWord(null);
+      } else if (scanTrimAt > idx) {
+        setScanTrimAt(scanTrimAt - 1);
+      }
+    }
+    setCurrentCutIndex(0);
+    scanCutTRef.current = 0;
+  };
+
+  // ✂ BREAK / TRIM — same gesture as the highlighter: pick the line (if
+  // needed) and open its word trimmer.
+  const openScanTrimForLine = (line: RealPaperLine) => {
+    const existing = scanPickIndexOfLine(line.id);
+    if (existing >= 0) {
+      setScanTrimAt(existing);
+    } else {
+      setScanPicks([...scanPicks, { id: `l-${line.id}`, text: line.text, box: line.box }]);
+      setScanTrimAt(scanPicks.length);
+    }
+    setScanTrimWord(null);
+  };
+
+  // Inside the trimmer: first tap narrows the pick to that single word;
+  // a second tap on another word of the same line widens it into a
+  // two-word span (the "one word or two words" contract).
+  const handleScanTrimWord = (wi: number) => {
+    if (scanTrimAt == null) return;
+    const pick = scanPicks[scanTrimAt];
+    if (!pick) return;
+    const line = scanLines.find((l) => pick.id === `l-${l.id}` || pick.id.startsWith(`w-${l.id}-`) || (pick.id.startsWith('p-') && pick.id.includes(`-${l.id}-`)));
+    const words = line?.words || [];
+    if (!line || !words[wi]) return;
+    if (scanTrimWord == null) {
+      setScanTrimWord(wi);
+      const w = words[wi];
+      setScanPicks(scanPicks.map((p, i) => (i === scanTrimAt ? { ...p, id: `w-${line.id}-${wi}-${wi}`, text: w.text, box: w.box } : p)));
+      return;
+    }
+    const lo = Math.min(scanTrimWord, wi);
+    const hi = Math.max(scanTrimWord, wi);
+    const span = words.slice(lo, hi + 1);
+    setScanPicks(scanPicks.map((p, i) => (i === scanTrimAt ? {
+      ...p,
+      id: `w-${line.id}-${lo}-${hi}`,
+      text: span.map((s) => s.text).join(' '),
+      box: {
+        x0: Math.min(...span.map((s) => s.box.x0)),
+        y0: Math.min(...span.map((s) => s.box.y0)),
+        x1: Math.max(...span.map((s) => s.box.x1)),
+        y1: Math.max(...span.map((s) => s.box.y1)),
+      },
+    }
+    : p)));
+  };
+
+  // PASTE WORDS — one word/phrase per line. The whole document is one
+  // flattened word stream, so phrases can wrap across lines. Paste the
+  // SAME word again to step to its NEXT occurrence: "war\nwar\nwar"
+  // cuts three different "war"s, in reading order. Positions already
+  // claimed by an earlier line of the list are skipped, so no word is
+  // ever cut twice. Matching is case- and punctuation-insensitive, and
+  // a pasted word matches ANY word containing it — "war" finds "Warfare".
+  const applyScanPaste = () => {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9']/g, '');
+    const phrases = scanPasteText.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (phrases.length === 0) return;
+
+    const stream = scanLines
+      .flatMap((line) => (line.words || []).map((w, wi) => ({ t: norm(w.text), line, wi, w })))
+      .filter((x) => x.t.length > 0);
+
+    const found: RealPaperPick[] = [];
+    const used = new Set<string>();
+    const claims = new Map<string, number>();
+
+    const findOccurrence = (wanted: string[], nth: number): RealPaperPick | null => {
+      let seen = 0;
+      for (let s = 0; s + wanted.length <= stream.length; s++) {
+        let ok = true;
+        for (let k = 0; k < wanted.length; k++) {
+          // Containment, not equality — pasting "war" must land on
+          // "Warfare", "Warring", "Wars"… any word that CONTAINS it,
+          // in any case, with or without punctuation.
+          if (!stream[s + k].t.includes(wanted[k])) { ok = false; break; }
+        }
+        if (!ok) continue;
+        const startKey = `${stream[s].line.id}:${stream[s].wi}`;
+        if (used.has(startKey)) continue;
+        if (seen < nth) { seen++; continue; }
+        const spanWords = stream.slice(s, s + wanted.length);
+        spanWords.forEach((x) => used.add(`${x.line.id}:${x.wi}`));
+        return {
+          id: `p-${found.length}-${spanWords[0].line.id}-${spanWords[0].wi}`,
+          text: spanWords.map((x) => x.w.text).join(' '),
+          box: {
+            x0: Math.min(...spanWords.map((x) => x.w.box.x0)),
+            y0: Math.min(...spanWords.map((x) => x.w.box.y0)),
+            x1: Math.max(...spanWords.map((x) => x.w.box.x1)),
+            y1: Math.max(...spanWords.map((x) => x.w.box.y1)),
+          },
+        };
+      }
+      return null;
+    };
+
+    let missing = 0;
+    phrases.forEach((phrase) => {
+      const wanted = phrase.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+      if (wanted.length === 0) { missing++; return; }
+      const nth = claims.get(phrase) ?? 0;
+      const pick = findOccurrence(wanted, nth);
+      if (pick) {
+        found.push(pick);
+        claims.set(phrase, nth + 1);
+      } else {
+        missing++;
+      }
+    });
+
+    setScanPicks(found);
+    setScanRangeFrom(null);
+    setScanTrimAt(null);
+    setScanTrimWord(null);
+    setCurrentCutIndex(0);
+    scanCutTRef.current = 0;
+    if (found.length > 0) setIsPlaying(true);
+    setOcrStatus(missing > 0
+      ? `Matched ${found.length} of ${phrases.length} — ${missing} not found (check spelling, or the OCR misread it). Paste a word again to step to its next occurrence.`
+      : `Matched all ${found.length} — repeat a word to step through its occurrences.`);
+    setTimeout(() => setOcrStatus(null), 4500);
+  };
+
+  // One switch for the paper source — the sidebar chooser card and the
+  // compact viewport toggle both route through here so the clock and the
+  // RANGE/trim state always reset together.
+  const switchPaperSource = (id: 'synthetic' | 'real') => {
+    setPaperSource(id);
+    setCurrentCutIndex(0);
+    scanCutTRef.current = 0;
+    lastCutTimeRef.current = 0;
+    setIsPlaying(true);
+    setScanRangeFrom(null);
+    setScanTrimAt(null);
+    setScanTrimWord(null);
+  };
+
   const renderOptions: RenderOptions = {
     anchorPhrase: anchorPhrase
       .split('|')
@@ -367,6 +765,29 @@ export default function TextMatchCutStudioPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // REAL PAPER: hard zoom-cuts over the OCR'd screenshot. The cut clock
+    // is (currentCutIndex → which word is live, scanCutTRef → sweep inside
+    // the cut); entrance/exit paper transitions are a synthetic-mode thing.
+    if (paperSource === 'real') {
+      if (scanImage) {
+        renderRealPaperMatchCut(ctx, canvas.width, canvas.height, scanImage, scanImageW, scanImageH, scanPicks, {
+          highlightColor,
+          highlightStyle,
+          markerOpacity,
+          highlightDirection,
+          fillStyle: scanFillStyle,
+          edgeColor: scanEdgeColor ?? undefined,
+          filmGrain,
+          depthOfField,
+          dofIntensity,
+          cutT: scanCutTRef.current,
+          cutIndex: currentCutIndex,
+          pageChange: scanPageChange,
+        });
+      }
+      return;
+    }
+
     const cut = cuts[currentCutIndex] || cuts[0];
     if (!cut) return;
 
@@ -380,15 +801,18 @@ export default function TextMatchCutStudioPage() {
       entP ?? entranceProgress,
       exitP ?? exitProgress
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cuts, currentCutIndex, renderOptions, entranceProgress, exitProgress, entranceDirection, exitDirection, entranceBlur, exitBlur, paperTheme, animationMode]);
+  }, [cuts, currentCutIndex, renderOptions, entranceProgress, exitProgress, entranceDirection, exitDirection, entranceBlur, exitBlur, paperTheme, animationMode, paperSource, scanImage, scanImageW, scanImageH, scanPicks, scanFillStyle, scanEdgeColor, scanPageChange]);
 
   // Live Animation Loop supporting both Match Cut and Animated Highlighter
   // modes — one deterministic motion clock drives slam-in / main / whip-out.
   // The canvas is driven DIRECTLY every frame; React progress state syncs at
   // ~10 Hz so the 60 fps render path never re-renders the page mid-motion.
   const redrawRef = useRef(redraw);
-  redrawRef.current = redraw;
+  // Sync the latest redraw into the ref AFTER commit (never during render —
+  // react-hooks/refs). Declared before the loop effect so it always runs first.
+  useEffect(() => {
+    redrawRef.current = redraw;
+  }, [redraw]);
 
   useEffect(() => {
     let active = true;
@@ -419,7 +843,23 @@ export default function TextMatchCutStudioPage() {
           if (hpOverride !== undefined) setHighlightProgress(hpOverride);
         }
 
-        if (animationMode === 'match-cut') {
+        if (paperSource === 'real') {
+          // REAL cut clock: advance through word picks at cuts/sec, and
+          // track the intra-cut sweep so the marker stamps every cut.
+          if (scanPicks.length > 0) {
+            const interval = 1000 / cutsPerSecond;
+            if (timestamp - lastCutTimeRef.current >= interval) {
+              lastCutTimeRef.current = timestamp;
+              setCurrentCutIndex((prev) => {
+                const next = (prev + 1) % scanPicks.length;
+                const strokeDur = Math.min(0.28, Math.max(0.08, 0.9 / Math.max(1, cutsPerSecond)));
+                playCutSound(soundEffect, soundVolume, strokeDur);
+                return next;
+              });
+            }
+            scanCutTRef.current = Math.min(1, (timestamp - lastCutTimeRef.current) / interval);
+          }
+        } else if (animationMode === 'match-cut') {
           if (inMotionWindow) {
             // Motion windows hold the boundary cut — no whip-cutting mid-flight.
             setCurrentCutIndex(0);
@@ -452,8 +892,7 @@ export default function TextMatchCutStudioPage() {
       active = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, cutsPerSecond, cuts.length, soundEffect, soundVolume, animationMode, highlightDuration, motionTotalMs, entranceDirection, exitDirection]);
+  }, [isPlaying, cutsPerSecond, cuts.length, soundEffect, soundVolume, animationMode, highlightDuration, motionTotalMs, entranceDirection, exitDirection, paperSource, scanPicks.length]);
 
   // Cross-tool intake (§4): transcript text handed off from Auto-Captions seeds the anchor phrase.
   useEffect(() => {
@@ -475,7 +914,6 @@ export default function TextMatchCutStudioPage() {
       setCurrentCutIndex(0);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load Curated Topic Preset
@@ -604,9 +1042,28 @@ export default function TextMatchCutStudioPage() {
       exportCanvas.height = selectedAspect.height;
       const ctx = exportCanvas.getContext('2d')!;
 
-      for (let i = 0; i < cuts.length; i++) {
-        setExportProgress(`Rendering frame ${i + 1} of ${cuts.length}...`);
-        renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, cuts[i], renderOptions, i);
+      const realStill = paperSource === 'real' && scanImage && scanPicks.length > 0;
+      const stillCount = realStill ? scanPicks.length : cuts.length;
+      for (let i = 0; i < stillCount; i++) {
+        setExportProgress(`Rendering frame ${i + 1} of ${stillCount}...`);
+        if (realStill) {
+          renderRealPaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, scanImage, scanImageW, scanImageH, scanPicks, {
+            highlightColor,
+            highlightStyle,
+            markerOpacity,
+            highlightDirection,
+            fillStyle: scanFillStyle,
+            edgeColor: scanEdgeColor ?? undefined,
+            filmGrain,
+            depthOfField,
+            dofIntensity,
+            cutT: 1,
+            cutIndex: i,
+            pageChange: scanPageChange,
+          });
+        } else {
+          renderNewspaperMatchCut(ctx, exportCanvas.width, exportCanvas.height, cuts[i], renderOptions, i);
+        }
         const dataUrl = exportCanvas.toDataURL('image/png');
         const base64Data = dataUrl.split(',')[1];
         zip.file(`match-cut-${String(i + 1).padStart(2, '0')}.png`, base64Data, { base64: true });
@@ -639,7 +1096,7 @@ export default function TextMatchCutStudioPage() {
       void handleExportVideoUngated();
     });
   const handleExportVideoUngated = async () => {
-    if (cuts.length === 0) return;
+    if (cuts.length === 0 && !(paperSource === 'real' && scanImage && scanPicks.length > 0)) return;
     setIsExporting(true);
     setIsPlaying(false);
     const exportResLabel = `${exportScale > 1 ? '4K' : 'HD'} (${selectedAspect.width * exportScale}×${selectedAspect.height * exportScale})`;
@@ -651,6 +1108,8 @@ export default function TextMatchCutStudioPage() {
       // Rapid whip-cut sequences stay at 30fps; the staccato is the point.
       const fps = isAnimated ? 60 : 30;
       const framesPerCut = Math.max(3, Math.round(fps / cutsPerSecond));
+      // REAL mode cuts through word picks; synthetic cuts through generated pages.
+      const exportCutCount = paperSource === 'real' ? Math.max(1, scanPicks.length) : cuts.length;
 
       // Whole motion timeline: slam-in → main → whip-out → tail.
       const totalFrames = Math.max(30, Math.round((motionTotalMs / 1000) * fps));
@@ -677,8 +1136,8 @@ export default function TextMatchCutStudioPage() {
                 // the old export audio distort into mush.
                 const strokeDur = Math.min(0.28, Math.max(0.08, (framesPerCut / fps) * 0.9));
                 for (let loop = 0; loop < 3; loop++) {
-                  for (let c = 0; c < cuts.length; c++) {
-                    const t = lead + ((loop * cuts.length + c) * framesPerCut) / fps;
+                  for (let c = 0; c < exportCutCount; c++) {
+                    const t = lead + ((loop * exportCutCount + c) * framesPerCut) / fps;
                     synthesizeCutSound(ctx, dest, soundEffect, soundVolume, t, strokeDur);
                   }
                 }
@@ -712,7 +1171,28 @@ export default function TextMatchCutStudioPage() {
           const inMotionWindow =
             (entranceDirection !== 'none' && m.entP < 1) ||
             (exitDirection !== 'none' && m.exitP > 0);
-          if (isAnimated) {
+          if (paperSource === 'real' && scanImage) {
+            // Same hard-cut clock as the live loop: floor() picks the word,
+            // the fractional part drives that cut's marker sweep.
+            const cutCount = Math.max(1, scanPicks.length);
+            const cutPos = (m.mainT / 1000) * cutsPerSecond;
+            const c = Math.floor(cutPos) % cutCount;
+            const cutT = cutPos % 1;
+            renderRealPaperMatchCut(ctx, ctx.canvas.width, ctx.canvas.height, scanImage, scanImageW, scanImageH, scanPicks, {
+              highlightColor,
+              highlightStyle,
+              markerOpacity,
+              highlightDirection,
+              fillStyle: scanFillStyle,
+              edgeColor: scanEdgeColor ?? undefined,
+              filmGrain,
+              depthOfField,
+              dofIntensity,
+              cutT,
+              cutIndex: c,
+              pageChange: scanPageChange,
+            });
+          } else if (isAnimated) {
             const mainFrame = Math.min(drawFrames, Math.round((m.mainT / 1000) * fps));
             const p = mainFrame < drawFrames ? easeHighlightSweep(mainFrame / drawFrames) : 1.0;
             const frameRenderOptions: RenderOptions = {
@@ -750,6 +1230,49 @@ export default function TextMatchCutStudioPage() {
 
   return (
     <div className="tool-page-padding" style={{ position: 'relative', minHeight: '100%', padding: '20px 16px 80px', maxWidth: 1380, margin: '0 auto', boxSizing: 'border-box', width: '100%' }}>
+      {/* OCR live state — full-screen thinking-orb overlay. While the engine
+          loads and reads, the whole app is covered: nothing can be touched,
+          nothing looks frozen — the scan orb keeps sweeping and the yellow
+          bar carries the real 0–100 progress. */}
+      {ocrBusy && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(20,20,19,0.78)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+              background: '#fff',
+              border: '2px solid #000',
+              borderRadius: 4,
+              boxShadow: '4px 4px 0 #000',
+              padding: '22px 30px 18px',
+              maxWidth: 'min(420px, 86vw)',
+            }}
+          >
+            <ThinkingOrb state="searching" size={64} theme="light" aria-label="Reading your document" />
+            <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#000', textAlign: 'center' }}>
+              {ocrPhase}
+            </div>
+            <div style={{ width: '100%', height: 12, border: '2px solid #000', background: '#f4f4f0', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${ocrProgress}%`, background: '#FFE500', transition: 'width 160ms linear' }} />
+            </div>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#888' }}>
+              FIRST READ DOWNLOADS THE ENGINE — HANG TIGHT
+            </span>
+          </div>
+        </div>
+      )}
       {/* Top Title Section */}
       <div className="tool-page-header" style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -865,15 +1388,17 @@ export default function TextMatchCutStudioPage() {
                   }}
                 />
                 <span style={{ color: '#000', fontWeight: 900 }}>
-                  CUT {currentCutIndex + 1} OF {cuts.length}
+                  CUT {Math.min(currentCutIndex + 1, paperSource === 'real' ? Math.max(1, scanPicks.length) : cuts.length)} OF {paperSource === 'real' ? scanPicks.length : cuts.length}
                 </span>
                 <span style={{ color: '#aaa' }}>|</span>
                 <span style={{ textTransform: 'uppercase', color: '#333', fontWeight: 800 }}>
-                  {cuts[currentCutIndex]?.masthead || 'NEWSPAPER'}
+                  {paperSource === 'real' ? (scanPicks[currentCutIndex]?.text || 'REAL PAPER · TAP WORDS') : (cuts[currentCutIndex]?.masthead || 'NEWSPAPER')}
                 </span>
               </div>
 
               <div className="tool-viewport-meta-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {/* Paper source entry lives in the sidebar as the yellow
+                    "Match-cut my screenshot" CTA — same as the highlighter. */}
                 <button
                   onClick={() => setShowCrosshairGuide(!showCrosshairGuide)}
                   style={{
@@ -971,6 +1496,10 @@ export default function TextMatchCutStudioPage() {
                 }}
               />
             </div>
+
+            {/* REAL PAPER controls live in the right sidebar — the exact deck
+                position the text-highlighter uses for scan mode, so the muscle
+                memory carries over 1:1. */}
 
             {/* Transport & Scrubber Bar */}
             <div
@@ -1433,6 +1962,454 @@ export default function TextMatchCutStudioPage() {
 
         {/* Right Column: Control Sidebar */}
         <div className="tool-right-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {paperSource === 'real' ? (
+          <>
+          {ocrStatus && (
+            <div style={{ padding: '6px 10px', border: '2px solid #000', borderRadius: 4, background: '#fef08a', fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900, color: '#000', letterSpacing: '0.04em' }}>
+              {ocrStatus}
+            </div>
+          )}
+
+          {/* REAL PAPER — same "Document Scan Mode" deck the text-highlighter
+              uses: same column, same card, same LINE / RANGE / ✂ controls.
+              Only the render differs: hard match-cuts instead of sweeps. */}
+          <div
+            className="brutalist-card"
+            style={{
+              padding: 14,
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              borderRadius: 4,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+              <label
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 900,
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Camera size={14} style={{ color: '#000' }} />
+                Document Scan Mode
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  ref={scanFileRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleScanImport(f);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  onClick={() => scanFileRef.current?.click()}
+                  disabled={ocrBusy}
+                  title="Upload the screenshot or photo to match-cut"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 8px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#FFE500',
+                    color: '#000',
+                    fontSize: '0.64rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    cursor: ocrBusy ? 'not-allowed' : 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    textTransform: 'uppercase',
+                    opacity: ocrBusy ? 0.5 : 1,
+                  }}
+                >
+                  {ocrBusy ? 'READING…' : scanImage ? 'REPLACE' : 'UPLOAD'}
+                </button>
+                <button
+                  onClick={() => switchPaperSource('synthetic')}
+                  title="Back to synthetic pages"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 8px',
+                    border: '2px solid #000',
+                    borderRadius: 4,
+                    background: '#FFE500',
+                    color: '#000',
+                    fontSize: '0.64rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 #000',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <X size={12} /> EXIT
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {scanImage && scanImageUrl && (
+                <img src={scanImageUrl} alt="Imported page" style={{ width: 52, height: 52, objectFit: 'cover', border: '2px solid #000', borderRadius: 4 }} />
+              )}
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  color: '#000',
+                  background: '#FFE500',
+                  padding: '2px 6px',
+                  border: '1px solid #000',
+                  borderRadius: 4,
+                }}
+              >
+                {scanLines.length} LINES READ • {scanPicks.length} PICKED
+              </span>
+            </div>
+
+            {!scanImage ? (
+              <button
+                onClick={() => scanFileRef.current?.click()}
+                disabled={ocrBusy}
+                style={{ padding: '26px 10px', border: '2px dashed #000', borderRadius: 4, background: '#fffbe6', color: '#000', fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, textTransform: 'uppercase', cursor: ocrBusy ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', opacity: ocrBusy ? 0.5 : 1 }}
+              >
+                {ocrBusy ? 'READING YOUR DOCUMENT…' : 'DROP A SCREENSHOT OF ANY ARTICLE — EVERY WORD GETS READ, THEN CUT ON'}
+              </button>
+            ) : (
+              <>
+            {/* PAGE CHANGE + FILL STYLE */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, textTransform: 'uppercase', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={scanPageChange}
+                  onChange={(e) => setScanPageChange(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: '#FFE500', cursor: 'pointer' }}
+                />
+                Page Change
+                <span style={{ marginLeft: 'auto', fontSize: '0.56rem', color: '#888' }}>
+                  {scanPageChange ? 'REFRAME EVERY CUT' : 'SAME FRAME'}
+                </span>
+              </label>
+
+              <div style={{ display: 'flex', border: '1.5px solid #000', borderRadius: 4, overflow: 'hidden' }} title="Frame finish around the page">
+                {[{ id: 'paper' as const, label: 'PAPER' }, { id: 'edge' as const, label: 'EDGE' }, { id: 'blur' as const, label: 'BLUR' }].map((f, fi) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setScanFillStyle(f.id)}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      border: 'none',
+                      borderRight: fi < 2 ? '1.5px solid #000' : 'none',
+                      background: scanFillStyle === f.id ? '#000' : '#fff',
+                      color: scanFillStyle === f.id ? '#FFE500' : '#000',
+                      fontFamily: 'monospace',
+                      fontSize: '0.62rem',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* CUT ORDER — numbered chips, same look as HIGHLIGHT ORDER */}
+            {scanPicks.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <ListOrdered size={12} /> CUT ORDER ({scanPicks.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setScanPicks([]); setCurrentCutIndex(0); scanCutTRef.current = 0; setScanRangeFrom(null); setScanTrimAt(null); setScanTrimWord(null); }}
+                    style={{
+                      padding: '2px 6px',
+                      border: '1.5px solid #000',
+                      borderRadius: 3,
+                      background: '#fff',
+                      color: '#000',
+                      fontSize: '0.58rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    CLEAR
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {scanPicks.map((pick, i) => (
+                    <div
+                      key={`${pick.id}-${i}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '3px 8px',
+                        border: '1.5px solid #000',
+                        borderRadius: 999,
+                        background: '#FFE500',
+                        color: '#000',
+                        fontSize: '0.62rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                      }}
+                    >
+                      <span
+                        onClick={() => removeScanPick(i)}
+                        title="Remove this cut"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {i + 1}. {pick.text.slice(0, 22)}✕
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PASTE WORDS auto-find */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
+                Paste Words — One Per Line
+              </span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <textarea
+                  value={scanPasteText}
+                  onChange={(e) => setScanPasteText(e.target.value)}
+                  placeholder={'PASTE WORDS — one word or phrase per line.\nA word matches ANY word containing it: WAR finds WARFARE.\nRepeat a word to step to its NEXT occurrence.\ne.g.\nWAR\nWAR\nWAR'}
+                  rows={3}
+                  style={{ flex: 1, padding: '6px 8px', border: '1.5px solid #000', borderRadius: 4, background: '#fff', color: '#000', fontFamily: 'monospace', fontSize: '0.64rem', resize: 'vertical', outline: 'none' }}
+                />
+                <button
+                  onClick={applyScanPaste}
+                  style={{ padding: '8px 12px', border: '2px solid #000', background: '#000', color: '#FFE500', fontFamily: 'monospace', fontSize: '0.64rem', fontWeight: 900, cursor: 'pointer' }}
+                  title="Find each word/phrase in the document — cut order follows your list"
+                >
+                  FIND WORDS
+                </button>
+              </div>
+            </div>
+
+            {/* PART-of-line trimmer — same box as the highlighter: tap the
+                first word, then the last; the cut narrows to that span. */}
+            {scanTrimAt != null && scanPicks[scanTrimAt] && (() => {
+              const pick = scanPicks[scanTrimAt];
+              const line = scanLines.find((l) => pick.id === `l-${l.id}` || pick.id.startsWith(`w-${l.id}-`) || (pick.id.startsWith('p-') && pick.id.includes(`-${l.id}-`)));
+              const words = line && line.words && line.words.length > 0 ? line.words : [{ text: pick.text, box: pick.box }];
+              return (
+                <div style={{ border: '2px solid #000', borderRadius: 4, padding: 8, background: '#fffbe6', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span>
+                      BREAK LINE / TRIM — TAP WORDS TO CUT ON: &ldquo;{pick.text.slice(0, 40)}&rdquo;
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanTrimAt(null);
+                        setScanTrimWord(null);
+                      }}
+                      style={{ padding: '2px 8px', border: '1.5px solid #000', borderRadius: 3, background: '#000', color: '#FFE500', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                      DONE ✓
+                    </button>
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {words.map((w, wi) => (
+                      <button
+                        key={wi}
+                        type="button"
+                        onClick={() => handleScanTrimWord(wi)}
+                        style={{
+                          padding: '3px 8px',
+                          border: scanTrimWord === wi ? '2px solid #000' : '1px solid #777',
+                          borderRadius: 3,
+                          background: scanTrimWord === wi ? '#FFE500' : '#fff',
+                          color: '#000',
+                          fontSize: '0.65rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: scanTrimWord === wi ? '2px 2px 0 #000' : 'none',
+                        }}
+                      >
+                        {w.text}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!line) return;
+                        setScanPicks(scanPicks.map((p, i) => (i === scanTrimAt ? { ...p, id: `l-${line.id}`, text: line.text, box: line.box } : p)));
+                        setScanTrimWord(null);
+                      }}
+                      disabled={!line}
+                      style={{
+                        padding: '3px 8px',
+                        border: '1.5px solid #000',
+                        borderRadius: 3,
+                        background: '#fff',
+                        color: '#000',
+                        fontSize: '0.58rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        cursor: line ? 'pointer' : 'not-allowed',
+                        opacity: line ? 1 : 0.4,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      RESTORE FULL LINE ↺
+                    </button>
+                    <span style={{ fontSize: '0.56rem', fontFamily: 'monospace', color: '#666', textTransform: 'uppercase' }}>
+                      {scanTrimWord == null ? 'TAP A WORD TO CUT ON IT, OR TWO WORDS FOR A PHRASE' : 'TAP SECOND WORD TO SET RANGE'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {scanRangeFrom != null ? (
+                <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#000', textTransform: 'uppercase', background: '#FFE500', border: '1.5px solid #000', borderRadius: 4, padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>RANGE START AT LINE {scanRangeFrom + 1} — TAP RANGE ON THE LAST LINE</span>
+                  <button
+                    onClick={() => setScanRangeFrom(null)}
+                    style={{ padding: '1px 6px', border: '1.5px solid #000', borderRadius: 3, background: '#fff', color: '#000', fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    CANCEL
+                  </button>
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#888', textTransform: 'uppercase' }}>
+                  TAP LINES IN THE ORDER YOU WANT THEM CUT — OR RANGE TO GRAB A CONTINUOUS BLOCK
+                </span>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', paddingRight: 2 }}>
+                {scanLines.map((line, lineIdx) => {
+                  const pickIdx = scanPickIndexOfLine(line.id);
+                  const rangeActive = scanRangeFrom != null && scanRangeFrom !== lineIdx;
+                  return (
+                    <div key={line.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
+                      <button
+                        onClick={() => pickScanLine(line)}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          textAlign: 'left',
+                          padding: '6px 8px',
+                          border: pickIdx >= 0 ? '2px solid #000' : scanRangeFrom === lineIdx ? '2px dashed #000' : '1.5px solid #ccc',
+                          borderRadius: 4,
+                          background: pickIdx >= 0 ? '#FFE500' : '#fff',
+                          color: '#000',
+                          fontSize: '0.72rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span
+                          style={{
+                            minWidth: 20,
+                            textAlign: 'center',
+                            padding: '1px 4px',
+                            border: '1px solid #000',
+                            borderRadius: 3,
+                            background: pickIdx >= 0 ? '#000' : 'transparent',
+                            color: pickIdx >= 0 ? '#FFE500' : '#999',
+                            fontSize: '0.6rem',
+                            fontWeight: 900,
+                          }}
+                        >
+                          {pickIdx >= 0 ? pickIdx + 1 : '+'}
+                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.text}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (scanRangeFrom == null) setScanRangeFrom(lineIdx);
+                          else applyScanRange(scanRangeFrom, lineIdx);
+                        }}
+                        title={scanRangeFrom == null ? 'Start a continuous block here — every line in it becomes a cut' : 'End the range here — every line in between joins the cut sequence'}
+                        style={{
+                          padding: '6px 3px',
+                          borderTop: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                          borderRight: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                          borderBottom: rangeActive ? '2px solid #000' : '1.5px solid #999',
+                          borderLeft: 'none',
+                          borderTopRightRadius: 4,
+                          borderBottomRightRadius: 4,
+                          background: rangeActive ? '#FFE500' : '#f4f4f0',
+                          color: '#000',
+                          fontSize: '0.54rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          letterSpacing: '0.02em',
+                          cursor: 'pointer',
+                          writingMode: 'vertical-rl',
+                        }}
+                      >
+                        {scanRangeFrom === lineIdx ? 'END ⇃' : 'RANGE ⇂'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openScanTrimForLine(line)}
+                        title="BREAK / TRIM — cut on only one word or a phrase inside this line"
+                        style={{
+                          padding: '6px 8px',
+                          border: scanTrimAt != null && scanTrimAt === pickIdx ? '2px solid #000' : '1.5px solid #999',
+                          borderRadius: 4,
+                          background: scanTrimAt != null && scanTrimAt === pickIdx ? '#FFE500' : '#f4f4f0',
+                          color: '#000',
+                          fontSize: '0.54rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 900,
+                          letterSpacing: '0.02em',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ✂ BREAK / TRIM
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+              </>
+            )}
+          </div>
+          </>
+          ) : (
+          <>
 
           {/* Pinned Anchor Phrase Master Box with 23 Character Limit */}
           <div
@@ -1559,6 +2536,50 @@ export default function TextMatchCutStudioPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* REAL PAPER IMPORT — one yellow CTA, the same pattern as the
+              highlighter's "Import newspaper image" button. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button
+              onClick={() => scanFileRef.current?.click()}
+              disabled={ocrBusy}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                width: '100%',
+                padding: '7px 10px',
+                border: '2px solid #000',
+                borderRadius: 4,
+                background: '#FFE500',
+                color: '#000',
+                fontSize: '0.68rem',
+                fontFamily: 'monospace',
+                fontWeight: 900,
+                textTransform: 'uppercase',
+                cursor: ocrBusy ? 'not-allowed' : 'pointer',
+                boxShadow: '2px 2px 0 #000',
+                opacity: ocrBusy ? 0.5 : 1,
+              }}
+            >
+              <ScanText size={13} /> {ocrBusy ? 'Reading your screenshot…' : 'Match-cut my screenshot'}
+            </button>
+            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#888', fontWeight: 700 }}>
+              Screenshot of an article → OCR → tap the words to cut on, in order.
+            </span>
+            <input
+              ref={scanFileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleScanImport(f);
+                e.target.value = '';
+              }}
+            />
           </div>
 
           {/* Tab Navigation (All 3 tabs sit strictly on ONE single line) */}
@@ -2347,7 +3368,8 @@ export default function TextMatchCutStudioPage() {
               </details>
             </div>
           )}
-
+          </>
+          )}
         </div>
       </div>
     </div>
