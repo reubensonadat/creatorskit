@@ -32,11 +32,43 @@ export type MatteStage = 'downloading' | 'processing' | 'uploading' | 'queued' |
 
 export type BrowserModel = 'isnet_quint8' | 'isnet_fp16' | 'isnet';
 
+/**
+ * Sizes measured from the live resources manifest (2026-10-13): the old copy
+ * promised "~23 MB" for the FAST model while the real file is ~42 MB — on a
+ * slow link that lie is the difference between one minute and ten, so the UI
+ * must tell the truth. Progressive ladder: LIGHTNING lands the cut fastest;
+ * users only download SHARPER/STUDIO when they actually want more detail.
+ */
 export const BROWSER_MODELS: Record<BrowserModel, { label: string; sub: string; sizeMB: number; tier: number }> = {
-    isnet_quint8: { label: 'FAST', sub: '~23 MB download', sizeMB: 23, tier: 0 },
-    isnet_fp16: { label: 'BETTER', sub: '~84 MB download', sizeMB: 84, tier: 1 },
-    isnet: { label: 'BEST', sub: '~176 MB download', sizeMB: 176, tier: 2 },
+    isnet_quint8: { label: 'LIGHTNING', sub: '~42 MB download', sizeMB: 42, tier: 0 },
+    isnet_fp16: { label: 'SHARPER', sub: '~84 MB download', sizeMB: 84, tier: 1 },
+    isnet: { label: 'STUDIO', sub: '~168 MB download', sizeMB: 168, tier: 2 },
 };
+
+/** localStorage key shared by every tool that cuts subjects out. */
+export const BG_REM_QUALITY_KEY = 'ck_bgrem_quality_v1';
+
+/** The visitor's saved model tier — LIGHTNING by default (smallest download). */
+export function preferredBrowserModel(): BrowserModel {
+    if (typeof window === 'undefined') return 'isnet_quint8';
+    try {
+        const v = window.localStorage.getItem(BG_REM_QUALITY_KEY);
+        if (v === 'isnet' || v === 'isnet_fp16' || v === 'isnet_quint8') return v;
+    } catch {
+        /* private mode / storage disabled — default */
+    }
+    return 'isnet_quint8';
+}
+
+/** Persist a model upgrade choice across tools and sessions. */
+export function setPreferredBrowserModel(model: BrowserModel): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(BG_REM_QUALITY_KEY, model);
+    } catch {
+        /* non-fatal */
+    }
+}
 
 export type MatteProgress = (
     stage: MatteStage,
@@ -394,8 +426,9 @@ class MatteWorkerBridge {
         if (this.worker) return this.worker;
         // ?v= cache-bust: the PWA service worker serves /workers/*.js
         // cache-first — a new query string guarantees every user picks up the
-        // current worker (with the IndexedDB model-cache patch) immediately.
-        const w = new Worker('/workers/bg-removal-worker.js?v=idb1', { type: 'module' });
+        // current worker (with the CDN import timeout + sticky-dead handling)
+        // immediately.
+        const w = new Worker('/workers/bg-removal-worker.js?v=net2', { type: 'module' });
         w.onmessage = (ev: MessageEvent) => this.onMessage(ev);
         w.onerror = () => this.failJob(new Error('Cutout engine crashed — restarting.'), true);
         this.worker = w;
@@ -539,6 +572,10 @@ async function runDirectFallback(
     // Model chunks must round-trip through the IndexedDB cache on the main
     // thread too — the worker carries its own self-contained patch.
     ensureModelFetchPatch();
+    // Instant feedback: downloading the engine glue takes a moment and the
+    // fetch progress only fires once the first resource responds — show the
+    // user the engine is alive BEFORE the first progress event.
+    onProgress?.('downloading', 'Loading AI cutout engine…', 1);
     if (!imglyModule) imglyModule = import('@imgly/background-removal');
     const { removeBackground } = await imglyModule;
     return await removeBackground(sourceBlob, {
@@ -616,6 +653,10 @@ export async function removeBackgroundBrowser(
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         throw new Error('You appear to be offline — reconnect to the internet, then retry the cutout.');
     }
+
+    // Zero-second feedback: even when the network is slow, the user must see
+    // the cut START instead of an apparently frozen tool.
+    onProgress?.('downloading', `Preparing AI cutout (${BROWSER_MODELS[model].label})…`, 1);
 
     if (activeCascade) activeCascade.cancelled = true;
     const token: CascadeToken = { cancelled: false };
@@ -784,7 +825,7 @@ export function prewarmBackgroundEngine(): void {
             // and never prewarm once the weights are already on disk.
             if (bridge.busy || engineEverSucceeded) return;
             tinyWarmupBlob()
-                .then((blob) => bridge.run({ blob, model: 'isnet_quint8', prewarm: true }))
+                .then((blob) => bridge.run({ blob, model: preferredBrowserModel(), prewarm: true }))
                 .catch(() => bridge.terminate());
         });
     };

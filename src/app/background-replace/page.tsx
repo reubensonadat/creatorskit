@@ -22,6 +22,7 @@ import {
     removeBackgroundBrowser,
     removeBackgroundServer,
     prewarmBackgroundEngine,
+    preferredBrowserModel,
     type MatteEngine,
     type MatteProgress,
 } from '@/lib/background-removal';
@@ -174,7 +175,7 @@ export default function BackgroundRemoverPage() {
             const out =
                 engine === 'server'
                     ? await removeBackgroundServer(file, onProgress)
-                    : await removeBackgroundBrowser(file, onProgress, 'isnet_quint8');
+                    : await removeBackgroundBrowser(file, onProgress, preferredBrowserModel());
             if (runIdRef.current !== runId) return;
             setCutoutBlob(out);
             setCutoutUrl(URL.createObjectURL(out));

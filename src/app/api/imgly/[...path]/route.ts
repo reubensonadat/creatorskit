@@ -18,11 +18,14 @@ import rawFallbackManifest from '@/lib/imgly-manifest-fallback.json';
  * on EVERY run — no amount of hard-refreshing fixes it.
  *
  * So this proxy rewrites resources.json: the /onnxruntime-web/* entries are
- * repointed at the exact jsep glue build we bundle, served straight from
- * the jsDelivr CDN (the same pin whisper-worker.ts uses). Those chunk names
- * are absolute URLs — `new URL(absolute, base)` ignores the publicPath —
- * and jsDelivr itself answers with year-long immutable CORS-enabled cache
- * headers, which also keeps the 27MB wasm off this edge function entirely.
+ * repointed at the exact jsep glue build we bundle (the same pin
+ * whisper-worker.ts uses). Chunk names are RELATIVE (`ort/…`) so they resolve
+ * against the publicPath and stream through this same-origin proxy: the
+ * browser never talks to jsDelivr directly. A direct 27MB cross-origin wasm
+ * fetch from flaky-to-jsDelivr networks (seen in the wild in West Africa)
+ * rejected with "Failed to fetch" and killed every in-tab cutout, while the
+ * edge→jsDelivr path stays reliable. Immutable browser caching plus the
+ * IndexedDB model cache keep it a one-time download per visitor.
  *
  * The lib byte-validates every chunk against the manifest
  * (`chunkSize !== blob.size` throws), so the rewritten entries carry the
@@ -59,6 +62,8 @@ const IMGLY_BASE = 'https://staticimgly.com/@imgly/background-removal-data/1.7.0
 // keep in sync with src/lib/captions/whisper-worker.ts (same pin, same CDN).
 const ORT_JSDELIVR = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0-dev.20260416-b7804b056c/dist/';
 const ORT_PREFIX = '/onnxruntime-web/';
+/** Same-origin segment under /api/imgly/{v2}/ that maps to ORT_JSDELIVR. */
+const ORT_PROXY_PREFIX = 'ort/';
 // The onnxruntime-web bundle we ship is compiled jsep-always (its own dist
 // hard-selects "ort-wasm-simd-threaded.jsep.mjs" even on the CPU/wasm path),
 // while @imgly asks for the PLAIN simd-threaded names on its CPU path. Plain
@@ -96,9 +101,11 @@ function patchManifest(manifest: Record<string, unknown>): string {
     for (const key of ORT_KEYS) {
         const glue = key.endsWith('.mjs') ? ORT_GLUE.mjs : ORT_GLUE.wasm;
         manifest[`${ORT_PREFIX}${key}`] = {
-            // absolute URL: the lib fetches it directly from jsDelivr
-            // (immutable + CORS there), bypassing this function for 27MB files
-            chunks: [{ name: `${ORT_JSDELIVR}${glue.file}`, offsets: [0, glue.size] }],
+            // RELATIVE chunk name: `new URL(name, publicPath)` resolves it to
+            // /api/imgly/v2/ort/<file> — streamed same-origin through the GET
+            // handler below (see the header note for why jsDelivr must never
+            // be contacted directly by the visitor's browser).
+            chunks: [{ name: `${ORT_PROXY_PREFIX}${glue.file}`, offsets: [0, glue.size] }],
             size: glue.size,
             mime: key.endsWith('.mjs') ? 'text/javascript' : 'application/wasm',
         };
@@ -232,6 +239,25 @@ export async function GET(
         headers.set('cache-control', 'no-store');
         const body = variant === 'v2n' ? await unpatchedManifest() : await patchedManifest();
         return new NextResponse(body, { status: 200, headers });
+    }
+
+    // ORT glue/wasm for the PATCHED (v2) manifest — relative `ort/*` chunk
+    // names served byte-exact from the pinned jsDelivr build. The lib
+    // validates chunk sizes against the manifest, so only the two known
+    // files are passable here.
+    if (rel.startsWith(ORT_PROXY_PREFIX)) {
+        const file = rel.slice(ORT_PROXY_PREFIX.length);
+        if (file !== ORT_GLUE.mjs.file && file !== ORT_GLUE.wasm.file) {
+            return new NextResponse('unknown ort resource', { status: 404 });
+        }
+        const upstream = await fetchUpstream(`${ORT_JSDELIVR}${file}`);
+        if (!upstream.body) {
+            return new NextResponse('ort resource unavailable', { status: 502 });
+        }
+        const headers = new Headers();
+        headers.set('content-type', file.endsWith('.wasm') ? 'application/wasm' : 'text/javascript');
+        headers.set('cache-control', IMMUTABLE);
+        return new NextResponse(upstream.body, { status: 200, headers });
     }
 
     // Model chunks + everything else: byte-exact passthrough from the

@@ -34,6 +34,7 @@ import {
     standardizeSourceImage,
     BROWSER_MODELS,
     prewarmBackgroundEngine,
+    preferredBrowserModel,
     type MatteEngine,
     type MatteProgress,
     type BrowserModel,
@@ -950,7 +951,7 @@ export default function TextBehindPage() {
             setMatte((prev) => (prev ? { ...prev, message, percent } : prev));
         };
         try {
-            const rawCutout = await removeBackgroundBrowser(source, onProgress, 'isnet_quint8');
+            const rawCutout = await removeBackgroundBrowser(source, onProgress, preferredBrowserModel());
             const stdCutout = await standardizeSourceImage(rawCutout);
             setCutoutImage(stdCutout.img);
             setCutoutInfo(`${stdCutout.width} × ${stdCutout.height}px · Subject Cutout Ready`);
@@ -2119,7 +2120,7 @@ export default function TextBehindPage() {
                                                 style={{ marginBottom: 16 }}
                                                 state={
                                                     (matte.message || '').toLowerCase().includes('fetch') ||
-                                                    (matte.message || '').toLowerCase().includes('download')
+                                                        (matte.message || '').toLowerCase().includes('download')
                                                         ? 'connecting'
                                                         : 'shaping'
                                                 }

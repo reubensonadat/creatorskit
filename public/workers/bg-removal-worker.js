@@ -22,9 +22,29 @@
 // patch below is guaranteed to be installed before any imgly code (and its
 // resource fetches) can possibly run.
 const IGLY_CDN = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
+// A bare dynamic import() has NO timeout: on networks where jsDelivr hangs
+// (seen in the wild in West Africa) the import sat silent for 3 minutes
+// until the main-thread watchdog killed the whole rung with "engine stalled"
+// and the user saw zero feedback. Cap it — a healthy import completes in a
+// few seconds — and make the failure STICKY so every later ladder rung fails
+// instantly instead of re-hanging, letting the cascade drop to the fully
+// same-origin in-tab engine.
+const IGLY_CDN_TIMEOUT_MS = 20000;
 let imglyModule = null;
-const getImgly = async () => {
-  if (!imglyModule) imglyModule = await import(IGLY_CDN);
+const getImgly = () => {
+  if (!imglyModule) {
+    imglyModule = Promise.race([
+      import(IGLY_CDN),
+      sleep(IGLY_CDN_TIMEOUT_MS).then(() => {
+        throw new Error('network: engine cdn import timed out');
+      }),
+    ]);
+    imglyModule.catch(() => {
+      const dead = Promise.reject(new Error('network: engine cdn unreachable'));
+      dead.catch(() => { /* pre-handled: no unhandledrejection if no job awaits */ });
+      imglyModule = dead;
+    });
+  }
   return imglyModule;
 };
 
