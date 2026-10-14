@@ -9,270 +9,348 @@ import AdBanner from '@/components/AdBanner';
 export default function Home() {
   return (
     <div style={{ background: "#f4f4f5", minHeight: "100vh", color: "#000000", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
-      {/* ─── HERO ────────────────────────────────────────────────────────── */}
-      <section style={{ padding: "clamp(48px, 10vw, 96px) clamp(16px, 5vw, 24px) clamp(30px, 6vw, 64px)", maxWidth: 1200, margin: "0 auto" }}>
-        {/* Headline — carries "Free" (SEO audit 2026-10-10): the modifier
-            every real query for this page includes. */}
-        <h1 style={{ fontSize: "clamp(2.5rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, color: "#000000", marginBottom: 24 }}>
-          Free Tools for
-          <br />
-          Creators &amp; Influencers
-        </h1>
+      {/* ─── HERO (TRUE LANDSCAPE SHOWCASE · WANDER.ph INSPIRED) ────────── */}
+      <section style={{ padding: "clamp(20px, 3.5vw, 36px) clamp(16px, 5vw, 24px) clamp(24px, 4vw, 40px)", maxWidth: 1200, margin: "0 auto" }}>
+        
+        {/* ─── TRUE LANDSCAPE SHOWCASE BANNER (Clean, Unobstructed Artwork) ─── */}
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            aspectRatio: "16 / 9",
+            borderRadius: "14px",
+            overflow: "hidden",
+            border: "3px solid #000000",
+            boxShadow: "5px 5px 0 #000000",
+            background: "#08080a",
+            marginBottom: 24,
+          }}
+        >
+          {/* Responsive WebP Landscape Image — 100% Free & Clear View */}
+          <picture>
+            <source
+              media="(max-width: 640px)"
+              srcSet="/assets/text-behind/creators-hero-mobile.webp"
+              type="image/webp"
+            />
+            <source
+              srcSet="/assets/text-behind/creators-hero.webp"
+              type="image/webp"
+            />
+            <img
+              src="/assets/text-behind/creators-hero.webp"
+              alt="CreatorsKit — Text Behind Image Hero"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center center",
+                display: "block",
+              }}
+            />
+          </picture>
 
-        {/* Subtitle */}
-        <p style={{ fontSize: "clamp(0.95rem, 2.2vw, 1.15rem)", color: "#444444", maxWidth: 620, lineHeight: 1.65, marginBottom: 38, fontWeight: 500 }}>
-          Brutalist tools to bill brands with MoMo/Bank, protect your content with deal agreements, and produce viral video assets.
-          <br />
-          No subscriptions. Runs 100% locally in your browser.
-        </p>
+        </div>
 
-        {/* ─── INITIAL TOOLS PICKER (Standardized Neobrutalism · Consistent Chevrons) ─── */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          {/* Invoices & Deals (Yellow Hero Anchor) */}
-          <Link
-            href="/business"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 24px",
-              background: "#FFE500",
-              color: "#000000",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-            }}
-          >
-            Invoices &amp; Deals
-            <ChevronRight size={16} />
-          </Link>
+        {/* ─── HEADLINE & QUICK ACTIONS (Cleanly below image) ─── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Action Row */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <Link
+              href="/app"
+              onClick={() => hapticTap()}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 24px",
+                background: "#FFE500",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.82rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+              }}
+            >
+              Open the App
+              <ChevronRight size={16} />
+            </Link>
 
-          {/* Teleprompter */}
-          <Link
-            href="/teleprompter"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 20px",
-              background: "#ffffff",
-              color: "#000000",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-              e.currentTarget.style.background = "#f4f4f5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-              e.currentTarget.style.background = "#ffffff";
-            }}
-          >
-            Teleprompter
-          </Link>
+            <Link
+              href="/text-behind"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 20px",
+                background: "#ffffff",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.82rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#f4f4f5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#ffffff";
+              }}
+            >
+              Try Text Behind Image
+              <ChevronRight size={16} />
+            </Link>
+          </div>
 
-          {/* Match Cut */}
-          <Link
-            href="/match-cut"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 20px",
-              background: "#ffffff",
-              color: "#000000",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-              e.currentTarget.style.background = "#f4f4f5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-              e.currentTarget.style.background = "#ffffff";
-            }}
-          >
-            Match CUT
-          </Link>
+          {/* SEO Headline */}
+          <div>
+            <h1 style={{ fontSize: "clamp(1.9rem, 5.2vw, 3.6rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.08, color: "#000000", margin: "4px 0 10px" }}>
+              Free Tools for Creators &amp; Influencers
+            </h1>
+            <p style={{ fontSize: "clamp(0.9rem, 2vw, 1.05rem)", color: "#444444", maxWidth: 680, lineHeight: 1.55, margin: 0, fontWeight: 500 }}>
+              Brutalist tools to bill brands, protect deal agreements, and produce viral video assets. No subscriptions. Runs 100% locally in your browser.
+            </p>
+          </div>
 
-          {/* Highlighter */}
-          <Link
-            href="/text-highlighter"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 20px",
-              background: "#ffffff",
-              color: "#000000",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-              e.currentTarget.style.background = "#f4f4f5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-              e.currentTarget.style.background = "#ffffff";
-            }}
-          >
-            Highlighter
-          </Link>
+          {/* ─── INITIAL TOOLS PICKER (Standardized Neobrutalism · Consistent Chevrons) ─── */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+            {/* Invoices & Deals (Yellow Hero Anchor) */}
+            <Link
+              href="/business"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 20px",
+                background: "#FFE500",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+              }}
+            >
+              Invoices &amp; Deals
+              <ChevronRight size={16} />
+            </Link>
 
-          {/* Thumbnail Lab */}
-          <Link
-            href="/thumbnail-lab"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 20px",
-              background: "#ffffff",
-              color: "#000000",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-              e.currentTarget.style.background = "#f4f4f5";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-              e.currentTarget.style.background = "#ffffff";
-            }}
-          >
-            Thumbnail Lab
-          </Link>
+            {/* Teleprompter */}
+            <Link
+              href="/teleprompter"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 18px",
+                background: "#ffffff",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#f4f4f5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#ffffff";
+              }}
+            >
+              Teleprompter
+            </Link>
 
-          {/* Research Blog (Consistent ChevronRight, White on Black) */}
-          <Link
-            href="/blog"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 22px",
-              background: "#000000",
-              color: "#ffffff",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-              e.currentTarget.style.background = "#222222";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-              e.currentTarget.style.background = "#000000";
-            }}
-          >
-            Research Blog
-            <ChevronRight size={16} />
-          </Link>
+            {/* Match Cut */}
+            <Link
+              href="/match-cut"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 18px",
+                background: "#ffffff",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#f4f4f5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#ffffff";
+              }}
+            >
+              Match CUT
+            </Link>
 
-          {/* OPEN THE APP — terminal entry into the app-home launcher
-              (owner ruling 2026-10-03: landing ⇄ app-home split) */}
-          <Link
-            href="/app"
-            onClick={() => hapticTap()}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 22px",
-              background: "#000000",
-              color: "#ffffff",
-              border: "2px solid #000000",
-              borderRadius: "4px",
-              fontWeight: 900,
-              fontSize: "0.82rem",
-              fontFamily: "monospace",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              textDecoration: "none",
-              boxShadow: "3px 3px 0 #000000",
-              transition: "all 0.12s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
-            }}
-          >
-            Open the App
-            <ChevronRight size={16} />
-          </Link>
+            {/* Highlighter */}
+            <Link
+              href="/text-highlighter"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 18px",
+                background: "#ffffff",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#f4f4f5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#ffffff";
+              }}
+            >
+              Highlighter
+            </Link>
+
+            {/* Thumbnail Lab */}
+            <Link
+              href="/thumbnail-lab"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 18px",
+                background: "#ffffff",
+                color: "#000000",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#f4f4f5";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#ffffff";
+              }}
+            >
+              Thumbnail Lab
+            </Link>
+
+            {/* Research Blog */}
+            <Link
+              href="/blog"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "11px 20px",
+                background: "#000000",
+                color: "#ffffff",
+                border: "2px solid #000000",
+                borderRadius: "4px",
+                fontWeight: 900,
+                fontSize: "0.8rem",
+                fontFamily: "monospace",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                textDecoration: "none",
+                boxShadow: "3px 3px 0 #000000",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translate(-2px, -2px)";
+                e.currentTarget.style.boxShadow = "5px 5px 0 #000000";
+                e.currentTarget.style.background = "#222222";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow = "3px 3px 0 #000000";
+                e.currentTarget.style.background = "#000000";
+              }}
+            >
+              Research Blog
+              <ChevronRight size={16} />
+            </Link>
+          </div>
         </div>
       </section>
 

@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
-    ArrowLeft,
     AudioLines,
     Droplets,
     Eraser,
@@ -563,37 +562,12 @@ export default function AppHome() {
                     style={{
                         maxWidth: 1200,
                         margin: '0 auto',
-                        padding: '8px 12px',
+                        padding: '10px 16px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 12,
                     }}
                 >
-                    {/* Back / Site link */}
-                    <Link
-                        href="/"
-                        onClick={() => hapticTap()}
-                        title="Back to CreatorsKit site"
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            padding: '6px 9px',
-                            background: '#ffffff',
-                            border: '1.5px solid #000000',
-                            borderRadius: '4px',
-                            textDecoration: 'none',
-                            color: '#000000',
-                            fontWeight: 900,
-                            fontSize: '0.68rem',
-                            fontFamily: 'monospace',
-                            flexShrink: 0,
-                            boxShadow: '1px 1px 0 #000000',
-                        }}
-                    >
-                        <ArrowLeft size={13} />
-                        <span>SITE</span>
-                    </Link>
 
                     {/* Integrated Search Bar — Immediate usable real estate right at the top */}
                     <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
