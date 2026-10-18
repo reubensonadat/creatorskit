@@ -17,7 +17,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Scissors, Download, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2 } from 'lucide-react';
+import { ImagePlus, Scissors, Download, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2, Barcode, QrCode, Frame, Sparkles, BookOpen, Crown, Tag, Wand2, Loader2 } from 'lucide-react';
+import { ByokModal, ByokButton } from '@/components/ai/ByokModal';
+import { getStoredAiKey, getActiveAiProvider, getStoredAiModel } from '@/lib/ai-keyring';
 import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
 import Link from 'next/link';
 import NextImage from 'next/image';
@@ -26,7 +28,9 @@ import SiteNav from '@/components/nav/SiteNav';
 import { downloadBlob } from '@/lib/canvas-video-exporter';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { REMIX_ICONS_LIST, type IconDefinition } from '@/lib/remix-icons';
+import QRCode from 'qrcode';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
+import { analyzePhotoFromCanvas, composeSystemCover, LAYOUT_LIBRARY, type SystemContentInput } from '@/lib/magazine/cover-system';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import { gateAction } from '@/components/AdGate';
 import {
@@ -240,7 +244,7 @@ const DEFAULT_TEXT_LAYER: TextLayer = {
 // Advanced image editing — shape overlays (rect / line / light beam) + grain
 // ---------------------------------------------------------------------------
 
-type ShapeKind = 'rect' | 'line' | 'beam' | 'circle' | 'icon' | 'button';
+type ShapeKind = 'rect' | 'line' | 'beam' | 'circle' | 'icon' | 'button' | 'barcode' | 'badge' | 'frame' | 'qr';
 
 interface ShapeLayer {
     id: string;
@@ -260,7 +264,7 @@ interface ShapeLayer {
     blend: BlendMode;
     depth: 'behind' | 'front'; // relative to the subject cutout
     iconId?: string; // remix icon id (kind === 'icon')
-    label?: string; // centred text (kind === 'button') — e.g. "NEXT"
+    label?: string; // centred text (kind === 'button', 'badge', 'barcode') — e.g. "NEXT"
 }
 
 interface ShapeMetric {
@@ -271,26 +275,112 @@ interface ShapeMetric {
     rot: number;
 }
 
-const makeShape = (kind: ShapeKind, index: number): ShapeLayer => ({
-    id: `shape-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`,
-    kind,
-    xPct: 0.5,
-    yPct: kind === 'button' ? 0.82 : 0.5,
-    wPct: kind === 'rect' || kind === 'circle' ? 40 : kind === 'icon' ? 14 : kind === 'button' ? 34 : 70,
-    hPct: kind === 'rect' ? 18 : kind === 'line' ? 0.7 : kind === 'beam' ? 4 : kind === 'icon' ? 14 : kind === 'button' ? 9 : 40,
-    rotationDeg: kind === 'beam' ? -24 : 0,
-    fillColor: kind === 'beam' ? '#7DD3FC' : kind === 'line' || kind === 'button' ? '#FFFFFF' : '#FFE500',
-    iconId: 'arrow-right',
-    label: kind === 'button' ? 'NEXT' : undefined,
-    fillOn: true,
-    strokeColor: '#000000',
-    strokeW: kind === 'button' ? 8 : 0,
-    cornerPct: kind === 'rect' ? 8 : kind === 'button' ? 18 : 50,
-    opacity: 1,
-    glow: kind === 'beam' ? 0.8 : 0,
-    blend: 'normal',
-    depth: kind === 'button' ? 'front' : 'behind',
-});
+const makeShape = (kind: ShapeKind, index: number): ShapeLayer => {
+    let wPct = 40;
+    let hPct = 18;
+    let yPct = 0.5;
+    let xPct = 0.5;
+    let depth: 'behind' | 'front' = 'behind';
+    let label: string | undefined = undefined;
+    let strokeW = 0;
+    let strokeColor = '#000000';
+    let fillColor = '#FFE500';
+    let fillOn = true;
+    let cornerPct = 8;
+    let glow = 0;
+    let rotationDeg = 0;
+
+    if (kind === 'rect' || kind === 'circle') {
+        wPct = 40;
+        hPct = kind === 'rect' ? 18 : 40;
+    } else if (kind === 'line') {
+        wPct = 70;
+        hPct = 0.7;
+        fillColor = '#FFFFFF';
+    } else if (kind === 'beam') {
+        wPct = 70;
+        hPct = 4;
+        rotationDeg = -24;
+        fillColor = '#7DD3FC';
+        glow = 0.8;
+    } else if (kind === 'icon') {
+        wPct = 14;
+        hPct = 14;
+    } else if (kind === 'button') {
+        wPct = 34;
+        hPct = 9;
+        yPct = 0.82;
+        fillColor = '#FFFFFF';
+        strokeW = 8;
+        cornerPct = 18;
+        depth = 'front';
+        label = 'NEXT';
+    } else if (kind === 'barcode') {
+        wPct = 24;
+        hPct = 7.5;
+        xPct = 0.82;
+        yPct = 0.92;
+        fillColor = '#FFFFFF';
+        strokeColor = '#000000';
+        strokeW = 0;
+        cornerPct = 0;
+        depth = 'front';
+        label = '9771234567003';
+    } else if (kind === 'qr') {
+        wPct = 13;
+        hPct = 13;
+        xPct = 0.82;
+        yPct = 0.88;
+        fillColor = '#FFFFFF';
+        strokeColor = '#000000';
+        strokeW = 0;
+        cornerPct = 0;
+        depth = 'front';
+        label = 'https://creatorskit.app';
+    } else if (kind === 'badge') {
+        wPct = 38;
+        hPct = 4.2;
+        xPct = 0.5;
+        yPct = 0.08;
+        fillColor = '#000000';
+        strokeColor = '#FFFFFF';
+        strokeW = 2;
+        cornerPct = 4;
+        depth = 'front';
+        label = 'ISSUE N° 04 • FALL 2026';
+    } else if (kind === 'frame') {
+        wPct = 92;
+        hPct = 94;
+        xPct = 0.5;
+        yPct = 0.5;
+        fillOn = false;
+        strokeColor = '#FFFFFF';
+        strokeW = 2;
+        cornerPct = 0;
+        depth = 'front';
+    }
+
+    return {
+        id: `shape-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+        kind,
+        xPct,
+        yPct,
+        wPct,
+        hPct,
+        rotationDeg,
+        fillColor,
+        iconId: 'arrow-right',
+        label,
+        fillOn,
+        strokeColor,
+        strokeW,
+        cornerPct,
+        opacity: 1,
+        glow,
+        blend: 'normal',
+        depth,
+    };
+};
 
 interface GrainSettings {
     enabled: boolean;
@@ -308,6 +398,8 @@ interface UndoSnapshot {
     activeShapeId: string | null;
     grain: GrainSettings;
     bgDim: number;
+    dimWholePhoto?: boolean;
+    photoFilter?: 'none' | 'mono' | 'vintage' | 'noir';
 }
 
 /** Deterministic seeded PRNG — the grain tile is stable across redraws/exports. */
@@ -466,6 +558,436 @@ const TEXT_PRESETS: { id: string; name: string; swatch: string; patch: Partial<T
     },
 ];
 
+// --- AI Auto-Cover style options & response mapping helpers ----------------
+// (mirror the contract in src/app/api/ai/magazine-layout/route.ts)
+
+const AI_STYLE_OPTIONS: {
+    id: 'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural';
+    label: string;
+}[] = [
+        { id: 'auto', label: 'AUTO' },
+        { id: 'vogue', label: 'FASHION' },
+        { id: 'zine', label: 'ZINE' },
+        { id: 'kinfolk', label: 'LUXURY' },
+        { id: 'noir', label: 'NOIR' },
+        { id: 'gq', label: 'GQ' },
+        { id: 'dazed', label: 'DAZED' },
+        { id: 'natgeo', label: 'DISCOVERY' },
+        { id: 'cyber', label: 'CYBER' },
+        { id: 'vinyl', label: 'VINYL' },
+        { id: 'architectural', label: 'ARCHITECT' },
+    ];
+
+/** Sanitize an AI-provided case transform (defaults to uppercase editorial). */
+const asCaseMode = (v: unknown): TextLayer['caseMode'] =>
+    v === 'lowercase' || v === 'capitalize' || v === 'original' || v === 'uppercase' ? v : 'uppercase';
+
+/** Sanitize an AI-provided blend mode. */
+const asBlendMode = (v: unknown): BlendMode =>
+    v === 'multiply' || v === 'overlay' || v === 'screen' ? v : 'normal';
+
+/** Clamp an AI-provided number to a sane editorial range. */
+const clampNum = (v: unknown, min: number, max: number, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+
+/** Sanitize an AI-provided colour to #RRGGBB (canvas-safe). */
+const asHexColor = (v: unknown, fallback: string): string =>
+    typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim().toUpperCase() : fallback;
+
+/** Sanitize an AI-provided shadow mode — print type stays crisp by default. */
+const asShadowMode = (v: unknown): TextLayer['shadowMode'] =>
+    v === 'soft' || v === 'hard' || v === 'neon' ? v : 'none';
+
+// --- Real EAN-13 barcode encoding (authentic, scannable print specs) -------
+
+const EAN_L = ['0001101', '0011001', '0010011', '0111101', '0100011', '0110001', '0101111', '0111011', '0110111', '0001011'];
+const EAN_G = ['0100111', '0110011', '0011011', '0100001', '0011101', '0111001', '0000101', '0010001', '0001001', '0010111'];
+const EAN_R = ['1110010', '1100110', '1101100', '1000010', '1011100', '1001110', '1010000', '1000100', '1001000', '1110100'];
+/** First digit → A/B pattern for the six left-side digits (A=odd/L, B=even/G). */
+const EAN_PARITY = ['AAAAAA', 'AABABB', 'AABBAB', 'AABBBA', 'ABAABB', 'ABBAAB', 'ABBBAA', 'ABABAB', 'ABABBA', 'ABBABA'];
+
+/** Extract 13 clean digits from any label (custom numbers welcome). Missing
+ *  digits are filled deterministically and the check digit is always computed. */
+const ean13Digits = (label: string): string => {
+    const given = (label.match(/\d/g) || []).join('').slice(0, 13);
+    let base = given.length >= 9 ? given.slice(0, 12) : '';
+    let fill = 0;
+    while (base.length < 12) {
+        base += String((base.length * 7 + fill * 3 + 4) % 10);
+        fill++;
+    }
+    const d = base.split('').map(Number);
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += d[i] * (i % 2 === 0 ? 1 : 3);
+    const check = (10 - (sum % 10)) % 10;
+    return base + String(check);
+};
+
+/** 95-module EAN-13 bit string (guards + parity-encoded left + right). */
+const ean13Bits = (digits: string): string => {
+    const parity = EAN_PARITY[Number(digits[0])] || 'AAAAAA';
+    let bits = '101';
+    for (let i = 1; i <= 6; i++) {
+        const d = Number(digits[i]);
+        bits += parity[i - 1] === 'A' ? EAN_L[d] : EAN_G[d];
+    }
+    bits += '01010';
+    for (let i = 7; i <= 12; i++) bits += EAN_R[Number(digits[i])];
+    return bits + '101';
+};
+
+// --- Real QR code matrix (client-side, via the `qrcode` package) -----------
+
+interface QrMatrix {
+    size: number;
+    dark: boolean[];
+}
+
+const qrMatrixCache = new Map<string, QrMatrix>();
+
+const getQrMatrix = (text: string): QrMatrix | null => {
+    const content = (text || '').trim() || 'https://creatorskit.app';
+    const cached = qrMatrixCache.get(content);
+    if (cached) return cached;
+    try {
+        const qr = QRCode.create(content, { errorCorrectionLevel: 'M' });
+        const size = qr.modules.size;
+        const data = qr.modules.data;
+        const dark: boolean[] = [];
+        for (let i = 0; i < size * size; i++) dark[i] = (data[i] & 1) === 1;
+        const matrix = { size, dark };
+        qrMatrixCache.set(content, matrix);
+        return matrix;
+    } catch {
+        return null;
+    }
+};
+
+// --- Front-element collision resolver (the "nothing overlaps" contract) ----
+
+/** Nudge front elements apart when their boxes intersect — every AI layout
+ *  lands butter-smooth with zero overlaps, deterministically. */
+/** ------------------------------------------------------------------
+ * LAYOUT LAW ENGINE — the app's own civic sense, applied by AUTO-LAYOUT
+ * to every generated surface (AI covers, ASSEMBLE covers, presets).
+ *
+ * L1 · PURPOSE — a rect/circle/line/beam that carries no text is idle
+ *      decoration and is deleted. Only functional objects (barcode, QR,
+ *      frame, badge, button, icon) may stand on a cover alone.
+ * L2 · PLATING — a rect that owns text is re-cut to that text with real
+ *      padding and moved to its text's side of the sandwich, so a plate
+ *      never floats in front of the message it serves.
+ * L3 · SEPARATION — nothing crosses anything: ownership-aware collision
+ *      solve; text never stacks on text, foreign plates, barcode or QR.
+ *      Plates travel WITH their text instead of being pushed off it.
+ * L4 · CLEARANCE — inside a page frame every element clears the frame
+ *      line by a margin, and no text sits on a divider rule.
+ * ------------------------------------------------------------------ */
+const enforceLayoutLaws = (
+    layers: TextLayer[],
+    shapes: ShapeLayer[],
+    opts: { prune?: boolean } = {},
+): { layers: TextLayer[]; shapes: ShapeLayer[] } => {
+    const PRUNE = opts.prune !== false;
+    type Box = { x0: number; y0: number; x1: number; y1: number };
+    const railOf = (rot: number) => Math.abs(Math.abs(rot || 0) - 90) < 15;
+    const axisAligned = (rot: number) => Math.abs((rot || 0) % 180) <= 12;
+    const boxOfLayer = (l: TextLayer): Box => {
+        const rail = railOf(l.rotationDeg);
+        const w = (rail ? l.heightPct : l.widthPct) / 100;
+        const h = (rail ? l.widthPct : l.heightPct) / 100;
+        return { x0: l.xPct - w / 2, x1: l.xPct + w / 2, y0: l.yPct - h / 2, y1: l.yPct + h / 2 };
+    };
+    const boxOfShape = (s: ShapeLayer): Box => {
+        const side = Math.min(s.wPct, s.hPct);
+        const square = s.kind === 'qr' || s.kind === 'circle';
+        const rail = railOf(s.rotationDeg);
+        const w = (square ? side : s.wPct) / 100;
+        const h = ((square ? side : s.hPct) + (s.kind === 'barcode' || s.kind === 'qr' || s.kind === 'badge' ? 1 : 0)) / 100;
+        return rail
+            ? { x0: s.xPct - h / 2, x1: s.xPct + h / 2, y0: s.yPct - w / 2, y1: s.yPct + w / 2 }
+            : { x0: s.xPct - w / 2, x1: s.xPct + w / 2, y0: s.yPct - h / 2, y1: s.yPct + h / 2 };
+    };
+    const inter = (a: Box, b: Box): number =>
+        Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
+        Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+    const area = (b: Box): number => Math.max(0.0001, (b.x1 - b.x0) * (b.y1 - b.y0));
+    const centerIn = (b: Box, t: Box): boolean =>
+        (t.x0 + t.x1) / 2 >= b.x0 && (t.x0 + t.x1) / 2 <= b.x1 && (t.y0 + t.y1) / 2 >= b.y0 && (t.y0 + t.y1) / 2 <= b.y1;
+    const functional = (s: ShapeLayer): boolean =>
+        s.kind === 'barcode' || s.kind === 'qr' || s.kind === 'frame' || s.kind === 'badge' || s.kind === 'button' || s.kind === 'icon';
+
+    const texts = layers.map((l) => ({ l, box: boxOfLayer(l) }));
+
+    // -- L1 · PURPOSE — prune idle decoration --------------------------------
+    const ownsText = new Map<string, string>(); // shapeId -> ownerId
+    const kept: ShapeLayer[] = [];
+    for (const s of shapes) {
+        if (functional(s)) {
+            kept.push(s);
+            continue;
+        }
+        const sb = boxOfShape(s);
+        let owner: string | null = null;
+        for (const t of texts) {
+            const cov = inter(sb, t.box) / area(t.box);
+            const attachedRule =
+                s.kind === 'line' &&
+                Math.max(sb.x0, t.box.x0) < Math.min(sb.x1, t.box.x1) &&
+                Math.min(Math.abs(sb.y0 - t.box.y1), Math.abs(t.box.y0 - sb.y1)) < 0.035;
+            if (centerIn(sb, t.box) || cov >= 0.5 || attachedRule) {
+                owner = t.l.id;
+                break;
+            }
+        }
+        if (owner) {
+            ownsText.set(s.id, owner);
+            kept.push(s);
+        } else if (!PRUNE) {
+            // Manual mode keeps the user's decoration — but the laws still
+            // stop it from crossing anything (it joins the separation solve).
+            kept.push(s);
+        }
+        // else — idle: a rectangle just sitting there doing nothing. Deleted.
+    }
+
+    // -- L2 · PLATING — owned rects become true plates ------------------------
+    let shaped: ShapeLayer[] = kept.map((s) => {
+        const ownerId = ownsText.get(s.id);
+        if (!ownerId || s.kind !== 'rect' || !axisAligned(s.rotationDeg)) return s;
+        const t = texts.find((x) => x.l.id === ownerId);
+        if (!t || !axisAligned(t.l.rotationDeg)) return s;
+        const padX = Math.max(0.014, (t.box.x1 - t.box.x0) * 0.07);
+        const padY = Math.max(0.011, (t.box.y1 - t.box.y0) * 0.32);
+        const x0 = Math.max(0.01, t.box.x0 - padX);
+        const x1 = Math.min(0.99, t.box.x1 + padX);
+        const y0 = Math.max(0.012, t.box.y0 - padY);
+        const y1 = Math.min(0.982, t.box.y1 + padY);
+        return {
+            ...s,
+            depth: t.l.depth, // the plate serves its text — same side of the sandwich
+            xPct: (x0 + x1) / 2,
+            yPct: (y0 + y1) / 2,
+            wPct: (x1 - x0) * 100,
+            hPct: (y1 - y0) * 100,
+        };
+    });
+
+    // -- L4 · CLEARANCE — respect the frame, respect the rules ---------------
+    let outLayers: TextLayer[] = layers.map((l) => ({ ...l }));
+    const pageFrame = shaped.find(
+        (s) => s.kind === 'frame' && s.wPct > 80 && s.hPct > 80 && axisAligned(s.rotationDeg)
+    );
+    if (pageFrame) {
+        const fb = boxOfShape(pageFrame);
+        const ix0 = fb.x0 + 0.026;
+        const ix1 = fb.x1 - 0.026;
+        const iy0 = fb.y0 + 0.03;
+        const iy1 = fb.y1 - 0.03;
+        outLayers = outLayers.map((l) => {
+            if (l.depth !== 'front' || !axisAligned(l.rotationDeg)) return l;
+            const b = boxOfLayer(l);
+            const w = b.x1 - b.x0;
+            let cx = l.xPct;
+            let widthPct = l.widthPct;
+            if (w > ix1 - ix0) {
+                // Too wide for the frame interior — narrow the line itself.
+                widthPct = (ix1 - ix0) * 100 * 0.98;
+                cx = (ix0 + ix1) / 2;
+            } else {
+                if (b.x0 < ix0) cx = ix0 + w / 2;
+                if (b.x1 > ix1) cx = ix1 - w / 2;
+            }
+            const h = b.y1 - b.y0;
+            let cy = l.yPct;
+            if (b.y0 < iy0) cy = iy0 + h / 2;
+            if (b.y1 > iy1) cy = iy1 - h / 2;
+            return { ...l, xPct: cx, yPct: cy, widthPct };
+        });
+        shaped = shaped.map((s) => {
+            if (s.kind === 'frame' || !axisAligned(s.rotationDeg)) return s;
+            const b = boxOfShape(s);
+            const w = b.x1 - b.x0;
+            const h = b.y1 - b.y0;
+            let cx = s.xPct;
+            if (b.x0 < ix0) cx = ix0 + w / 2;
+            if (b.x1 > ix1) cx = ix1 - w / 2;
+            let cy = s.yPct;
+            if (b.y0 < iy0) cy = iy0 + h / 2;
+            if (b.y1 > iy1) cy = iy1 - h / 2;
+            return { ...s, xPct: cx, yPct: cy };
+        });
+    }
+    const rules = shaped.filter((s) => s.kind === 'line' && s.hPct < 2.5 && axisAligned(s.rotationDeg));
+    if (rules.length > 0) {
+        outLayers = outLayers.map((l) => {
+            if (l.depth !== 'front') return l;
+            const b = boxOfLayer(l);
+            for (const r of rules) {
+                const rb = boxOfShape(r);
+                if (Math.max(b.x0, rb.x0) >= Math.min(b.x1, rb.x1)) continue;
+                if (b.y0 >= rb.y1 || b.y1 <= rb.y0) continue;
+                // Text sitting ON a divider rule — push it fully clear.
+                const h = b.y1 - b.y0;
+                const toTop = Math.abs(b.y1 - rb.y0);
+                const toBottom = Math.abs(rb.y1 - b.y0);
+                const gap = 0.016;
+                const cy = toTop <= toBottom ? rb.y0 - gap - h / 2 : rb.y1 + gap + h / 2;
+                return { ...l, yPct: Math.min(0.975, Math.max(0.025, cy)) };
+            }
+            return l;
+        });
+    }
+
+    // -- L3 · SEPARATION — situational-awareness solve ------------------------
+    // Every element knows three things about its surroundings: the boxes of
+    // its neighbours, WHO those neighbours are (role weight — the masthead
+    // and the barcode are anchors that hold their line while teasers
+    // yield), and where the left/right page edges are.
+    type Node = { id: string; isLayer: boolean; cx: number; cy: number; hw: number; hh: number; weight: number };
+    const roleWeight = (id: string, isLayer: boolean, kind?: ShapeKind): number => {
+        if (isLayer) {
+            if (id === 'box-masthead') return 3.0;
+            if (id === 'box-feature') return 2.2;
+            if (id.startsWith('box-sub')) return 1.6;
+            if (id === 'box-dateline' || id === 'box-rail') return 1.2;
+            return 1.0;
+        }
+        if (kind === 'barcode' || kind === 'qr') return 2.6;
+        if (kind === 'badge' || kind === 'button') return 1.8;
+        return 1.0;
+    };
+    const nodes: Node[] = [];
+    // Every text joins the solve — behind-depth included. The sandwich look
+    // (text under the cutout) is preserved because separation only acts
+    // where boxes actually intersect; plates never join as boulders.
+    outLayers
+        .forEach((l) => {
+            const b = boxOfLayer(l);
+            nodes.push({
+                id: l.id,
+                isLayer: true,
+                cx: l.xPct,
+                cy: l.yPct,
+                hw: Math.max(0.02, (b.x1 - b.x0) / 2),
+                hh: Math.max(0.02, (b.y1 - b.y0) / 2),
+                weight: roleWeight(l.id, true),
+            });
+        });
+    shaped
+        .filter(
+            (s) =>
+                s.depth === 'front' &&
+                !ownsText.has(s.id) && // plates travel with their text, not as boulders
+                !(s.kind === 'frame' && s.wPct > 80 && s.hPct > 80) &&
+                !(s.kind === 'line' && s.hPct < 1.5)
+        )
+        .forEach((s) => {
+            const b = boxOfShape(s);
+            nodes.push({
+                id: s.id,
+                isLayer: false,
+                cx: s.xPct,
+                cy: s.yPct,
+                hw: Math.max(0.02, (b.x1 - b.x0) / 2),
+                hh: Math.max(0.02, (b.y1 - b.y0) / 2),
+                weight: roleWeight(s.id, false, s.kind),
+            });
+        });
+    const GAP = 0.018;
+    const HGAP = 0.014;
+    const clampX = (n: Node) => {
+        if (n.hw < 0.48) n.cx = Math.min(0.98 - n.hw, Math.max(0.02 + n.hw, n.cx));
+    };
+    const order = [...nodes].sort((a, b) => a.cy - b.cy);
+
+    for (let i = 0; i < order.length; i++) {
+        for (let j = i + 1; j < order.length; j++) {
+            const a = order[i];
+            const b = order[j];
+            const xOverlap = a.hw + b.hw - Math.abs(a.cx - b.cx);
+            if (xOverlap <= 0) continue; // side-by-side and aware of it — clear
+            const minDist = a.hh + b.hh + GAP;
+            const dist = b.cy - a.cy;
+            if (dist >= minDist) continue;
+            // Awareness #1 — SIDESTEP: the columns only graze each other and
+            // the elements sit at the same height, so the lighter one steps
+            // aside horizontally instead of triggering a vertical cascade.
+            const minW = Math.min(a.hw, b.hw);
+            const sameBand = Math.abs(a.cy - b.cy) < (a.hh + b.hh) * 0.8;
+            if (sameBand && xOverlap < minW * 0.7) {
+                const lighter = a.weight <= b.weight ? a : b;
+                const dir = lighter.cx <= (lighter === a ? b.cx : a.cx) ? -1 : 1;
+                lighter.cx += dir * (xOverlap + HGAP);
+                clampX(lighter);
+                continue;
+            }
+            // Awareness #2 — ROLE: anchors (masthead, feature, barcode, QR)
+            // hold their line; the yield is split by inverse weight so the
+            // junior element (a teaser, a sub) does the moving.
+            const aAnchor = a.weight >= 2.2;
+            const bAnchor = b.weight >= 2.2;
+            const push = minDist - dist;
+            const invA = aAnchor ? 0 : 1 / a.weight;
+            const invB = bAnchor ? 0 : 1 / b.weight;
+            const total = invA + invB || 1;
+            a.cy = Math.max(0.04, a.cy - push * (invA / total));
+            // b absorbs whatever a could not take, clamped to the safe zone.
+            b.cy = Math.min(0.955, Math.max(b.cy, a.cy + minDist));
+        }
+    }
+
+    const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+    const finalLayers = outLayers.map((l) => {
+        const n = nodeById.get(l.id);
+        return n ? { ...l, yPct: n.cy, xPct: n.cx } : l;
+    });
+
+    // Awareness #3 — EDGES: nobody hangs off the left or right margin.
+    // (Rails are exempt — living on the edge IS their job.)
+    const edgeSafe = finalLayers.map((l) => {
+        if (railOf(l.rotationDeg)) return l;
+        const hw = Math.min(0.48, l.widthPct / 200);
+        let xPct = l.xPct;
+        let widthPct = l.widthPct;
+        if (hw >= 0.48) {
+            widthPct = 96;
+            xPct = 0.5;
+        } else {
+            if (l.xPct - hw < 0.02) xPct = 0.02 + hw;
+            if (l.xPct + hw > 0.98) xPct = 0.98 - hw;
+        }
+        return xPct === l.xPct && widthPct === l.widthPct ? l : { ...l, xPct, widthPct };
+    });
+
+    // Owned shapes re-cut / re-follow their (possibly moved) owner text.
+    const finalTexts = edgeSafe.map((l) => ({ l, box: boxOfLayer(l) }));
+    const finalShapes = shaped.map((s) => {
+        const ownerId = ownsText.get(s.id);
+        if (!ownerId) {
+            const n = nodeById.get(s.id);
+            return n ? { ...s, yPct: n.cy } : s;
+        }
+        const t = finalTexts.find((x) => x.l.id === ownerId);
+        const before = texts.find((x) => x.l.id === ownerId);
+        if (!t || !before) return s;
+        if (s.kind === 'rect' && axisAligned(s.rotationDeg) && axisAligned(t.l.rotationDeg)) {
+            // Full re-cut so the padding is pixel-perfect after the solve.
+            const padX = Math.max(0.014, (t.box.x1 - t.box.x0) * 0.07);
+            const padY = Math.max(0.011, (t.box.y1 - t.box.y0) * 0.32);
+            const x0 = Math.max(0.01, t.box.x0 - padX);
+            const x1 = Math.min(0.99, t.box.x1 + padX);
+            const y0 = Math.max(0.012, t.box.y0 - padY);
+            const y1 = Math.min(0.982, t.box.y1 + padY);
+            return { ...s, xPct: (x0 + x1) / 2, yPct: (y0 + y1) / 2, wPct: (x1 - x0) * 100, hPct: (y1 - y0) * 100 };
+        }
+        // Circles / rules keep their offset from the owner and travel with it.
+        return { ...s, xPct: s.xPct + (t.l.xPct - before.l.xPct), yPct: s.yPct + (t.l.yPct - before.l.yPct) };
+    });
+
+    return { layers: edgeSafe, shapes: finalShapes };
+};
+
 /** Custom color entry — accepts #rgb, #rrggbb, rrggbb or rgb(r,g,b). */
 function parseColorInput(raw: string): string | null {
     const s = raw.trim().replace(/^#/, '');
@@ -620,7 +1142,7 @@ export default function TextBehindPage() {
         const stack = undoStackRef.current;
         const last = stack[stack.length - 1];
         // Skip no-op pushes (identical state objects) and coalesce rapid bursts (slider scrubs).
-        if (last && last.layers === snap.layers && last.shapes === snap.shapes && last.grain === snap.grain && last.bgDim === snap.bgDim) return;
+        if (last && last.layers === snap.layers && last.shapes === snap.shapes && last.grain === snap.grain && last.bgDim === snap.bgDim && last.dimWholePhoto === snap.dimWholePhoto && last.photoFilter === snap.photoFilter) return;
         const now = Date.now();
         if (stack.length > 0 && now - lastPushAtRef.current < 450) return;
         lastPushAtRef.current = now;
@@ -679,10 +1201,58 @@ export default function TextBehindPage() {
     const [dropActive, setDropActive] = useState(false);
     /** Background dim (0–0.85) — darkens the photo so the type pops. */
     const [bgDim, setBgDim] = useState(0);
+    /** Dim entire photo (both background AND cutout together) */
+    const [dimWholePhoto, setDimWholePhoto] = useState(false);
+    /** Photo color grade preset (monochrome, vintage, noir, or original) */
+    const [photoFilter, setPhotoFilter] = useState<'none' | 'mono' | 'vintage' | 'noir'>('none');
+
+    // --- Magazine Presets & AI Studio state ---
+    const [editorialOpen, setEditorialOpen] = useState(false);
+    const [activeEditorialPreset, setActiveEditorialPreset] = useState<string | null>(null);
+    const [aiModalOpen, setAiModalOpen] = useState(false);
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [aiStyle, setAiStyle] = useState<'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural'>('auto');
+    const [aiError, setAiError] = useState<string | null>(null);
+
+    /** AUTO-LAYOUT (default ON): the app quietly keeps every front element
+     *  collision-free and print-tidy after AI layouts. OFF = full manual rule. */
+    const [autoLayout, setAutoLayout] = useState(true);
+    /** One-shot law pass requested by preset application (the preset writes
+     *  raw layers/shapes; the flag makes the effect above catch them). */
+    const solveNextRef = useRef(false);
+    /** ASSEMBLE walks the hidden 50-preset LAYOUT POOL in order — every
+     *  click lands a different structural skeleton (A1 → A2 → … → F12). */
+    const assembleIdxRef = useRef(0);
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('ck_text_behind_autolayout_v1');
+            if (saved === '0') setAutoLayout(false);
+        } catch { /* default on */ }
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('ck_text_behind_autolayout_v1', autoLayout ? '1' : '0');
+        } catch { /* non-fatal */ }
+    }, [autoLayout]);
 
     // --- advanced image editing: shape overlays + film grain ----------------
     const [shapes, setShapes] = useState<ShapeLayer[]>([]);
     const [activeShapeId, setActiveShapeId] = useState<string | null>(null);
+
+    // Preset → law pass: presets write raw layers/shapes across many
+    // branches; this catches the result once and runs the laws on it.
+    useEffect(() => {
+        if (!solveNextRef.current) return;
+        solveNextRef.current = false;
+        if (!autoLayout) return;
+        const solved = enforceLayoutLaws(layers, shapes);
+        setLayers(solved.layers);
+        setShapes(solved.shapes);
+    }, [layers, shapes, autoLayout]);
+
     const [grain, setGrain] = useState<GrainSettings>(DEFAULT_GRAIN);
     /** Collapsed by default — the advanced kit only appears when asked for. */
     const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -694,7 +1264,13 @@ export default function TextBehindPage() {
         setShapes((prev) => prev.map((s) => (s.id === activeShapeId ? { ...s, ...patch } : s)));
     }, [activeShapeId, pushUndo]);
 
+    const MAX_SHAPES = 12;
+
     const addShape = (kind: ShapeKind) => {
+        if (shapes.length >= MAX_SHAPES) {
+            alert(`Shape limit reached (${MAX_SHAPES} layers). Delete one first — premium pages stay uncluttered.`);
+            return;
+        }
         pushUndo();
         const s = makeShape(kind, shapes.length);
         setShapes((prev) => [...prev, s]);
@@ -711,8 +1287,8 @@ export default function TextBehindPage() {
 
     /** Keep the snapshot source in sync with the last committed render. */
     useEffect(() => {
-        undoStateRef.current = { layers, activeLayerId, shapes, activeShapeId, grain, bgDim };
-    }, [layers, activeLayerId, shapes, activeShapeId, grain, bgDim]);
+        undoStateRef.current = { layers, activeLayerId, shapes, activeShapeId, grain, bgDim, dimWholePhoto, photoFilter };
+    }, [layers, activeLayerId, shapes, activeShapeId, grain, bgDim, dimWholePhoto, photoFilter]);
 
     const applySnapshot = (snap: UndoSnapshot) => {
         setLayers(snap.layers);
@@ -721,6 +1297,8 @@ export default function TextBehindPage() {
         setActiveShapeId(snap.activeShapeId);
         setGrain(snap.grain);
         setBgDim(snap.bgDim);
+        if (typeof snap.dimWholePhoto === 'boolean') setDimWholePhoto(snap.dimWholePhoto);
+        if (snap.photoFilter) setPhotoFilter(snap.photoFilter);
     };
 
     const undo = useCallback(() => {
@@ -1058,6 +1636,1477 @@ export default function TextBehindPage() {
         setActiveLayerId(remaining[0].id);
     };
 
+    type EditorialPresetId = 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural' | 'skate' | 'old-money' | 'film-noir';
+
+    const EDITORIAL_PRESETS_CATALOG: {
+        id: EditorialPresetId;
+        num: string;
+        title: string;
+        desc: string;
+    }[] = [
+            { id: 'vogue', num: '[01]', title: 'HIGH FASHION', desc: 'Didone Masthead + Paris Folio + Barcode' },
+            { id: 'zine', num: '[02]', title: 'INDIE ZINE', desc: 'Swiss Type + Archive Stamp + Film Grain' },
+            { id: 'kinfolk', num: '[03]', title: 'QUIET LUXURY', desc: 'Minimal Bleed Frame + Bone Ivory Type' },
+            { id: 'noir', num: '[04]', title: '35MM NOIR', desc: 'Cinema Type + Heavy Grain + Film Stamp' },
+            { id: 'gq', num: '[05]', title: 'GQ / GENTLEMAN', desc: 'Bebas Condensed + Gold Type + Issue Folio' },
+            { id: 'dazed', num: '[06]', title: 'DAZED / CULTURE', desc: 'Raw Syne Bold + Dateline + Distressed Grain' },
+            { id: 'natgeo', num: '[07]', title: 'DISCOVERY', desc: 'Archival Gold Bleed Frame + Coordinates + Barcode' },
+            { id: 'cyber', num: '[08]', title: 'CYBER / MATRIX', desc: 'Terminal Space Mono + Cyber Stamp + Node ID' },
+            { id: 'vinyl', num: '[09]', title: 'INDIE VINYL', desc: 'Album Script + STEREO 33⅓ RPM + Tracklist' },
+            { id: 'architectural', num: '[10]', title: 'ARCHITECTURE', desc: 'Bodoni/Cinzel + Crisp White Bleed Frame' },
+        ];
+
+    const applyEditorialPreset = (rawId: EditorialPresetId) => {
+        pushUndo();
+        setActiveEditorialPreset(rawId);
+        // AUTO-LAYOUT LAW PASS: presets are styled skeletons — the moment
+        // one lands, the same laws that sanitize AI and ASSEMBLE output
+        // (purpose / plating / separation / clearance) sanitize the preset.
+        solveNextRef.current = true;
+        // Normalize aliases
+        const presetId = rawId === 'skate' ? 'zine' : rawId === 'old-money' ? 'kinfolk' : rawId === 'film-noir' ? 'noir' : rawId;
+
+        if (presetId === 'vogue') {
+            // [01] VOGUE / COUTURE: Classic Didone serif, Paris/Milan folio, contained barcode
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'VOGUE',
+                    fontId: 'cinzel',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 88,
+                    letterSpacingEm: 0.10,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.20,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'PARIS • LONDON • MILAN  |  WINTER ISSUE 48  —  €14.00',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 76,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    opacity: 0.95,
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'THE NEW SILHOUETTE',
+                    fontId: 'cinzel',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 48,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.32,
+                    yPct: 0.82,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-subkicker',
+                    text: 'TAILORING IN THE AGE OF NOISE',
+                    fontId: 'inter',
+                    weight: 600,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 48,
+                    letterSpacingEm: 0.08,
+                    color: '#E5E5E5',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.32,
+                    yPct: 0.86,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.84,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 0.98,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 771234 567008  04',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.12, size: 2 });
+            setBgDim(0.16);
+            setDimWholePhoto(false);
+            setPhotoFilter('none');
+        } else if (presetId === 'zine') {
+            // [02] STREET / ZINE: Swiss heavy sans, Tokyo archive stamp, distressed grain
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'ZINE',
+                    fontId: 'archivo',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 86,
+                    letterSpacingEm: -0.01,
+                    color: '#FFFFFF',
+                    strokeEm: 0.015,
+                    strokeColor: '#000000',
+                    shadow: false,
+                    shadowMode: 'none',
+                    rotationDeg: 0,
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.24,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'SPECIAL PRINT ARCHIVE — 01 / 500 COPIES',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.85,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-spine',
+                    text: 'INDEPENDENT PRINT // TOKYO — LONDON — SEOUL',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 66,
+                    heightPct: 2.2,
+                    letterSpacingEm: 0.14,
+                    color: '#FFFFFF',
+                    opacity: 0.85,
+                    shadow: false,
+                    shadowMode: 'none',
+                    rotationDeg: -90,
+                    depth: 'front',
+                    xPct: 0.055,
+                    yPct: 0.5,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.16,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 778000 120401  08',
+                },
+                {
+                    id: `shape-badge-${Date.now()}`,
+                    kind: 'badge',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                    wPct: 34,
+                    hPct: 3.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 2,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'ARCHIVE 04 // TOKYO',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.26, size: 2 });
+            setBgDim(0.20);
+            setDimWholePhoto(true);
+            setPhotoFilter('none');
+        } else if (presetId === 'kinfolk') {
+            // [03] KINFOLK / SLOW LIVING: Bone ivory Didone, delicate bleed frame
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'ESSENCE',
+                    fontId: 'cinzel',
+                    weight: 400,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 80,
+                    letterSpacingEm: 0.12,
+                    color: '#F7F6F0',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.23,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'VOLUME XIV  ·  A STUDY ON LEISURE  ·  LONDON',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#F7F6F0',
+                    opacity: 0.9,
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.10,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'THE ARCHITECTURE OF SILENCE',
+                    fontId: 'playfair',
+                    weight: 700,
+                    italic: true,
+                    caseMode: 'original',
+                    uppercase: false,
+                    fitToWidth: true,
+                    widthPct: 60,
+                    letterSpacingEm: 0.08,
+                    color: '#F7F6F0',
+                    opacity: 0.95,
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.87,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-frame-${Date.now()}`,
+                    kind: 'frame',
+                    xPct: 0.5,
+                    yPct: 0.5,
+                    wPct: 90,
+                    hPct: 92,
+                    rotationDeg: 0,
+                    fillColor: '#F7F6F0',
+                    fillOn: false,
+                    strokeColor: '#F7F6F0',
+                    strokeW: 1.5,
+                    cornerPct: 0,
+                    opacity: 0.85,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.15, size: 2 });
+            setBgDim(0.15);
+            setDimWholePhoto(false);
+            setPhotoFilter('vintage');
+        } else if (presetId === 'noir') {
+            // [04] 35MM CINEMA / NOIR: Playfair cinema masthead, film soundtrack credits
+            setPhotoFilter('noir');
+            setDimWholePhoto(true);
+            setBgDim(0.28);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'CINEMA',
+                    fontId: 'playfair',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 86,
+                    letterSpacingEm: 0.12,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'ORIGINAL MOTION PICTURE SOUNDTRACK',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    opacity: 0.9,
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.85,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-badge-${Date.now()}`,
+                    kind: 'badge',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                    wPct: 36,
+                    hPct: 3.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'LIMITED ARCHIVE • 35MM',
+                },
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.84,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '8 431092 001924  35',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.38, size: 3 });
+        } else if (presetId === 'gq') {
+            // [05] GQ / MODERN GENT: Bold condensed sans, gold/white styling
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'STYLE',
+                    fontId: 'bebas-neue',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 88,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'GLOBAL MEN OF THE YEAR  |  N° 240  —  $12.00',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'THE REINVENTION OF LUXURY',
+                    fontId: 'inter',
+                    weight: 800,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 54,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.34,
+                    yPct: 0.82,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-subkicker',
+                    text: 'A RETURN TO CLASSIC CRAFTSMANSHIP',
+                    fontId: 'cinzel',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 54,
+                    letterSpacingEm: 0.08,
+                    color: '#D4AF37',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.34,
+                    yPct: 0.86,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.84,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 770028 732001  12',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.15, size: 2 });
+            setBgDim(0.18);
+            setDimWholePhoto(false);
+            setPhotoFilter('none');
+        } else if (presetId === 'dazed') {
+            // [06] DAZED / UNDERGROUND: Raw Syne bold, underground culture teaser
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'DAZED',
+                    fontId: 'syne',
+                    weight: 800,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 86,
+                    letterSpacingEm: 0.04,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'LONDON  •  BERLIN  •  SEOUL  |  ISSUE 62',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 74,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'NEW VISIONS FOR A FRACTURED WORLD',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 70,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.84,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-spine',
+                    text: 'MONTHLY CULTURE DOSSIER — PRINTED IN LONDON',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 62,
+                    heightPct: 2.2,
+                    letterSpacingEm: 0.14,
+                    color: '#FFFFFF',
+                    opacity: 0.8,
+                    shadow: false,
+                    shadowMode: 'none',
+                    rotationDeg: 90,
+                    depth: 'front',
+                    xPct: 0.945,
+                    yPct: 0.5,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.16,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 771353 790014  62',
+                },
+                {
+                    id: `shape-badge-${Date.now()}`,
+                    kind: 'badge',
+                    xPct: 0.80,
+                    yPct: 0.88,
+                    wPct: 28,
+                    hPct: 3.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 2,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'RAW CUT // 2026',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.32, size: 2 });
+            setBgDim(0.22);
+            setDimWholePhoto(true);
+            setPhotoFilter('none');
+        } else if (presetId === 'natgeo') {
+            // [07] DISCOVERY / EXPLORER: Iconic yellow frame border, narrative serif kicker
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'FRONTIER',
+                    fontId: 'playfair',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 84,
+                    letterSpacingEm: 0.12,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.20,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'EXPEDITION ARCHIVE  •  VOL. 88  •  LAT 35°N',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 70,
+                    letterSpacingEm: 0.08,
+                    color: '#D4AF37',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.09,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'THE UNCHARTED TERRITORIES',
+                    fontId: 'cinzel',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 64,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.85,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-frame-${Date.now()}`,
+                    kind: 'frame',
+                    xPct: 0.5,
+                    yPct: 0.5,
+                    wPct: 88,
+                    hPct: 92,
+                    rotationDeg: 0,
+                    fillColor: '#D4AF37',
+                    fillOn: false,
+                    strokeColor: '#D4AF37',
+                    strokeW: 1.5,
+                    cornerPct: 0,
+                    opacity: 0.85,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                },
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.82,
+                    yPct: 0.93,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 770027 935007  88',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.16, size: 2 });
+            setBgDim(0.16);
+            setDimWholePhoto(false);
+            setPhotoFilter('none');
+        } else if (presetId === 'cyber') {
+            // [08] CYBER / MATRIX ID: Technical Space Mono, digital terminal styling
+            setPhotoFilter('mono');
+            setDimWholePhoto(true);
+            setBgDim(0.25);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'SYSTEM',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 86,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'NODE://0092.44  •  PROTOCOL 0.8  •  ONLINE',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 74,
+                    letterSpacingEm: 0.08,
+                    color: '#00FF88',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'NEURAL INTERFACE // SPECIFICATION 04',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.84,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.84,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'SYS-849201-X99',
+                },
+                {
+                    id: `shape-badge-${Date.now()}`,
+                    kind: 'badge',
+                    xPct: 0.20,
+                    yPct: 0.88,
+                    wPct: 26,
+                    hPct: 3.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 2,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'DECLASSIFIED',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.30, size: 2 });
+        } else if (presetId === 'vinyl') {
+            // [09] INDIE VINYL / RECORD: Album art typography, STEREO 33⅓ RPM badge
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'ECHOES',
+                    fontId: 'playball',
+                    weight: 400,
+                    caseMode: 'original',
+                    uppercase: false,
+                    fitToWidth: true,
+                    widthPct: 82,
+                    letterSpacingEm: 0.06,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'ORIGINAL STUDIO RECORDING  •  SIDE A / TRACK 01',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 74,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.85,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-badge-${Date.now()}`,
+                    kind: 'badge',
+                    xPct: 0.76,
+                    yPct: 0.08,
+                    wPct: 30,
+                    hPct: 3.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 2,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: 'STEREO 33⅓ RPM',
+                },
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.16,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '0 75678 19234 8',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.24, size: 2 });
+            setBgDim(0.20);
+            setDimWholePhoto(false);
+            setPhotoFilter('vintage');
+        } else if (presetId === 'architectural') {
+            // [10] ARCHITECTURE / FORM: Minimal Bodoni/Cinzel, razor-sharp clean margins
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'STRUCTURE',
+                    fontId: 'cinzel',
+                    weight: 400,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 86,
+                    letterSpacingEm: 0.12,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.22,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'INTERNATIONAL REVIEW OF SPATIAL DESIGN  —  08',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 74,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'MONOLITHS IN MODERN CONCRETE',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 62,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.86,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-frame-${Date.now()}`,
+                    kind: 'frame',
+                    xPct: 0.5,
+                    yPct: 0.5,
+                    wPct: 92,
+                    hPct: 94,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: false,
+                    strokeColor: '#FFFFFF',
+                    strokeW: 1.5,
+                    cornerPct: 0,
+                    opacity: 0.65,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                },
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.84,
+                    yPct: 0.94,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 772041 385002  08',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.14, size: 2 });
+            setBgDim(0.18);
+            setDimWholePhoto(false);
+            setPhotoFilter('none');
+        }
+    };
+
+    /** The actual shot on the canvas, downscaled — so the AI SEES the real
+     *  photo (subject, gaze, wardrobe, palette, mood), not just numbers. */
+    const captureCanvasShot = (): string | null => {
+        try {
+            const src = canvasRef.current;
+            if (!src || src.width === 0 || src.height === 0) return null;
+            const targetW = 512;
+            const targetH = Math.max(1, Math.round((src.height / src.width) * targetW));
+            const off = document.createElement('canvas');
+            off.width = targetW;
+            off.height = targetH;
+            const ctx = off.getContext('2d');
+            if (!ctx) return null;
+            ctx.drawImage(src, 0, 0, targetW, targetH);
+            const url = off.toDataURL('image/jpeg', 0.72);
+            const b64 = url.split(',')[1];
+            return b64 && b64.length > 100 ? b64 : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const handleGenerateAiCover = async () => {
+        const provider = getActiveAiProvider();
+        const key = getStoredAiKey(provider);
+        const model = getStoredAiModel(provider);
+
+        if (!key) {
+            setAiModalOpen(true);
+            return;
+        }
+
+        setAiGenerating(true);
+        setAiError(null);
+
+        try {
+            // Measure the photo's calm quadrants so the AI applies the same
+            // template decision tree the on-device assembler uses.
+            let photoAnalysis: ReturnType<typeof analyzePhotoFromCanvas> = null;
+            try {
+                const cv = canvasRef.current;
+                photoAnalysis = cv ? analyzePhotoFromCanvas(cv) : null;
+            } catch {
+                photoAnalysis = null;
+            }
+
+            const res = await fetch('/api/ai/magazine-layout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider,
+                    apiKey: key,
+                    model,
+                    imageContext: aiPrompt.trim() || activeLayer.text || 'high impact subject photo',
+                    imageBase64: captureCanvasShot(),
+                    preferredStyle: aiStyle,
+                    existingText: activeLayer.text,
+                    aspectRatio: canvasW && canvasH ? Math.round((canvasW / canvasH) * 1000) / 1000 : undefined,
+                    canvasOrientation: canvasH >= canvasW ? 'portrait' : 'landscape',
+                    photoAnalysis,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success || !data.layout) {
+                throw new Error(data.error || 'Failed to generate layout');
+            }
+
+            const layout = data.layout;
+            pushUndo();
+
+            // Construct Text Layers
+            const newLayers: TextLayer[] = [];
+
+            // 1. Primary Masthead — geometry honored verbatim (incl. xPct/case/italic/opacity)
+            if (layout.masthead) {
+                const m = layout.masthead;
+                const mCase = asCaseMode(m.caseMode);
+                newLayers.push({
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: m.text || 'EDITORIAL',
+                    fontId: m.fontId || 'cinzel',
+                    weight: m.weight || 700,
+                    italic: !!m.italic,
+                    caseMode: mCase,
+                    uppercase: mCase === 'uppercase',
+                    fitToWidth: m.fitToWidth ?? true,
+                    widthPct: clampNum(m.widthPct, 30, 98, 88),
+                    heightPct: clampNum(m.heightPct, 4, 40, 18),
+                    letterSpacingEm: clampNum(m.letterSpacingEm, -0.05, 0.3, 0.1),
+                    color: asHexColor(m.color, '#FFFFFF'),
+                    opacity: clampNum(m.opacity, 0.2, 1, 1),
+                    strokeEm: clampNum(m.strokeEm, 0, 0.08, 0),
+                    strokeColor: asHexColor(m.strokeColor, '#000000'),
+                    shadow: m.shadow ?? false,
+                    shadowMode: asShadowMode(m.shadowMode),
+                    rotationDeg: clampNum(m.rotationDeg, -90, 90, 0),
+                    blend: asBlendMode(m.blend),
+                    depth: 'behind',
+                    xPct: clampNum(m.xPct, 0.08, 0.92, 0.5),
+                    yPct: clampNum(m.yPct, 0.05, 0.75, 0.22),
+                });
+            }
+
+            // 2. Subtitles / coverlines — full field fidelity so plated
+            // ink-on-paper compositions survive the trip from the AI verbatim
+            if (Array.isArray(layout.subtitles)) {
+                layout.subtitles.slice(0, 5).forEach((sub: any, idx: number) => {
+                    const sCase = asCaseMode(sub.caseMode);
+                    newLayers.push({
+                        ...DEFAULT_TEXT_LAYER,
+                        id: `box-sub-${idx + 1}`,
+                        text: sub.text || 'ISSUE N° 01',
+                        fontId: sub.fontId || 'inter',
+                        weight: sub.weight || 700,
+                        italic: !!sub.italic,
+                        caseMode: sCase,
+                        uppercase: sCase === 'uppercase',
+                        fitToWidth: sub.fitToWidth ?? false,
+                        widthPct: clampNum(sub.widthPct, 15, 96, 65),
+                        heightPct: clampNum(sub.heightPct, 1, 20, 3),
+                        letterSpacingEm: clampNum(sub.letterSpacingEm, -0.02, 0.3, 0.18),
+                        color: asHexColor(sub.color, '#FFFFFF'),
+                        opacity: clampNum(sub.opacity, 0.3, 1, 1),
+                        strokeEm: clampNum(sub.strokeEm, 0, 0.06, 0),
+                        strokeColor: asHexColor(sub.strokeColor, '#000000'),
+                        shadow: sub.shadow ?? false,
+                        shadowMode: asShadowMode(sub.shadowMode),
+                        // ±90 allowed: vertical side rails along the canvas edges
+                        rotationDeg: clampNum(sub.rotationDeg, -90, 90, 0),
+                        blend: asBlendMode(sub.blend),
+                        depth: 'front',
+                        xPct: clampNum(sub.xPct, 0.03, 0.97, 0.5),
+                        yPct: clampNum(sub.yPct, 0.04, 0.96, idx === 0 ? 0.08 : 0.86),
+                    });
+                });
+            }
+
+            // Construct Shapes — plates, badges, frames, barcodes & QRs with
+            // full geometry fidelity (cornerPct/opacity/strokeW all honored)
+            const newShapes: ShapeLayer[] = [];
+            if (Array.isArray(layout.shapes)) {
+                const VALID_AI_SHAPE_KINDS = ['rect', 'line', 'beam', 'circle', 'icon', 'button', 'barcode', 'badge', 'frame', 'qr'];
+                layout.shapes.slice(0, 6).forEach((s: any, idx: number) => {
+                    newShapes.push({
+                        id: `shape-ai-${Date.now().toString(36)}-${idx}`,
+                        kind: (VALID_AI_SHAPE_KINDS.includes(s.kind) ? s.kind : 'rect') as ShapeKind,
+                        xPct: clampNum(s.xPct, 0.05, 0.95, s.kind === 'barcode' || s.kind === 'qr' ? 0.84 : 0.5),
+                        yPct: clampNum(s.yPct, 0.04, 0.96, 0.93),
+                        wPct: clampNum(s.wPct, 2, 96, 24),
+                        hPct: clampNum(s.hPct, 0.3, 90, 7),
+                        rotationDeg: clampNum(s.rotationDeg, -15, 15, 0),
+                        fillColor: asHexColor(s.fillColor, '#FFFFFF'),
+                        fillOn: s.fillOn ?? true,
+                        strokeColor: asHexColor(s.strokeColor, '#000000'),
+                        strokeW: clampNum(s.strokeW, 0, 30, 0),
+                        cornerPct: clampNum(s.cornerPct, 0, 50, 0),
+                        opacity: clampNum(s.opacity, 0.2, 1, 1),
+                        glow: 0,
+                        blend: 'normal',
+                        depth: s.depth === 'behind' ? 'behind' : 'front',
+                        iconId: s.iconId || 'arrow-right',
+                        label:
+                            typeof s.label === 'string'
+                                ? s.label.slice(0, 36)
+                                : s.kind === 'barcode'
+                                    ? '9771234567003'
+                                    : s.kind === 'qr'
+                                        ? 'https://creatorskit.app'
+                                        : 'SPECIAL EDITION',
+                    });
+                });
+            }
+
+            // App ↔ AI layout contract: when AUTO-LAYOUT is ON, the layout
+            // laws run — idle shapes pruned, plates re-cut to their text,
+            // nothing crossing anything, frame clearance respected.
+            // OFF = leave the AI layout untouched.
+            const solved = autoLayout
+                ? enforceLayoutLaws(newLayers, newShapes)
+                : { layers: newLayers, shapes: newShapes };
+
+            if (solved.layers.length > 0) {
+                setLayers(solved.layers);
+                setActiveLayerId(solved.layers[0].id);
+            }
+            setShapes(solved.shapes);
+
+            // Apply photo style
+            if (layout.photoStyle) {
+                if (typeof layout.photoStyle.bgDim === 'number') {
+                    setBgDim(Math.min(0.85, Math.max(0, layout.photoStyle.bgDim)));
+                }
+                if (typeof layout.photoStyle.dimWholePhoto === 'boolean') {
+                    setDimWholePhoto(layout.photoStyle.dimWholePhoto);
+                }
+                if (layout.photoStyle.photoFilter) {
+                    setPhotoFilter(layout.photoStyle.photoFilter);
+                }
+                if (layout.photoStyle.grain) {
+                    setGrain({
+                        enabled: layout.photoStyle.grain.enabled ?? true,
+                        opacity: layout.photoStyle.grain.opacity ?? 0.22,
+                        size: layout.photoStyle.grain.size ?? 2,
+                    });
+                }
+            }
+        } catch (err: any) {
+            setAiError(err.message || 'AI layout generation failed. Please check your API key.');
+        } finally {
+            setAiGenerating(false);
+        }
+    };
+
+    // --- SYSTEM ASSEMBLY ------------------------------------------------------
+    // Consolidates the full magazine component grammar (masthead · dateline ·
+    // coverlines · side rail · badge · plate · barcode/QR · frame) into one
+    // complete cover, on-device — no AI key, different edition every click.
+    const handleAssembleSystemCover = () => {
+        if (!bgImage) {
+            setAiError('Add a background photo first — the system composes over your image.');
+            return;
+        }
+        setAiError(null);
+
+        // Negative-space scan — the photo's calm quadrants choose the
+        // composition template (calm headroom → over-head masthead, calm
+        // side column → side-strip stack, dense → sandwich + bottom strip).
+        let analysis: ReturnType<typeof analyzePhotoFromCanvas> = null;
+        try {
+            const cv = canvasRef.current;
+            analysis = cv ? analyzePhotoFromCanvas(cv) : null;
+        } catch {
+            /* canvas sampling unavailable — fall back to seeded templates */
+        }
+
+        // The app's own intelligence builds the STRUCTURE from the scan;
+        // the user's REAL content fills the storytelling slots (vibe input
+        // and text already on the canvas outrank the copy pools). The AI
+        // copy desk can then refine words without moving a coordinate.
+        const existingById = (id: string) => layers.find((l) => l.id === id)?.text.trim();
+        const vibe = aiPrompt.trim();
+        const vibeParts = vibe
+            .split(/\r?\n|\s+[|—–]\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const content: SystemContentInput = {};
+        const currentMasthead = existingById('box-masthead');
+        if (currentMasthead) {
+            content.masthead = currentMasthead;
+        } else if (vibeParts.length) {
+            const first = vibeParts[0].split(/\s+/)[0].replace(/[^A-Za-z0-9&'-]/g, '');
+            if (first.length >= 3 && first.length <= 10) content.masthead = first.toUpperCase();
+        }
+        const currentFeature = existingById('box-feature');
+        if (currentFeature) {
+            content.feature = currentFeature;
+        } else if (vibeParts.length) {
+            content.feature = vibeParts[vibeParts.length - 1].slice(0, 44);
+        }
+
+        // The LAYOUT POOL walk: every ASSEMBLE click lands the next hidden
+        // preset skeleton (A1 → A2 → … → F12) — structural diversity on tap.
+        const poolEntry = LAYOUT_LIBRARY[assembleIdxRef.current % LAYOUT_LIBRARY.length];
+        assembleIdxRef.current += 1;
+        const composed = composeSystemCover({
+            style: aiStyle,
+            seed: (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0,
+            analysis,
+            content,
+            layoutId: poolEntry.id,
+        });
+
+        pushUndo();
+
+        const newLayers: TextLayer[] = composed.text.map((t) => ({
+            ...DEFAULT_TEXT_LAYER,
+            id: t.id,
+            text: t.text,
+            fontId: t.fontId,
+            weight: t.weight,
+            italic: !!t.italic,
+            caseMode: t.caseMode,
+            uppercase: t.caseMode === 'uppercase',
+            fitToWidth: t.fitToWidth,
+            widthPct: t.widthPct,
+            heightPct: t.heightPct,
+            letterSpacingEm: t.letterSpacingEm,
+            color: t.color,
+            opacity: t.opacity,
+            strokeEm: t.strokeEm ?? 0,
+            strokeColor: t.strokeColor ?? '#000000',
+            shadow: false,
+            shadowMode: 'none',
+            rotationDeg: t.rotationDeg,
+            depth: t.depth,
+            xPct: t.xPct,
+            yPct: t.yPct,
+        }));
+
+        const newShapes: ShapeLayer[] = composed.shapes.slice(0, 12).map((s, idx) => ({
+            id: `sys-shape-${Date.now().toString(36)}-${idx}`,
+            kind: s.kind,
+            xPct: s.xPct,
+            yPct: s.yPct,
+            wPct: s.wPct,
+            hPct: s.hPct,
+            rotationDeg: s.rotationDeg,
+            fillColor: s.fillColor,
+            fillOn: s.fillOn,
+            strokeColor: s.strokeColor,
+            strokeW: s.strokeW,
+            cornerPct: s.cornerPct,
+            opacity: s.opacity,
+            glow: 0,
+            blend: 'normal' as BlendMode,
+            depth: s.depth,
+            label: s.label,
+        }));
+
+        setPhotoFilter(composed.photo.photoFilter);
+        setBgDim(composed.photo.bgDim);
+        setDimWholePhoto(composed.photo.dimWholePhoto);
+        setGrain({
+            enabled: composed.photo.grain.enabled,
+            opacity: composed.photo.grain.opacity,
+            size: composed.photo.grain.size,
+        });
+
+        const solved = autoLayout
+            ? enforceLayoutLaws(newLayers, newShapes)
+            : { layers: newLayers, shapes: newShapes };
+        setLayers(solved.layers);
+        setShapes(solved.shapes);
+        setActiveLayerId('box-masthead');
+    };
+
+    // --- AI REFINE COPY ---------------------------------------------------
+    // The app's own intelligence built the structure; the AI is the copy
+    // desk. It rewrites ONLY the words on the canvas — masthead, coverlines,
+    // teasers, badges — specific to the photo/vibe. Geometry is locked:
+    // not a single coordinate, plate, font or treatment moves.
+    const handleAiRefineCopy = async () => {
+        const provider = getActiveAiProvider();
+        const key = getStoredAiKey(provider);
+        const model = getStoredAiModel(provider);
+
+        if (!key) {
+            setAiModalOpen(true);
+            return;
+        }
+        if (!layers.length && !shapes.length) {
+            setAiError('Assemble a cover (or add elements) first — AI REFINE rewrites the copy of what is on the canvas.');
+            return;
+        }
+
+        setAiGenerating(true);
+        setAiError(null);
+
+        try {
+            const roleOf = (id: string) =>
+                id.includes('masthead')
+                    ? 'masthead'
+                    : id.includes('dateline')
+                        ? 'dateline'
+                        : id.includes('rail')
+                            ? 'side rail'
+                            : id.includes('feature')
+                                ? 'feature coverline'
+                                : id.includes('sub')
+                                    ? 'sub-coverline'
+                                    : id.includes('teaser')
+                                        ? 'teaser'
+                                        : 'coverline';
+            const maxFor = (id: string, text: string) => {
+                if (id.includes('masthead')) return 10;
+                if (id.includes('rail') || id.includes('dateline')) return 56;
+                if (id.includes('feature')) return 44;
+                if (id.includes('teaser')) return 30;
+                return Math.max(8, Math.min(56, Math.ceil(text.length * 1.3) || 24));
+            };
+            const skeleton = {
+                texts: layers.map((l) => ({
+                    id: l.id,
+                    role: roleOf(l.id),
+                    current: l.text,
+                    maxChars: maxFor(l.id, l.text),
+                })),
+                shapes: shapes
+                    .filter((s) => s.kind === 'badge' || s.kind === 'barcode' || s.kind === 'qr')
+                    .map((s) => ({
+                        id: s.id,
+                        role: s.kind === 'badge' ? 'badge label' : s.kind === 'qr' ? 'QR encoded link' : 'barcode digits',
+                        current: s.label || '',
+                        maxChars: s.kind === 'badge' ? 34 : s.kind === 'qr' ? 60 : 13,
+                    })),
+            };
+
+            const res = await fetch('/api/ai/magazine-layout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider,
+                    apiKey: key,
+                    model,
+                    mode: 'refine',
+                    skeleton,
+                    imageContext: aiPrompt.trim() || activeLayer.text || 'the photo currently on the canvas',
+                    imageBase64: captureCanvasShot(),
+                    preferredStyle: aiStyle,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success || !data.layout) {
+                throw new Error(data.error || 'Copy refinement failed');
+            }
+
+            const textMap = new Map<string, string>(
+                (data.layout.texts || []).map((t: any) => [String(t.id), String(t.text)]),
+            );
+            const labelMap = new Map<string, string>(
+                (data.layout.labels || []).map((t: any) => [String(t.id), String(t.label)]),
+            );
+
+            pushUndo();
+            setLayers((prev) => prev.map((l) => (textMap.has(l.id) ? { ...l, text: textMap.get(l.id)! } : l)));
+            setShapes((prev) => prev.map((s) => (labelMap.has(s.id) ? { ...s, label: labelMap.get(s.id)! } : s)));
+        } catch (err: any) {
+            setAiError(err.message || 'Copy refinement failed. Please check your API key.');
+        } finally {
+            setAiGenerating(false);
+        }
+    };
+
     // --- filtered fonts for dropdown ----------------------------------------
     const filteredFonts = useMemo(() => {
         return POSTER_FONTS.filter((f) => {
@@ -1094,7 +3143,17 @@ export default function TextBehindPage() {
 
             // Layer 0: Background photo
             if (bgImage) {
+                if (photoFilter === 'mono') {
+                    ctx.filter = 'grayscale(100%) contrast(110%)';
+                } else if (photoFilter === 'vintage') {
+                    ctx.filter = 'sepia(35%) contrast(105%) brightness(95%)';
+                } else if (photoFilter === 'noir') {
+                    ctx.filter = 'grayscale(100%) contrast(150%) brightness(90%)';
+                }
+
                 ctx.drawImage(bgImage, 0, 0, W, H);
+                ctx.filter = 'none';
+
                 // Darken the photo so the type behind the subject pops — the
                 // classic poster trick. Part of the shared draw, so the
                 // export is exactly the preview.
@@ -1106,52 +3165,152 @@ export default function TextBehindPage() {
                 }
             }
 
+            // CIVIC-SENSE PLATE DETECTION — which opaque front plate (rect,
+            // banner or badge body) dominates the given text box? Feeds the
+            // contrast guard in drawSingleLayer so ink-on-paper polarity is
+            // a law of the renderer, not a suggestion of the composer.
+            const hexLuminance = (hex: string): number => {
+                const h = hex.replace('#', '');
+                if (h.length !== 6) return 128;
+                return 0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16);
+            };
+            const plateLuminanceUnder = (x0: number, y0: number, x1: number, y1: number): number | null => {
+                const area = Math.max(1, (x1 - x0) * (y1 - y0));
+                let bestLum: number | null = null;
+                let bestCover = 0;
+                for (const s of shapes) {
+                    if (s.depth !== 'front' || !s.fillOn || s.opacity < 0.6) continue;
+                    if (s.kind !== 'rect' && s.kind !== 'badge' && s.kind !== 'button') continue;
+                    const sw = (s.wPct / 100) * W;
+                    const sh = (s.hPct / 100) * H;
+                    const sx0 = s.xPct * W - sw / 2;
+                    const sy0 = s.yPct * H - sh / 2;
+                    const ox = Math.max(0, Math.min(x1, sx0 + sw) - Math.max(x0, sx0));
+                    const oy = Math.max(0, Math.min(y1, sy0 + sh) - Math.max(y0, sy0));
+                    const cover = (ox * oy) / area;
+                    if (cover > bestCover) {
+                        bestCover = cover;
+                        bestLum = hexLuminance(s.fillColor || '#000000');
+                    }
+                }
+                return bestCover >= 0.55 ? bestLum : null;
+            };
+
             // Single Layer Renderer
             const drawSingleLayer = (l: TextLayer) => {
                 if (!l.text.trim()) return;
                 const font = fontById(l.fontId);
 
                 const textToRender = applyCase(l.text, l.caseMode, l.uppercase);
-
                 const lines = textToRender.split('\n');
-                const targetWeight = l.weight || font.weight;
+
+                // Weight preservation: prevent text from becoming a faint hairline
+                const baseWeight = l.weight || font.weight;
                 const targetStyle = l.italic ? 'italic' : 'normal';
 
-                const probe = Math.max(12, H * 0.1);
-                const measure = (px: number) => {
-                    ctx.font = `${targetStyle} ${targetWeight} ${px}px ${font.family}`;
+                // Safe bounds & thresholds
+                const maxSafeW = W * 0.90;
+                const minReadablePx = Math.max(14, H * 0.016); // Strict legibility floor so text never disappears
+                const desiredHealthyPx = Math.max(22, Math.min(H * 0.032, W * 0.032));
+
+                let currentLsEm = l.letterSpacingEm;
+
+                const measure = (px: number, lsEm: number, wt: number) => {
+                    ctx.font = `${targetStyle} ${wt} ${px}px ${font.family}`;
                     const ls = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
-                    if ('letterSpacing' in ctx) ls.letterSpacing = `${l.letterSpacingEm * px}px`;
+                    if ('letterSpacing' in ctx) ls.letterSpacing = `${lsEm * px}px`;
                     const widths = lines.map((line) => ctx.measureText(line || ' ').width);
                     const widest = Math.max(...widths, 1);
-                    const lineH = px * 1.08;
+                    const lineH = px * 1.10;
                     return { widest, blockW: widest, blockH: lineH * lines.length, lineH };
                 };
 
+                const probe = Math.max(16, H * 0.08);
                 let fontPx: number;
-                let m: ReturnType<typeof measure>;
+
                 if (l.fitToWidth) {
-                    const atProbe = measure(probe);
-                    fontPx = Math.max(8, probe * ((W * l.widthPct) / 100 / atProbe.blockW));
-                    m = measure(fontPx);
+                    let atProbe = measure(probe, currentLsEm, baseWeight);
+                    let calculatedPx = probe * ((W * l.widthPct) / 100 / atProbe.blockW);
+
+                    // SMART SPACE-WITHIN OPTIMIZATION:
+                    // If fontPx would drop below healthy thickness because of excess tracking,
+                    // progressively tighten the "space within" (letter spacing) FIRST so font size & weight stay thick and bold!
+                    while (calculatedPx < desiredHealthyPx && currentLsEm > 0.01) {
+                        currentLsEm = Math.max(0.01, currentLsEm - 0.015);
+                        atProbe = measure(probe, currentLsEm, baseWeight);
+                        calculatedPx = probe * ((W * l.widthPct) / 100 / atProbe.blockW);
+                    }
+                    fontPx = Math.max(minReadablePx, calculatedPx);
                 } else {
-                    fontPx = Math.max(8, (H * l.heightPct) / 100);
-                    m = measure(fontPx);
+                    fontPx = Math.max(minReadablePx, (H * l.heightPct) / 100);
                 }
+
+                // If small font size, ensure bold weight (700) so letter strokes are solid & never hairline
+                const targetWeight = (fontPx < 26 && baseWeight <= 500) ? 700 : baseWeight;
+                let m = measure(fontPx, currentLsEm, targetWeight);
+
+                // If block width exceeds safe canvas area, tighten letter spacing further down to 0
+                if (m.blockW > maxSafeW && currentLsEm > 0.01) {
+                    while (m.blockW > maxSafeW && currentLsEm > 0.01) {
+                        currentLsEm = Math.max(0, currentLsEm - 0.02);
+                        m = measure(fontPx, currentLsEm, targetWeight);
+                    }
+                }
+
+                // If still wider than safe area after tightening letter spacing, scale down fontPx
+                // but enforce minReadablePx so it never becomes an invisible hairline
+                if (m.blockW > maxSafeW) {
+                    fontPx = Math.max(minReadablePx, fontPx * (maxSafeW / m.blockW));
+                    m = measure(fontPx, currentLsEm, targetWeight);
+                }
+
+                // Rotation-aware safe margins: clamp against the AXIS-ALIGNED
+                // bounding box of the ROTATED block, so a ±90° side rail can
+                // hug the canvas edge without being shoved to the centre.
+                const rotRad = (l.rotationDeg * Math.PI) / 180;
+                const cosA = Math.abs(Math.cos(rotRad));
+                const sinA = Math.abs(Math.sin(rotRad));
+                const halfW = (m.blockW * cosA + m.blockH * sinA) / 2;
+                const halfH = (m.blockW * sinA + m.blockH * cosA) / 2;
+                const safeMarginX = W * 0.03;
+                let posX = l.xPct * W;
+                if (posX - halfW < safeMarginX) posX = safeMarginX + halfW;
+                else if (posX + halfW > W - safeMarginX) posX = W - safeMarginX - halfW;
+
+                let posY = l.yPct * H;
+                const safeMarginY = H * 0.03;
+                if (posY - halfH < safeMarginY) posY = safeMarginY + halfH;
+                if (posY + halfH > H - safeMarginY) posY = H - safeMarginY - halfH;
 
                 ctx.save();
                 ctx.globalCompositeOperation = asCompositeOp(l.blend);
                 ctx.globalAlpha = l.opacity;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.translate(l.xPct * W, l.yPct * H);
+                ctx.translate(posX, posY);
                 ctx.rotate((l.rotationDeg * Math.PI) / 180);
                 ctx.font = `${targetStyle} ${targetWeight} ${fontPx}px ${font.family}`;
                 const ls = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
-                if ('letterSpacing' in ctx) ls.letterSpacing = `${l.letterSpacingEm * fontPx}px`;
+                if ('letterSpacing' in ctx) ls.letterSpacing = `${currentLsEm * fontPx}px`;
+
+                // CIVIC-SENSE CONTRAST GUARD: front-layer text sitting on an
+                // opaque plate must wear the plate's inverse ink — black
+                // rectangle ⇒ white text, white rectangle ⇒ black text —
+                // whatever placed the plate (system, AI, preset or your own
+                // two hands). Enforced at render, so every plate reads.
+                let inkColor = l.color;
+                if (l.depth === 'front' && l.fillMode !== 'gradient') {
+                    const plateLum = plateLuminanceUnder(posX - halfW, posY - halfH, posX + halfW, posY + halfH);
+                    if (plateLum !== null) {
+                        const inkLum = hexLuminance(inkColor);
+                        if (Math.abs(plateLum - inkLum) / 255 < 0.45) {
+                            inkColor = plateLum > 127.5 ? '#000000' : '#FFFFFF';
+                        }
+                    }
+                }
 
                 // Fill color or gradient
-                let fill: string | CanvasGradient = l.color;
+                let fill: string | CanvasGradient = inkColor;
                 if (l.fillMode === 'gradient') {
                     const rad = (l.gradientAngle * Math.PI) / 180;
                     const gx = Math.cos(rad) * (m.blockW / 2);
@@ -1200,8 +3359,8 @@ export default function TextBehindPage() {
                 ctx.restore();
 
                 metricsRef.current[l.id] = {
-                    cx: l.xPct * W,
-                    cy: l.yPct * H,
+                    cx: posX,
+                    cy: posY,
                     w: m.blockW,
                     h: m.blockH,
                     rot: (l.rotationDeg * Math.PI) / 180,
@@ -1214,7 +3373,28 @@ export default function TextBehindPage() {
                 const scale = Math.max(W / cutoutImage.naturalWidth, H / cutoutImage.naturalHeight);
                 const dw = cutoutImage.naturalWidth * scale;
                 const dh = cutoutImage.naturalHeight * scale;
-                ctx.drawImage(cutoutImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
+                const dx = (W - dw) / 2;
+                const dy = (H - dh) / 2;
+
+                if (photoFilter === 'mono') {
+                    ctx.filter = 'grayscale(100%) contrast(110%)';
+                } else if (photoFilter === 'vintage') {
+                    ctx.filter = 'sepia(35%) contrast(105%) brightness(95%)';
+                } else if (photoFilter === 'noir') {
+                    ctx.filter = 'grayscale(100%) contrast(150%) brightness(90%)';
+                }
+
+                ctx.drawImage(cutoutImage, dx, dy, dw, dh);
+                ctx.filter = 'none';
+
+                // If dim whole photo is enabled, apply the same dim tint atop the cutout pixels
+                if (dimWholePhoto && bgDim > 0) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'source-atop';
+                    ctx.fillStyle = `rgba(0,0,0,${bgDim})`;
+                    ctx.fillRect(dx, dy, dw, dh);
+                    ctx.restore();
+                }
             };
 
             // Shape overlay renderer (advanced image editing) — every kind shares
@@ -1229,10 +3409,47 @@ export default function TextBehindPage() {
                     w = d;
                     h = d;
                 }
-                const radius = (s.cornerPct / 100) * Math.min(w, h);
+
+                let shapeBoxW = w;
+                let badgeFont = 0;
+                let badgeLabel = '';
+                if (s.kind === 'badge') {
+                    badgeLabel = (s.label || 'ISSUE N° 04 • FALL 2026').toUpperCase().trim();
+                    // Healthy readable font floor: on high-res canvas (e.g. 2560px), must never shrink to 1-pixel specks
+                    const minReadableBadgePx = Math.max(16, Math.round(H * 0.013));
+                    const maxBadgePx = Math.max(minReadableBadgePx, Math.round(H * 0.022));
+                    badgeFont = Math.max(minReadableBadgePx, Math.min(maxBadgePx, h * 0.58));
+
+                    // Sizing the box: badge width must expand to fit the text with clean padding!
+                    const padX = Math.max(16, Math.round(badgeFont * 0.9));
+                    ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
+                    let textW = ctx.measureText(badgeLabel).width;
+                    let actualW = Math.max(w, textW + padX * 2);
+
+                    if (actualW > W * 0.90) {
+                        actualW = W * 0.90;
+                        while (ctx.measureText(badgeLabel).width > (actualW - padX * 2) && badgeFont > minReadableBadgePx) {
+                            badgeFont -= 0.5;
+                            ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
+                        }
+                    }
+                    h = Math.max(h, badgeFont * 1.6);
+                    shapeBoxW = actualW;
+                }
+
+                const radius = (s.cornerPct / 100) * Math.min(shapeBoxW, h);
                 const lw = Math.max(1, (W / 1000) * Math.max(1, s.strokeW));
+                let posX = s.xPct * W;
+                let posY = s.yPct * H;
+                const safeMarginX = W * 0.035;
+                const safeMarginY = H * 0.035;
+                if (posX - shapeBoxW / 2 < safeMarginX) posX = safeMarginX + shapeBoxW / 2;
+                if (posX + shapeBoxW / 2 > W - safeMarginX) posX = W - safeMarginX - shapeBoxW / 2;
+                if (posY - h / 2 < safeMarginY) posY = safeMarginY + h / 2;
+                if (posY + h / 2 > H - safeMarginY) posY = H - safeMarginY - h / 2;
+
                 ctx.save();
-                ctx.translate(s.xPct * W, s.yPct * H);
+                ctx.translate(posX, posY);
                 ctx.rotate((s.rotationDeg * Math.PI) / 180);
                 ctx.globalCompositeOperation = asCompositeOp(s.blend);
 
@@ -1271,6 +3488,172 @@ export default function TextBehindPage() {
                         ctx.strokeRect(-w / 2, -h / 2, w, h);
                         ctx.setLineDash([]);
                     }
+                } else if (s.kind === 'barcode') {
+                    // REAL EAN-13 barcode — bars are computed from the label's
+                    // digits (custom numbers welcome), check digit included,
+                    // guard bars extended, digits spaced like a retail scan.
+                    ctx.save();
+                    if (s.fillOn) {
+                        ctx.globalAlpha = s.opacity;
+                        ctx.fillStyle = s.fillColor || '#FFFFFF';
+                        ctx.fillRect(-w / 2, -h / 2, w, h);
+                    }
+                    const barColor = s.strokeColor || '#000000';
+                    if (s.strokeW > 0) {
+                        ctx.strokeStyle = barColor;
+                        ctx.lineWidth = Math.max(1, (W / 1200) * s.strokeW);
+                        ctx.strokeRect(-w / 2, -h / 2, w, h);
+                    }
+
+                    ctx.globalAlpha = s.opacity;
+                    ctx.fillStyle = barColor;
+
+                    // Inner contained zone
+                    const padX = w * 0.055;
+                    const padY = h * 0.08;
+                    const innerW = w - padX * 2;
+                    const innerH = h - padY * 2;
+
+                    const digits = ean13Digits(s.label || '');
+                    const bits = ean13Bits(digits);
+                    const unit = innerW / bits.length;
+
+                    // Digit line: auto-fit, but NEVER overflow — if it cannot
+                    // fit at the minimum readable size it simply doesn't draw.
+                    let fontPx = Math.min(innerH * 0.24, innerW / 62);
+                    if (fontPx < 5.5) fontPx = 0; // too small → hide the digits
+                    const textHeight = fontPx > 0 ? fontPx * 1.6 : 0;
+                    const barsH = Math.max(6, innerH - textHeight);
+                    const barsTop = -h / 2 + padY;
+                    const guardExtra = fontPx > 0 ? fontPx * 0.42 : Math.max(2, innerH * 0.08);
+
+                    // Bars (module width from the true EAN bit string)
+                    for (let m = 0; m < bits.length; m++) {
+                        if (bits[m] === '1') {
+                            const isGuard = m < 3 || (m >= 45 && m < 50) || m >= 92;
+                            ctx.fillRect(-innerW / 2 + m * unit, barsTop, Math.max(0.6, unit * 0.92), barsH + (isGuard ? guardExtra : 0));
+                        }
+                    }
+
+                    // Digits — authentic EAN placement: digit 1 in the left
+                    // margin, 2–7 under the left group, 8–13 under the right.
+                    if (fontPx > 0) {
+                        ctx.font = `700 ${fontPx}px "Space Mono", monospace, monospace`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'top';
+                        const textTop = barsTop + barsH + guardExtra - fontPx * 0.08;
+                        const moduleX = (mod: number) => -innerW / 2 + mod * unit;
+                        ctx.fillText(digits[0], moduleX(0) - 3.2 * unit, textTop);
+                        for (let d = 1; d <= 6; d++) {
+                            const start = 3 + (d - 1) * 7;
+                            ctx.fillText(digits[d], moduleX(start) + 3.5 * unit, textTop);
+                        }
+                        for (let d = 7; d <= 12; d++) {
+                            const start = 50 + (d - 7) * 7;
+                            ctx.fillText(digits[d], moduleX(start) + 3.5 * unit, textTop);
+                        }
+                    }
+                    ctx.restore();
+                } else if (s.kind === 'qr') {
+                    // REAL scannable QR code — encodes the label (any link or
+                    // text). Quiet zone + module grid drawn at print crispness.
+                    ctx.save();
+                    ctx.globalAlpha = s.opacity;
+                    const side = Math.min(w, h);
+                    const matrix = getQrMatrix(s.label || '');
+                    if (!matrix) {
+                        // Encoder refused the payload (rare) — dashed placeholder
+                        ctx.strokeStyle = s.strokeColor || '#000000';
+                        ctx.lineWidth = Math.max(1.5, W / 700);
+                        ctx.setLineDash([side / 12, side / 16]);
+                        ctx.strokeRect(-side / 2, -side / 2, side, side);
+                        ctx.setLineDash([]);
+                    } else {
+                        if (s.fillOn) {
+                            ctx.fillStyle = s.fillColor || '#FFFFFF';
+                            ctx.fillRect(-side / 2, -side / 2, side, side);
+                        }
+                        const quiet = 2;
+                        const total = matrix.size + quiet * 2;
+                        const px = side / total;
+                        ctx.fillStyle = s.strokeColor || '#000000';
+                        for (let r = 0; r < matrix.size; r++) {
+                            for (let c = 0; c < matrix.size; c++) {
+                                if (matrix.dark[r * matrix.size + c]) {
+                                    ctx.fillRect(-side / 2 + (c + quiet) * px, -side / 2 + (r + quiet) * px, Math.ceil(px * 10) / 10, Math.ceil(px * 10) / 10);
+                                }
+                            }
+                        }
+                    }
+                    if (s.strokeW > 0) {
+                        ctx.strokeStyle = s.strokeColor || '#000000';
+                        ctx.lineWidth = Math.max(1, (W / 1000) * Math.max(1, s.strokeW));
+                        ctx.strokeRect(-side / 2, -side / 2, side, side);
+                    }
+                    ctx.restore();
+                } else if (s.kind === 'badge') {
+                    // Editorial Issue Badge (clean container, auto-scaled typography, 100% clustered & contained)
+                    if (s.fillOn) {
+                        ctx.globalAlpha = s.opacity;
+                        ctx.fillStyle = s.fillColor || '#000000';
+                        pathRoundRect(ctx, -shapeBoxW / 2, -h / 2, shapeBoxW, h, radius);
+                        ctx.fill();
+                    }
+                    if (s.strokeW > 0) {
+                        ctx.globalAlpha = s.opacity;
+                        ctx.strokeStyle = s.strokeColor || '#FFFFFF';
+                        ctx.lineWidth = lw;
+                        pathRoundRect(ctx, -shapeBoxW / 2, -h / 2, shapeBoxW, h, radius);
+                        ctx.stroke();
+                    }
+
+                    ctx.globalAlpha = s.opacity;
+                    if (s.fillOn) {
+                        // Civic-sense polarity: the badge label's ink must be
+                        // the INVERSE of its plate — black plate ⇒ white
+                        // label, white plate ⇒ black label.
+                        const lum = (hx: string) => {
+                            const h = hx.replace('#', '');
+                            if (h.length !== 6) return 128;
+                            return 0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16);
+                        };
+                        const plateLum = lum(s.fillColor || '#000000');
+                        const inkLum = lum(s.strokeColor || '#FFFFFF');
+                        ctx.fillStyle =
+                            Math.abs(plateLum - inkLum) / 255 < 0.45
+                                ? plateLum > 127.5
+                                    ? '#000000'
+                                    : '#FFFFFF'
+                                : s.strokeColor || '#FFFFFF';
+                    } else {
+                        ctx.fillStyle = s.fillColor || '#000000';
+                    }
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
+                    // Premium containment rule: if the label still cannot fit
+                    // its plate at the minimum readable size, it does not draw.
+                    const badgePadX = Math.max(14, h * 0.45);
+                    if (ctx.measureText(badgeLabel).width <= shapeBoxW - badgePadX * 2 + 2) {
+                        ctx.fillText(badgeLabel, 0, 0);
+                    }
+                } else if (s.kind === 'frame') {
+                    // Magazine Bleed Margin Border with Corner Crosshairs
+                    ctx.globalAlpha = s.opacity;
+                    ctx.strokeStyle = s.strokeColor || '#FFFFFF';
+                    ctx.lineWidth = lw;
+                    ctx.strokeRect(-w / 2, -h / 2, w, h);
+                    const tick = Math.min(w, h) * 0.035;
+                    ctx.beginPath();
+                    ctx.moveTo(-w / 2 - tick, -h / 2); ctx.lineTo(-w / 2 + tick, -h / 2);
+                    ctx.moveTo(-w / 2, -h / 2 - tick); ctx.lineTo(-w / 2, -h / 2 + tick);
+                    ctx.moveTo(w / 2 - tick, -h / 2); ctx.lineTo(w / 2 + tick, -h / 2);
+                    ctx.moveTo(w / 2, -h / 2 - tick); ctx.lineTo(w / 2, -h / 2 + tick);
+                    ctx.moveTo(-w / 2 - tick, h / 2); ctx.lineTo(-w / 2 + tick, h / 2);
+                    ctx.moveTo(-w / 2, h / 2 - tick); ctx.lineTo(-w / 2, h / 2 + tick);
+                    ctx.moveTo(w / 2 - tick, h / 2); ctx.lineTo(w / 2 + tick, h / 2);
+                    ctx.moveTo(w / 2, h / 2 - tick); ctx.lineTo(w / 2, h / 2 + tick);
+                    ctx.stroke();
                 } else if (s.kind === 'beam') {
                     // Lightsaber beam — stacked glow passes, fading body, white-hot core.
                     const halo = (alpha: number, blur: number) => {
@@ -1368,14 +3751,16 @@ export default function TextBehindPage() {
                     ctx.textBaseline = 'alphabetic';
                 }
                 ctx.restore();
-                shapeMetricsRef.current[s.id] = { cx: s.xPct * W, cy: s.yPct * H, w, h, rot: (s.rotationDeg * Math.PI) / 180 };
+                shapeMetricsRef.current[s.id] = { cx: posX, cy: posY, w: shapeBoxW, h, rot: (s.rotationDeg * Math.PI) / 180 };
             };
 
             // 1. Behind layers — text first, shapes sit above the behind-text
             metricsRef.current = {};
             shapeMetricsRef.current = {};
-            layers.filter((l) => l.depth === 'behind').forEach(drawSingleLayer);
+            // Shapes are the SURFACE, text sits on top — in BOTH depth bands.
+            // (Behind-band rects must never cover behind-band typography.)
             shapes.filter((s) => s.depth === 'behind').forEach(drawShapeLayer);
+            layers.filter((l) => l.depth === 'behind').forEach(drawSingleLayer);
 
             // 2. Cutout PNG
             drawCutout();
@@ -1493,7 +3878,7 @@ export default function TextBehindPage() {
                 });
             }
         },
-        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim, shapes, activeShapeId, grain, iconTick, handleIconReady]
+        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim, dimWholePhoto, photoFilter, shapes, activeShapeId, grain, iconTick, handleIconReady]
     );
 
     // Repaint on canvas changes
@@ -1555,7 +3940,11 @@ export default function TextBehindPage() {
     };
 
     const hitTestShapes = (x: number, y: number, touch = false): string | null => {
-        const front = shapes.filter((s) => s.depth === 'front');
+        // A page frame (or any huge hollow scaffold) is structure, not a
+        // prop — it must never swallow clicks meant for the content inside.
+        const front = shapes.filter(
+            (s) => s.depth === 'front' && !(s.kind === 'frame' && s.wPct > 80 && s.hPct > 80)
+        );
         const behind = shapes.filter((s) => s.depth === 'behind');
         const ordered = [...front.slice().reverse(), ...behind.slice().reverse()];
 
@@ -1625,6 +4014,7 @@ export default function TextBehindPage() {
         // Dragging further than a tolerance past a snap releases it.
         const tol = 0.008;
         const tolEdge = 0.012;
+        const gapSnap = 0.014; // preferred breathing room between neighbours
         let snapV: number | null = null;
         let snapH: number | null = null;
         for (const c of [0.5, 1 / 3, 2 / 3]) {
@@ -1692,6 +4082,9 @@ export default function TextBehindPage() {
                 const asLeft = e.at + hw; // self's left edge lands on e.at
                 const asRight = e.at - hw; // self's right edge lands on e.at
                 if (e.center && Math.abs(nx - e.at) < tolEdge) { nx = e.at; snapV = e.guide; break; }
+                // Clearance snap first — settle a breath apart, never touching.
+                if (Math.abs(nx - (e.at + hw + gapSnap)) < tolEdge) { nx = e.at + hw + gapSnap; snapV = e.guide; break; }
+                if (Math.abs(nx - (e.at - hw - gapSnap)) < tolEdge) { nx = e.at - hw - gapSnap; snapV = e.guide; break; }
                 if (Math.abs(nx - asLeft) < tolEdge) { nx = asLeft; snapV = e.guide; break; }
                 if (Math.abs(nx - asRight) < tolEdge) { nx = asRight; snapV = e.guide; break; }
             }
@@ -1701,6 +4094,9 @@ export default function TextBehindPage() {
                 const asTop = e.at + hh; // self's top edge lands on e.at
                 const asBottom = e.at - hh; // self's bottom edge lands on e.at
                 if (e.center && Math.abs(ny - e.at) < tolEdge) { ny = e.at; snapH = e.guide; break; }
+                // Clearance snap first — settle a breath apart, never touching.
+                if (Math.abs(ny - (e.at + hh + gapSnap)) < tolEdge) { ny = e.at + hh + gapSnap; snapH = e.guide; break; }
+                if (Math.abs(ny - (e.at - hh - gapSnap)) < tolEdge) { ny = e.at - hh - gapSnap; snapH = e.guide; break; }
                 if (Math.abs(ny - asTop) < tolEdge) { ny = asTop; snapH = e.guide; break; }
                 if (Math.abs(ny - asBottom) < tolEdge) { ny = asBottom; snapH = e.guide; break; }
             }
@@ -1728,8 +4124,18 @@ export default function TextBehindPage() {
     };
 
     const endDrag = () => {
+        const drag = dragRef.current;
         dragRef.current = null;
         setGuides({ v: null, h: null });
+        // Self-awareness on release: with AUTO-LAYOUT on, whatever was just
+        // dropped rejoins the civic order — separation, clearance, plating —
+        // but nothing the user placed by hand is deleted (prune stays off
+        // for manual moves; idle-shape pruning only runs on generated covers).
+        if (drag?.active && drag.movedPx > 0 && autoLayout && (layers.length > 0 || shapes.length > 0)) {
+            const solved = enforceLayoutLaws(layers, shapes, { prune: false });
+            setLayers(solved.layers);
+            setShapes(solved.shapes);
+        }
     };
 
     // --- export --------------------------------------------------------------
@@ -2338,7 +4744,7 @@ export default function TextBehindPage() {
                                 </button>
 
                                 {bgImage && (
-                                    <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1.5px solid #eee' }}>
+                                    <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1.5px solid #eee', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         <TactileScrubber
                                             label="BACKGROUND DIM"
                                             value={Math.round(bgDim * 100)}
@@ -2358,6 +4764,77 @@ export default function TextBehindPage() {
                                             ]}
                                             width="100%"
                                         />
+
+                                        {/* Dim Target: Background Only vs. Whole Photo */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
+                                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>DIM TARGET</span>
+                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { pushUndo(); setDimWholePhoto(false); }}
+                                                    style={{
+                                                        padding: '3px 8px',
+                                                        border: '1.5px solid #000',
+                                                        background: !dimWholePhoto ? '#000' : '#fff',
+                                                        color: !dimWholePhoto ? '#FFE500' : '#000',
+                                                        fontSize: '0.55rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    BG ONLY
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { pushUndo(); setDimWholePhoto(true); }}
+                                                    style={{
+                                                        padding: '3px 8px',
+                                                        border: '1.5px solid #000',
+                                                        background: dimWholePhoto ? '#000' : '#fff',
+                                                        color: dimWholePhoto ? '#FFE500' : '#000',
+                                                        fontSize: '0.55rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    WHOLE PHOTO
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Photo Filter Presets */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
+                                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>PHOTO COLOR GRADE</span>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                                                {[
+                                                    { id: 'none', label: 'ORIGINAL' },
+                                                    { id: 'mono', label: 'B&W MONO' },
+                                                    { id: 'vintage', label: 'VINTAGE' },
+                                                    { id: 'noir', label: '35MM NOIR' },
+                                                ].map((f) => (
+                                                    <button
+                                                        key={f.id}
+                                                        type="button"
+                                                        onClick={() => { pushUndo(); setPhotoFilter(f.id as any); }}
+                                                        style={{
+                                                            padding: '4px 2px',
+                                                            border: '1.5px solid #000',
+                                                            background: photoFilter === f.id ? '#000' : '#fff',
+                                                            color: photoFilter === f.id ? '#FFE500' : '#000',
+                                                            fontSize: '0.52rem',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            cursor: 'pointer',
+                                                            textAlign: 'center'
+                                                        }}
+                                                    >
+                                                        {f.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
@@ -2369,6 +4846,257 @@ export default function TextBehindPage() {
                                     >
                                         RESET / REMOVE PHOTO
                                     </button>
+                                )}
+                            </div>
+
+                            {/* Magazine Cover & Editorial Presets Card */}
+                            <div className="brutalist-card" data-ck-cat="text photo" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: editorialOpen ? 12 : 0, background: '#FAFAFA' }}>
+                                <div
+                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                                    onClick={() => setEditorialOpen(!editorialOpen)}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 900, fontSize: '0.76rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                        MAGAZINE & EDITORIAL PRESETS
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="brutalist-button"
+                                        style={{
+                                            fontSize: '0.54rem',
+                                            fontFamily: 'monospace',
+                                            fontWeight: 900,
+                                            background: editorialOpen ? '#FFE500' : '#000',
+                                            color: editorialOpen ? '#000' : '#FFE500',
+                                            padding: '3px 8px',
+                                            border: '1.5px solid #000',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                        }}
+                                    >
+                                        {editorialOpen ? 'COLLAPSE [-]' : '10 LOOKS [+]'}
+                                    </button>
+                                </div>
+
+                                {editorialOpen && (
+                                    <>
+                                        <div style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace', lineHeight: 1.4 }}>
+                                            Transform your photo into a curated high-fashion cover, indie zine, or quiet luxury layout with matched typography, kickers & barcodes.
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                                            {EDITORIAL_PRESETS_CATALOG.map((p) => {
+                                                const isCurrent =
+                                                    activeEditorialPreset === p.id ||
+                                                    (p.id === 'zine' && activeEditorialPreset === 'skate') ||
+                                                    (p.id === 'kinfolk' && activeEditorialPreset === 'old-money') ||
+                                                    (p.id === 'noir' && activeEditorialPreset === 'film-noir');
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        className={`brutalist-button ck-editorial-card ${isCurrent ? 'active' : ''}`}
+                                                        style={{
+                                                            padding: '8px 10px',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            alignItems: 'flex-start',
+                                                            gap: 3,
+                                                            textAlign: 'left',
+                                                            background: isCurrent ? '#FFE500' : '#ffffff',
+                                                            color: '#000000',
+                                                            border: '1.5px solid #000000',
+                                                            boxShadow: isCurrent ? '2px 2px 0px #000000' : 'none',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        onClick={() => applyEditorialPreset(p.id)}
+                                                    >
+                                                        <div style={{ fontWeight: 900, fontSize: '0.66rem', letterSpacing: '0.04em', color: '#000000' }}>
+                                                            {p.num} {p.title}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.54rem', color: isCurrent ? '#333333' : '#777777', fontFamily: 'monospace' }}>
+                                                            {p.desc}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Divider */}
+                                        <div style={{ height: 1, background: '#E5E7EB', margin: '3px 0' }} />
+
+                                        {/* AI Magazine Auto-Layout Designer */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 900, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                    AI AUTO-COVER
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'nowrap' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAutoLayout((v) => !v)}
+                                                        title="Auto-Layout Collision Solver: ON keeps coverlines collision-free & print-aligned. OFF keeps exact positions."
+                                                        style={{
+                                                            padding: '2px 6px',
+                                                            fontSize: '0.52rem',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            border: '1.5px solid #000',
+                                                            background: autoLayout ? '#000' : '#FFF',
+                                                            color: autoLayout ? '#FFE500' : '#000',
+                                                            cursor: 'pointer',
+                                                            textTransform: 'uppercase',
+                                                            whiteSpace: 'nowrap',
+                                                            lineHeight: 1.2,
+                                                            flexShrink: 0,
+                                                        }}
+                                                    >
+                                                        LAYOUT: {autoLayout ? 'ON' : 'OFF'}
+                                                    </button>
+                                                    <ByokButton onClick={() => setAiModalOpen(true)} />
+                                                </div>
+                                            </div>
+
+                                            <div style={{ fontSize: '0.58rem', color: '#666', fontFamily: 'monospace', lineHeight: 1.35 }}>
+                                                Two engines, one design system. ASSEMBLE consolidates the full component grammar on-device — masthead, dateline, plated coverlines, side rail, badge, real EAN-13/QR, frame — no key needed. GENERATE adds AI art direction tuned to your photo via your Gemini, OpenAI, or Groq key. Every click is a new edition.
+                                            </div>
+
+                                            {/* Style selection */}
+                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                {AI_STYLE_OPTIONS.map((style) => (
+                                                    <button
+                                                        key={style.id}
+                                                        type="button"
+                                                        onClick={() => setAiStyle(style.id)}
+                                                        style={{
+                                                            padding: '3px 7px',
+                                                            fontSize: '0.55rem',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            border: '1px solid #000',
+                                                            background: aiStyle === style.id ? '#000' : '#FFF',
+                                                            color: aiStyle === style.id ? '#FFE500' : '#000',
+                                                            cursor: 'pointer',
+                                                            textTransform: 'uppercase',
+                                                        }}
+                                                    >
+                                                        {style.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Prompt / Vibe input */}
+                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                <input
+                                                    type="text"
+                                                    value={aiPrompt}
+                                                    onChange={(e) => setAiPrompt(e.target.value)}
+                                                    placeholder="Vibe (e.g. Tokyo cyber, autumn trenchcoat, ISSUE 07)..."
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '6px 8px',
+                                                        fontSize: '0.64rem',
+                                                        fontFamily: 'monospace',
+                                                        border: '1.5px solid #000',
+                                                        background: '#FFF',
+                                                        outline: 'none',
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' && !aiGenerating) {
+                                                            e.preventDefault();
+                                                            handleGenerateAiCover();
+                                                        }
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAssembleSystemCover}
+                                                    title="Consolidate the full magazine component system — masthead, dateline, plated coverlines, side rail, badge, EAN-13/QR, frame — into one complete cover. On-device: no API key, a new edition every click."
+                                                    className="brutalist-button"
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        background: '#FFF',
+                                                        color: '#000',
+                                                        border: '1.5px solid #000',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.64rem',
+                                                        fontFamily: 'monospace',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 5,
+                                                        cursor: 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    ⚙ ASSEMBLE COVER
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAiRefineCopy}
+                                                    disabled={aiGenerating}
+                                                    title="The AI acts as the copy desk: it rewrites ONLY the words on your assembled cover — masthead, coverlines, teasers, badges — specific to your photo. Every position, plate and treatment stays exactly where the system put it."
+                                                    className="brutalist-button"
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        background: '#000',
+                                                        color: '#FFE500',
+                                                        border: '1.5px solid #000',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.64rem',
+                                                        fontFamily: 'monospace',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 5,
+                                                        cursor: aiGenerating ? 'not-allowed' : 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    ✦ AI REFINE COPY
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleGenerateAiCover}
+                                                    disabled={aiGenerating}
+                                                    className="brutalist-button"
+                                                    style={{
+                                                        padding: '6px 14px',
+                                                        background: '#FFE500',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.64rem',
+                                                        fontFamily: 'monospace',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 5,
+                                                        cursor: aiGenerating ? 'not-allowed' : 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {aiGenerating ? (
+                                                        <>
+                                                            <Loader2 size={12} className="animate-spin" /> GENERATING...
+                                                        </>
+                                                    ) : (
+                                                        'GENERATE COVER'
+                                                    )}
+                                                </button>
+                                            </div>
+
+                                            {aiError && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: '#FEE2E2', border: '1px solid #DC2626', color: '#991B1B', fontSize: '0.6rem', fontFamily: 'monospace' }}>
+                                                    <AlertTriangle size={12} />
+                                                    <span style={{ flex: 1 }}>{aiError}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAiModalOpen(true)}
+                                                        style={{ textDecoration: 'underline', fontWeight: 900, background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '0.6rem' }}
+                                                    >
+                                                        Configure Key
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
                                 )}
                             </div>
 
@@ -3353,6 +6081,42 @@ export default function TextBehindPage() {
                                             >
                                                 BTN
                                             </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('barcode')}
+                                                title="Authentic magazine retail barcode"
+                                            >
+                                                <Barcode size={11} /> BARCODE
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('qr')}
+                                                title="Real scannable QR code (paste any link as its content)"
+                                            >
+                                                <QrCode size={11} /> QR CODE
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('badge')}
+                                                title="Editorial issue dateline badge"
+                                            >
+                                                <Tag size={11} /> BADGE
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '8px 4px', fontSize: '0.62rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                                                onClick={() => addShape('frame')}
+                                                title="Magazine bleed frame"
+                                            >
+                                                <Frame size={11} /> FRAME
+                                            </button>
                                         </div>
 
                                         {/* Shape pills */}
@@ -3360,7 +6124,7 @@ export default function TextBehindPage() {
                                             <div className="ck-cat-shapeui" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                                 {shapes.map((s, index) => {
                                                     const isActive = s.id === activeShapeId;
-                                                    const kindLabel = s.kind === 'rect' ? 'RECT' : s.kind === 'line' ? 'LINE' : s.kind === 'beam' ? 'BEAM' : s.kind === 'circle' ? 'CIRCLE' : s.kind === 'button' ? 'BUTTON' : 'ICON';
+                                                    const kindLabel = s.kind === 'rect' ? 'RECT' : s.kind === 'line' ? 'LINE' : s.kind === 'beam' ? 'BEAM' : s.kind === 'circle' ? 'CIRCLE' : s.kind === 'button' ? 'BUTTON' : s.kind === 'barcode' ? 'BARCODE' : s.kind === 'badge' ? 'BADGE' : s.kind === 'qr' ? 'QR' : s.kind === 'frame' ? 'FRAME' : 'ICON';
                                                     return (
                                                         <span key={s.id} style={{ display: 'inline-flex', alignItems: 'stretch', border: '2px solid #000', background: isActive ? '#4DD2FF' : '#fff' }}>
                                                             <button
@@ -3393,7 +6157,7 @@ export default function TextBehindPage() {
                                             <div className="ck-cat-shapeui" style={{ border: '2px solid #000', background: '#fafafa', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                                     <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.66rem' }}>
-                                                        {activeShape.kind === 'rect' ? 'RECTANGLE' : activeShape.kind === 'line' ? 'LINE' : activeShape.kind === 'beam' ? 'LIGHT BEAM' : activeShape.kind === 'circle' ? 'CIRCLE' : activeShape.kind === 'button' ? 'BUTTON' : 'ICON'}
+                                                        {activeShape.kind === 'rect' ? 'RECTANGLE' : activeShape.kind === 'line' ? 'LINE' : activeShape.kind === 'beam' ? 'LIGHT BEAM' : activeShape.kind === 'circle' ? 'CIRCLE' : activeShape.kind === 'button' ? 'BUTTON' : activeShape.kind === 'barcode' ? 'BARCODE' : activeShape.kind === 'badge' ? 'EDITORIAL BADGE' : activeShape.kind === 'qr' ? 'QR CODE' : activeShape.kind === 'frame' ? 'MAGAZINE FRAME' : 'ICON'}
                                                     </span>
                                                     <div style={{ display: 'flex', border: '1.5px solid #000' }}>
                                                         {(['behind', 'front'] as const).map((d) => (
@@ -3436,16 +6200,18 @@ export default function TextBehindPage() {
                                                     />
                                                 </div>
 
-                                                {/* Button label editor (kind === 'button') */}
-                                                {activeShape.kind === 'button' && (
+                                                {/* Label editor (button, badge, barcode) */}
+                                                {(activeShape.kind === 'button' || activeShape.kind === 'badge' || activeShape.kind === 'barcode' || activeShape.kind === 'qr') && (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>BUTTON LABEL</span>
+                                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>
+                                                            {activeShape.kind === 'button' ? 'BUTTON LABEL' : activeShape.kind === 'badge' ? 'BADGE TEXT' : activeShape.kind === 'qr' ? 'QR CONTENT (LINK / TEXT)' : 'BARCODE NUMBER'}
+                                                        </span>
                                                         <input
                                                             type="text"
                                                             value={activeShape.label ?? ''}
                                                             onChange={(e) => patchActiveShape({ label: e.target.value })}
-                                                            placeholder="NEXT · SWIPE · LINK IN BIO"
-                                                            maxLength={24}
+                                                            placeholder={activeShape.kind === 'barcode' ? '9771234567003 (9–13 digits → real EAN-13)' : activeShape.kind === 'qr' ? 'https://your-link.com (encoded for real)' : activeShape.kind === 'badge' ? 'ISSUE N° 04 • FALL 2026' : 'NEXT · SWIPE · LINK IN BIO'}
+                                                            maxLength={36}
                                                             style={{ width: '100%', padding: '5px 8px', border: '1.5px solid #000', fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, textTransform: 'uppercase', background: '#fff' }}
                                                         />
                                                     </div>
@@ -3929,6 +6695,25 @@ export default function TextBehindPage() {
             )}
 
             <style>{`
+                /* Editorial Presets Cards — clean hover without blackouts */
+                .ck-editorial-card {
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease !important;
+                }
+                .ck-editorial-card:hover {
+                    background: #f4f4f5 !important;
+                    color: #000000 !important;
+                }
+                .ck-editorial-card.active {
+                    background: #FFE500 !important;
+                    color: #000000 !important;
+                }
+                .ck-editorial-card.active:hover {
+                    background: #FFE500 !important;
+                    color: #000000 !important;
+                }
+
                 /* Clean brutalist scrollbar for settings column */
                 .text-behind-controls-scroll::-webkit-scrollbar {
                     width: 6px;
@@ -4210,6 +6995,7 @@ export default function TextBehindPage() {
                     }
                 }
             `}</style>
+            <ByokModal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} initialProvider="gemini" />
         </div>
     );
 }
