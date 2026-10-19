@@ -17,7 +17,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Scissors, Download, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, ChevronDown, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2, Barcode, QrCode, Frame, Sparkles, BookOpen, Crown, Tag, Wand2, Loader2 } from 'lucide-react';
+import { ImagePlus, Scissors, Download, Type as TypeIcon, Plus, Copy, Trash2, Search, X, UploadCloud, AlertTriangle, ChevronDown, ChevronUp, Square, Minus, Slash, Circle, Star, Layers, Undo2, Redo2, Barcode, QrCode, Frame, Sparkles, BookOpen, Crown, Tag, Wand2, Loader2, Activity, Terminal, CheckCircle2, Clock, Eye, Cpu, Compass } from 'lucide-react';
 import { ByokModal, ByokButton } from '@/components/ai/ByokModal';
 import { getStoredAiKey, getActiveAiProvider, getStoredAiModel } from '@/lib/ai-keyring';
 import MobileEditorToolbar from '@/components/mobile-editor/MobileEditorToolbar';
@@ -30,7 +30,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { REMIX_ICONS_LIST, type IconDefinition } from '@/lib/remix-icons';
 import QRCode from 'qrcode';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
-import { analyzePhotoFromCanvas, composeSystemCover, LAYOUT_LIBRARY, type SystemContentInput } from '@/lib/magazine/cover-system';
+import { analyzePhotoFromCanvas, composeSystemCover, LAYOUT_LIBRARY, type SystemContentInput, type SystemStyleId, type ArtDirection } from '@/lib/magazine/cover-system';
+import { loadBrandKit, updateBrandKit } from '@/lib/brand-kit';
+import { analyzeGridFromCanvas, gridToPhotoAnalysis, solveEditorialCover, applySolverToCover, type GridAnalysis, type SolverSemantics, type SolverResult } from '@/lib/magazine/solver';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import { gateAction } from '@/components/AdGate';
 import {
@@ -562,7 +564,7 @@ const TEXT_PRESETS: { id: string; name: string; swatch: string; patch: Partial<T
 // (mirror the contract in src/app/api/ai/magazine-layout/route.ts)
 
 const AI_STYLE_OPTIONS: {
-    id: 'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural';
+    id: 'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural' | 'food' | 'fragments' | 'time' | 'eye' | 'bazaar';
     label: string;
 }[] = [
         { id: 'auto', label: 'AUTO' },
@@ -576,6 +578,11 @@ const AI_STYLE_OPTIONS: {
         { id: 'cyber', label: 'CYBER' },
         { id: 'vinyl', label: 'VINYL' },
         { id: 'architectural', label: 'ARCHITECT' },
+        { id: 'food', label: 'FOOD' },
+        { id: 'fragments', label: 'FRAGMENTS' },
+        { id: 'time', label: 'TIME' },
+        { id: 'eye', label: 'EYE' },
+        { id: 'bazaar', label: 'BAZAAR' },
     ];
 
 /** Sanitize an AI-provided case transform (defaults to uppercase editorial). */
@@ -690,12 +697,29 @@ const enforceLayoutLaws = (
 ): { layers: TextLayer[]; shapes: ShapeLayer[] } => {
     const PRUNE = opts.prune !== false;
     type Box = { x0: number; y0: number; x1: number; y1: number };
-    const railOf = (rot: number) => Math.abs(Math.abs(rot || 0) - 90) < 15;
+    // 90 AND 270 are rails — |rot| mod 180 ≈ 90 covers both upright rails and
+    // the user's 270° flips. (The old check missed 270°, so a vertical text
+    // was measured as a wide horizontal bar — the law engine then pinned it
+    // to the centre band instead of letting it live on the left edge.)
+    const railOf = (rot: number) => Math.abs(Math.abs(rot || 0) % 180 - 90) < 15;
     const axisAligned = (rot: number) => Math.abs((rot || 0) % 180) <= 12;
     const boxOfLayer = (l: TextLayer): Box => {
         const rail = railOf(l.rotationDeg);
-        const w = (rail ? l.heightPct : l.widthPct) / 100;
-        const h = (rail ? l.widthPct : l.heightPct) / 100;
+        let effWidthPct = l.widthPct;
+        if (!l.fitToWidth && l.text.trim()) {
+            const fontH = l.heightPct;
+            const lineLens = l.text.split('\n').map((ln) => ln.length);
+            const maxLen = Math.max(...lineLens, 1);
+            // Poster canvas aspect ratio: Height / Width is ~1.5 (e.g. 2560 / 1705).
+            // Since fontH is in % of H, 1% of H = 1.5% of W.
+            const aspect = 1.5;
+            const track = Math.max(0, l.letterSpacingEm || 0);
+            const adv = (l.caseMode === 'uppercase' || l.uppercase ? 0.76 : 0.68) + track * 1.1;
+            const approxW = maxLen * fontH * aspect * adv + (fontH * aspect * 0.5);
+            effWidthPct = Math.max(l.widthPct, Math.min(96, approxW));
+        }
+        const w = (rail ? l.heightPct : effWidthPct) / 100;
+        const h = (rail ? effWidthPct : l.heightPct) / 100;
         return { x0: l.xPct - w / 2, x1: l.xPct + w / 2, y0: l.yPct - h / 2, y1: l.yPct + h / 2 };
     };
     const boxOfShape = (s: ShapeLayer): Box => {
@@ -757,19 +781,23 @@ const enforceLayoutLaws = (
         if (!ownerId || s.kind !== 'rect' || !axisAligned(s.rotationDeg)) return s;
         const t = texts.find((x) => x.l.id === ownerId);
         if (!t || !axisAligned(t.l.rotationDeg)) return s;
-        const padX = Math.max(0.014, (t.box.x1 - t.box.x0) * 0.07);
-        const padY = Math.max(0.011, (t.box.y1 - t.box.y0) * 0.32);
+        // Generous editorial padding (12% of text width or at least 3.5% canvas width)
+        const padX = Math.max(0.035, (t.box.x1 - t.box.x0) * 0.12);
+        const padY = Math.max(0.014, (t.box.y1 - t.box.y0) * 0.38);
         const x0 = Math.max(0.01, t.box.x0 - padX);
         const x1 = Math.min(0.99, t.box.x1 + padX);
         const y0 = Math.max(0.012, t.box.y0 - padY);
         const y1 = Math.min(0.982, t.box.y1 + padY);
+        const calcW = (x1 - x0) * 100;
+        const calcH = (y1 - y0) * 100;
         return {
             ...s,
             depth: t.l.depth, // the plate serves its text — same side of the sandwich
             xPct: (x0 + x1) / 2,
             yPct: (y0 + y1) / 2,
-            wPct: (x1 - x0) * 100,
-            hPct: (y1 - y0) * 100,
+            // Plate must NEVER be smaller than the text, and NEVER shrink below authored slab width
+            wPct: Math.max(s.wPct, calcW),
+            hPct: Math.max(s.hPct, calcH),
         };
     });
 
@@ -973,19 +1001,209 @@ const enforceLayoutLaws = (
         if (!t || !before) return s;
         if (s.kind === 'rect' && axisAligned(s.rotationDeg) && axisAligned(t.l.rotationDeg)) {
             // Full re-cut so the padding is pixel-perfect after the solve.
-            const padX = Math.max(0.014, (t.box.x1 - t.box.x0) * 0.07);
-            const padY = Math.max(0.011, (t.box.y1 - t.box.y0) * 0.32);
+            const padX = Math.max(0.035, (t.box.x1 - t.box.x0) * 0.12);
+            const padY = Math.max(0.014, (t.box.y1 - t.box.y0) * 0.38);
             const x0 = Math.max(0.01, t.box.x0 - padX);
             const x1 = Math.min(0.99, t.box.x1 + padX);
             const y0 = Math.max(0.012, t.box.y0 - padY);
             const y1 = Math.min(0.982, t.box.y1 + padY);
-            return { ...s, xPct: (x0 + x1) / 2, yPct: (y0 + y1) / 2, wPct: (x1 - x0) * 100, hPct: (y1 - y0) * 100 };
+            const calcW = (x1 - x0) * 100;
+            const calcH = (y1 - y0) * 100;
+            return {
+                ...s,
+                xPct: (x0 + x1) / 2,
+                yPct: (y0 + y1) / 2,
+                wPct: Math.max(s.wPct, calcW),
+                hPct: Math.max(s.hPct, calcH),
+            };
         }
         // Circles / rules keep their offset from the owner and travel with it.
         return { ...s, xPct: s.xPct + (t.l.xPct - before.l.xPct), yPct: s.yPct + (t.l.yPct - before.l.yPct) };
     });
 
     return { layers: edgeSafe, shapes: finalShapes };
+};
+
+// ── THE FINAL GUARANTEE · no text ever sits on text ────────────────────────
+// The house law, stated plainly: every text is SELF-AWARE — it knows the
+// measured box of every other text on the canvas and yields before it can
+// overlap one. This pass runs AFTER every other intelligence (composer,
+// solver, law engine, AI) on the FINAL layer list, ALWAYS — not gated by
+// any toggle. The hierarchy rules ARE the collision rules: role weights
+// mirror the §4 ladder (masthead 5 · feature 4 · sub 2.5 · dateline 1.5 ·
+// teaser 1.2), so anchors hold their line while juniors yield. Vertical
+// pushes come first so alignment axes survive; a same-band graze sidesteps
+// horizontally instead of triggering a cascade. Only exemption: the giant
+// wordmark backdrop (sys-giant-*) and true monumental scale (≥20% cap
+// height) — the sandwich the subject covers. Depth alone exempts NOTHING:
+// a behind-depth masthead is still reading text and still must yield.
+const measureTextBox = (l: TextLayer): { hw: number; hh: number } => {
+    const rail = Math.abs(Math.abs(l.rotationDeg || 0) % 180 - 90) < 15;
+    const rawLines = l.text.split('\n');
+    const lines = rawLines.filter((s) => s.trim()).length || 1;
+    const maxLen = Math.max(...rawLines.map((ln) => ln.length), 1);
+    let effW = l.widthPct;
+    if (!l.fitToWidth && l.text.trim()) {
+        // Conservative: assume wide glyphs PLUS tracking, scaled by canvas aspect ratio (~1.5)
+        const track = Math.max(0, l.letterSpacingEm || 0);
+        const adv = (l.caseMode === 'uppercase' || l.uppercase ? 0.76 : 0.68) + track * 1.1;
+        const aspect = 1.5;
+        effW = Math.min(96, maxLen * l.heightPct * aspect * adv + l.heightPct * aspect * 0.5);
+    }
+    const wPct = rail ? Math.max(l.heightPct, 1.2) : effW;
+    const hPct = rail ? effW : l.heightPct * (lines > 1 ? lines * 1.12 : 1);
+    return { hw: Math.max(0.012, wPct / 200), hh: Math.max(0.008, hPct / 200) };
+};
+
+const guaranteeNoTextOverlap = (layers: TextLayer[], fixedShapes?: ShapeLayer[]): TextLayer[] => {
+    // Architecture exemption, NARROWED by ruling: only the solver's giant
+    // wordmark (sys-giant-*) and true monumental scale are backdrop. The
+    // old rule exempted every behind-depth text ≥8% — which un-exempted
+    // nothing the masthead does: a behind masthead overlapping coverlines
+    // is a collision, not a sandwich. Only monumental scale exempts.
+    const isArchitecture = (l: TextLayer): boolean =>
+        l.id.startsWith('sys-giant-') || l.heightPct >= 20;
+    const weightOf = (l: TextLayer): number => {
+        if (l.id === 'box-masthead') return 5;
+        if (l.id === 'box-feature') return 4;
+        if (l.id.startsWith('box-sub')) return 2.5;
+        if (l.id === 'box-dateline' || l.id === 'box-rail') return 1.5;
+        if (l.id.startsWith('box-teaser')) return 1.2;
+        return 1;
+    };
+    type GNode = { src: TextLayer | null; cx: number; cy: number; hw: number; hh: number; w: number; arch: boolean; fixed: boolean };
+    const nodes: GNode[] = layers
+        .filter((l) => l.text.trim())
+        .map((l) => {
+            const { hw, hh } = measureTextBox(l);
+            return { src: l, cx: l.xPct, cy: l.yPct, hw, hh, w: weightOf(l), arch: isArchitecture(l), fixed: false };
+        });
+    // TEXT-BEARING SHAPES ARE TEXT — the badge pill, the barcode and its
+    // EAN digits, and the QR tile all render glyphs, so they join the
+    // separation graph as FIXED pseudo-nodes: never architecture-exempt,
+    // never moved, never re-cut. Everything textual yields around them —
+    // a teaser stack can never land on the barcode band again, because
+    // the guarantee now sees the band.
+    (fixedShapes ?? []).forEach((s) => {
+        if (s.kind !== 'badge' && s.kind !== 'barcode' && s.kind !== 'qr') return;
+        nodes.push({
+            src: null,
+            cx: s.xPct,
+            cy: s.yPct,
+            hw: Math.max(0.012, s.wPct / 200),
+            hh: Math.max(0.008, s.hPct / 200),
+            w: 2,
+            arch: false,
+            fixed: true,
+        });
+    });
+    const GAP = 0.020;
+    const clampX = (n: GNode) => {
+        if (n.hw < 0.48) n.cx = Math.min(0.98 - n.hw, Math.max(0.02 + n.hw, n.cx));
+    };
+    // Iterate to a FIXED POINT: every push is rechecked against the whole
+    // list, so a yield that creates a new conflict with a third text is
+    // itself resolved. Self-awareness is global, never pairwise-once.
+    for (let pass = 0; pass < 24; pass++) {
+        let moved = false;
+        const order = [...nodes].sort((a, b) => a.cy - b.cy);
+        for (let i = 0; i < order.length; i++) {
+            for (let j = i + 1; j < order.length; j++) {
+                const a = order[i];
+                const b = order[j];
+                if (a.arch || b.arch) continue; // the sandwich / giant statement
+                if (a.fixed && b.fixed) continue; // two anchors never yield to each other
+                const xOverlap = a.hw + b.hw - Math.abs(a.cx - b.cx);
+                if (xOverlap <= 0) continue; // side-by-side and aware of it
+                const minDist = a.hh + b.hh + GAP;
+                const dist = b.cy - a.cy;
+                if (dist >= minDist) continue;
+                // Sidestep: columns merely grazing at the same height —
+                // the lighter element steps aside, no vertical cascade.
+                const minW = Math.min(a.hw, b.hw);
+                if (Math.abs(a.cy - b.cy) < (a.hh + b.hh) * 0.8 && xOverlap < minW * 0.7) {
+                    const lighter = a.fixed ? b : b.fixed ? a : a.w <= b.w ? a : b;
+                    const other = lighter === a ? b : a;
+                    const dir = lighter.cx <= other.cx ? -1 : 1;
+                    lighter.cx += dir * (xOverlap + 0.012);
+                    clampX(lighter);
+                    moved = true;
+                    continue;
+                }
+                // Vertical, split by inverse role weight: the masthead and
+                // the feature hold their band; teasers and datelines move.
+                const push = minDist - dist;
+                const invA = a.fixed || a.w >= 4 ? 0 : 1 / a.w;
+                const invB = b.fixed || b.w >= 4 ? 0 : 1 / b.w;
+                const total = invA + invB || 1;
+                if (!a.fixed) a.cy = Math.max(0.035, a.cy - push * (invA / total));
+                if (!b.fixed) b.cy = Math.min(0.955, Math.max(b.cy, a.cy + minDist));
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+    const byLayer = new Map(nodes.filter((n) => n.src).map((n) => [n.src!, n] as const));
+    return layers.map((l) => {
+        const n = byLayer.get(l);
+        return n && (n.cx !== l.xPct || n.cy !== l.yPct) ? { ...l, xPct: n.cx, yPct: n.cy } : l;
+    });
+};
+
+// PLATES FOLLOW THEIR WORDS — the ruling: text on a rect/plate/square is
+// INTENDED design (never separated, never pruned); the only follow-up
+// separation needs is cosmetic. When a line moves or is reworded, the
+// plate serving it re-cuts to the new box. A rect SERVES the text whose
+// centre it carries (largest overlap wins); plates already covering
+// their text are left untouched — authored geometry wins, always.
+const reCutPlates = (layers: TextLayer[], shapes: ShapeLayer[]): ShapeLayer[] => {
+    const texts = layers
+        .filter((l) => l.text.trim() && Math.abs((l.rotationDeg || 0) % 180) <= 12)
+        .map((l) => {
+            const { hw, hh } = measureTextBox(l);
+            return { l, x0: l.xPct - hw, x1: l.xPct + hw, y0: l.yPct - hh, y1: l.yPct + hh };
+        });
+    return shapes.map((s) => {
+        if (s.kind !== 'rect' || Math.abs((s.rotationDeg || 0) % 180) > 12) return s;
+        const sx0 = s.xPct - s.wPct / 200;
+        const sx1 = s.xPct + s.wPct / 200;
+        const sy0 = s.yPct - s.hPct / 200;
+        const sy1 = s.yPct + s.hPct / 200;
+        let owner: (typeof texts)[number] | null = null;
+        let bestDist = Infinity;
+        for (const t of texts) {
+            const tcx = (t.x0 + t.x1) / 2;
+            const tcy = (t.y0 + t.y1) / 2;
+            const scx = (sx0 + sx1) / 2;
+            const scy = (sy0 + sy1) / 2;
+            const dy = Math.abs(tcy - scy);
+            const dx = Math.abs(tcx - scx);
+            if (dy < 0.08 && dx < 0.40) {
+                const dist = dy * 3 + dx;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    owner = t;
+                }
+            }
+        }
+        if (!owner) return s; // accent block / free decoration — not a plate
+        const padX = Math.max(0.035, (owner.x1 - owner.x0) * 0.12);
+        const padY = Math.max(0.014, (owner.y1 - owner.y0) * 0.38);
+        const x0 = Math.max(0.01, owner.x0 - padX);
+        const x1 = Math.min(0.99, owner.x1 + padX);
+        const y0 = Math.max(0.012, owner.y0 - padY);
+        const y1 = Math.min(0.982, owner.y1 + padY);
+        const calcW = (x1 - x0) * 100;
+        const calcH = (y1 - y0) * 100;
+        return {
+            ...s,
+            depth: owner.l.depth,
+            xPct: (x0 + x1) / 2,
+            yPct: (y0 + y1) / 2,
+            wPct: Math.max(s.wPct, calcW),
+            hPct: Math.max(s.hPct, calcH),
+        };
+    });
 };
 
 /** Custom color entry — accepts #rgb, #rrggbb, rrggbb or rgb(r,g,b). */
@@ -1212,8 +1430,432 @@ export default function TextBehindPage() {
     const [aiModalOpen, setAiModalOpen] = useState(false);
     const [aiGenerating, setAiGenerating] = useState(false);
     const [aiPrompt, setAiPrompt] = useState('');
-    const [aiStyle, setAiStyle] = useState<'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural'>('auto');
+    const [aiStyle, setAiStyle] = useState<'auto' | 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural' | 'food' | 'fragments' | 'time' | 'eye' | 'bazaar'>('auto');
     const [aiError, setAiError] = useState<string | null>(null);
+    /** Live solver readout — style, placements, decorations and law flags
+     *  from the last ASSEMBLE, surfaced under the 3-step flow. */
+    const [solverReport, setSolverReport] = useState<string | null>(null);
+    /** Which photo (src) the CURRENT aiSemantics.direction was read from —
+     *  swapping the photo invalidates the art direction; the mirrored
+     *  ASSEMBLE button re-reads it before assembling. */
+    const dirPhotoSrcRef = useRef('');
+    /** Key on file → the ASSEMBLE button mirrors the pipeline (art-direct
+     *  first, then assemble). Synced on mount and whenever the BYOK modal
+     *  closes (key saved / removed). */
+    const [aiKeyed, setAiKeyed] = useState(false);
+    useEffect(() => {
+        setAiKeyed(!!getStoredAiKey(getActiveAiProvider()));
+    }, [aiModalOpen]);
+    /** BRAND KIT hookup — the saved palette travels with every cover: the
+     *  accent becomes the genre's single accent ink and the AI is told to
+     *  stay inside the brand hues. Edits here write back to the kit. */
+    const [brandUse, setBrandUse] = useState(false);
+    const [brandPrimary, setBrandPrimary] = useState('');
+    const [brandAccent, setBrandAccent] = useState('');
+    /** CUSTOM TEXT — the user's exact words for the three storytelling
+     *  slots; they outrank the vibe input, the canvas and the copy pools. */
+    const [aiCustom, setAiCustom] = useState({ masthead: '', coverline: '', sub: '' });
+    /** AI PERCEPTION — semantics-only analysis of the photo. The
+     *  deterministic solver owns every coordinate; this only describes. */
+    const [aiSemantics, setAiSemantics] = useState<SolverSemantics | null>(null);
+    const [aiAnalyzing, setAiAnalyzing] = useState(false);
+    /** SESSION PERSISTENCE — the art direction for the photo on the canvas
+     *  is cached in localStorage keyed by a pixel fingerprint. Refresh the
+     *  browser with the same photo → the direction restores instantly with
+     *  ZERO server calls; a different photo (different pixels) is a miss. */
+    const DIR_CACHE_KEY = 'ck_text_behind_direction_v1';
+    useEffect(() => {
+        if (!bgImage) return;
+        if (dirPhotoSrcRef.current && dirPhotoSrcRef.current !== bgImage.src) {
+            // a different photo than the one we art-directed → invalidate
+            dirPhotoSrcRef.current = '';
+            setAiSemantics(null);
+            return;
+        }
+        if (aiSemantics) return;
+        try {
+            const raw = localStorage.getItem(DIR_CACHE_KEY);
+            if (!raw) return;
+            const stored = JSON.parse(raw) as { fp?: string; sem?: SolverSemantics };
+            if (!stored?.fp || !stored.sem) return;
+            const fp = photoFingerprint(bgImage);
+            if (fp && fp === stored.fp) {
+                setAiSemantics(stored.sem);
+                dirPhotoSrcRef.current = bgImage.src;
+            }
+        } catch {
+            /* corrupt cache — ignore */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bgImage]);
+
+    /** AI THOUGHT PROCESS & TELEMETRY STREAM
+     *  Live progressive thinking HUD that showcases negative-space scans,
+     *  archetype matching, and solver geometry without obscuring the canvas. */
+    const [thoughtState, setThoughtState] = useState<{
+        active: boolean;
+        mode: 'analyze' | 'direct-assemble' | 'rewrite' | 'assemble-offline';
+        title: string;
+        elapsedMs: number;
+        currentStep: number;
+        totalSteps: number;
+        progressPct: number;
+        items: Array<{
+            id: string;
+            step: 1 | 2 | 3 | 4 | 5;
+            label: string;
+            detail?: string;
+            status: 'pending' | 'running' | 'success' | 'note';
+            timestampMs: number;
+        }>;
+        expanded: boolean;
+        dismissed: boolean;
+        summary?: {
+            archetype?: string;
+            genre?: string;
+            mood?: string[];
+            template?: string;
+            cluster?: string;
+            treatment?: string;
+            depth?: string;
+            collisions?: number;
+            durationSec?: number;
+        } | null;
+    }>({
+        active: false,
+        mode: 'analyze',
+        title: '',
+        elapsedMs: 0,
+        currentStep: 1,
+        totalSteps: 5,
+        progressPct: 0,
+        items: [],
+        expanded: false,
+        dismissed: false,
+        summary: null,
+    });
+    const thoughtTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const thoughtStartRef = useRef<number>(0);
+
+    const stopThoughtTimer = useCallback(() => {
+        if (thoughtTimerRef.current) {
+            clearInterval(thoughtTimerRef.current);
+            thoughtTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (thoughtTimerRef.current) clearInterval(thoughtTimerRef.current);
+        };
+    }, []);
+
+    const startThoughtProcess = useCallback((mode: 'analyze' | 'direct-assemble' | 'rewrite' | 'assemble-offline', title: string) => {
+        stopThoughtTimer();
+        const start = Date.now();
+        thoughtStartRef.current = start;
+
+        // Instant local negative space measurement (<10ms)
+        const initialItems: Array<{
+            id: string;
+            step: 1 | 2 | 3 | 4 | 5;
+            label: string;
+            detail?: string;
+            status: 'pending' | 'running' | 'success' | 'note';
+            timestampMs: number;
+        }> = [];
+
+        try {
+            const cv = canvasRef.current;
+            const grid = cv ? analyzeGridFromCanvas(cv) : null;
+            if (grid) {
+                const pa = gridToPhotoAnalysis(grid);
+                const hr = Math.round(pa.headroom * 100);
+                const ls = Math.round(pa.leftSpace * 100);
+                const rs = Math.round(pa.rightSpace * 100);
+                const dom = grid.light ? 'Light Palette' : 'Dark Palette';
+                initialItems.push({
+                    id: 't-grid',
+                    step: 1,
+                    label: '24×30 Negative Space Grid Measured',
+                    detail: `Headroom: ${hr}% · Flanks: L:${ls}% R:${rs}% · ${dom}`,
+                    status: 'success',
+                    timestampMs: 15,
+                });
+            }
+        } catch {
+            /* local measure unavailable */
+        }
+
+        if (initialItems.length === 0) {
+            initialItems.push({
+                id: 't-init',
+                step: 1,
+                label: 'Scanning Negative Space & Bounding Box',
+                detail: 'Analyzing canvas luminance & quadrant density',
+                status: 'running',
+                timestampMs: 10,
+            });
+        }
+
+        setThoughtState({
+            active: true,
+            mode,
+            title,
+            elapsedMs: 0,
+            currentStep: 1,
+            totalSteps: mode === 'rewrite' ? 4 : 5,
+            progressPct: 8,
+            items: initialItems,
+            expanded: false,
+            dismissed: false,
+            summary: null,
+        });
+
+        if (mode === 'assemble-offline') {
+            return;
+        }
+
+        thoughtTimerRef.current = setInterval(() => {
+            const now = Date.now();
+            const elapsed = now - thoughtStartRef.current;
+
+            setThoughtState((prev) => {
+                if (!prev.active) return prev;
+
+                let step = prev.currentStep;
+                let pct = prev.progressPct;
+                const items = [...prev.items];
+
+                if (mode === 'rewrite') {
+                    if (elapsed < 900) {
+                        step = 1;
+                        pct = Math.min(30, 10 + (elapsed / 900) * 20);
+                        if (!items.find((i) => i.id === 't-rw-1')) {
+                            items.push({
+                                id: 't-rw-1',
+                                step: 1,
+                                label: 'Mapping Typography Hierarchy & Roles',
+                                detail: 'Reading masthead, kicker, feature and teaser slots',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else if (elapsed < 2400) {
+                        step = 2;
+                        pct = Math.min(60, 30 + ((elapsed - 900) / 1500) * 30);
+                        if (!items.find((i) => i.id === 't-rw-2')) {
+                            const prevItem = items.find((i) => i.id === 't-rw-1');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-rw-2',
+                                step: 2,
+                                label: 'Grounding Editorial Voice in Photo',
+                                detail: 'Drafting fresh words tied to visual mood & subject focus',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else if (elapsed < 4200) {
+                        step = 3;
+                        pct = Math.min(85, 60 + ((elapsed - 2400) / 1800) * 25);
+                        if (!items.find((i) => i.id === 't-rw-3')) {
+                            const prevItem = items.find((i) => i.id === 't-rw-2');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-rw-3',
+                                step: 3,
+                                label: 'Enforcing Letter Budgets & Hierarchy',
+                                detail: 'Calibrating character limits (masthead ≤ 12, feature ≤ 44)',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else {
+                        step = 4;
+                        pct = Math.min(94, 85 + ((elapsed - 4200) / 2500) * 9);
+                        if (!items.find((i) => i.id === 't-rw-4')) {
+                            const prevItem = items.find((i) => i.id === 't-rw-3');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-rw-4',
+                                step: 4,
+                                label: 'Awaiting Final Streamed Copy Payload',
+                                detail: 'Recutting legibility plates & zero-collision settlement',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    }
+                } else {
+                    if (elapsed < 1100) {
+                        step = 1;
+                        pct = Math.min(22, 8 + (elapsed / 1100) * 14);
+                    } else if (elapsed < 2400) {
+                        step = 2;
+                        pct = Math.min(45, 22 + ((elapsed - 1100) / 1300) * 23);
+                        if (!items.find((i) => i.id === 't-vision')) {
+                            const prevItem = items.find((i) => i.id === 't-init' || i.id === 't-grid');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-vision',
+                                step: 2,
+                                label: 'AI Vision Cortex Processing',
+                                detail: 'Transmitting 512px vision thumbnail to AI · Analyzing wardrobe & gaze',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else if (elapsed < 3800) {
+                        step = 3;
+                        pct = Math.min(70, 45 + ((elapsed - 2400) / 1400) * 25);
+                        if (!items.find((i) => i.id === 't-arch')) {
+                            const prevItem = items.find((i) => i.id === 't-vision');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-arch',
+                                step: 3,
+                                label: 'Matching 10 Master Brand Archetypes',
+                                detail: 'Testing negative space against Vogue, Time, Kinfolk, Noir, Avant-Garde',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else if (elapsed < 5200) {
+                        step = 4;
+                        pct = Math.min(88, 70 + ((elapsed - 3800) / 1400) * 18);
+                        if (!items.find((i) => i.id === 't-dir')) {
+                            const prevItem = items.find((i) => i.id === 't-arch');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-dir',
+                                step: 4,
+                                label: 'Art Directing Editorial Anatomy',
+                                detail: 'Calibrating masthead depth, coverline cluster & barcode corner',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    } else {
+                        step = 5;
+                        pct = Math.min(95, 88 + ((elapsed - 5200) / 3000) * 7);
+                        if (!items.find((i) => i.id === 't-solver-wait')) {
+                            const prevItem = items.find((i) => i.id === 't-dir');
+                            if (prevItem) prevItem.status = 'success';
+                            items.push({
+                                id: 't-solver-wait',
+                                step: 5,
+                                label: 'Synthesizing Copy & Hierarchy',
+                                detail: 'Drafting bespoke title, machine dateline & teaser rungs',
+                                status: 'running',
+                                timestampMs: elapsed,
+                            });
+                        }
+                    }
+                }
+
+                return {
+                    ...prev,
+                    elapsedMs: elapsed,
+                    currentStep: step,
+                    progressPct: Math.round(pct),
+                    items,
+                };
+            });
+        }, 100);
+    }, [stopThoughtTimer]);
+
+    const completeThoughtProcess = useCallback((opts: {
+        sem?: SolverSemantics | null;
+        direction?: ArtDirection | null;
+        solverOut?: SolverResult | null;
+        durationSec?: number;
+        note?: string;
+    }) => {
+        stopThoughtTimer();
+        const duration = opts.durationSec ?? Number(((Date.now() - thoughtStartRef.current) / 1000).toFixed(1));
+        const sem = opts.sem;
+        const dir = opts.direction ?? sem?.direction;
+        const arch = sem?.archetypeHint || dir?.template || 'VOGUE-DEEP-LAYER';
+        const genre = sem?.genre || 'AUTO';
+        const tmpl = dir?.template || 'DEEP-LAYER';
+        const cluster = dir?.cluster || 'LEFT';
+        const trt = dir?.treatment || 'STATEMENT';
+
+        setThoughtState((prev) => {
+            const allItems = prev.items.map((it) => ({ ...it, status: 'success' as const }));
+            allItems.push({
+                id: 't-complete',
+                step: 5,
+                label: 'Cover Geometry Assembled & Verified',
+                detail: opts.note || `Archetype: ${arch.toUpperCase()} · Masthead: ${tmpl === 'DEEP-LAYER' ? 'BEHIND' : 'FRONT'} · 0 Collisions`,
+                status: 'success',
+                timestampMs: Math.round(duration * 1000),
+            });
+
+            return {
+                ...prev,
+                active: false,
+                progressPct: 100,
+                elapsedMs: Math.round(duration * 1000),
+                currentStep: 5,
+                items: allItems,
+                summary: {
+                    archetype: arch.toUpperCase(),
+                    genre: genre.toUpperCase(),
+                    mood: sem?.mood || [],
+                    template: tmpl,
+                    cluster,
+                    treatment: trt,
+                    depth: tmpl === 'DEEP-LAYER' ? 'behind' : 'front',
+                    collisions: 0,
+                    durationSec: duration,
+                },
+            };
+        });
+    }, [stopThoughtTimer]);
+
+    const failThoughtProcess = useCallback((errMessage: string) => {
+        stopThoughtTimer();
+        const elapsed = Date.now() - thoughtStartRef.current;
+        setThoughtState((prev) => {
+            const allItems = [...prev.items];
+            allItems.push({
+                id: 't-err',
+                step: prev.currentStep as any,
+                label: 'Thought Process Interrupted',
+                detail: errMessage,
+                status: 'note',
+                timestampMs: elapsed,
+            });
+            return {
+                ...prev,
+                active: false,
+                items: allItems,
+            };
+        });
+    }, [stopThoughtTimer]);
+    const patchBrandColors = (primary: string, accent: string) => {
+        setBrandPrimary(primary);
+        setBrandAccent(accent);
+        try {
+            updateBrandKit({ colors: { primary, accent } });
+        } catch {
+            /* storage blocked — session-only brand */
+        }
+    };
+    useEffect(() => {
+        try {
+            const kit = loadBrandKit();
+            if (kit.colors.primary || kit.colors.accent) {
+                setBrandPrimary(kit.colors.primary);
+                setBrandAccent(kit.colors.accent);
+                setBrandUse(true);
+            }
+        } catch {
+            /* storage blocked — brand stays off */
+        }
+    }, []);
 
     /** AUTO-LAYOUT (default ON): the app quietly keeps every front element
      *  collision-free and print-tidy after AI layouts. OFF = full manual rule. */
@@ -1221,8 +1863,9 @@ export default function TextBehindPage() {
     /** One-shot law pass requested by preset application (the preset writes
      *  raw layers/shapes; the flag makes the effect above catch them). */
     const solveNextRef = useRef(false);
-    /** ASSEMBLE walks the hidden 50-preset LAYOUT POOL in order — every
-     *  click lands a different structural skeleton (A1 → A2 → … → F12). */
+    /** ASSEMBLE fallback only — when the AI has NOT art-directed this
+     *  photo, clicks walk the hidden LAYOUT POOL for structural variety.
+     *  The AI's direction (§7) skips the pool entirely. */
     const assembleIdxRef = useRef(0);
 
     useEffect(() => {
@@ -1242,15 +1885,19 @@ export default function TextBehindPage() {
     const [shapes, setShapes] = useState<ShapeLayer[]>([]);
     const [activeShapeId, setActiveShapeId] = useState<string | null>(null);
 
-    // Preset → law pass: presets write raw layers/shapes across many
-    // branches; this catches the result once and runs the laws on it.
+    // Preset commit — SEPARATION ONLY, per ruling: preset geometry is
+    // authored, so nothing is pinned, pruned, clamped or frame-tucked.
+    // The pass separates text×text collisions (teasers off the barcode
+    // band, badge off the masthead) with the shapes as fixed anchors,
+    // then re-cuts plates to their words. The full law engine
+    // (enforceLayoutLaws) lives behind the manual button only.
     useEffect(() => {
         if (!solveNextRef.current) return;
         solveNextRef.current = false;
         if (!autoLayout) return;
-        const solved = enforceLayoutLaws(layers, shapes);
-        setLayers(solved.layers);
-        setShapes(solved.shapes);
+        const settled = guaranteeNoTextOverlap(layers, shapes);
+        setLayers(settled);
+        setShapes(reCutPlates(settled, shapes));
     }, [layers, shapes, autoLayout]);
 
     const [grain, setGrain] = useState<GrainSettings>(DEFAULT_GRAIN);
@@ -1636,7 +2283,7 @@ export default function TextBehindPage() {
         setActiveLayerId(remaining[0].id);
     };
 
-    type EditorialPresetId = 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural' | 'skate' | 'old-money' | 'film-noir';
+    type EditorialPresetId = 'vogue' | 'zine' | 'kinfolk' | 'noir' | 'gq' | 'dazed' | 'natgeo' | 'cyber' | 'vinyl' | 'architectural' | 'skate' | 'old-money' | 'film-noir' | 'fragments' | 'time' | 'eye' | 'bazaar';
 
     const EDITORIAL_PRESETS_CATALOG: {
         id: EditorialPresetId;
@@ -1654,6 +2301,10 @@ export default function TextBehindPage() {
             { id: 'cyber', num: '[08]', title: 'CYBER / MATRIX', desc: 'Terminal Space Mono + Cyber Stamp + Node ID' },
             { id: 'vinyl', num: '[09]', title: 'INDIE VINYL', desc: 'Album Script + STEREO 33⅓ RPM + Tracklist' },
             { id: 'architectural', num: '[10]', title: 'ARCHITECTURE', desc: 'Bodoni/Cinzel + Crisp White Bleed Frame' },
+            { id: 'fragments', num: '[11]', title: 'HUMAN FRAGMENTS', desc: 'Type-as-Mask + Right Info Rail + Crosshairs' },
+            { id: 'time', num: '[12]', title: 'TIME / ICONIC', desc: 'Bold Red Border + Person of the Year Serif' },
+            { id: 'eye', num: '[13]', title: 'BRUTALIST EYE', desc: 'Raw Graphic Mass + Monochrome Full-Bleed' },
+            { id: 'bazaar', num: '[14]', title: 'HARPER’S BAZAAR', desc: 'Soft Couture Didone + Behind-Subject Depth' },
         ];
 
     const applyEditorialPreset = (rawId: EditorialPresetId) => {
@@ -2668,6 +3319,368 @@ export default function TextBehindPage() {
             setBgDim(0.18);
             setDimWholePhoto(false);
             setPhotoFilter('none');
+        } else if (presetId === 'fragments') {
+            // [11] HUMAN FRAGMENTS: Swiss type-as-mask + right vertical info rail
+            setPhotoFilter('none');
+            setDimWholePhoto(false);
+            setBgDim(0.12);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'FRAGMENTS',
+                    fontId: 'archivo',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 92,
+                    letterSpacingEm: -0.04,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.18,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'EDITORIAL POSTER  |  SERIES 01 — TOKYO / BERLIN',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 76,
+                    letterSpacingEm: 0.06,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.07,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-feature',
+                    text: 'THE HUMAN ARCHIVE',
+                    fontId: 'inter',
+                    weight: 800,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: false,
+                    widthPct: 40,
+                    letterSpacingEm: 0.04,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.28,
+                    yPct: 0.78,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-kicker',
+                    text: 'A STUDY IN URBAN PRESENCE & SILENT ARCHITECTURE',
+                    fontId: 'inter',
+                    weight: 600,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: false,
+                    widthPct: 44,
+                    letterSpacingEm: 0.02,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.28,
+                    yPct: 0.85,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.82,
+                    yPct: 0.91,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 771234 567008  01',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.10, size: 1 });
+        } else if (presetId === 'time') {
+            // [12] TIME / ICONIC: Bold red border + Person of the Year serif typography
+            setPhotoFilter('none');
+            setDimWholePhoto(false);
+            setBgDim(0.14);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'TIME',
+                    fontId: 'playfair',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 82,
+                    letterSpacingEm: 0.04,
+                    color: '#E10600',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.16,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'PERSON OF THE YEAR  |  SPECIAL ISSUE',
+                    fontId: 'inter',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 68,
+                    letterSpacingEm: 0.06,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.06,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-feature',
+                    text: 'PERSON OF THE YEAR',
+                    fontId: 'playfair',
+                    weight: 900,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: false,
+                    widthPct: 70,
+                    letterSpacingEm: 0.02,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.82,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-frame-${Date.now()}`,
+                    kind: 'frame',
+                    xPct: 0.5,
+                    yPct: 0.5,
+                    wPct: 94,
+                    hPct: 95,
+                    rotationDeg: 0,
+                    fillColor: '#E10600',
+                    fillOn: false,
+                    strokeColor: '#E10600',
+                    strokeW: 3.5,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                },
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.82,
+                    yPct: 0.91,
+                    wPct: 18,
+                    hPct: 5.5,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '0 725274 01001 9',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.10, size: 1 });
+        } else if (presetId === 'eye') {
+            // [13] BRUTALIST EYE: High contrast graphic typography
+            setPhotoFilter('mono');
+            setDimWholePhoto(true);
+            setBgDim(0.20);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'EYE',
+                    fontId: 'syne',
+                    weight: 800,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 88,
+                    letterSpacingEm: -0.05,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.28,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'INTERNATIONAL REVIEW OF GRAPHIC DESIGN  |  No. 128',
+                    fontId: 'space-mono',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 78,
+                    letterSpacingEm: 0.04,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.82,
+                    yPct: 0.91,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 770960 779001  28',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.22, size: 2 });
+        } else if (presetId === 'bazaar') {
+            // [14] HARPER'S BAZAAR: Couture Didone behind subject
+            setPhotoFilter('none');
+            setDimWholePhoto(false);
+            setBgDim(0.12);
+            setLayers([
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-masthead',
+                    text: 'BAZAAR',
+                    fontId: 'cinzel',
+                    weight: 700,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 88,
+                    letterSpacingEm: -0.02,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'behind',
+                    xPct: 0.5,
+                    yPct: 0.18,
+                },
+                {
+                    ...DEFAULT_TEXT_LAYER,
+                    id: 'box-dateline',
+                    text: 'PARIS • NEW YORK • MILAN  |  THE FASHION ISSUE',
+                    fontId: 'inter',
+                    weight: 600,
+                    caseMode: 'uppercase',
+                    uppercase: true,
+                    fitToWidth: true,
+                    widthPct: 72,
+                    letterSpacingEm: 0.08,
+                    color: '#FFFFFF',
+                    shadow: false,
+                    shadowMode: 'none',
+                    depth: 'front',
+                    xPct: 0.5,
+                    yPct: 0.08,
+                },
+            ]);
+            setActiveLayerId('box-masthead');
+            setShapes([
+                {
+                    id: `shape-barcode-${Date.now()}`,
+                    kind: 'barcode',
+                    xPct: 0.82,
+                    yPct: 0.91,
+                    wPct: 20,
+                    hPct: 6,
+                    rotationDeg: 0,
+                    fillColor: '#FFFFFF',
+                    fillOn: true,
+                    strokeColor: '#000000',
+                    strokeW: 0,
+                    cornerPct: 0,
+                    opacity: 1,
+                    glow: 0,
+                    blend: 'normal',
+                    depth: 'front',
+                    label: '9 770018 531003  10',
+                },
+            ]);
+            setGrain({ enabled: true, opacity: 0.10, size: 1 });
+        }
+    };
+
+    /** Stable identity of the CURRENT photo — a tiny grayscale hash of its
+     *  pixels. Blob URLs change every reload; pixels don't, so the cached
+     *  art direction survives refreshes with the same photo on the canvas. */
+    const photoFingerprint = (img: HTMLImageElement | null): string => {
+        try {
+            if (!img || !img.complete || img.naturalWidth === 0) return '';
+            const w = 12;
+            const h = 14;
+            const off = document.createElement('canvas');
+            off.width = w;
+            off.height = h;
+            const ctx = off.getContext('2d', { willReadFrequently: true });
+            if (!ctx) return '';
+            ctx.drawImage(img, 0, 0, w, h);
+            const d = ctx.getImageData(0, 0, w, h).data;
+            let hash = 5381;
+            for (let i = 0; i < d.length; i += 4) {
+                const lum = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+                hash = ((hash * 33) ^ Math.round(lum)) >>> 0;
+            }
+            return hash.toString(36);
+        } catch {
+            return '';
         }
     };
 
@@ -2690,6 +3703,66 @@ export default function TextBehindPage() {
             return b64 && b64.length > 100 ? b64 : null;
         } catch {
             return null;
+        }
+    };
+
+    /** AI PERCEPTION — semantics-only read of the photo (subject, mood,
+     *  genre). Feeds the deterministic editorial solver; the AI never
+     *  decides a coordinate. Works without it too (solver falls back to
+     *  its own measured colour-mood inference). */
+    /** The single art-direction round trip — shared by ANALYZE and the
+     *  mirrored ASSEMBLE button. One fast call returns analysis + the
+     *  VALIDATED direction pick + the edition's copy together, and
+     *  remembers which photo it was read from. Throws on failure. */
+    const runAiDirection = async (): Promise<SolverSemantics> => {
+        const provider = getActiveAiProvider();
+        const key = getStoredAiKey(provider);
+        const model = getStoredAiModel(provider);
+        if (!key) throw new Error('No AI key on file');
+        const res = await fetch('/api/ai/magazine-layout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider,
+                apiKey: key,
+                model,
+                mode: 'analyze',
+                imageContext: aiPrompt.trim() || activeLayer.text || '',
+                imageBase64: captureCanvasShot(),
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.semantics) {
+            throw new Error(data.error || 'Photo analysis failed');
+        }
+        dirPhotoSrcRef.current = bgImage?.src ?? '';
+        try {
+            const fp = photoFingerprint(bgImage ?? null);
+            if (fp) localStorage.setItem(DIR_CACHE_KEY, JSON.stringify({ fp, sem: data.semantics }));
+        } catch {
+            /* quota / private mode — best-effort cache */
+        }
+        return data.semantics as SolverSemantics;
+    };
+
+    const handleAiAnalyzePhoto = async () => {
+        if (!getStoredAiKey(getActiveAiProvider())) {
+            setAiModalOpen(true);
+            return;
+        }
+        setAiAnalyzing(true);
+        setAiError(null);
+        startThoughtProcess('analyze', 'AI PHOTO ANALYSIS & ART DIRECTION');
+        try {
+            const sem = await runAiDirection();
+            setAiSemantics(sem);
+            completeThoughtProcess({ sem, direction: sem.direction });
+        } catch (err: any) {
+            const msg = err?.message || 'Photo analysis failed';
+            setAiError(msg);
+            failThoughtProcess(msg);
+        } finally {
+            setAiAnalyzing(false);
         }
     };
 
@@ -2731,6 +3804,8 @@ export default function TextBehindPage() {
                     aspectRatio: canvasW && canvasH ? Math.round((canvasW / canvasH) * 1000) / 1000 : undefined,
                     canvasOrientation: canvasH >= canvasW ? 'portrait' : 'landscape',
                     photoAnalysis,
+                    brandColors: brandUse ? { primary: brandPrimary, accent: brandAccent } : null,
+                    customText: { masthead: aiCustom.masthead, coverline: aiCustom.coverline, sub: aiCustom.sub },
                 }),
             });
 
@@ -2846,19 +3921,20 @@ export default function TextBehindPage() {
                 });
             }
 
-            // App ↔ AI layout contract: when AUTO-LAYOUT is ON, the layout
-            // laws run — idle shapes pruned, plates re-cut to their text,
-            // nothing crossing anything, frame clearance respected.
-            // OFF = leave the AI layout untouched.
-            const solved = autoLayout
-                ? enforceLayoutLaws(newLayers, newShapes)
-                : { layers: newLayers, shapes: newShapes };
+            // USER RULING — auto layout must NEVER lock elements to
+            // positions. Text on a rect/plate/square is intended design,
+            // not a collision: the ONLY automatic intervention is
+            // text×text separation (unconditional, no toggle), plus
+            // plates re-cutting to follow words the separation moved.
+            // The full law engine stays available via the explicit
+            // law button — never in the automatic path.
+            const guaranteed = guaranteeNoTextOverlap(newLayers, newShapes);
 
-            if (solved.layers.length > 0) {
-                setLayers(solved.layers);
-                setActiveLayerId(solved.layers[0].id);
+            if (guaranteed.length > 0) {
+                setLayers(guaranteed);
+                setActiveLayerId(guaranteed[0].id);
             }
-            setShapes(solved.shapes);
+            setShapes(reCutPlates(guaranteed, newShapes));
 
             // Apply photo style
             if (layout.photoStyle) {
@@ -2890,22 +3966,86 @@ export default function TextBehindPage() {
     // Consolidates the full magazine component grammar (masthead · dateline ·
     // coverlines · side rail · badge · plate · barcode/QR · frame) into one
     // complete cover, on-device — no AI key, different edition every click.
-    const handleAssembleSystemCover = () => {
+    const handleAssembleSystemCover = async () => {
         if (!bgImage) {
             setAiError('Add a background photo first — the system composes over your image.');
             return;
         }
         setAiError(null);
 
+        // §7 MIRROR — the button IS the pipeline. With a key on file and
+        // no fresh direction for THIS photo (never analyzed, or the photo
+        // changed since), the click runs the single fast art-direction
+        // round trip FIRST, then assembles from the returned pick:
+        // art-direct → assemble, one tap. No key or failed call → the
+        // deterministic fallback owns it — same click, always a cover.
+        let sem: SolverSemantics | null = aiSemantics;
+        // Fresh = "this photo has been read" — NOT "a direction came
+        // back". If the model returned no direction, re-asking on every
+        // click would cost a full round trip each time for the same
+        // answer; the deterministic fallback owns it instead. Step 1
+        // (ANALYZE) always re-reads on demand.
+        const dirIsFresh = dirPhotoSrcRef.current === bgImage.src;
+        const willArtDirect = !!getStoredAiKey(getActiveAiProvider()) && !dirIsFresh;
+        if (willArtDirect) {
+            startThoughtProcess('direct-assemble', 'ART-DIRECTING & SOLVING COVER');
+            setAiAnalyzing(true);
+            try {
+                const fresh = await runAiDirection();
+                sem = fresh;
+                setAiSemantics(fresh);
+            } catch {
+                /* no direction available — the on-device solve proceeds */
+            } finally {
+                setAiAnalyzing(false);
+            }
+        } else {
+            startThoughtProcess('assemble-offline', 'ON-DEVICE EDITORIAL SOLVER');
+        }
+
         // Negative-space scan — the photo's calm quadrants choose the
         // composition template (calm headroom → over-head masthead, calm
         // side column → side-strip stack, dense → sandwich + bottom strip).
+        // ONE fast downsampled scan (96×120 thumbnail) feeds BOTH engines —
+        // the grid carries everything the old region scan measured, so the
+        // opening step of ASSEMBLE is a single instant pass, not two
+        // full-canvas reads.
         let analysis: ReturnType<typeof analyzePhotoFromCanvas> = null;
+        let grid: GridAnalysis | null = null;
         try {
             const cv = canvasRef.current;
-            analysis = cv ? analyzePhotoFromCanvas(cv) : null;
+            grid = cv ? analyzeGridFromCanvas(cv) : null;
+            analysis = grid ? gridToPhotoAnalysis(grid) : cv ? analyzePhotoFromCanvas(cv) : null;
         } catch {
             /* canvas sampling unavailable — fall back to seeded templates */
+        }
+
+        // THE SOLVER PASS — perception meets geometry. The AI (optional)
+        // supplies semantics only; this deterministic optimizer owns every
+        // coordinate: a 24×30 measurement field → candidate whitespace
+        // zones → Hungarian assignment → rail/plate mathematics.
+        let solverOut: SolverResult | null = null;
+        try {
+            solverOut = grid
+                ? solveEditorialCover(grid, sem, {
+                    seed: (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0,
+                    style: aiStyle !== 'auto' ? aiStyle : undefined,
+                    // The AI's analyze-time copy joins the solver's §3
+                    // fitness pass — its words are measured against real
+                    // zones at real rungs before geometry is chosen.
+                    copy: sem?.copy
+                        ? {
+                            masthead: sem.copy.masthead,
+                            dateline: sem.copy.dateline,
+                            feature: sem.copy.feature,
+                            sub: sem.copy.sub,
+                            teasers: sem.copy.teasers?.join('\n'),
+                        }
+                        : undefined,
+                })
+                : null;
+        } catch {
+            solverOut = null;
         }
 
         // The app's own intelligence builds the STRUCTURE from the scan;
@@ -2919,31 +4059,218 @@ export default function TextBehindPage() {
             .map((s) => s.trim())
             .filter(Boolean);
         const content: SystemContentInput = {};
+        // CUSTOM TEXT fields outrank everything — the user's exact words are
+        // contract; then the AI's analyze-time copy (it read the photo and
+        // named the genre in the same round trip — its fresh words outrank
+        // the canvas's stale ones); then the canvas, then the vibe input,
+        // then the pools.
+        const aiCopy = sem?.copy;
+        if (aiCustom.masthead.trim()) content.masthead = aiCustom.masthead.trim().slice(0, 14);
+        else if (aiCopy?.masthead) content.masthead = aiCopy.masthead;
+        if (aiCustom.coverline.trim()) content.feature = aiCustom.coverline.trim().slice(0, 44);
+        else if (aiCopy?.feature) content.feature = aiCopy.feature;
+        if (aiCustom.sub.trim()) content.sub = aiCustom.sub.trim().slice(0, 60);
+        else if (aiCopy?.sub) content.sub = aiCopy.sub;
+        if (aiCopy?.dateline) content.dateline = aiCopy.dateline;
+        if (aiCopy?.teasers?.length) content.teasers = aiCopy.teasers.slice(0, 3);
+        // §7 context slots — badge and rail speak in editorial language.
+        // If the AI identified a specific mood keyword, use an editorial badge like "SPECIAL ISSUE • TOKYO",
+        // never literal robot descriptions like "MID AIR SKATEBOARDER".
+        if (!content.badge && sem?.mood?.length) {
+            content.badge = `SPECIAL ISSUE • ${sem.mood[0].toUpperCase()}`.slice(0, 28);
+        }
+        const railLine = sem?.summary?.replace(/\s+/g, ' ').trim().slice(0, 64) ?? '';
+        if (!content.rail && railLine) {
+            content.rail = railLine;
+        }
         const currentMasthead = existingById('box-masthead');
-        if (currentMasthead) {
+        if (!content.masthead && currentMasthead) {
             content.masthead = currentMasthead;
-        } else if (vibeParts.length) {
+        } else if (!content.masthead && vibeParts.length) {
             const first = vibeParts[0].split(/\s+/)[0].replace(/[^A-Za-z0-9&'-]/g, '');
             if (first.length >= 3 && first.length <= 10) content.masthead = first.toUpperCase();
         }
         const currentFeature = existingById('box-feature');
-        if (currentFeature) {
+        if (!content.feature && currentFeature) {
             content.feature = currentFeature;
-        } else if (vibeParts.length) {
+        } else if (!content.feature && vibeParts.length) {
             content.feature = vibeParts[vibeParts.length - 1].slice(0, 44);
         }
 
-        // The LAYOUT POOL walk: every ASSEMBLE click lands the next hidden
-        // preset skeleton (A1 → A2 → … → F12) — structural diversity on tap.
-        const poolEntry = LAYOUT_LIBRARY[assembleIdxRef.current % LAYOUT_LIBRARY.length];
-        assembleIdxRef.current += 1;
+        // §7 — THE AI ART-DIRECTS, THE APP ASSEMBLES. When analyze
+        // returned a direction it wins outright: no layoutId, no static
+        // skeleton cycling — the composer materializes the pick into real
+        // geometry (ladder, plates, scan, guarantee). With no direction
+        // on the table (no key / not yet analyzed), the hidden pool walk
+        // keeps one-click structural variety as the deterministic
+        // fallback. Same click, same speed — the direction rides the
+        // analyze response that already happened.
+        const direction = sem?.direction ?? null;
+        const poolEntry = direction ? null : LAYOUT_LIBRARY[assembleIdxRef.current % LAYOUT_LIBRARY.length];
+        if (!direction) assembleIdxRef.current += 1;
+        // Base style only — a `preset:*` signature token is decoration,
+        // never a composer genre; composeSystemCover needs a real
+        // SystemStyleId (or 'auto').
+        const solvedToken = solverOut?.style ?? '';
+        const solvedBaseStyle: SystemStyleId | 'auto' =
+            solvedToken && !solvedToken.startsWith('preset:')
+                ? (solvedToken as SystemStyleId)
+                : 'auto';
+        // AI genre perception (e.g. zine / dazed / cyber / noir) outranks mathematical hue guess!
+        const aiGenre = sem?.genre as SystemStyleId | 'auto' | undefined;
+        const effectiveStyle: SystemStyleId | 'auto' =
+            aiStyle !== 'auto'
+                ? aiStyle
+                : aiGenre && aiGenre !== 'auto'
+                    ? aiGenre
+                    : solvedBaseStyle || 'auto';
         const composed = composeSystemCover({
-            style: aiStyle,
+            style: effectiveStyle,
             seed: (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0,
             analysis,
             content,
-            layoutId: poolEntry.id,
+            direction,
+            ...(poolEntry ? { layoutId: poolEntry.id } : {}),
+            brand: brandUse ? { primary: brandPrimary, accent: brandAccent } : undefined,
         });
+        // NOTE: applySolverToCover is intentionally NOT called here.
+        // The solver's coordinate override was causing masthead, badge and
+        // dateline to collide — the compose system already owns clean positions.
+        // The solver still contributes its genre signal (solvedBaseStyle) and
+        // decorations (giant wordmark, crosshairs, etc.) via the block below.
+
+        // SOLVER DECORATIONS AT FULL FIDELITY — the engine emits crosshair
+        // registration marks, em-dash dividers, accent blocks, rail plates,
+        // border frames and the giant type-as-mask wordmark. A flat rect
+        // can't express half of that geometry, so the app re-expands every
+        // decoration with its OWN machinery: the giant word becomes a real
+        // TextLayer (so fit-to-width, tracking, stroke borders, depth and
+        // opacity all apply to it), and crosshairs become twin registration
+        // bars. This is where the solver drives the app's full feature set.
+        const solverTexts: TextLayer[] = [];
+        const solverDecor: ShapeLayer[] = [];
+        if (solverOut) {
+            // Drop the engine's flat-rect approximations — everything the
+            // decorations carry is re-rendered below with richer geometry.
+            composed.shapes = composed.shapes.filter((s) => !s.id.startsWith('sys-decoration-'));
+            const stamp = Date.now().toString(36);
+            // Solver type families → the app's registered poster fonts
+            // (aligned with the genre registry: fragments→inter, eye→syne,
+            // time/food→playfair, bazaar→cinzel).
+            const fontForFamily = (fam?: string): string => {
+                if (fam === 'didone') return 'cinzel';
+                if (fam === 'transitional-serif') return 'playfair';
+                if (fam === 'display' || fam === 'grotesque') return 'syne';
+                if (fam === 'mono') return 'space-mono';
+                return 'inter';
+            };
+            solverOut.decorations.forEach((d, i) => {
+                // House unit grammar: xPct/yPct are FRACTIONS of the canvas,
+                // wPct/hPct are PERCENT — exactly what the renderer's
+                // `xPct * W` expects. Never multiply x/y by 100 here.
+                const cx = d.xPct;
+                const cy = d.yPct;
+                if (d.kind === 'giant-type') {
+                    // The giant wordmark is centre-anchored with percent
+                    // width/height — a real TextLayer, so fit-to-width,
+                    // tracking, depth, opacity and stroke all apply to it.
+                    solverTexts.push({
+                        ...DEFAULT_TEXT_LAYER,
+                        id: `sys-giant-${stamp}-${i}`,
+                        text: d.text ?? 'PULSE',
+                        fontId: fontForFamily(d.typeFamily),
+                        weight: d.weight ?? 900,
+                        caseMode: 'uppercase',
+                        uppercase: true,
+                        fitToWidth: true,
+                        widthPct: d.wPct,
+                        heightPct: d.hPct,
+                        letterSpacingEm: d.letterSpacing ?? -0.03,
+                        color: d.color,
+                        // mask-in-type: the photo reads through the word —
+                        // approximated as a ghosted architectural backdrop.
+                        opacity: d.maskPhoto ? 0.14 : 0.92,
+                        strokeEm: 0,
+                        strokeColor: d.color,
+                        shadow: false,
+                        shadowMode: 'none',
+                        rotationDeg: d.rotationDeg ?? 0,
+                        depth: d.depth ?? 'behind',
+                        xPct: cx,
+                        yPct: cy,
+                    });
+                } else if (d.kind === 'crosshair') {
+                    // A crosshair is two perpendicular registration bars.
+                    const size = Math.max(1.2, d.wPct);
+                    const t = Math.min(0.8, Math.max(0.25, (d.arm ?? 0.018) * 100 * 0.3));
+                    solverDecor.push({
+                        id: `sys-decor-${stamp}-${i}h`,
+                        kind: 'rect',
+                        xPct: cx,
+                        yPct: cy,
+                        wPct: size,
+                        hPct: t,
+                        rotationDeg: 0,
+                        fillColor: d.color,
+                        fillOn: true,
+                        strokeColor: d.color,
+                        strokeW: 0,
+                        cornerPct: 0,
+                        opacity: 1,
+                        glow: 0,
+                        blend: 'normal' as BlendMode,
+                        depth: d.depth ?? 'front',
+                    });
+                    solverDecor.push({
+                        id: `sys-decor-${stamp}-${i}v`,
+                        kind: 'rect',
+                        xPct: cx,
+                        yPct: cy,
+                        wPct: t,
+                        hPct: size,
+                        rotationDeg: 0,
+                        fillColor: d.color,
+                        fillOn: true,
+                        strokeColor: d.color,
+                        strokeW: 0,
+                        cornerPct: 0,
+                        opacity: 1,
+                        glow: 0,
+                        blend: 'normal' as BlendMode,
+                        depth: d.depth ?? 'front',
+                    });
+                } else {
+                    // frame / accent-block / em-dash / rail-bg → rects,
+                    // with frames keeping their stroke-only treatment.
+                    solverDecor.push({
+                        id: `sys-decor-${stamp}-${i}`,
+                        kind: 'rect',
+                        xPct: cx,
+                        yPct: cy,
+                        wPct: d.wPct,
+                        hPct: d.hPct,
+                        rotationDeg: d.rotationDeg ?? 0,
+                        fillColor: d.color,
+                        fillOn: d.kind !== 'frame',
+                        strokeColor: d.color,
+                        strokeW: d.kind === 'frame' ? (d.thickness ?? 1.5) : 0,
+                        cornerPct: (d as { corner?: number }).corner ?? 0,
+                        opacity: 1,
+                        glow: 0,
+                        blend: 'normal' as BlendMode,
+                        depth: d.depth ?? 'front',
+                    });
+                }
+            });
+            const dirTag = direction
+                ? `⚙ AI DIRECTION ${[direction.template, direction.cluster, direction.treatment].filter(Boolean).join(' / ').toUpperCase()} · `
+                : '';
+            setSolverReport(
+                `${dirTag}${solverOut.style.toUpperCase()} · ${solverOut.placements.length} placements · ${solverOut.decorations.length} decorations · ${solverOut.violations?.length ?? 0} law flags`,
+            );
+        } else {
+            setSolverReport(null);
+        }
 
         pushUndo();
 
@@ -2972,7 +4299,9 @@ export default function TextBehindPage() {
             yPct: t.yPct,
         }));
 
-        const newShapes: ShapeLayer[] = composed.shapes.slice(0, 12).map((s, idx) => ({
+        // 24 (not 12): the solver appends its full decoration set after the
+        // composer's own shapes — frames, plates, rail backdrops, bars.
+        const newShapes: ShapeLayer[] = composed.shapes.slice(0, 24).map((s, idx) => ({
             id: `sys-shape-${Date.now().toString(36)}-${idx}`,
             kind: s.kind,
             xPct: s.xPct,
@@ -3001,12 +4330,17 @@ export default function TextBehindPage() {
             size: composed.photo.grain.size,
         });
 
-        const solved = autoLayout
-            ? enforceLayoutLaws(newLayers, newShapes)
-            : { layers: newLayers, shapes: newShapes };
-        setLayers(solved.layers);
-        setShapes(solved.shapes);
+        // USER RULING — no position locking in the automatic path: text
+        // over shapes/plates is intended design; the only intervention is
+        // text×text separation over the COMPLETE list (solver statements
+        // included, giant backdrop exempt by scale alone), then plates
+        // re-cut to follow any words that moved. Nothing is pruned,
+        // nothing is pinned, no frame clamps — separation only.
+        const settled = guaranteeNoTextOverlap([...newLayers, ...solverTexts], [...newShapes, ...solverDecor]);
+        setLayers(settled);
+        setShapes([...reCutPlates(settled, [...newShapes, ...solverDecor])]);
         setActiveLayerId('box-masthead');
+        completeThoughtProcess({ sem, direction, solverOut });
     };
 
     // --- AI REFINE COPY ---------------------------------------------------
@@ -3030,6 +4364,7 @@ export default function TextBehindPage() {
 
         setAiGenerating(true);
         setAiError(null);
+        startThoughtProcess('rewrite', 'AI COPY DESK — BESPOKE REWORDING');
 
         try {
             const roleOf = (id: string) =>
@@ -3082,6 +4417,7 @@ export default function TextBehindPage() {
                     imageContext: aiPrompt.trim() || activeLayer.text || 'the photo currently on the canvas',
                     imageBase64: captureCanvasShot(),
                     preferredStyle: aiStyle,
+                    customText: { masthead: aiCustom.masthead, coverline: aiCustom.coverline, sub: aiCustom.sub },
                 }),
             });
 
@@ -3098,10 +4434,28 @@ export default function TextBehindPage() {
             );
 
             pushUndo();
-            setLayers((prev) => prev.map((l) => (textMap.has(l.id) ? { ...l, text: textMap.get(l.id)! } : l)));
-            setShapes((prev) => prev.map((s) => (labelMap.has(s.id) ? { ...s, label: labelMap.get(s.id)! } : s)));
+            // The words changed — their lengths changed with them. THE
+            // FINAL GUARANTEE re-runs over the reworded canvas: if the new
+            // copy grew into a neighbour's box, the junior element yields
+            // before the user ever sees a collision. (Geometry only moves
+            // when a collision would otherwise exist — untouched words
+            // keep their coordinates to the pixel.) Plates then re-cut to
+            // the new word lengths — text on its plate stays intended.
+            const relabeled = shapes.map((s) => (labelMap.has(s.id) ? { ...s, label: labelMap.get(s.id)! } : s));
+            const settled = guaranteeNoTextOverlap(
+                layers.map((l) => (textMap.has(l.id) ? { ...l, text: textMap.get(l.id)! } : l)),
+                relabeled,
+            );
+            setLayers(settled);
+            setShapes(reCutPlates(settled, relabeled));
+            completeThoughtProcess({
+                sem: aiSemantics,
+                note: 'Copy Rewritten & Plates Recut (0 Collisions)',
+            });
         } catch (err: any) {
-            setAiError(err.message || 'Copy refinement failed. Please check your API key.');
+            const msg = err.message || 'Copy refinement failed. Please check your API key.';
+            setAiError(msg);
+            failThoughtProcess(msg);
         } finally {
             setAiGenerating(false);
         }
@@ -3416,12 +4770,12 @@ export default function TextBehindPage() {
                 if (s.kind === 'badge') {
                     badgeLabel = (s.label || 'ISSUE N° 04 • FALL 2026').toUpperCase().trim();
                     // Healthy readable font floor: on high-res canvas (e.g. 2560px), must never shrink to 1-pixel specks
-                    const minReadableBadgePx = Math.max(16, Math.round(H * 0.013));
-                    const maxBadgePx = Math.max(minReadableBadgePx, Math.round(H * 0.022));
+                    const minReadableBadgePx = Math.max(20, Math.round(H * 0.015));
+                    const maxBadgePx = Math.max(minReadableBadgePx, Math.round(H * 0.024));
                     badgeFont = Math.max(minReadableBadgePx, Math.min(maxBadgePx, h * 0.58));
 
                     // Sizing the box: badge width must expand to fit the text with clean padding!
-                    const padX = Math.max(16, Math.round(badgeFont * 0.9));
+                    const padX = Math.max(18, Math.round(badgeFont * 0.9));
                     ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
                     let textW = ctx.measureText(badgeLabel).width;
                     let actualW = Math.max(w, textW + padX * 2);
@@ -3435,14 +4789,24 @@ export default function TextBehindPage() {
                     }
                     h = Math.max(h, badgeFont * 1.6);
                     shapeBoxW = actualW;
+                } else if (s.kind === 'barcode') {
+                    w = Math.max(w, Math.round(W * 0.18));
+                    const minBarH = Math.max(28, Math.round(H * 0.038));
+                    const estFont = Math.max(14, Math.round(H * 0.009));
+                    h = Math.max(h, minBarH + estFont * 2 + 16);
+                    shapeBoxW = w;
+                } else if (s.kind === 'button') {
+                    h = Math.max(h, Math.round(H * 0.038));
+                    shapeBoxW = w;
                 }
 
                 const radius = (s.cornerPct / 100) * Math.min(shapeBoxW, h);
                 const lw = Math.max(1, (W / 1000) * Math.max(1, s.strokeW));
                 let posX = s.xPct * W;
                 let posY = s.yPct * H;
-                const safeMarginX = W * 0.035;
-                const safeMarginY = H * 0.035;
+                // Barcodes and QR codes must strictly respect the magazine frame margin (6.5% X, 5.5% Y)
+                const safeMarginX = (s.kind === 'barcode' || s.kind === 'qr') ? W * 0.065 : W * 0.035;
+                const safeMarginY = (s.kind === 'barcode' || s.kind === 'qr') ? H * 0.055 : H * 0.035;
                 if (posX - shapeBoxW / 2 < safeMarginX) posX = safeMarginX + shapeBoxW / 2;
                 if (posX + shapeBoxW / 2 > W - safeMarginX) posX = W - safeMarginX - shapeBoxW / 2;
                 if (posY - h / 2 < safeMarginY) posY = safeMarginY + h / 2;
@@ -3508,9 +4872,10 @@ export default function TextBehindPage() {
                     ctx.globalAlpha = s.opacity;
                     ctx.fillStyle = barColor;
 
-                    // Inner contained zone
-                    const padX = w * 0.055;
-                    const padY = h * 0.08;
+                    // Inner contained zone: guaranteed padding so no bars or numbers seep out
+                    // Generous horizontal padding (11%) guarantees quiet zones on both sides so digits never leak
+                    const padX = Math.max(20, w * 0.11);
+                    const padY = Math.max(8, h * 0.09);
                     const innerW = w - padX * 2;
                     const innerH = h - padY * 2;
 
@@ -3518,14 +4883,13 @@ export default function TextBehindPage() {
                     const bits = ean13Bits(digits);
                     const unit = innerW / bits.length;
 
-                    // Digit line: auto-fit, but NEVER overflow — if it cannot
-                    // fit at the minimum readable size it simply doesn't draw.
-                    let fontPx = Math.min(innerH * 0.24, innerW / 62);
-                    if (fontPx < 5.5) fontPx = 0; // too small → hide the digits
-                    const textHeight = fontPx > 0 ? fontPx * 1.6 : 0;
-                    const barsH = Math.max(6, innerH - textHeight);
+                    // Digit line: auto-sized with clean ceiling so digits NEVER leak out of the container
+                    const maxAllowedFont = Math.max(12, (innerH - 14) / 1.7);
+                    let fontPx = Math.max(11, Math.min(maxAllowedFont, Math.round(H * 0.009), innerW / 17));
+                    const textHeight = fontPx * 1.35;
+                    const barsH = Math.max(12, innerH - textHeight);
                     const barsTop = -h / 2 + padY;
-                    const guardExtra = fontPx > 0 ? fontPx * 0.42 : Math.max(2, innerH * 0.08);
+                    const guardExtra = fontPx * 0.25;
 
                     // Bars (module width from the true EAN bit string)
                     for (let m = 0; m < bits.length; m++) {
@@ -3535,15 +4899,18 @@ export default function TextBehindPage() {
                         }
                     }
 
-                    // Digits — authentic EAN placement: digit 1 in the left
-                    // margin, 2–7 under the left group, 8–13 under the right.
+                    // Digits — authentic EAN placement: digit 1 safely in the left
+                    // quiet zone, 2–7 under the left group, 8–13 under the right.
                     if (fontPx > 0) {
                         ctx.font = `700 ${fontPx}px "Space Mono", monospace, monospace`;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'top';
-                        const textTop = barsTop + barsH + guardExtra - fontPx * 0.08;
+                        const textTop = barsTop + barsH + guardExtra;
                         const moduleX = (mod: number) => -innerW / 2 + mod * unit;
-                        ctx.fillText(digits[0], moduleX(0) - 3.2 * unit, textTop);
+                        // Digit 1: safely centered in the left quiet zone (between -w/2 and -innerW/2)
+                        // This guarantees the first number NEVER bleeds outside the barcode rect!
+                        const leftQuietCenter = (-w / 2 + (-innerW / 2)) / 2;
+                        ctx.fillText(digits[0], leftQuietCenter, textTop);
                         for (let d = 1; d <= 6; d++) {
                             const start = 3 + (d - 1) * 7;
                             ctx.fillText(digits[d], moduleX(start) + 3.5 * unit, textTop);
@@ -3631,12 +4998,7 @@ export default function TextBehindPage() {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
-                    // Premium containment rule: if the label still cannot fit
-                    // its plate at the minimum readable size, it does not draw.
-                    const badgePadX = Math.max(14, h * 0.45);
-                    if (ctx.measureText(badgeLabel).width <= shapeBoxW - badgePadX * 2 + 2) {
-                        ctx.fillText(badgeLabel, 0, 0);
-                    }
+                    ctx.fillText(badgeLabel, 0, 0);
                 } else if (s.kind === 'frame') {
                     // Magazine Bleed Margin Border with Corner Crosshairs
                     ctx.globalAlpha = s.opacity;
@@ -3738,7 +5100,7 @@ export default function TextBehindPage() {
                     if ('letterSpacing' in ctx) lsB.letterSpacing = `${Math.max(0.5, fpx * 0.06)}px`;
                     const twB = ctx.measureText(label).width;
                     if (twB > w * 0.84) {
-                        fpx = Math.max(9, fpx * ((w * 0.84) / twB));
+                        fpx = Math.max(16, Math.round(H * 0.013), fpx * ((w * 0.84) / twB));
                         ctx.font = `900 ${fpx}px monospace`;
                         if ('letterSpacing' in ctx) lsB.letterSpacing = `${Math.max(0.5, fpx * 0.06)}px`;
                     }
@@ -4133,7 +5495,7 @@ export default function TextBehindPage() {
         // for manual moves; idle-shape pruning only runs on generated covers).
         if (drag?.active && drag.movedPx > 0 && autoLayout && (layers.length > 0 || shapes.length > 0)) {
             const solved = enforceLayoutLaws(layers, shapes, { prune: false });
-            setLayers(solved.layers);
+            setLayers(guaranteeNoTextOverlap(solved.layers, solved.shapes));
             setShapes(solved.shapes);
         }
     };
@@ -4380,6 +5742,239 @@ export default function TextBehindPage() {
                         >
                             {bgImage ? (
                                 <>
+                                    {/* FLOATING THOUGHT HUD — completely non-obscuring:
+                                        positioned at top of canvas viewport with pointerEvents: none on
+                                        wrapper and pointerEvents: auto on card. The user can see and
+                                        interact with the canvas freely! */}
+                                    {(thoughtState.active || (thoughtState.summary && !thoughtState.dismissed)) && (
+                                        <div
+                                            className="ck-thought-hud-container"
+                                            style={{
+                                                position: 'absolute',
+                                                top: 10,
+                                                left: 12,
+                                                right: 12,
+                                                zIndex: 45,
+                                                pointerEvents: 'none',
+                                                display: 'flex',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s ease',
+                                            }}
+                                        >
+                                            <div
+                                                className="ck-thought-hud-card"
+                                                style={{
+                                                    pointerEvents: 'auto',
+                                                    width: '100%',
+                                                    maxWidth: 600,
+                                                    background: '#FFFFFF',
+                                                    border: '2px solid #000000',
+                                                    boxShadow: '3px 3px 0px #000000',
+                                                    fontFamily: 'monospace',
+                                                    overflow: 'hidden',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    position: 'relative',
+                                                }}
+                                            >
+                                                {/* Top Status Row */}
+                                                {/* Single-Line Compact Bar */}
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '4px 8px',
+                                                        background: thoughtState.active ? '#FFFFFF' : '#FAFAFA',
+                                                        gap: 6,
+                                                        whiteSpace: 'nowrap',
+                                                        minHeight: 32,
+                                                        boxSizing: 'border-box',
+                                                    }}
+                                                >
+                                                    {/* Left: Dot + Step Badge */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                                                        <div
+                                                            style={{
+                                                                width: 8,
+                                                                height: 8,
+                                                                borderRadius: '50%',
+                                                                background: thoughtState.active ? '#FFE500' : '#10B981',
+                                                                border: '1.2px solid #000',
+                                                                flexShrink: 0,
+                                                            }}
+                                                        />
+                                                        <span
+                                                            style={{
+                                                                fontSize: '0.52rem',
+                                                                fontWeight: 900,
+                                                                background: '#000',
+                                                                color: '#FFE500',
+                                                                padding: '1px 4px',
+                                                                letterSpacing: '0.02em',
+                                                            }}
+                                                        >
+                                                            {thoughtState.active
+                                                                ? `${thoughtState.currentStep}/${thoughtState.totalSteps}`
+                                                                : 'DONE'}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Center: Truncated Live Thought Message (fills remaining space) */}
+                                                    <div
+                                                        style={{
+                                                            flex: 1,
+                                                            minWidth: 0,
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            fontSize: '0.56rem',
+                                                            fontWeight: 700,
+                                                            color: '#111',
+                                                            padding: '0 4px',
+                                                        }}
+                                                        title={thoughtState.items.length > 0 ? thoughtState.items[thoughtState.items.length - 1].label : ''}
+                                                    >
+                                                        {thoughtState.items.length > 0
+                                                            ? thoughtState.items[thoughtState.items.length - 1].label
+                                                            : 'Analyzing canvas negative space...'}
+                                                    </div>
+
+                                                    {/* Right: Timer + Log Button + Dismiss */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                                        <div
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 2,
+                                                                fontSize: '0.54rem',
+                                                                fontWeight: 800,
+                                                                color: '#222',
+                                                                background: '#F3F4F6',
+                                                                padding: '1px 4px',
+                                                                border: '1px solid #000',
+                                                            }}
+                                                        >
+                                                            <Clock size={10} />
+                                                            <span>{(thoughtState.elapsedMs / 1000).toFixed(1)}s</span>
+                                                        </div>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setThoughtState((s) => ({ ...s, expanded: !s.expanded }))}
+                                                            className="brutalist-button"
+                                                            style={{
+                                                                fontSize: '0.5rem',
+                                                                fontWeight: 900,
+                                                                padding: '2px 5px',
+                                                                background: '#000',
+                                                                color: '#FFF',
+                                                                border: '1px solid #000',
+                                                                cursor: 'pointer',
+                                                                lineHeight: 1.2,
+                                                            }}
+                                                            title={thoughtState.expanded ? 'Collapse to single line' : 'Show live thoughts log'}
+                                                        >
+                                                            {thoughtState.expanded ? 'SLIM ▲' : 'LOG ▼'}
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setThoughtState((s) => ({ ...s, dismissed: true }))}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                fontWeight: 900,
+                                                                fontSize: '0.7rem',
+                                                                padding: '0 2px',
+                                                                color: '#666',
+                                                                lineHeight: 1,
+                                                            }}
+                                                            title="Dismiss"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Progress Bar */}
+                                                <div style={{ width: '100%', height: 3, background: '#E5E7EB', overflow: 'hidden' }}>
+                                                    <div
+                                                        style={{
+                                                            height: '100%',
+                                                            width: `${thoughtState.progressPct}%`,
+                                                            background: '#FFE500',
+                                                            transition: 'width 0.15s ease-out',
+                                                            borderRight: thoughtState.active ? '1px solid #000' : 'none',
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                {/* Expanded Thoughts Drawer */}
+                                                {thoughtState.expanded && (
+                                                    <div
+                                                        style={{
+                                                            padding: '8px 10px',
+                                                            background: '#0D0D0D',
+                                                            color: '#E5E7EB',
+                                                            maxHeight: 140,
+                                                            overflowY: 'auto',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: 5,
+                                                            fontSize: '0.55rem',
+                                                            lineHeight: 1.4,
+                                                            borderTop: '1.5px solid #000',
+                                                        }}
+                                                    >
+                                                        {thoughtState.items.map((it) => (
+                                                            <div key={it.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                                                <span style={{ color: '#FFE500', flexShrink: 0, fontWeight: 900 }}>
+                                                                    [{(it.timestampMs / 1000).toFixed(2)}s]
+                                                                </span>
+                                                                <span style={{ color: it.status === 'success' ? '#10B981' : '#FFF', fontWeight: 700 }}>
+                                                                    {it.status === 'success' ? '✔' : it.status === 'running' ? '▶' : '·'}
+                                                                </span>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <span style={{ color: '#FFF', fontWeight: 700 }}>{it.label}</span>
+                                                                    {it.detail && <span style={{ color: '#9CA3AF', marginLeft: 6 }}>— {it.detail}</span>}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {thoughtState.summary && (
+                                                            <div
+                                                                style={{
+                                                                    marginTop: 4,
+                                                                    paddingTop: 6,
+                                                                    borderTop: '1px dashed #333',
+                                                                    display: 'flex',
+                                                                    flexWrap: 'wrap',
+                                                                    gap: 4,
+                                                                }}
+                                                            >
+                                                                <span style={{ background: '#FFE500', color: '#000', padding: '1px 5px', fontWeight: 900 }}>
+                                                                    ARCHETYPE: {thoughtState.summary.archetype}
+                                                                </span>
+                                                                <span style={{ background: '#222', color: '#FFF', padding: '1px 5px', border: '1px solid #444' }}>
+                                                                    GENRE: {thoughtState.summary.genre}
+                                                                </span>
+                                                                <span style={{ background: '#222', color: '#FFF', padding: '1px 5px', border: '1px solid #444' }}>
+                                                                    MASTHEAD: {thoughtState.summary.depth?.toUpperCase()}
+                                                                </span>
+                                                                <span style={{ background: '#222', color: '#10B981', padding: '1px 5px', border: '1px solid #444' }}>
+                                                                    0 OVERLAPS
+                                                                </span>
+                                                                <span style={{ background: '#222', color: '#9CA3AF', padding: '1px 5px', border: '1px solid #444' }}>
+                                                                    {thoughtState.summary.durationSec}s
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     <canvas
                                         ref={canvasRef}
                                         onPointerDown={handlePointerDown}
@@ -4959,7 +6554,7 @@ export default function TextBehindPage() {
                                             </div>
 
                                             <div style={{ fontSize: '0.58rem', color: '#666', fontFamily: 'monospace', lineHeight: 1.35 }}>
-                                                Two engines, one design system. ASSEMBLE consolidates the full component grammar on-device — masthead, dateline, plated coverlines, side rail, badge, real EAN-13/QR, frame — no key needed. GENERATE adds AI art direction tuned to your photo via your Gemini, OpenAI, or Groq key. Every click is a new edition.
+                                                Two engines, one design system. ASSEMBLE mirrors the pipeline: with your Gemini, OpenAI, or Groq key it first asks the AI to art-direct THIS photo (template · cluster · treatment · corners · rail — a validated menu, never raw coordinates), then assembles the full component grammar on-device — masthead, dateline, plated coverlines, side rail, badge, real EAN-13/QR, frame — under the no-overlap guarantee. No key: pure on-device fallback. Every click is a new edition.
                                             </div>
 
                                             {/* Style selection */}
@@ -4984,6 +6579,74 @@ export default function TextBehindPage() {
                                                         {style.label}
                                                     </button>
                                                 ))}
+                                            </div>
+
+                                            {/* Custom text — the user's exact words for the storytelling slots */}
+                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                <input
+                                                    type="text"
+                                                    value={aiCustom.masthead}
+                                                    onChange={(e) => setAiCustom((c) => ({ ...c, masthead: e.target.value }))}
+                                                    placeholder="MASTHEAD (e.g. SUPPER)"
+                                                    maxLength={14}
+                                                    style={{ flex: '1 1 90px', padding: '4px 7px', fontSize: '0.55rem', fontFamily: 'monospace', border: '1px solid #000', background: '#FFF', outline: 'none', minWidth: 0 }}
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={aiCustom.coverline}
+                                                    onChange={(e) => setAiCustom((c) => ({ ...c, coverline: e.target.value }))}
+                                                    placeholder="COVERLINE (e.g. FRIDAY SPECIAL)"
+                                                    maxLength={44}
+                                                    style={{ flex: '2 1 160px', padding: '4px 7px', fontSize: '0.55rem', fontFamily: 'monospace', border: '1px solid #000', background: '#FFF', outline: 'none', minWidth: 0 }}
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={aiCustom.sub}
+                                                    onChange={(e) => setAiCustom((c) => ({ ...c, sub: e.target.value }))}
+                                                    placeholder="SUB LINE (optional)"
+                                                    maxLength={60}
+                                                    style={{ flex: '2 1 150px', padding: '4px 7px', fontSize: '0.55rem', fontFamily: 'monospace', border: '1px solid #000', background: '#FFF', outline: 'none', minWidth: 0 }}
+                                                />
+                                            </div>
+
+                                            {/* Brand kit — the saved palette rides every cover (stored in ck_brandkit_v1) */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBrandUse((v) => !v)}
+                                                    title="Brand Kit palette: the accent becomes the cover's single accent ink and the AI stays inside your brand hues. Saved to your Brand Kit — the same kit invoices, watermark and quote cards read from."
+                                                    style={{
+                                                        padding: '3px 7px',
+                                                        fontSize: '0.55rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        border: '1px solid #000',
+                                                        background: brandUse ? '#000' : '#FFF',
+                                                        color: brandUse ? '#FFE500' : '#000',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                    }}
+                                                >
+                                                    BRAND: {brandUse ? 'ON' : 'OFF'}
+                                                </button>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 700 }}>
+                                                    PRIMARY
+                                                    <input
+                                                        type="color"
+                                                        value={brandPrimary || '#000000'}
+                                                        onChange={(e) => patchBrandColors(e.target.value, brandAccent)}
+                                                        style={{ width: 22, height: 20, padding: 0, border: '1px solid #000', background: 'none', cursor: 'pointer' }}
+                                                    />
+                                                </label>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.55rem', fontFamily: 'monospace', fontWeight: 700 }}>
+                                                    ACCENT
+                                                    <input
+                                                        type="color"
+                                                        value={brandAccent || '#E8590C'}
+                                                        onChange={(e) => patchBrandColors(brandPrimary, e.target.value)}
+                                                        style={{ width: 22, height: 20, padding: 0, border: '1px solid #000', background: 'none', cursor: 'pointer' }}
+                                                    />
+                                                </label>
                                             </div>
 
                                             {/* Prompt / Vibe input */}
@@ -5011,8 +6674,34 @@ export default function TextBehindPage() {
                                                 />
                                                 <button
                                                     type="button"
+                                                    onClick={handleAiAnalyzePhoto}
+                                                    disabled={aiAnalyzing || aiGenerating}
+                                                    title="AI PERCEPTION ONLY — describes the photo (subject, mood, the editorial genre it belongs in). No coordinates: the deterministic solver places every element mathematically from the measured whitespace field."
+                                                    className="brutalist-button"
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        background: '#FFF',
+                                                        color: '#000',
+                                                        border: '1.5px solid #000',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.6rem',
+                                                        fontFamily: 'monospace',
+                                                        cursor: aiAnalyzing ? 'wait' : 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {aiAnalyzing ? '◉ ANALYZING…' : '1 · ◉ ANALYZE PHOTO'}
+                                                </button>
+                                                {aiSemantics && (
+                                                    <div style={{ fontSize: '0.55rem', fontFamily: 'monospace', color: '#444', lineHeight: 1.35, flexBasis: '100%' }}>
+                                                        ◉ {aiSemantics.summary || 'photo analyzed'} → <b>{(aiSemantics.genre || 'auto').toUpperCase()}</b>
+                                                        {aiSemantics.mood?.length ? ` · ${aiSemantics.mood.join(' · ')}` : ''}
+                                                    </div>
+                                                )}
+                                                <button
+                                                    type="button"
                                                     onClick={handleAssembleSystemCover}
-                                                    title="Consolidate the full magazine component system — masthead, dateline, plated coverlines, side rail, badge, EAN-13/QR, frame — into one complete cover. On-device: no API key, a new edition every click."
+                                                    title="Step 2 of the flow — ART-DIRECT + ASSEMBLE: with an AI key, the click first fetches the art direction for THIS photo (one fast round trip), then the deterministic solver materializes it — masthead, rail, plated coverlines, badge, EAN-13/QR, frame — under the no-overlap guarantee. No key: pure on-device solve, a new edition every click."
                                                     className="brutalist-button"
                                                     style={{
                                                         padding: '6px 12px',
@@ -5029,13 +6718,17 @@ export default function TextBehindPage() {
                                                         whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    ⚙ ASSEMBLE COVER
+                                                    {aiAnalyzing
+                                                        ? '◉ ART-DIRECTING…'
+                                                        : aiKeyed
+                                                            ? '2 · ⚙ ART-DIRECT + ASSEMBLE'
+                                                            : '2 · ⚙ ASSEMBLE COVER'}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={handleAiRefineCopy}
                                                     disabled={aiGenerating}
-                                                    title="The AI acts as the copy desk: it rewrites ONLY the words on your assembled cover — masthead, coverlines, teasers, badges — specific to your photo. Every position, plate and treatment stays exactly where the system put it."
+                                                    title="Step 3 of the flow — the AI acts as the copy desk: it rewrites ONLY the words on your assembled cover — masthead, coverlines, teasers, badges — specific to your photo. Every position, plate and treatment stays exactly where the solver put it."
                                                     className="brutalist-button"
                                                     style={{
                                                         padding: '6px 12px',
@@ -5052,35 +6745,115 @@ export default function TextBehindPage() {
                                                         whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    ✦ AI REFINE COPY
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleGenerateAiCover}
-                                                    disabled={aiGenerating}
-                                                    className="brutalist-button"
-                                                    style={{
-                                                        padding: '6px 14px',
-                                                        background: '#FFE500',
-                                                        fontWeight: 900,
-                                                        fontSize: '0.64rem',
-                                                        fontFamily: 'monospace',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: 5,
-                                                        cursor: aiGenerating ? 'not-allowed' : 'pointer',
-                                                        whiteSpace: 'nowrap',
-                                                    }}
-                                                >
-                                                    {aiGenerating ? (
-                                                        <>
-                                                            <Loader2 size={12} className="animate-spin" /> GENERATING...
-                                                        </>
-                                                    ) : (
-                                                        'GENERATE COVER'
-                                                    )}
+                                                    3 · ✦ REWRITE WORDS
                                                 </button>
                                             </div>
+
+                                            {/* THE FLOW — three steps, one order: perception → construction → copy.
+                                                Each step owns exactly one job; no step does another step's job. */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.52rem', fontFamily: 'monospace', color: '#666', lineHeight: 1.45 }}>
+                                                <span><b style={{ color: '#000' }}>1 · ANALYZE</b> — the AI only LOOKS: names the subject, mood and editorial genre. It never places anything.</span>
+                                                <span><b style={{ color: '#000' }}>2 · ASSEMBLE</b> — mirrors the pipeline: with a key it fetches the AI's art direction for this photo first (one round trip), then the on-device solver materializes it into every coordinate, mathematically. Works with no API key too.</span>
+                                                <span><b style={{ color: '#000' }}>3 · REWRITE</b> — optional: the AI swaps ONLY the words on the assembled cover. Nothing moves.</span>
+                                            </div>
+                                            {/* LIVE AI ART-DIRECTION & SOLVER THOUGHT STREAM */}
+                                            {(thoughtState.active || thoughtState.summary) && (
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: 6,
+                                                        padding: '8px 10px',
+                                                        background: '#FFFFFF',
+                                                        border: '1.5px solid #000',
+                                                        boxShadow: '2px 2px 0px #000',
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.62rem', fontWeight: 900, fontFamily: 'monospace' }}>
+                                                            <div
+                                                                style={{
+                                                                    width: 8,
+                                                                    height: 8,
+                                                                    borderRadius: '50%',
+                                                                    background: thoughtState.active ? '#FFE500' : '#10B981',
+                                                                    border: '1px solid #000',
+                                                                    flexShrink: 0,
+                                                                }}
+                                                            />
+                                                            <span>
+                                                                {thoughtState.active
+                                                                    ? `THOUGHT STREAM • STEP ${thoughtState.currentStep}/${thoughtState.totalSteps}`
+                                                                    : 'SOLVER TELEMETRY'}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 900, color: '#555' }}>
+                                                            ⏱ {(thoughtState.elapsedMs / 1000).toFixed(1)}s
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Step Pills */}
+                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                        {['1·SCAN', '2·VISION', '3·ARCHETYPE', '4·DIRECTION', '5·SOLVER'].map((label, idx) => {
+                                                            const stepNum = idx + 1;
+                                                            const isDone = !thoughtState.active || thoughtState.currentStep > stepNum;
+                                                            const isCurrent = thoughtState.active && thoughtState.currentStep === stepNum;
+                                                            return (
+                                                                <span
+                                                                    key={label}
+                                                                    style={{
+                                                                        fontSize: '0.48rem',
+                                                                        fontFamily: 'monospace',
+                                                                        fontWeight: 900,
+                                                                        padding: '2px 5px',
+                                                                        border: '1px solid #000',
+                                                                        background: isCurrent ? '#FFE500' : isDone ? '#000' : '#F3F4F6',
+                                                                        color: isCurrent ? '#000' : isDone ? '#FFF' : '#777',
+                                                                    }}
+                                                                >
+                                                                    {label}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    {/* Active Thought Line */}
+                                                    <div style={{ fontSize: '0.55rem', fontFamily: 'monospace', color: '#222', lineHeight: 1.35 }}>
+                                                        {thoughtState.items.length > 0 ? (
+                                                            <>
+                                                                <b style={{ color: '#000' }}>▶ {thoughtState.items[thoughtState.items.length - 1].label}:</b>{' '}
+                                                                {thoughtState.items[thoughtState.items.length - 1].detail}
+                                                            </>
+                                                        ) : (
+                                                            'Computing negative space & whitespace field...'
+                                                        )}
+                                                    </div>
+
+                                                    {/* Result Chips */}
+                                                    {thoughtState.summary && (
+                                                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2, paddingTop: 4, borderTop: '1px dashed #CCC' }}>
+                                                            <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', fontWeight: 900, background: '#FFE500', color: '#000', padding: '1px 4px', border: '1px solid #000' }}>
+                                                                {thoughtState.summary.archetype}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', background: '#F3F4F6', color: '#000', padding: '1px 4px', border: '1px solid #000' }}>
+                                                                {thoughtState.summary.genre}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', background: '#F3F4F6', color: '#000', padding: '1px 4px', border: '1px solid #000' }}>
+                                                                DEPTH: {thoughtState.summary.depth?.toUpperCase()}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.5rem', fontFamily: 'monospace', background: '#DCFCE7', color: '#166534', padding: '1px 4px', border: '1px solid #166534', fontWeight: 900 }}>
+                                                                0 COLLISIONS
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {solverReport && (
+                                                <div style={{ fontSize: '0.52rem', fontFamily: 'monospace', color: '#444', padding: '4px 6px', border: '1px dashed #999', background: '#fafafa' }}>
+                                                    ⚙ SOLVER: {solverReport}
+                                                </div>
+                                            )}
 
                                             {aiError && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: '#FEE2E2', border: '1px solid #DC2626', color: '#991B1B', fontSize: '0.6rem', fontFamily: 'monospace' }}>

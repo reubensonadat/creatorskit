@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LAYOUT_LIBRARY } from '@/lib/magazine/cover-system';
+import { ART_DIRECTION_MENU, LAYOUT_LIBRARY, sanitizeArtDirection } from '@/lib/magazine/cover-system';
+import { ARCHETYPES, listArchetypes } from '@/lib/magazine/archetypes';
 
 // ---------------------------------------------------------------------------
 // Magazine Auto-Cover prompt system
@@ -21,7 +22,12 @@ type StyleId =
     | 'natgeo'
     | 'cyber'
     | 'vinyl'
-    | 'architectural';
+    | 'architectural'
+    | 'food'
+    | 'fragments'
+    | 'time'
+    | 'eye'
+    | 'bazaar';
 
 const CORE_CONTRACT = `You are a veteran magazine art director who has composed covers for Vogue, i-D, System, Kinfolk, Dazed and Ray Gun. You do not describe layouts — you SPECIFY them exactly, like a print production sheet: every element gets a font, a colour, a size and a position, and the composed result must be legible and beautiful with zero manual fixing.
 
@@ -214,10 +220,50 @@ const STYLE_PLAYBOOKS: Record<Exclude<StyleId, 'auto'>, string> = {
 - Coverline: 'inter' 600 white, yPct 0.84-0.86, material / light copy.
 - Shapes: crisp white full-bleed FRAME (strokeW 2) + barcode bottom-right.
 - photoStyle: bgDim 0.14-0.20, dimWholePhoto false, photoFilter "none", grain opacity 0.10-0.14 size 2.`,
+
+    food: `PLAYBOOK — FOOD BRAND / APPETITE EDITORIAL:
+- Masthead: 'playfair' 900, #FFFFFF, widthPct 80-88, letterSpacingEm 0.08-0.12, yPct 0.19-0.23. Menu-card confidence — warm, generous, delicious.
+- Dateline: 'inter' 700 in appetite orange #E8590C, service-line copy ("FRIDAY TABLE  |  MENU No. 12 — SERVICE FROM 7PM").
+- Coverline: 'lora' italic 500 white, yPct 0.83-0.85 — food writing with heat ("FRESH OUT THE KITCHEN", "TONIGHT WE FEAST", "FRIDAY SPECIAL").
+- Shapes: cream menu-card FRAME (#F6EFE3, strokeW 1.5-2) + barcode bottom-LEFT + one badge "HOT PLATE" filled #E8590C with white text.
+- photoStyle: photoFilter "vintage" (warm lift), bgDim 0.12-0.16, dimWholePhoto false, grain opacity 0.10-0.16 size 2.
+- Voice rule: the copy must taste like food writing — heat, freshness, scarcity ("WHILE IT LASTS", "SELLS OUT FAST", "SECONDS ENCOURAGED"). Never corporate.`,
+
+    fragments: `PLAYBOOK — HUMAN FRAGMENTS / TYPE-AS-MASK POSTER:
+- Masthead: 'inter' weight 900, widthPct 88-96, letterSpacingEm -0.03 to -0.05 — GIANT type fills the canvas as architectural backdrop; the subject overlaps it, the masthead is the structure itself.
+- Dateline: 'space-mono' 700 uppercase — a vertical right-rail stack (feature → series → mood → year) separated by em-dash dividers.
+- Coverline: 'inter' 800, in-rail, left-aligned, narrow (widthPct ≤ 20).
+- Shapes: crosshair registration marks in TL + BR corners, optional single accent block, cream keyline frame (#F5F0E8).
+- photoStyle: photoFilter "none", bgDim 0.05-0.10, dimWholePhoto false, grain opacity 0.06-0.10 size 1.
+- Voice rule: the type IS the architecture — copy reads like a design-research folio ("THE HUMAN ARCHIVE", "ANATOMY OF MOVEMENT", "CONCRETE MEMORY").`,
+
+    time: `PLAYBOOK — TIME / PERSON OF THE YEAR:
+- Masthead: 'playfair' 900, #FFFFFF, widthPct 78-86, letterSpacingEm 0.02-0.06, yPct 0.12-0.16 — sits ABOVE the subject, never behind it.
+- Dateline: 'inter' 700 in TIME red #E10600 ("PERSON OF THE YEAR  |  SPECIAL ISSUE").
+- Coverline: 'playfair' 800 white, yPct 0.78-0.84.
+- Shapes: the iconic red border frame (#E10600, strokeW 3-5) is MANDATORY + barcode bottom-right.
+- photoStyle: photoFilter "none", bgDim 0.10-0.15, dimWholePhoto false, grain opacity 0.08-0.12 size 1.
+- Voice rule: historic, declarative gravity ("VOICES THAT CHANGED THE WORLD", "THE ARCHITECTS OF TOMORROW").`,
+
+    eye: `PLAYBOOK — EYE / RADICAL GRAPHIC DESIGN REVIEW:
+- Masthead: 'syne' 800, widthPct 85-94, letterSpacingEm -0.04 to -0.06 — integrated with the subject, half-behind when headroom allows.
+- Dateline: 'space-mono' 700 ("INTERNATIONAL REVIEW OF GRAPHIC DESIGN  |  No. {n}").
+- Coverline: 'syne' 800, large, over-body; secondary lines minimal or absent.
+- Shapes: none — typography carries everything. Optional single red accent (#FF0000) as a thin rule.
+- photoStyle: photoFilter "mono", bgDim 0.08-0.12, dimWholePhoto false, grain opacity 0.10-0.14 size 1.
+- Voice rule: critical-design essays ("RADICAL FORM", "SYSTEMS OF LEGIBILITY", "DISMANTLING THE GRID").`,
+
+    bazaar: `PLAYBOOK — HARPER'S BAZAAR / SOFT COUTURE:
+- Masthead: 'cinzel' 700, #FFFFFF, widthPct 84-92, letterSpacingEm -0.01 to -0.03, yPct 0.16-0.20 — behind-subject when the photo has headroom.
+- Dateline: 'inter' 600 white ("PARIS • NEW YORK • MILAN  |  THE FASHION ISSUE").
+- Coverline: 'cinzel' 700 white, yPct 0.80-0.85.
+- Shapes: minimal — barcode bottom-right only. Elegance through restraint.
+- photoStyle: photoFilter "none", bgDim 0.10-0.15, dimWholePhoto false, grain opacity 0.08-0.12 size 1.
+- Voice rule: couture poetry ("THE ART OF STILLNESS", "PURE COUTURE", "THE MODERN MUSE").`,
 };
 
 const AUTO_PLAYBOOK = `PLAYBOOK — AUTO (you choose the genre):
-First, judge the photo description: fashion/portrait → vogue, street/documentary → zine, calm/minimal product or interior → kinfolk, moody/urban night → noir or cyber, travel/nature → natgeo, music → vinyl, building/structured → architectural, culture/youth → dazed.
+First, judge the photo description — the attached photo outranks any description: fashion/portrait → vogue, warm food/appetite photo (dishes, kitchen heat, produce, a Friday table) → food, street/documentary → zine, calm/minimal product or interior → kinfolk, moody/urban night → noir or cyber, travel/nature → natgeo, music → vinyl, building/structured → architectural, culture/youth → dazed, bold typographic poster energy (graphic design, big type, design research) → fragments or eye, person-of-the-year gravitas or red-border newsiness → time, soft pink couture elegance → bazaar.
 Then apply that playbook's rules EXACTLY (fonts, palette, shapes, grain) and name your choice in "theme".`;
 
 // ---------------------------------------------------------------------------
@@ -278,10 +324,39 @@ const rollDirectives = (): EditionDirectives => ({
 
 const normalizeStyle = (raw: string): StyleId => {
     const known: StyleId[] = [
-        'auto', 'vogue', 'zine', 'kinfolk', 'noir', 'gq', 'dazed', 'natgeo', 'cyber', 'vinyl', 'architectural',
+        'auto', 'vogue', 'zine', 'kinfolk', 'noir', 'gq', 'dazed', 'natgeo', 'cyber', 'vinyl', 'architectural', 'food',
+        'fragments', 'time', 'eye', 'bazaar',
     ];
     return (known as string[]).includes(raw) ? (raw as StyleId) : 'auto';
 };
+
+// §6.5 — the ten canonical brand templates the solver's archetype system
+// knows. The ANALYZE mode is trained on this anatomy: the AI reads the
+// photo, names the archetype its negative space is born to wear, and the
+// deterministic solver consumes the hint as a brand band. The AI never
+// emits a coordinate — geometry stays ours, per the fixed-brand ruling.
+const ARCHETYPE_IDS = Object.keys(ARCHETYPES);
+const ARCHETYPE_ANATOMY = listArchetypes()
+    .map(
+        (a) =>
+            `- ${a.id} — ${a.name}: masthead ${a.mastheadFamily} at position ${a.mastheadPosition}, ${a.stack} coverline stack, main line ${a.mainLine}, ${a.color}`,
+    )
+    .join('\n');
+
+// §7 — the AI art-direction menu, rendered LIVE from the composer's
+// contract (ART_DIRECTION_MENU) so the prompt can never drift from the
+// sanitizer. The analyze mode returns a "direction" pick alongside the
+// copy; the app's deterministic compositor materializes it into real
+// geometry (ladder, plates, scan, guarantee). The AI calls the structure,
+// never a coordinate.
+const DIRECTION_MENU = [
+    `- template: ${ART_DIRECTION_MENU.templates.join(' | ')}`,
+    `- cluster: ${ART_DIRECTION_MENU.clusters.join(' | ')}`,
+    `- treatment: ${ART_DIRECTION_MENU.treatments.join(' | ')}`,
+    `- scanCorner: ${ART_DIRECTION_MENU.scanCorners.join(' | ')}`,
+    `- badgeSpot: ${ART_DIRECTION_MENU.badgeSpots.join(' | ')}`,
+    '- rail: true | false',
+].join('\n');
 
 const buildSystemPrompt = (style: StyleId): string => {
     const playbook =
@@ -387,6 +462,8 @@ export async function POST(req: NextRequest) {
             mode = 'generate',
             skeleton = null,
             imageBase64 = '',
+            brandColors = null,
+            customText = null,
         } = body;
 
         const resolvedKey = (apiKey || '').trim();
@@ -405,6 +482,20 @@ export async function POST(req: NextRequest) {
 
         const style = normalizeStyle(String(preferredStyle || 'auto'));
         const directives = rollDirectives();
+
+        // BRAND KIT + CUSTOM TEXT — the user's saved palette and their exact
+        // words. The palette constrains the AI's hues; the custom text is
+        // contract (verbatim, never reworded).
+        const hexOf = (v: unknown): string =>
+            typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim() : '';
+        const brandPrimary = hexOf((brandColors as any)?.primary);
+        const brandAccent = hexOf((brandColors as any)?.accent);
+        const ct = (customText ?? {}) as Record<string, unknown>;
+        const customLines = [
+            typeof ct.masthead === 'string' && ct.masthead.trim() ? `masthead: "${ct.masthead.trim().slice(0, 14)}"` : '',
+            typeof ct.coverline === 'string' && ct.coverline.trim() ? `feature coverline: "${ct.coverline.trim().slice(0, 44)}"` : '',
+            typeof ct.sub === 'string' && ct.sub.trim() ? `sub-line: "${ct.sub.trim().slice(0, 60)}"` : '',
+        ].filter(Boolean);
         let systemPrompt = buildSystemPrompt(style);
 
         const aspectLine =
@@ -456,6 +547,8 @@ STYLE: ${style}${style === 'auto' ? ' (pick the genre yourself per the AUTO play
 USER THEME TO HONOUR: ${existingText || 'Invent the masthead word and all cover copy yourself'}${existingText ? `
 Treat the user's words as THE EDITION THEME and distribute them across the hierarchy: the feature coverline expresses the theme directly and concretely, grounded in what the photo actually shows; the sub-line sharpens or subverts it; the teasers and rail riff on its facets; the masthead word condenses its world into one invented title. Mine the photo description for subject-relevant specifics — names, places, materials, mood — and never paste the theme verbatim into every element.` : ''}
 
+${brandPrimary || brandAccent ? `BRAND PALETTE (the user's saved brand kit — these are the ONLY hues allowed beyond ink/paper): primary ${brandPrimary || 'unset'}, accent ${brandAccent || 'unset'}. The accent colours exactly ONE element (dateline, badge or a thin rule); the primary may tint the frame or badge fill; everything else stays pure ink-on-paper.` : ''}
+${customLines.length ? `CUSTOM TEXT (typed by the user — these appear VERBATIM, never reworded): ${customLines.join('; ')}. Compose the remaining roles yourself in the same voice.` : ''}
 THIS EDITION'S DIRECTIVES (obey all four; they override playbook placement numbers where they conflict):
 1. Composition archetype: ${directives.archetype}
 2. Coverline treatment: ${directives.plate}
@@ -469,11 +562,44 @@ Output ONLY the JSON object.`;
             systemPrompt = `You are the copy desk of a premium magazine. A designer has already ASSEMBLED the cover — every position, font, size, plate, rail, barcode and treatment is LOCKED. Your ONLY job is to rewrite the COPY of each element so this edition reads like a real editor wrote it: sharper, more specific, true to the photo. Obey every maxChars budget exactly. Never rename roles, never add or remove elements, never describe layout. Output ONLY JSON of shape {"texts":[{"id":"...","text":"..."}],"labels":[{"id":"...","label":"..."}]} — omit any element you cannot improve.`;
             userPrompt = `PHOTO / VIBE: ${imageContext || 'A strong editorial photograph of the subject'}
 STYLE: ${style}
+${customLines.length ? `CUSTOM TEXT (locked verbatim — skeleton elements matching these roles return UNCHANGED): ${customLines.join('; ')}` : ''}
 
 SKELETON ELEMENTS (geometry LOCKED — rewrite only the copy):
 ${JSON.stringify(skeleton, null, 1)}
 
 Write this edition's copy now. Output ONLY the JSON object.`;
+        }
+
+        if (mode === 'analyze') {
+            systemPrompt = `You are the photo editor AND art director AND copy chief of a premium magazine. You look at photographs, describe what they ARE, name the brand template their negative space is born to wear, art-direct its structure, and write the edition's words in the SAME breath. You MUST respond with strictly valid JSON only, no markdown fences, no commentary: {"summary": string, "genre": string, "mood": string[], "subjectFocus": string, "archetype": string, "direction": {"template": string, "cluster": string, "treatment": string, "scanCorner": string, "badgeSpot": string, "rail": boolean}, "copy": {"masthead": string, "dateline": string, "feature": string, "sub": string, "teasers": string[]}}.
+- summary: one dense sentence naming the subject, wardrobe/materials, setting, light and mood.
+- genre: the editorial world this photograph genuinely belongs in — judge what you SEE, not any description text. One of: auto, vogue, zine, kinfolk, noir, gq, dazed, natgeo, cyber, vinyl, architectural, food, fragments, time, eye, bazaar.
+- mood: 2-4 adjective keywords.
+- subjectFocus: where the visual mass sits and what the eye hits first.
+- archetype: EXACTLY ONE id, verbatim, from the ten canonical templates below. You are trained on this anatomy — a 60-cover structural analysis distilled into brand templates. Judge the NEGATIVE SPACE, not the subject matter: where the calm zones sit decides which template wears this photo.
+
+THE TEN ARCHETYPES (id — anatomy):
+${ARCHETYPE_ANATOMY}
+MASTHEAD POSITIONS: A full-width over the subject's head · B deep layer BEHIND the subject (the celebrity sandwich) · C compact news nameplate, top-centre · D indie top-left corner anchor · E vertical side rail (the whole top goes to the photo) · F inverted floor band.
+SELECTION HEURISTIC (read the calm space, then pick):
+- generous calm headroom → classic-vogue / time-frame / natgeo-frame
+- one wide calm side column (subject off-centre) → indie-minimal (left) or bazaar-soft (right)
+- dense everywhere, strong centred subject, face holds the middle → vogue-deep-layer
+- calm bottom band, torso-heavy crop → bottom-strip
+- formal, institutional, commemorative gravitas → time-frame or inverted-commemorative
+- art-school energy, radical graphic play → avant-garde
+- newsstand loudness, stacked text columns → tabloid-stack
+- direction: your ART DIRECTION for this cover — you are the designer CALLING the structure, and the app's deterministic compositor then builds the actual geometry (type ladder, legibility plates, spacing, no-overlap guarantee) from your pick. Every field is optional but the strong picks are template + cluster + treatment. Choose values EXACTLY from these menus, verbatim:
+${DIRECTION_MENU}
+Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over calm headroom · SIDE-STRIP strip masthead with a coverline column down one calm flank · DEEP-LAYER masthead sandwiched BEHIND a dense centred subject · VERTICAL rotated rail, whole top goes to the photo · INVERTED masthead anchored low in a calm floor band). cluster = which flank the coverline stack colonises ("split" only for a symmetric pose). treatment = how the feature coverline is built (strip wide one-line kicker · statement huge multi-word feature on a legibility plate · banner full-width solid band · symmetric mirrored side rungs). scanCorner = the CALMER floor corner, away from the subject's mass, for the barcode/QR. badgeSpot = where the badge pill sits (top of the page / over the coverline cluster / opposite floor corner). rail = true to swap the dateline for a rotated spine rail (quiet, architectural or archival genres only). Your direction MUST agree with the archetype you named (vogue-deep-layer → template DEEP-LAYER; indie-minimal → SIDE-STRIP + cluster left; inverted-commemorative → INVERTED). Judge the NEGATIVE SPACE, not the subject matter.
+- copy: THIS edition's words, genre-correct and grounded in what THIS photograph actually shows — one round trip, no follow-up needed. Budgets are hard (the renderer truncates):
+ · masthead — ONE invented magazine word, 3-9 LETTERS, uppercase. Coin a NEW one for this photo (SCION, ARCADE, HAVOC, LUMEN are taken — never repeat a word you have used before).
+ · dateline — cities / issue number / price machine copy, ≤40 chars ("PARIS • ISSUE 48 — €14.00").
+ · feature — the loudest coverline, ≤44 chars, drawn from the subject, wardrobe, setting or mood you actually see.
+ · sub — one rung below the feature; sharpens or subverts it, ≤60 chars.
+ · teasers — 2-3 micro lines, ≤28 chars each.
+ Fresh words only: if a phrase feels like the obvious first guess, write the second one. UPPERCASE everything except lines that must read sentence-case.`;
+            userPrompt = `Analyze the attached photograph and return the JSON.`;
         }
 
         let jsonText = '';
@@ -496,6 +622,14 @@ Write this edition's copy now. Output ONLY the JSON object.`;
             ])).filter((m) => !m.includes('2.5') && !m.includes('1.5-pro'));
 
             const geminiGenerate = async (model: string): Promise<string> => {
+                // SPEED RULING: these JSON reads need perception, not
+                // deliberation. Thinking-capable models (2.5+ / 3.x) think
+                // by DEFAULT — multi-second deliberation before the first
+                // token, and thinking tokens burn the output budget
+                // mid-object (the truncation the retry loop was seeing).
+                // Budget 0 = answer in one pass. Older models (2.0/1.5)
+                // reject the field, so it is added only when supported.
+                const thinkingCapable = /(?:^|-)(?:2\.5|3\.)\d*/.test(model);
                 const res = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(effectiveKey)}`,
                     {
@@ -519,6 +653,7 @@ Write this edition's copy now. Output ONLY the JSON object.`;
                                 topP: 0.95,
                                 maxOutputTokens: 8192,
                                 responseMimeType: 'application/json',
+                                ...(thinkingCapable ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
                             },
                         }),
                     }
@@ -639,6 +774,59 @@ Write this edition's copy now. Output ONLY the JSON object.`;
                 { error: `Failed to parse AI layout response as JSON. Raw output: ${jsonText.slice(0, 200)}` },
                 { status: 500 }
             );
+        }
+
+        // ANALYZE MODE — the AI is a perception layer only. It never emits a
+        // coordinate; the deterministic editorial solver consumes this.
+        if (mode === 'analyze') {
+            const s = parsed as Record<string, unknown>;
+            const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+            const mood = Array.isArray(s.mood)
+                ? (s.mood as unknown[]).filter((m) => typeof m === 'string').slice(0, 4) as string[]
+                : [];
+            // §6.5 — the archetype hint, validated against the registry.
+            // The solver consumes it as a brand band; anything the model
+            // hallucinated outside the ten ids is dropped (free solve).
+            const rawArch = str(s.archetype, 48);
+            const archetypeHint = ARCHETYPE_IDS.includes(rawArch) ? rawArch : '';
+            // §7 — the art-direction pick, sanitized key-by-key against the
+            // live menus. A hallucinated value is dropped (that decision
+            // falls back to the composer); an empty object means "no
+            // direction" and the deterministic solve owns everything.
+            const direction = sanitizeArtDirection(s.direction);
+            // The edition's words — same round trip as the analysis. Every
+            // line is clamped to its render budget so the app can trust
+            // the copy verbatim; the masthead is scrubbed to wordmark-safe
+            // characters and uppercased (it is a logo, not a sentence).
+            const c = (s.copy ?? {}) as Record<string, unknown>;
+            const line = (v: unknown, max: number) =>
+                str(v, max).replace(/\s+/g, ' ').trim();
+            const mastheadWord = line(c.masthead, 12).toUpperCase().replace(/[^A-Z0-9&'-]/g, '');
+            const dateline = line(c.dateline, 40);
+            const feature = line(c.feature, 44);
+            const sub = line(c.sub, 60);
+            const teasers = Array.isArray(c.teasers)
+                ? (c.teasers as unknown[]).map((t) => line(t, 28)).filter(Boolean).slice(0, 3)
+                : [];
+            const copy = {
+                ...(mastheadWord.length >= 3 ? { masthead: mastheadWord } : {}),
+                ...(dateline ? { dateline } : {}),
+                ...(feature ? { feature } : {}),
+                ...(sub ? { sub } : {}),
+                ...(teasers.length ? { teasers } : {}),
+            };
+            return NextResponse.json({
+                success: true,
+                semantics: {
+                    summary: str(s.summary, 240),
+                    genre: normalizeStyle(String(s.genre || 'auto')),
+                    mood,
+                    subjectFocus: str(s.subjectFocus ?? s.subject_focus, 120),
+                    ...(archetypeHint ? { archetypeHint } : {}),
+                    ...(Object.keys(direction).length ? { direction } : {}),
+                    ...(Object.keys(copy).length ? { copy } : {}),
+                },
+            });
         }
 
         return NextResponse.json({ success: true, layout: parsed, directives });

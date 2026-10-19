@@ -1,0 +1,945 @@
+// ---------------------------------------------------------------------------
+// THE EDITORIAL SOLVER — perception belongs to the AI, geometry belongs to
+// mathematics. (src/lib/magazine/solver.ts)
+//
+// Architecture (owner ruling): the AI NEVER outputs a coordinate. Its only
+// job is to describe the photograph (subject, genre, mood, copy seeds).
+// Everything spatial is decided here, deterministically, from a dense
+// measurement field of the canvas:
+//
+//   1. FIELD     — a 24×30 cell grid of luminance / texture-energy /
+//                  saturation; calm mask, subject bounding box, column and
+//                  row marginals, circular-mean hue.
+//   2. ZONES     — a deterministic lattice of candidate whitespace
+//                  rectangles (bands, columns, corners, center), each
+//                  scored for calm, flatness and luminance.
+//   3. ASSIGN    — components × zones cost matrix (calmness, aspect
+//                  mismatch, subject adjacency, role priors) solved with
+//                  the Hungarian algorithm — true O(n³) optimal assignment.
+//   4. GEOMETRY  — rail legality from column aspect ratios, plate
+//                  necessity from subject-overlap energy, placements
+//                  snapped to a 24-division optical grid.
+//   5. APPLY     — the solved placements rewrite the composed cover's
+//                  specs; the layout-law engine then verifies physically.
+//
+// Same photo + same seed → same cover. New click → new seed → the
+// next-best optimal assignment. Nothing here is heuristic hand-waving;
+// every number is a measurement and every placement is an optimum.
+//
+// UNIT GRAMMAR (house law): xPct / yPct are FRACTIONS of the canvas
+// (0–1); widthPct / heightPct are PERCENT (0–100). The renderer does
+// `xPct * W` — never mix the two.
+//
+// GRAFTED FROM FRAGMENTS v2 (archived at solver-v2-fragments.ts): the
+// style-signature devices — giant type-as-mask wordmark, vertical info
+// rail, crosshair registration marks, accent block, border frame — plus
+// the 4 new styles (fragments / time / eye / bazaar). The v1 optimizer
+// above still owns every coordinate; the grafts only decorate it.
+// ---------------------------------------------------------------------------
+
+import type { ComposedCover, PhotoAnalysis, SystemShapeSpec, SystemStyleId, SystemTextSpec } from './cover-system';
+
+// --- seeded rng (mirrors cover-system's; local to keep the solver pure) ----
+
+const mulberry32 = (seed: number) => () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+const clamp01 = (v: number): number => clamp(v, 0, 1);
+
+// --- 1 · THE MEASUREMENT FIELD ------------------------------------------------
+
+export const SOLVER_GRID = { cols: 24, rows: 30 } as const;
+
+export interface GridAnalysis {
+    cols: number;
+    rows: number;
+    /** per-cell mean luminance 0-1 */
+    lum: Float32Array;
+    /** per-cell texture/edge energy 0-1 (gradient magnitude) */
+    energy: Float32Array;
+    /** per-cell saturation 0-1 */
+    sat: Float32Array;
+    /** per-cell calmness 0-1 (1 - normalized energy) */
+    calm: Float32Array;
+    /** overall photo reads light (plate polarity) */
+    light: boolean;
+    /** bounding box of the visual mass (normalized), null if diffuse */
+    subjectBox: { x0: number; y0: number; x1: number; y1: number } | null;
+    /** circular-mean hue 0-360 and mean saturation — the colour vibe */
+    hue: number;
+    satAvg: number;
+    /** column marginal calmness (length cols) */
+    colProfile: Float32Array;
+    /** row marginal calmness (length rows) */
+    rowProfile: Float32Array;
+}
+
+export function analyzeGridFromCanvas(cv: HTMLCanvasElement): GridAnalysis | null {
+    try {
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return null;
+        const W0 = cv.width;
+        const H0 = cv.height;
+        if (!W0 || !H0) return null;
+
+        // FAST FIRST STEP — downsample to a 96×120 thumbnail before ANY
+        // pixel read. A full-resolution getImageData allocates tens of
+        // megabytes and stalls the frame; the thumbnail is ~100× cheaper
+        // and just as accurate for a 24×30 field (4×4 px per cell).
+        const W = 96;
+        const H = 120;
+        const off = document.createElement('canvas');
+        off.width = W;
+        off.height = H;
+        const octx = off.getContext('2d', { willReadFrequently: true });
+        if (!octx) return null;
+        octx.drawImage(cv, 0, 0, W, H);
+
+        const { cols, rows } = SOLVER_GRID;
+        const n = cols * rows;
+        const lum = new Float32Array(n);
+        const sat = new Float32Array(n);
+        const rs = new Float64Array(n);
+        const gs = new Float64Array(n);
+        const bs = new Float64Array(n);
+        const cnt = new Float64Array(n);
+
+        const d = octx.getImageData(0, 0, W, H).data;
+        // Pixel pass — accumulate RGB into cells (one pass over the tiny
+        // thumbnail; sub-millisecond by construction).
+        for (let i = 0; i < d.length; i += 4) {
+            const px = (i / 4) | 0;
+            const cxs = px % W;
+            const cys = (px / W) | 0;
+            const c = Math.min(cols - 1, ((cxs / W) * cols) | 0);
+            const r = Math.min(rows - 1, ((cys / H) * rows) | 0);
+            const k = r * cols + c;
+            rs[k] += d[i];
+            gs[k] += d[i + 1];
+            bs[k] += d[i + 2];
+            cnt[k]++;
+        }
+        let sinH = 0;
+        let cosH = 0;
+        let satSum = 0;
+        let lumSum = 0;
+        let satCnt = 0;
+        for (let k = 0; k < n; k++) {
+            const c = Math.max(1, cnt[k]);
+            const r = rs[k] / c / 255;
+            const g = gs[k] / c / 255;
+            const b = bs[k] / c / 255;
+            const l = 0.299 * r + 0.587 * g + 0.114 * b;
+            lum[k] = l;
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const s = max <= 0 ? 0 : (max - min) / max;
+            sat[k] = s;
+            lumSum += l;
+            satSum += s;
+            satCnt++;
+            if (max - min > 1e-4) {
+                let h: number;
+                if (max === r) h = ((g - b) / (max - min)) % 6;
+                else if (max === g) h = (b - r) / (max - min) + 2;
+                else h = (r - g) / (max - min) + 4;
+                h *= 60;
+                if (h < 0) h += 360;
+                sinH += Math.sin((h * Math.PI) / 180);
+                cosH += Math.cos((h * Math.PI) / 180);
+            }
+        }
+
+        // Energy pass — gradient magnitude over the cell lattice (a cheap
+        // Sobel on the downsampled field; edges = subject, flat = space).
+        const energy = new Float32Array(n);
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const k = r * cols + c;
+                const l = lum[k];
+                const lu = lum[Math.max(0, r - 1) * cols + c];
+                const ld = lum[Math.min(rows - 1, r + 1) * cols + c];
+                const ll = lum[r * cols + Math.max(0, c - 1)];
+                const lr = lum[r * cols + Math.min(cols - 1, c + 1)];
+                energy[k] = clamp01((Math.abs(lu - ld) + Math.abs(ll - lr)) / 2 / 0.16);
+            }
+        }
+        const calm = new Float32Array(n);
+        for (let k = 0; k < n; k++) calm[k] = clamp01(1 - energy[k]);
+
+        // Subject bounding box — cells significantly busier than average.
+        let eMean = 0;
+        for (let k = 0; k < n; k++) eMean += energy[k];
+        eMean /= n;
+        let eVar = 0;
+        for (let k = 0; k < n; k++) eVar += (energy[k] - eMean) * (energy[k] - eMean);
+        const eStd = Math.sqrt(eVar / n);
+        const thr = eMean + 0.55 * eStd;
+        let x0 = 1;
+        let y0 = 1;
+        let x1 = 0;
+        let y1 = 0;
+        let hits = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (energy[r * cols + c] > thr) {
+                    hits++;
+                    x0 = Math.min(x0, c / cols);
+                    y0 = Math.min(y0, r / rows);
+                    x1 = Math.max(x1, (c + 1) / cols);
+                    y1 = Math.max(y1, (r + 1) / rows);
+                }
+            }
+        }
+        const subjectBox = hits >= 5 ? { x0, y0, x1, y1 } : null;
+
+        // Marginals — the column/row whitespace profile (interior only).
+        const colProfile = new Float32Array(cols);
+        const rowProfile = new Float32Array(rows);
+        for (let c = 0; c < cols; c++) {
+            let s = 0;
+            for (let r = 2; r < rows - 2; r++) s += calm[r * cols + c];
+            colProfile[c] = s / (rows - 4);
+        }
+        for (let r = 0; r < rows; r++) {
+            let s = 0;
+            for (let c = 2; c < cols - 2; c++) s += calm[r * cols + c];
+            rowProfile[r] = s / (cols - 4);
+        }
+
+        let hue = Math.atan2(sinH, cosH) * (180 / Math.PI);
+        if (hue < 0) hue += 360;
+        return {
+            cols,
+            rows,
+            lum,
+            energy,
+            sat,
+            calm,
+            light: lumSum / Math.max(1, n) > 0.58,
+            subjectBox,
+            hue,
+            satAvg: satSum / Math.max(1, satCnt),
+            colProfile,
+            rowProfile,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/** Derive the composer's PhotoAnalysis from the grid — ONE scan feeds
+ *  both engines, so ASSEMBLE's opening step is a single 96×120 pass. */
+export function gridToPhotoAnalysis(g: GridAnalysis): PhotoAnalysis {
+    const bandCalm = (x0: number, y0: number, x1: number, y1: number): number => {
+        let s = 0;
+        let n = 0;
+        for (let r = 0; r < g.rows; r++) {
+            for (let c = 0; c < g.cols; c++) {
+                const cc = (c + 0.5) / g.cols;
+                const rr = (r + 0.5) / g.rows;
+                if (cc < x0 || cc > x1 || rr < y0 || rr > y1) continue;
+                s += g.calm[r * g.cols + c];
+                n++;
+            }
+        }
+        return Math.round((s / Math.max(1, n)) * 100) / 100;
+    };
+    const cx = g.subjectBox ? (g.subjectBox.x0 + g.subjectBox.x1) / 2 : 0.5;
+    return {
+        headroom: bandCalm(0, 0, 1, 0.18),
+        leftSpace: bandCalm(0, 0.18, 0.24, 0.72),
+        rightSpace: bandCalm(0.76, 0.18, 1, 0.72),
+        bottomSpace: bandCalm(0, 0.74, 1, 0.94),
+        photoLight: g.light,
+        subjectX: cx < 0.42 ? 'left' : cx > 0.58 ? 'right' : 'center',
+        hue: Math.round(g.hue),
+        sat: Math.round(g.satAvg * 100) / 100,
+    };
+}
+
+// --- 2 · CANDIDATE WHITESPACE ZONES -------------------------------------------
+
+interface Zone {
+    id: string;
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    w: number;
+    h: number;
+    cx: number;
+    cy: number;
+    calm: number;
+    flat: number;
+    lum: number;
+    tags: string[];
+    pad?: boolean;
+}
+
+interface ComponentSpec {
+    id: string;
+    aspect: number; // target width/height of the text block
+    minCalm: number;
+}
+
+const COMPONENTS: ComponentSpec[] = [
+    { id: 'masthead', aspect: 3.4, minCalm: 0.4 },
+    { id: 'dateline', aspect: 9.0, minCalm: 0.48 },
+    { id: 'feature', aspect: 3.6, minCalm: 0.42 },
+    { id: 'sub', aspect: 6.0, minCalm: 0.48 },
+    { id: 'teasers', aspect: 5.0, minCalm: 0.5 },
+    { id: 'badge', aspect: 5.0, minCalm: 0.42 },
+    { id: 'scan', aspect: 2.2, minCalm: 0.25 },
+];
+
+const zoneMetrics = (g: GridAnalysis, id: string, x0: number, y0: number, x1: number, y1: number, tags: string[]): Zone => {
+    let calmSum = 0;
+    let lumSum = 0;
+    let n = 0;
+    for (let r = 0; r < g.rows; r++) {
+        for (let c = 0; c < g.cols; c++) {
+            const cc = (c + 0.5) / g.cols;
+            const rr = (r + 0.5) / g.rows;
+            if (cc < x0 || cc > x1 || rr < y0 || rr > y1) continue;
+            const k = r * g.cols + c;
+            calmSum += g.calm[k];
+            lumSum += g.lum[k];
+            n++;
+        }
+    }
+    n = Math.max(1, n);
+    const lumMean = lumSum / n;
+    let varAcc = 0;
+    for (let r = 0; r < g.rows; r++) {
+        for (let c = 0; c < g.cols; c++) {
+            const cc = (c + 0.5) / g.cols;
+            const rr = (r + 0.5) / g.rows;
+            if (cc < x0 || cc > x1 || rr < y0 || rr > y1) continue;
+            const dl = g.lum[r * g.cols + c] - lumMean;
+            varAcc += dl * dl;
+        }
+    }
+    return {
+        id,
+        x0,
+        y0,
+        x1,
+        y1,
+        w: x1 - x0,
+        h: y1 - y0,
+        cx: (x0 + x1) / 2,
+        cy: (y0 + y1) / 2,
+        calm: calmSum / n,
+        flat: clamp01(1 - Math.sqrt(varAcc / n) * 3),
+        lum: lumMean,
+        tags,
+    };
+};
+
+const enumerateZones = (g: GridAnalysis): Zone[] => [
+    zoneMetrics(g, 'T1', 0.06, 0.045, 0.94, 0.15, ['top', 'band']),
+    zoneMetrics(g, 'T2', 0.05, 0.05, 0.46, 0.16, ['top', 'left']),
+    zoneMetrics(g, 'T3', 0.54, 0.05, 0.95, 0.16, ['top', 'right']),
+    zoneMetrics(g, 'B1', 0.06, 0.78, 0.94, 0.9, ['bottom', 'band']),
+    zoneMetrics(g, 'B2', 0.05, 0.76, 0.48, 0.9, ['bottom', 'left']),
+    zoneMetrics(g, 'B3', 0.52, 0.76, 0.95, 0.9, ['bottom', 'right']),
+    zoneMetrics(g, 'L1', 0.035, 0.18, 0.2, 0.72, ['left', 'column', 'mid']),
+    zoneMetrics(g, 'R1', 0.8, 0.18, 0.965, 0.72, ['right', 'column', 'mid']),
+    zoneMetrics(g, 'M1', 0.06, 0.34, 0.42, 0.62, ['mid', 'left']),
+    zoneMetrics(g, 'M2', 0.58, 0.34, 0.94, 0.62, ['mid', 'right']),
+    zoneMetrics(g, 'C1', 0.18, 0.36, 0.82, 0.64, ['center', 'mid']),
+    zoneMetrics(g, 'D1', 0.05, 0.045, 0.6, 0.09, ['dateline', 'top', 'band']),
+    zoneMetrics(g, 'E1', 0.03, 0.03, 0.18, 0.11, ['corner', 'top', 'left']),
+    zoneMetrics(g, 'E2', 0.82, 0.03, 0.97, 0.11, ['corner', 'top', 'right']),
+    zoneMetrics(g, 'E3', 0.03, 0.87, 0.18, 0.97, ['corner', 'bottom', 'left']),
+    zoneMetrics(g, 'E4', 0.82, 0.87, 0.97, 0.97, ['corner', 'bottom', 'right']),
+];
+
+// --- 3 · THE ASSIGNMENT OPTIMIZER (Hungarian, O(n³)) ---------------------------
+
+const INFEASIBLE = 1e6;
+
+/** Jonker-style Hungarian assignment with potentials. cost[r][c], returns
+ *  col index per row (minimizes total cost). Classic, exact, unbeatable. */
+const hungarian = (cost: number[][]): number[] => {
+    const n = cost.length;
+    const INF = 1e15;
+    const u = new Array<number>(n + 1).fill(0);
+    const v = new Array<number>(n + 1).fill(0);
+    const p = new Array<number>(n + 1).fill(0);
+    const way = new Array<number>(n + 1).fill(0);
+    for (let i = 1; i <= n; i++) {
+        p[0] = i;
+        let j0 = 0;
+        const minv = new Array<number>(n + 1).fill(INF);
+        const used = new Array<boolean>(n + 1).fill(false);
+        do {
+            used[j0] = true;
+            const i0 = p[j0];
+            let delta = INF;
+            let j1 = 0;
+            for (let j = 1; j <= n; j++) {
+                if (used[j]) continue;
+                const cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+                if (cur < minv[j]) {
+                    minv[j] = cur;
+                    way[j] = j0;
+                }
+                if (minv[j] < delta) {
+                    delta = minv[j];
+                    j1 = j;
+                }
+            }
+            for (let j = 0; j <= n; j++) {
+                if (used[j]) {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+        } while (p[j0] !== 0);
+        do {
+            const j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0);
+    }
+    const rowToCol = new Array<number>(n).fill(-1);
+    for (let j = 1; j <= n; j++) if (p[j] > 0) rowToCol[p[j] - 1] = j - 1;
+    return rowToCol;
+};
+
+// --- 4 · THE SOLVER -------------------------------------------------------------
+
+export interface SolverSemantics {
+    summary?: string;
+    genre?: string;
+    mood?: string[];
+    subjectFocus?: string;
+}
+
+export interface SolvedPlacement {
+    role: string;
+    zone: string;
+    xPct: number;
+    yPct: number;
+    widthPct: number;
+    rotationDeg: number;
+    plate: boolean;
+    depth: 'behind' | 'front';
+    /** Optional type-rung override (heightPct, PERCENT 0-100). Set only by
+     *  the style-signature grafts (the fragments rail ladder) — the v1
+     *  optimizer itself never scales type; the composer's ladder rules. */
+    heightPct?: number;
+}
+
+// --- 4.5 · STYLE SIGNATURES — grafted from the fragments engine ----------------
+// The good parts of v2, speaking THIS file's unit grammar (xPct/yPct are
+// fractions, wPct/hPct are percent). Each new style declares its signature
+// devices; the v1 optimizer still owns every coordinate.
+
+export interface DecorationShape {
+    kind: 'frame' | 'crosshair' | 'accent-block' | 'em-dash' | 'giant-type' | 'rail-bg';
+    xPct: number;
+    yPct: number;
+    wPct: number;
+    hPct: number;
+    color: string;
+    rotationDeg: number;
+    depth: 'behind' | 'front';
+    text?: string;
+    typeFamily?: string;
+    weight?: number;
+    letterSpacing?: number;
+    maskPhoto?: boolean;
+    thickness?: number;
+    arm?: number;
+    corner?: number;
+}
+
+export interface LayoutViolation {
+    id: string;
+    severity: 'critical' | 'warning' | 'info';
+    message: string;
+    role?: string;
+}
+
+interface StyleFlags {
+    giant?: boolean;
+    rail?: boolean;
+    crosshairs?: boolean;
+    frame?: { color: string; strokeW: number };
+    accent?: string;
+    mastheadFamily?: string;
+    mastheadWeight?: number;
+}
+
+const STYLE_FLAGS: Partial<Record<SystemStyleId, StyleFlags>> = {
+    fragments: {
+        giant: true,
+        rail: true,
+        crosshairs: true,
+        accent: '#D94B28',
+        mastheadFamily: 'geometric-sans',
+        mastheadWeight: 900,
+    },
+    eye: { giant: true, mastheadFamily: 'display', mastheadWeight: 900 },
+    time: { frame: { color: '#E10600', strokeW: 4 } },
+};
+
+const giantWordFrom = (semantics: SolverSemantics | null): string => {
+    const src = semantics?.subjectFocus || semantics?.summary || '';
+    const word = src
+        .split(/\s+/)
+        .map((w) => w.replace(/[^A-Za-z]/g, '').toUpperCase())
+        .find((w) => w.length >= 3 && w.length <= 8);
+    return word || 'PULSE';
+};
+
+export interface SolverResult {
+    placements: SolvedPlacement[];
+    style: SystemStyleId;
+    photoLight: boolean;
+    decorations: DecorationShape[];
+    violations: LayoutViolation[];
+    seed: number;
+}
+
+const KNOWN_STYLES: SystemStyleId[] = [
+    'vogue', 'zine', 'kinfolk', 'noir', 'gq', 'dazed', 'natgeo', 'cyber', 'vinyl', 'architectural', 'food',
+    'fragments', 'time', 'eye', 'bazaar',
+];
+
+/** The colour-mood → genre map, on solver measurements (AI-free fallback). */
+const gridVibe = (g: GridAnalysis): SystemStyleId => {
+    const { hue, satAvg: sat, light } = g;
+    if (sat < 0.16) return light ? 'kinfolk' : 'noir';
+    const warm = hue >= 340 || (hue >= 12 && hue <= 50);
+    if (warm && sat >= 0.34) return 'food';
+    if (hue >= 70 && hue < 170) return light ? 'kinfolk' : 'vinyl';
+    if (hue >= 170 && hue < 265) return light ? 'natgeo' : 'cyber';
+    if (hue >= 265 && hue < 340 && sat >= 0.25) return 'dazed';
+    return light ? 'kinfolk' : 'gq';
+};
+
+/** Snap to the 24-division optical grid when within tolerance — the quiet
+ *  mechanical rhythm that makes print layouts feel set, not dropped. */
+const opticalSnap = (v: number): number => {
+    const s = Math.round(v * 24) / 24;
+    return Math.abs(s - v) < 0.011 ? s : v;
+};
+
+const overlapRatio = (a: { x0: number; y0: number; x1: number; y1: number }, b: { x0: number; y0: number; x1: number; y1: number }): number => {
+    const ix = Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0));
+    const iy = Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+    const area = Math.max(1e-6, (b.x1 - b.x0) * (b.y1 - b.y0));
+    return (ix * iy) / area;
+};
+
+export function solveEditorialCover(
+    g: GridAnalysis,
+    semantics: SolverSemantics | null,
+    opts: { seed?: number; style?: SystemStyleId } = {},
+): SolverResult {
+    const seed = (opts.seed ?? Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    const rng = mulberry32(seed);
+    const jitter = () => 1 + (rng() * 2 - 1) * 0.06; // ±6% weight noise → k-best diversity
+    const style =
+        opts.style ??
+        (semantics?.genre && (KNOWN_STYLES as string[]).includes(semantics.genre) ? (semantics.genre as SystemStyleId) : gridVibe(g));
+
+    const zones = enumerateZones(g);
+    const subjectCx = g.subjectBox ? (g.subjectBox.x0 + g.subjectBox.x1) / 2 : 0.5;
+    // The text mass lives in the CALMER half; the scan corner sits opposite.
+    let leftCalm = 0;
+    let rightCalm = 0;
+    for (let c = 0; c < 6; c++) leftCalm += g.colProfile[c];
+    for (let c = g.cols - 6; c < g.cols; c++) rightCalm += g.colProfile[c];
+    const textSide: 'left' | 'right' = leftCalm >= rightCalm ? 'left' : 'right';
+
+    const cost: number[][] = COMPONENTS.map((comp) =>
+        zones.map((z) => {
+            if (z.calm < comp.minCalm) return INFEASIBLE;
+            const zoneAspect = z.w / Math.max(0.02, z.h);
+            let c =
+                2.3 * (1 - z.calm) * jitter() +
+                0.8 * Math.abs(Math.log(zoneAspect / comp.aspect)) * jitter() +
+                0.35 * (1 - z.flat);
+            switch (comp.id) {
+                case 'masthead':
+                    if (z.cy > 0.62) c += 0.9; // masthead leads the upper two-thirds
+                    if (g.subjectBox && overlapRatio(z, g.subjectBox) > 0.5) c += 0.35; // sandwich legal, not preferred
+                    break;
+                case 'dateline':
+                    if (z.cy > 0.16 && z.cy < 0.9) c += 0.8;
+                    if (z.cy > 0.5) c += 0.3;
+                    break;
+                case 'feature':
+                case 'sub':
+                    c += 0.9 * Math.abs(z.cx - subjectCx); // coverlines point AT the subject
+                    if (z.cy < 0.3) c += 0.4;
+                    break;
+                case 'teasers':
+                    if (z.h < 0.2) c += 0.6;
+                    c += 0.4 * Math.abs(z.cx - subjectCx);
+                    break;
+                case 'badge':
+                    if (!z.tags.includes('corner')) c += INFEASIBLE;
+                    break;
+                case 'scan': {
+                    if (!z.tags.includes('corner')) c += INFEASIBLE;
+                    else if (textSide === 'left' && z.tags.includes('left')) c += 0.8;
+                    else if (textSide === 'right' && z.tags.includes('right')) c += 0.8;
+                    break;
+                }
+            }
+            return c;
+        }),
+    );
+
+    // Pad to square with phantom zones so every component gets an answer.
+    const n = COMPONENTS.length;
+    const square: number[][] = cost.map((row) => [...row]);
+    while (square[0].length < n) square.forEach((row) => row.push(INFEASIBLE * 2));
+    const assign = hungarian(square);
+
+    const placements: SolvedPlacement[] = [];
+    const byRole: Record<string, SolvedPlacement | undefined> = {};
+    COMPONENTS.forEach((comp, i) => {
+        const zi = assign[i];
+        const z = zi >= 0 && zi < zones.length ? zones[zi] : null;
+        if (!z || square[i][zi] >= INFEASIBLE) return; // infeasible everywhere — composer defaults rule
+        const rail = comp.id === 'masthead' && z.tags.includes('column') && z.h / Math.max(0.04, z.w) >= 1.9;
+        let widthPct: number;
+        let rotationDeg = 0;
+        if (rail) {
+            // Vertical masthead: text length runs down the column height.
+            widthPct = clamp(z.h * 100 * 0.85, 46, 64);
+            rotationDeg = z.tags.includes('left') ? -90 : 90;
+        } else {
+            widthPct = clamp(z.w * 100 * 0.92, comp.id === 'masthead' ? 46 : 24, comp.id === 'masthead' ? 92 : 60);
+        }
+        const cx = rail ? clamp(z.x0 + (z.tags.includes('left') ? 0.045 : -0.045) + (z.tags.includes('left') ? 0.0 : z.w), 0.03, 0.97) : opticalSnap(clamp(z.cx, 0.06, 0.94));
+        const cy = opticalSnap(clamp(z.cy, 0.08, 0.92));
+        const plate =
+            (comp.id === 'feature' || comp.id === 'sub') &&
+            !!g.subjectBox &&
+            overlapRatio(z, g.subjectBox) > 0.35 &&
+            z.calm < 0.52;
+        const placement: SolvedPlacement = {
+            role: comp.id,
+            zone: z.id,
+            xPct: Math.round(cx * 1000) / 1000,
+            yPct: Math.round(cy * 1000) / 1000,
+            widthPct: Math.round(widthPct),
+            rotationDeg,
+            plate,
+            depth: plate ? 'front' : comp.id === 'masthead' && g.subjectBox && overlapRatio(z, g.subjectBox) > 0.4 ? 'behind' : 'front',
+        };
+        placements.push(placement);
+        byRole[comp.id] = placement;
+    });
+
+    // The sub stacks one breath beneath the feature; teasers follow the sub.
+    const feat = byRole.feature;
+    const sub = byRole.sub;
+    if (feat && sub) {
+        sub.xPct = feat.xPct;
+        sub.yPct = Math.round(clamp(feat.yPct + 0.075, 0.1, 0.93) * 1000) / 1000;
+        sub.plate = feat.plate;
+    }
+    const teasers = byRole.teasers;
+    if (feat && teasers) {
+        teasers.xPct = sub ? sub.xPct : feat.xPct;
+        teasers.yPct = Math.round(clamp((sub ? sub.yPct : feat.yPct) + 0.075, 0.12, 0.94) * 1000) / 1000;
+    }
+
+    // ── GRAFT: style signature devices (v2's good parts, v1's grammar) ──
+    // The optimizer above chose WHERE everything lives; these passes only
+    // add the new styles' signature structure on top, never re-costing.
+    const flags = STYLE_FLAGS[style];
+    const decorations: DecorationShape[] = [];
+    const ink = g.light ? '#2B2B2B' : '#F5F0E8';
+
+    if (flags?.rail) {
+        // The four-block vertical info rail: feature → series → mood → year,
+        // separated by em-dash dividers, snapped to a shared baseline grid.
+        const railX = 0.875;
+        const blocks: { role: string; size: number }[] = [
+            { role: 'feature', size: 3.8 },
+            { role: 'sub', size: 2.2 },
+            { role: 'teasers', size: 1.8 },
+            { role: 'dateline', size: 1.8 },
+        ];
+        const top = 0.12;
+        const bottom = 0.88;
+        const step = (bottom - top) / (blocks.length * 2);
+        let y = top + step;
+        for (const b of blocks) {
+            const p = byRole[b.role];
+            if (p) {
+                p.xPct = railX;
+                p.yPct = Math.round(y * 1000) / 1000;
+                p.widthPct = b.role === 'feature' ? 21 : 18;
+                // The rail's typographic ladder — the feature rung towers,
+                // the sub answers, teasers whisper. Without this every row
+                // renders at the composer's flat default and the rail reads
+                // as one grey column (the "hierarchy missing" symptom).
+                p.heightPct = b.size;
+                p.rotationDeg = 0;
+                p.plate = false;
+                p.depth = 'front';
+            }
+            y += step;
+            decorations.push({
+                kind: 'em-dash',
+                xPct: railX,
+                yPct: Math.round(y * 1000) / 1000,
+                wPct: 7.2,
+                hPct: 0.4,
+                color: ink,
+                rotationDeg: 0,
+                depth: 'front',
+                thickness: 0.18,
+            });
+            y += step;
+        }
+    }
+
+    if (flags?.giant) {
+        // The type-as-mask wordmark — the giant letterform backdrop. The
+        // composer's own masthead spec retires (apply pass hides it); this
+        // decoration IS the masthead for giant styles.
+        decorations.push({
+            kind: 'giant-type',
+            xPct: 0.5,
+            yPct: 0.5,
+            wPct: flags.rail ? 74 : 92,
+            hPct: 90,
+            color: ink,
+            rotationDeg: 0,
+            depth: 'behind',
+            text: giantWordFrom(semantics),
+            typeFamily: flags.mastheadFamily,
+            weight: flags.mastheadWeight,
+            letterSpacing: -0.03,
+            maskPhoto: true,
+        });
+    }
+
+    if (flags?.crosshairs) {
+        for (const [chx, chy] of [
+            [0.08, 0.08],
+            [0.92, 0.92],
+        ] as const) {
+            decorations.push({
+                kind: 'crosshair',
+                xPct: chx,
+                yPct: chy,
+                wPct: 3,
+                hPct: 3,
+                color: ink,
+                rotationDeg: 0,
+                depth: 'front',
+                arm: 0.018,
+            });
+        }
+    }
+
+    if (flags?.accent) {
+        decorations.push({
+            kind: 'accent-block',
+            xPct: 0.24,
+            yPct: 0.5,
+            wPct: 12,
+            hPct: 8,
+            color: flags.accent,
+            rotationDeg: 0,
+            depth: 'behind',
+        });
+    }
+
+    if (flags?.frame) {
+        decorations.push({
+            kind: 'frame',
+            xPct: 0.5,
+            yPct: 0.5,
+            wPct: 94,
+            hPct: 93,
+            color: flags.frame.color,
+            rotationDeg: 0,
+            depth: 'front',
+            thickness: flags.frame.strokeW,
+        });
+    }
+
+    // ── Mini law verifier — the readable core of v2's fifteen ────────────
+    const violations: LayoutViolation[] = [];
+    const mast = byRole.masthead;
+    if (mast && mast.yPct > 0.55 && !flags?.giant) {
+        violations.push({
+            id: 'masthead-hierarchy',
+            severity: 'critical',
+            message: 'masthead must lead the upper field',
+            role: 'masthead',
+        });
+    }
+    const featV = byRole.feature;
+    const subV = byRole.sub;
+    if (featV && subV && subV.yPct - featV.yPct < 0.03 && !flags?.rail) {
+        violations.push({
+            id: 'sub-adjacency',
+            severity: 'warning',
+            message: 'sub must breathe one gap beneath the feature',
+            role: 'sub',
+        });
+    }
+    const scanV = byRole.scan;
+    if (scanV && (scanV.xPct < 0.05 || scanV.xPct > 0.95 || scanV.yPct < 0.05 || scanV.yPct > 0.95)) {
+        violations.push({
+            id: 'barcode-corner',
+            severity: 'warning',
+            message: 'scan element must sit inside a corner',
+            role: 'scan',
+        });
+    }
+
+    return { placements, style, photoLight: g.light, decorations, violations, seed };
+}
+
+// --- 5 · APPLICATION — rewrite the composed cover onto the solved geometry -----
+
+const roleOfSpec = (spec: { id: string }): string | null => {
+    const id = spec.id;
+    if (id.includes('masthead')) return 'masthead';
+    if (id.includes('dateline') || id.includes('rail')) return 'dateline';
+    if (id.includes('feature')) return 'feature';
+    if (id.includes('sub')) return 'sub';
+    if (id.includes('teaser')) return 'teasers';
+    if (id.includes('badge')) return 'badge';
+    return null;
+};
+
+/** Flat-rect approximation of a decoration for the composed cover's shape
+ *  list. The app's renderer re-expands every `sys-decoration-` id with full
+ *  fidelity (giant type becomes a real text layer, crosshairs become twin
+ *  registration bars), so this only guarantees the shapes exist. */
+const decorationToShapeSpec = (d: DecorationShape): SystemShapeSpec =>
+    ({
+        id: `sys-decoration-${d.kind}-${Math.round(d.xPct * 1000)}-${Math.round(d.yPct * 1000)}`,
+        kind: 'rect',
+        xPct: d.xPct,
+        yPct: d.yPct,
+        wPct: d.wPct,
+        hPct: d.hPct,
+        fillColor: d.color,
+        fillOn: d.kind !== 'frame',
+        strokeColor: d.color,
+        strokeW: d.kind === 'frame' ? (d.thickness ?? 1.5) : 0,
+        cornerPct: d.corner ?? 0,
+        rotationDeg: d.rotationDeg,
+        opacity: 1,
+        depth: d.depth,
+    }) as SystemShapeSpec;
+
+/** Mutates the composed cover in place: every text spec snaps to its solved
+ *  zone; the feature gains a plate when the mathematics demands one; the
+ *  barcode/QR moves to the solved corner; the style-signature decorations
+ *  land as shapes. The layout laws verify after. */
+export function applySolverToCover(cover: ComposedCover, solved: SolverResult): void {
+    const byRole: Record<string, SolvedPlacement> = {};
+    for (const p of solved.placements) byRole[p.role] = p;
+
+    const used = new Set<string>();
+    for (const spec of cover.text as SystemTextSpec[]) {
+        const role = roleOfSpec(spec);
+        if (!role) continue;
+        const p = byRole[role];
+        if (!p || used.has(role)) continue; // first spec of each role carries the zone
+        used.add(role);
+        spec.xPct = p.xPct;
+        spec.yPct = p.yPct;
+        spec.widthPct = p.widthPct;
+        if (p.heightPct) spec.heightPct = p.heightPct; // graft rung (rail ladder)
+        if (p.rotationDeg) spec.rotationDeg = p.rotationDeg;
+        if (p.depth) spec.depth = p.depth;
+    }
+
+    // Hierarchy invariant — in BAND zones (T/M/C/D) the masthead's column
+    // must visibly dominate the feature's: v1's mesmerizing read is "brand
+    // towers, coverline answers". Skipped for vertical rails (their width
+    // IS their length), side strips (deliberately absorbed smaller) and
+    // giant styles (the wordmark decoration replaced the masthead).
+    const sf = STYLE_FLAGS[solved.style];
+    const mastP = byRole.masthead;
+    const bandZone = !!mastP && /^(T|M|C|D)/.test(mastP.zone);
+    if (mastP && bandZone && !sf?.giant) {
+        const mastS = (cover.text as SystemTextSpec[]).find((s) => roleOfSpec(s) === 'masthead');
+        const featS = (cover.text as SystemTextSpec[]).find((s) => roleOfSpec(s) === 'feature');
+        if (mastS && featS && !mastS.rotationDeg && mastS.opacity !== 0 && mastS.widthPct < featS.widthPct + 8) {
+            mastS.widthPct = Math.min(92, featS.widthPct + 8);
+        }
+    }
+
+    // Plate the feature when the solver says the zone crosses the subject.
+    const featP = byRole.feature;
+    const featSpec = (cover.text as SystemTextSpec[]).find((s) => roleOfSpec(s) === 'feature');
+    if (featP?.plate && featSpec) {
+        const hasPlate = (cover.shapes as SystemShapeSpec[]).some(
+            (s) => s.kind === 'rect' && s.fillOn && Math.abs(s.xPct - featSpec.xPct) < 0.12 && Math.abs(s.yPct - featSpec.yPct) < 0.12,
+        );
+        if (!hasPlate) {
+            const w = featSpec.widthPct + 8;
+            const h = featSpec.heightPct + 2.5;
+            cover.shapes.push({
+                id: 'sys-solver-plate-0',
+                kind: 'rect',
+                xPct: featSpec.xPct,
+                yPct: featSpec.yPct,
+                wPct: w,
+                hPct: h,
+                fillColor: solved.photoLight ? '#000000' : '#FFFFFF',
+                fillOn: true,
+                strokeColor: solved.photoLight ? '#000000' : '#FFFFFF',
+                strokeW: 0,
+                cornerPct: 0,
+                rotationDeg: 0,
+                opacity: 1,
+                depth: 'behind',
+                // Plates render under front text; the civic-sense render guard
+                // flips the text ink against whatever sits beneath it.
+            } as SystemShapeSpec);
+        }
+    }
+
+    // The scan element moves to the solved corner.
+    const scanP = byRole.scan;
+    if (scanP) {
+        const sc = (cover.shapes as SystemShapeSpec[]).find((s) => s.kind === 'barcode' || s.kind === 'qr');
+        if (sc) {
+            sc.xPct = scanP.xPct;
+            sc.yPct = scanP.yPct;
+        }
+    }
+
+    // ── GRAFT: style signatures land as shapes; giant styles retire the ──
+    // composer's masthead spec — the giant wordmark decoration IS the
+    // masthead, and printing both would set the word twice.
+    const flags = STYLE_FLAGS[solved.style];
+    if (flags?.giant) {
+        const m = (cover.text as SystemTextSpec[]).find((s) => roleOfSpec(s) === 'masthead');
+        if (m) m.opacity = 0;
+    }
+    for (const d of solved.decorations) {
+        cover.shapes.push(decorationToShapeSpec(d));
+    }
+}
