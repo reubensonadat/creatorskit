@@ -82,11 +82,17 @@ L1 masthead leads the upper field (exempt: giant wordmarks, rotated rails, posit
 
 ## 6 · AI INTEGRATION (one round trip, trained on the anatomy)
 
-The analyze mode (`route.ts`, `mode === 'analyze'`) is the perception+copy layer. Its system prompt teaches the ten-archetype anatomy (rendered live from `ARCHETYPES` — never hardcode ids) + the negative-space selection heuristic. ONE response returns:
+The analyze mode (`route.ts`, `mode === 'analyze'`) is the perception+art-direction+copy layer — **the AI does the design work; the resolver resolves it**. Its system prompt teaches the ten-archetype anatomy (rendered live from `ARCHETYPES` — never hardcode ids), the full structural lawbook (hierarchy ratios, sandwich ≥70% legibility, face no-text zone, crop→template, Gestalt, colour intelligence), and the DIRECTION MENU rendered live from `ART_DIRECTION_MENU`. ONE response returns:
 
 ```json
-{"summary", "genre", "mood[]", "subjectFocus", "archetype", "copy": {"masthead", "dateline", "feature", "sub", "teasers[]"}}
+{"summary", "genre", "mood[]", "subjectFocus", "archetype", "direction": {menu picks + tone + accent + mastheadScale + energy}, "note", "copy": {"masthead", "dateline", "feature", "sub", "teasers[]"}}
 ```
+
+**§7.5 THE DESIGN BRIEF + §V THE EDITION VARIANT ROLL** (the one-centimetre-jitter fix):
+
+- Every analyze call rolls a server-side **EDITION ASSIGNMENT** (family / treatment / masthead attitude / energy / wildcard — `rollAnalyzeAssignment()`) into the user prompt: re-analyzing art-directs a genuinely DIFFERENT edition of the same brand instead of converging on the same safe menu.
+- The brief carries four taste decisions the composer materializes: `tone` (masthead ink, contrast-guarded), `accent` (ONE hex mined from the photo), `mastheadScale` (monumental/classic/compact → heightPct 20/16/11 + width/tracking), `energy` (grain/dim/teaser-density bias).
+- **The variant roll** (`composeSystemCover`, §V): a direction pins the BRAND SYSTEM; within it the per-click seed rolls a different REALIZATION — feature placement band (high/mid/floor/statement), micro voice (rail vs dateline), badge spot, teaser density. The roll only spends freedom the AI left unpinned; an explicit pick always wins. Same click speed, zero extra round trips.
 
 - The `archetype` id is **validated against `ARCHETYPE_IDS`** — hallucinated ids are dropped (free solve). Returns as `semantics.archetypeHint`.
 - The copy is **budget-clamped server-side** (masthead 3–9 wordmark-safe uppercase letters, dateline ≤40, feature ≤44, sub ≤60, teasers ≤3×≤28) — the app trusts it verbatim. Returns as `semantics.copy`.

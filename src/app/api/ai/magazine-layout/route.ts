@@ -133,16 +133,15 @@ PREMIUM READABILITY LAW (applies to EVERY element you place):
 - Size ordering is absolute: the masthead must be >= 2.5× the feature coverline's cap height. If they compete, the coverline is wrong.
 - Palette discipline: paper #FFFFFF, ink #000000, bone #F7F6F0 are neutrals; at most ONE accent, only if the playbook allows it.
 
-LEGIBILITY IS NON-NEGOTIABLE — THE #1 RULE:
-A. Front-layer shapes render UNDER front-layer text. Therefore a rect plate placed at the SAME xPct/yPct as a subtitle guarantees that subtitle reads as ink-on-paper. This is how you plate copy.
-B. Any coverline sitting over the subject's body or a busy mid-photo zone MUST be plated: a rect in shapes[] with the SAME xPct and yPct as the subtitle, hPct = subtitle heightPct + 1.2, wPct = subtitle widthPct + 8, cornerPct 0 — then set the subtitle color to the plate's inverse (#000000 ink on #FFFFFF paper, or #FFFFFF on #000000).
-C. Un-plated text is ONLY allowed in the calm top band (yPct <= 0.12) or bottom band (yPct >= 0.80), must be #FFFFFF, and photoStyle.bgDim must be >= 0.15.
-D. NEVER use shadows: "shadow": false and "shadowMode": "none" on EVERY text element. Contrast comes from plates, dim and grain — real print type is crisp.
+LEGIBILITY & EDITORIAL INTEGRITY — THE #1 RULE:
+A. Negative Space Colonization: Place typography inside calm quadrants (headroom, calm flank columns, or calm bottom band). Ensure high contrast: crisp #FFFFFF text on dark areas, #000000 on light areas.
+B. High-end editorial covers (Vogue, GQ, TIME, Dazed, Harper's Bazaar) rely on pure, unplated typography in negative space, NEVER amateur stacked colored rectangles (no clunky yellow/black slabs across the body). Solid shapes are reserved for: sleek pill badges (kind: "badge", e.g. "ISSUE 04 • TOKYO"), full border frames (kind: "frame", e.g. TIME red border, NatGeo yellow border), or barcodes.
+C. Group related copy by Gestalt Proximity: Kicker + Headline + Sub-deck form a single tight visual unit with consistent vertical alignment.
+D. NEVER use shadows: "shadow": false and "shadowMode": "none" on EVERY text element. Real print typography is crisp and sharp.
 
 COMPOSITION GRAMMAR:
-1. The masthead's default depth is "behind" so the cutout subject overlaps its letterforms — that IS the text-behind-image effect. Exception: when the measured headroom is calm, depth "front" (the classic over-head masthead) is allowed. Everything else is depth "front".
-2. Vertical band rhythm (keep >= 0.05 vertical gap between any two front elements):
-   dateline / badge 0.06-0.11 · masthead 0.16-0.34 · subject zone 0.35-0.74 (clear UNLESS a coverline deliberately makes a STATEMENT across the subject — then it MUST be ink-on-paper plated per the legibility rule) · coverlines 0.78-0.89 · barcode 0.92-0.96.
+1. The masthead's default depth is "behind" so the cutout subject overlaps its letterforms — that IS the 3D text-behind-image effect. Exception: when the measured headroom is generous, depth "front" (the classic over-head masthead) is allowed. Coverlines are ALWAYS depth "front".
+2. Vertical band rhythm: dateline / badge 0.05-0.10 · masthead 0.12-0.28 · subject focal zone (keep face clear of text) · coverlines in calm column or floor band (0.72-0.88) · barcode in corner opposite text mass (0.91-0.95).
 3. SIDE RAILS: any dateline or coverline may run VERTICALLY along a calm edge — rotationDeg -90 (reads bottom-to-top, the left-edge spine convention) at xPct 0.045-0.075, or rotationDeg 90 (top-to-bottom) at xPct 0.925-0.955; yPct 0.5, widthPct 55-75 (this becomes the vertical run length), heightPct 2-3, letterSpacingEm 0.12-0.18, opacity 0.75-0.9. It reads like a printed spine — use it when the edges are calm.
 4. Masthead word: ONE short, real-feeling invented magazine name for THIS photo (SCION, ARCADE, HAVOC, LUMEN, SOIL, PARALLAX, VANTA...). Never 'MAGAZINE', never a place-holder. A vertical masthead (rotationDeg ±90 pinned to an edge) is a legitimate rare statement.
 5. Copy must read like a real issue: datelines with cities / issue numbers / cover price, plus ONE intriguing feature coverline drawn from the photo context. Uppercase with wide letterSpacingEm (0.06-0.14) unless the playbook says otherwise.
@@ -322,6 +321,63 @@ const rollDirectives = (): EditionDirectives => ({
     seed: Math.floor(Math.random() * 2_000_000_000),
 });
 
+// §7.5 — analyze-mode EDITION ASSIGNMENTS. Re-analyzing must art-direct a
+// DIFFERENT edition of the same brand: every analyze call rolls a family,
+// a treatment, a masthead attitude, an energy and a lawful wildcard, and
+// the model honours the roll (the measured facts still veto unsafe picks).
+// Without this, the model converges on the same "safe" menu every read and
+// every edition collapses into one layout nudged a centimetre.
+const ANALYZE_FAMILIES = [
+    'the heritage TOP-MASTHEAD band (calm headroom carries the brand)',
+    'the SIDE-STRIP whitespace strategy (masthead + stack colonize the calm flank)',
+    'the DEEP-LAYER sandwich (masthead behind the subject, >=70% legible)',
+    'the VERTICAL spine rail (the rotated brand on the calm edge)',
+    'the INVERTED commemorative floor (brand at the floor, photo owns the top)',
+    'whichever template a typical read of this photo would NOT pick — explore the second reading',
+];
+const ANALYZE_TREATMENTS = [
+    'editorial — pure unplated type in calm space (the ~80% default)',
+    'strip — the floor-strip read',
+    'statement — ONE opaque ink-on-paper plate crossing the body below the chin',
+    'banner — the full-width special-issue band (rare punctuation)',
+    'symmetric — twin columns when both flanks are calm',
+];
+const ANALYZE_SCALES = [
+    'monumental — the masthead sprawls (heritage fashion energy)',
+    'classic — the standard band',
+    'compact — the newsstand nameplate (small, centred, newspaper voice)',
+];
+const ANALYZE_ENERGIES = [
+    'quiet — monograph air (minimal furniture, gentle grain)',
+    'balanced — the standard newsstand mix',
+    'loud — punch (denser furniture, deeper dim, bolder grain)',
+];
+const ANALYZE_WILDCARDS = [
+    'run the micro type as a VERTICAL side rail instead of a top dateline',
+    'move the badge to the cluster (the story ribbon) instead of the top band',
+    'mine ONE accent hue from the wardrobe/set and spend it on exactly one element',
+    'park the feature line MID-HEIGHT in the calm column, below the chin line',
+    'palette "mono" — full gravitas B&W',
+    'palette "duotone" — an era tint lifted from the photo',
+    'strict Swiss: everything axis-aligned, no rail, no badge, no frame',
+];
+interface AnalyzeAssignment {
+    family: string;
+    treatment: string;
+    scale: string;
+    energy: string;
+    wildcard: string;
+    seed: number;
+}
+const rollAnalyzeAssignment = (): AnalyzeAssignment => ({
+    family: pick(ANALYZE_FAMILIES),
+    treatment: pick(ANALYZE_TREATMENTS),
+    scale: pick(ANALYZE_SCALES),
+    energy: pick(ANALYZE_ENERGIES),
+    wildcard: pick(ANALYZE_WILDCARDS),
+    seed: Math.floor(Math.random() * 2_000_000_000),
+});
+
 const normalizeStyle = (raw: string): StyleId => {
     const known: StyleId[] = [
         'auto', 'vogue', 'zine', 'kinfolk', 'noir', 'gq', 'dazed', 'natgeo', 'cyber', 'vinyl', 'architectural', 'food',
@@ -353,9 +409,18 @@ const DIRECTION_MENU = [
     `- template: ${ART_DIRECTION_MENU.templates.join(' | ')}`,
     `- cluster: ${ART_DIRECTION_MENU.clusters.join(' | ')}`,
     `- treatment: ${ART_DIRECTION_MENU.treatments.join(' | ')}`,
+    `- mastheadDepth: ${ART_DIRECTION_MENU.mastheadDepths.join(' | ')}`,
+    `- mainLinePos: ${ART_DIRECTION_MENU.mainLinePoses.join(' | ')}`,
+    `- palette: ${ART_DIRECTION_MENU.palettes.join(' | ')}`,
+    `- special: ${ART_DIRECTION_MENU.specials.join(' | ')}`,
     `- scanCorner: ${ART_DIRECTION_MENU.scanCorners.join(' | ')}`,
     `- badgeSpot: ${ART_DIRECTION_MENU.badgeSpots.join(' | ')}`,
     '- rail: true | false',
+    `- tone: ${ART_DIRECTION_MENU.tones.join(' | ')} — the masthead's ink`,
+    `- mastheadScale: ${ART_DIRECTION_MENU.mastheadScales.join(' | ')} — the scale attitude`,
+    `- energy: ${ART_DIRECTION_MENU.energies.join(' | ')} — the finishing bias`,
+    `- mastheadRot: ${ART_DIRECTION_MENU.mastheadRots.join(' | ')} — "none", or the masthead runs VERTICAL on a spine edge`,
+    '- accent: "#RRGGBB" — ONE hue you actually SEE in the photo (wardrobe / set / light), never invented',
 ].join('\n');
 
 const buildSystemPrompt = (style: StyleId): string => {
@@ -508,7 +573,8 @@ export async function POST(req: NextRequest) {
         const pa: any = photoAnalysis || null;
         const pct = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) : '?');
         const photoFacts = pa
-            ? `PHOTO ANALYSIS (measured from the canvas): headroom calm ${pct(pa.headroom)}%, left column ${pct(pa.leftSpace)}%, right column ${pct(pa.rightSpace)}%, bottom band ${pct(pa.bottomSpace)}%, subject sits ${pa.subjectX || 'center'}, photo reads ${pa.photoLight ? 'light' : 'dark'}.
+            ? `PHOTO ANALYSIS (measured from the canvas): headroom calm ${pct(pa.headroom)}%, left column ${pct(pa.leftSpace)}%, right column ${pct(pa.rightSpace)}%, bottom band ${pct(pa.bottomSpace)}%, subject sits ${pa.subjectX || 'center'}, photo reads ${pa.photoLight ? 'light' : 'dark'}.${pa.pose === 'horizontal' ? `
+SUBJECT POSE: HORIZONTAL — the subject lies/reclines across the frame. The calm zones are the TOP and BOTTOM bands; the side columns belong to the body. Cluster "center" with the stack in a band, mastheadDepth "front" over the calm band (or INVERTED) — NEVER a side-column stack. If the subject's HEAD rests at the left/right edge, the statement edition is mastheadRot "spine-left"/"spine-right" — the bold vertical masthead runs down that edge.` : ''}
 TEMPLATE DECISION TREE — the measured calm zones pick the composition:
 - calm headroom (>=50%) → masthead top-full yPct 0.16-0.20; depth "front" = the classic over-head masthead, depth "behind" = the sandwich. Coverlines stack in the calmer side column or the bottom band.
 - calm side column (>=42%) → put the masthead AND the coverline stack inside that strip (masthead xPct 0.27 left / 0.73 right, widthPct 46-54); barcode in the opposite bottom corner.
@@ -559,7 +625,10 @@ Creativity seed #${directives.seed}: lean into it. Remember the legibility plate
 Output ONLY the JSON object.`;
 
         if (mode === 'refine' && skeleton) {
-            systemPrompt = `You are the copy desk of a premium magazine. A designer has already ASSEMBLED the cover — every position, font, size, plate, rail, barcode and treatment is LOCKED. Your ONLY job is to rewrite the COPY of each element so this edition reads like a real editor wrote it: sharper, more specific, true to the photo. Obey every maxChars budget exactly. Never rename roles, never add or remove elements, never describe layout. Output ONLY JSON of shape {"texts":[{"id":"...","text":"..."}],"labels":[{"id":"...","label":"..."}]} — omit any element you cannot improve.`;
+            const styleVoice = style !== 'auto' && STYLE_PLAYBOOKS[style]
+                ? `\nSTYLE VOICE DIRECTIVE (${style.toUpperCase()}):\n${STYLE_PLAYBOOKS[style]}\nEnsure all rewritten headlines, datelines, and badges speak in this exact editorial voice.`
+                : '';
+            systemPrompt = `You are the copy desk of a premium magazine. A designer has already ASSEMBLED the cover — every position, font, size, plate, rail, barcode and treatment is LOCKED. Your ONLY job is to rewrite the COPY of each element so this edition reads like a real editor wrote it: sharper, more specific, true to the photo.${styleVoice} Obey every maxChars budget exactly. Never rename roles, never add or remove elements, never describe layout. Output ONLY JSON of shape {"texts":[{"id":"...","text":"..."}],"labels":[{"id":"...","label":"..."}]} — omit any element you cannot improve.`;
             userPrompt = `PHOTO / VIBE: ${imageContext || 'A strong editorial photograph of the subject'}
 STYLE: ${style}
 ${customLines.length ? `CUSTOM TEXT (locked verbatim — skeleton elements matching these roles return UNCHANGED): ${customLines.join('; ')}` : ''}
@@ -570,36 +639,126 @@ ${JSON.stringify(skeleton, null, 1)}
 Write this edition's copy now. Output ONLY the JSON object.`;
         }
 
+        let analyzeAssignment: AnalyzeAssignment | null = null;
         if (mode === 'analyze') {
-            systemPrompt = `You are the photo editor AND art director AND copy chief of a premium magazine. You look at photographs, describe what they ARE, name the brand template their negative space is born to wear, art-direct its structure, and write the edition's words in the SAME breath. You MUST respond with strictly valid JSON only, no markdown fences, no commentary: {"summary": string, "genre": string, "mood": string[], "subjectFocus": string, "archetype": string, "direction": {"template": string, "cluster": string, "treatment": string, "scanCorner": string, "badgeSpot": string, "rail": boolean}, "copy": {"masthead": string, "dateline": string, "feature": string, "sub": string, "teasers": string[]}}.
-- summary: one dense sentence naming the subject, wardrobe/materials, setting, light and mood.
-- genre: the editorial world this photograph genuinely belongs in — judge what you SEE, not any description text. One of: auto, vogue, zine, kinfolk, noir, gq, dazed, natgeo, cyber, vinyl, architectural, food, fragments, time, eye, bazaar.
-- mood: 2-4 adjective keywords.
-- subjectFocus: where the visual mass sits and what the eye hits first.
-- archetype: EXACTLY ONE id, verbatim, from the ten canonical templates below. You are trained on this anatomy — a 60-cover structural analysis distilled into brand templates. Judge the NEGATIVE SPACE, not the subject matter: where the calm zones sit decides which template wears this photo.
+            const assignment = rollAnalyzeAssignment();
+            analyzeAssignment = assignment;
 
-THE TEN ARCHETYPES (id — anatomy):
+            const selectedStyleGuidance = style === 'auto'
+                ? `EDITORIAL GENRE SELECTION: The user chose AUTO. Study the attached photo, subject, wardrobe, and mood, then select the absolute best matching genre among the 16 recognized house styles:
+- vogue (High fashion Didone luxury)
+- zine (Indie zine / Swiss street / action sports / skateboard / photocopy)
+- kinfolk (Quiet luxury / slow living / minimal interiors)
+- noir (35mm film noir / cinema archive / moody shadows)
+- gq (Modern gentleman / sharp menswear)
+- dazed (Underground culture / art-school / avant-garde)
+- natgeo (Discovery / nature / exploration)
+- cyber (Terminal ID / futuristic / tech)
+- vinyl (Music album sleeve / retro groove)
+- architectural (Architecture / spatial monograph)
+- food (Appetite editorial / culinary warmth / kitchen heat)
+- fragments (Human fragments / type-as-mask poster)
+- time (Person of the year / historic gravitas / red border)
+- eye (Radical graphic design review)
+- bazaar (Soft couture / Harper's Bazaar poetry)
+Set the "genre" field in your JSON response to your chosen genre.`
+                : `USER SELECTED GENRE: The user explicitly selected the "${style.toUpperCase()}" style! You MUST direct this edition according to the ${style.toUpperCase()} editorial aesthetic:
+${STYLE_PLAYBOOKS[style] || ''}
+Ensure the "genre" field in your JSON response is "${style}".`;
+
+            systemPrompt = `You are an elite magazine creative director and art director (Vogue, TIME, Dazed, Kinfolk, Eye, System).
+One shot, two jobs:
+1. PERCEIVE THE PHOTO DEEPLY: Look at the attached image with extraordinary visual sensitivity. Analyze the subject, their pose, action, wardrobe, textures, expressions, gaze direction, lighting atmosphere, background architecture/environment, and authentic color accents.
+2. ART-DIRECT THIS EDITION: Pick the brand archetype, structural direction, colour attitude, type-scale attitude, finishing energy, and write bespoke, high-impact editorial copy (masthead, dateline, feature headline, sub-headline, teasers, badge chip, and vertical rail line).
+
+${selectedStyleGuidance}
+
+Respond with strictly valid JSON only (no markdown fences, no commentary):
+{
+  "summary": "Rich 1-2 sentence visual description of the photo (subject, action, wardrobe, setting, lighting)",
+  "genre": "${style === 'auto' ? 'chosen_genre_from_list' : style}",
+  "mood": ["mood1", "mood2", "mood3"],
+  "subjectFocus": "concise description of the subject focal point",
+  "archetype": "one archetype id from the ARCHETYPES list",
+  "direction": {
+    "template": "TOP-MASTHEAD | SIDE-STRIP | DEEP-LAYER | VERTICAL | INVERTED",
+    "cluster": "left | right | center | split",
+    "treatment": "editorial | strip | statement | banner | symmetric",
+    "mastheadDepth": "front | behind",
+    "mainLinePos": "bottom | below-chin | over-body | side | above-head",
+    "palette": "bw | colored-masthead | neutral-masthead | duotone | mono-accent",
+    "special": "none | frame | inverted | wrap",
+    "scanCorner": "BL | BR",
+    "badgeSpot": "top | cluster | corner",
+    "rail": true,
+    "tone": "paper | ink | accent",
+    "accent": "#RRGGBB hex actually seen in the photo",
+    "mastheadScale": "monumental | classic | compact",
+    "energy": "quiet | balanced | loud",
+    "mastheadRot": "none | spine-left | spine-right"
+  },
+  "note": "one sharp sentence on WHY this composition was chosen (art director's rationale, <=120 chars)",
+  "copy": {
+    "masthead": "ONE short invented magazine title (3-10 uppercase letters, e.g. KINETIC, SUPPER, SCION, VOID)",
+    "dateline": "CITY • ISSUE NN — €NN or curated dateline",
+    "feature": "Loudest headline specific to this photo (max 44 chars)",
+    "sub": "Sub-headline expanding the story (max 60 chars)",
+    "teasers": ["teaser line 1", "teaser line 2", "teaser line 3"],
+    "badge": "Short uppercase pill text (e.g. ISSUE 04 // TOKYO, max 28 chars)",
+    "rail": "Spine metadata / photography credit / essay tagline (max 64 chars)"
+  }
+}
+
+THE STRUCTURAL LAWBOOK (the 60-cover anatomy — obey it, never fight it):
+1. FIXED BRAND, VARIABLE COMPOSITION: the archetype pins the brand system (masthead position + family + tone + scan corner); the photograph's negative space picks the composition dropped into it. The brand never moves per issue — the composition does.
+2. NEGATIVE SPACE LOGIC: typography lives in the CALM zones the measurements point to. Subject right → cluster "left"; subject left → "right"; centered with open flanks → "split"; full-bleed dense → cluster "center" + treatment "statement" (opaque plate) — pure type never crosses a busy zone.
+3. SANDWICH LEGIBILITY: mastheadDepth "behind" (the celebrity override) is legal ONLY when the masthead stays >=70% legible around the subject's head — the brain must reconstruct the wordmark. Calm headroom → "front" (the classic over-head band).
+4. MUTUAL COMPATIBILITY & FACE PROTECTION: "treatment" and "mainLinePos" must harmonize: treatment "strip" or "editorial" (clean, unplated typography) REQUIRES mainLinePos "bottom" or "below-chin" in a calm negative-space band. mainLinePos "over-body" is STRICTLY reserved for treatment "statement" (opaque contrast plates crossing the torso). NEVER emit treatment "strip" with mainLinePos "over-body". The face is an absolute NO-TEXT zone; nothing ever prints on the face.
+5. SYMMETRIC FLANKS: treatment "symmetric" is strictly legal ONLY if BOTH left column >=35% AND right column >=35% in the measured facts. If either flank is 0% or busy, "symmetric" is forbidden — pick "editorial" or "strip" in the calm zone.
+6. HIERARCHY RATIO — exaggerate, never polite: masthead 100 → feature 50-70 → teasers 25-35. Small differences read as mistakes. The masthead is the page's #1 size, always.
+7. GESTALT: proximity (kicker + feature + sub = ONE tight unit) · alignment (one axis per cluster) · similarity (siblings share voice) · continuity (the eye travels one path). Hierarchy steps ONE rung at a time.
+8. scanCorner sits OPPOSITE the text mass (cluster left → "right"). badgeSpot: "top" newsstand pill · "cluster" story ribbon · "corner" counterweight. rail true only for quiet monographs.
+9. CROP → TEMPLATE: dense full-bleed → DEEP-LAYER / bottom bands; off-centre subject → the calm flank (SIDE-STRIP); generous headroom → TOP-MASTHEAD; commemorative gravitas → INVERTED. A RECLINING/LYING subject (pose HORIZONTAL in the facts) rotates the whole grammar — the bands own the type, the columns belong to the body: cluster "center", stack in a band, never a side-column stack. For a reclining subject whose HEAD rests at one edge, the statement edition is mastheadRot "spine-left"/"spine-right" with the spine on the head's edge: the giant wordmark runs vertical (270° left / 90° right), weight 900, mastheadDepth "behind" — the head crossing the letters IS the sandwich; the feature cluster sits in the calm floor band as treatment "strip", cluster "center", mainLinePos "bottom".
+10. COLOUR INTELLIGENCE: palette "accent" or tone "accent" REQUIRES an "accent" hex you actually SEE in the photo (wardrobe, set, light) — never an invented hue. tone "ink" only when the photo reads light; "paper" is the default on dark photos.
+11. SCALE ATTITUDE: mastheadScale must agree with the archetype — "monumental" (heritage sprawl, fashion didones) · "classic" (the standard band) · "compact" (the newsstand nameplate).
+12. ENERGY: "quiet" (monograph air, minimal furniture, gentle grain) · "balanced" · "loud" (newsstand punch, denser furniture, deeper dim). It biases the finishing, never the laws.
+13. BESPOKE EDITORIAL COPY: ground ALL copy in the SPECIFIC subject of the image (hardware/tech → SILICON, MONOGRAPH, RETINA; portrait/fashion → couture voice; architecture → spatial monographs). Never unrelated copy. Masthead: ONE invented wordmark (3-9 uppercase letters); dateline: "CITY • ISSUE NN — €NN"; feature ≤44 chars; sub ≤60; teasers 2-3 × ≤28. "note" = one sharp sentence on WHY this composition (the art director's rationale, ≤120 chars).
+14. PAIRING LAWS (mutual exclusions the resolver enforces — never fight them): mainLinePos "over-body" is legal ONLY with treatment "statement" (the opaque plate); clean treatments (editorial/strip/banner/symmetric) pair with "bottom"/"below-chin"/"side". treatment "symmetric" and cluster "split" require BOTH side columns ≥35% calm in the measured facts — one busy flank or a reclining subject means a single calm-side cluster. template "VERTICAL" or mastheadRot spine-* means cluster "center" with mainLinePos "bottom" — the spine owns its edge, the story lives in the bands.
+
+ARCHETYPES (pick EXACTLY one id):
 ${ARCHETYPE_ANATOMY}
-MASTHEAD POSITIONS: A full-width over the subject's head · B deep layer BEHIND the subject (the celebrity sandwich) · C compact news nameplate, top-centre · D indie top-left corner anchor · E vertical side rail (the whole top goes to the photo) · F inverted floor band.
-SELECTION HEURISTIC (read the calm space, then pick):
-- generous calm headroom → classic-vogue / time-frame / natgeo-frame
-- one wide calm side column (subject off-centre) → indie-minimal (left) or bazaar-soft (right)
-- dense everywhere, strong centred subject, face holds the middle → vogue-deep-layer
-- calm bottom band, torso-heavy crop → bottom-strip
-- formal, institutional, commemorative gravitas → time-frame or inverted-commemorative
-- art-school energy, radical graphic play → avant-garde
-- newsstand loudness, stacked text columns → tabloid-stack
-- direction: your ART DIRECTION for this cover — you are the designer CALLING the structure, and the app's deterministic compositor then builds the actual geometry (type ladder, legibility plates, spacing, no-overlap guarantee) from your pick. Every field is optional but the strong picks are template + cluster + treatment. Choose values EXACTLY from these menus, verbatim:
+
+DIRECTION MENU (values EXACTLY as listed):
 ${DIRECTION_MENU}
-Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over calm headroom · SIDE-STRIP strip masthead with a coverline column down one calm flank · DEEP-LAYER masthead sandwiched BEHIND a dense centred subject · VERTICAL rotated rail, whole top goes to the photo · INVERTED masthead anchored low in a calm floor band). cluster = which flank the coverline stack colonises ("split" only for a symmetric pose). treatment = how the feature coverline is built (strip wide one-line kicker · statement huge multi-word feature on a legibility plate · banner full-width solid band · symmetric mirrored side rungs). scanCorner = the CALMER floor corner, away from the subject's mass, for the barcode/QR. badgeSpot = where the badge pill sits (top of the page / over the coverline cluster / opposite floor corner). rail = true to swap the dateline for a rotated spine rail (quiet, architectural or archival genres only). Your direction MUST agree with the archetype you named (vogue-deep-layer → template DEEP-LAYER; indie-minimal → SIDE-STRIP + cluster left; inverted-commemorative → INVERTED). Judge the NEGATIVE SPACE, not the subject matter.
-- copy: THIS edition's words, genre-correct and grounded in what THIS photograph actually shows — one round trip, no follow-up needed. Budgets are hard (the renderer truncates):
- · masthead — ONE invented magazine word, 3-9 LETTERS, uppercase. Coin a NEW one for this photo (SCION, ARCADE, HAVOC, LUMEN are taken — never repeat a word you have used before).
- · dateline — cities / issue number / price machine copy, ≤40 chars ("PARIS • ISSUE 48 — €14.00").
- · feature — the loudest coverline, ≤44 chars, drawn from the subject, wardrobe, setting or mood you actually see.
- · sub — one rung below the feature; sharpens or subverts it, ≤60 chars.
- · teasers — 2-3 micro lines, ≤28 chars each.
- Fresh words only: if a phrase feels like the obvious first guess, write the second one. UPPERCASE everything except lines that must read sentence-case.`;
-            userPrompt = `Analyze the attached photograph and return the JSON.`;
+
+EVERY READ MUST ART-DIRECT A DIFFERENT EDITION. The user re-analyzes to EXPLORE — same photo, different issues of the same brand. When the EDITION ASSIGNMENT in the user message differs from your first instinct, honour the assignment (the measured facts still veto unsafe picks — never place type in a busy zone to satisfy a roll). If a phrase feels like the obvious first guess, write the second one.`;
+
+            userPrompt = `PERCEIVE AND ART-DIRECT THIS EDITORIAL COVER:
+
+CANVAS GEOMETRY: ${aspectLine}
+${photoFacts}
+
+PHOTO / VIBE BRIEF: ${imageContext || 'Analyze the visual contents of the attached photograph directly (subject, objects, setting, mood).'}
+${existingText ? `EXISTING CONTEXT: "${existingText}" — draw inspiration from this theme.` : ''}
+${brandPrimary || brandAccent ? `BRAND PALETTE (the user's saved brand kit — restrict accents to these hues): primary ${brandPrimary || 'unset'}, accent ${brandAccent || 'unset'}.` : ''}
+${customLines.length ? `CUSTOM TEXT (typed by the user — these appear VERBATIM, never reworded): ${customLines.join('; ')}. Compose the remaining copy in the exact same editorial voice.` : ''}
+
+THIS EDITION'S ASSIGNMENT (roll #${assignment.seed} — art-direct THIS issue; the next roll asks differently):
+1. Composition family: ${assignment.family}
+2. Feature treatment: ${assignment.treatment}
+3. Masthead attitude: ${assignment.scale}
+4. Energy: ${assignment.energy}
+5. Wildcard: ${assignment.wildcard}
+
+CRITICAL PERCEPTION DIRECTIVE:
+Look at the attached image carefully. Extract subject specifics:
+- What is the subject wearing? (Colors, materials, streetwear, tailoring, sportswear)
+- What is the subject doing? (Action, stillness, motion, expression, gesture)
+- What is the setting and light? (Urban asphalt, concrete architecture, studio shadows, warm kitchen, golden hour)
+- What single accent color (#RRGGBB) can you pick directly from the photo (e.g. sneakers, jacket, neon sign, backdrop)?
+Ground every word of your copy in what is genuinely visible in the photograph.
+
+The MEASURED facts are ground truth — the attached photo confirms wardrobe, mood and specifics. Return the JSON only.`;
         }
 
         let jsonText = '';
@@ -651,7 +810,7 @@ Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over cal
                             generationConfig: {
                                 temperature: 0.95,
                                 topP: 0.95,
-                                maxOutputTokens: 8192,
+                                maxOutputTokens: mode === 'analyze' ? 2048 : 8192,
                                 responseMimeType: 'application/json',
                                 ...(thinkingCapable ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
                             },
@@ -793,7 +952,8 @@ Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over cal
             // live menus. A hallucinated value is dropped (that decision
             // falls back to the composer); an empty object means "no
             // direction" and the deterministic solve owns everything.
-            const direction = sanitizeArtDirection(s.direction);
+            const direction = sanitizeArtDirection(s.direction, photoAnalysis);
+            const dirNote = str(s.note, 120);
             // The edition's words — same round trip as the analysis. Every
             // line is clamped to its render budget so the app can trust
             // the copy verbatim; the masthead is scrubbed to wordmark-safe
@@ -808,12 +968,16 @@ Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over cal
             const teasers = Array.isArray(c.teasers)
                 ? (c.teasers as unknown[]).map((t) => line(t, 28)).filter(Boolean).slice(0, 3)
                 : [];
+            const badge = line(c.badge, 32);
+            const rail = line(c.rail, 64);
             const copy = {
                 ...(mastheadWord.length >= 3 ? { masthead: mastheadWord } : {}),
                 ...(dateline ? { dateline } : {}),
                 ...(feature ? { feature } : {}),
                 ...(sub ? { sub } : {}),
                 ...(teasers.length ? { teasers } : {}),
+                ...(badge ? { badge } : {}),
+                ...(rail ? { rail } : {}),
             };
             return NextResponse.json({
                 success: true,
@@ -824,7 +988,19 @@ Field meanings: template = the masthead anatomy (TOP-MASTHEAD nameplate over cal
                     subjectFocus: str(s.subjectFocus ?? s.subject_focus, 120),
                     ...(archetypeHint ? { archetypeHint } : {}),
                     ...(Object.keys(direction).length ? { direction } : {}),
+                    ...(dirNote && direction.note ? { note: direction.note } : {}),
                     ...(Object.keys(copy).length ? { copy } : {}),
+                },
+                // §12.5 GLASS PIPELINE — the debug payload the page prints in
+                // the console trace: the assignment roll, the exact measured
+                // facts string the model was told, the user's vibe input and
+                // the RAW model output (unfiltered vision analysis). Blame
+                // the stage, not the app.
+                debug: {
+                    assignment: analyzeAssignment,
+                    facts: photoFacts,
+                    vibe: imageContext,
+                    raw: jsonText.slice(0, 3000),
                 },
             });
         }

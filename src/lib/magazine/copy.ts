@@ -27,6 +27,10 @@ export interface SolverSemantics {
      *  deterministic composer materializes the geometry. Never a
      *  coordinate — the sanitizer drops anything off-menu. */
     direction?: ArtDirection;
+    /** §7.5 — the art director's one-line rationale for this edition's
+     *  composition (≤120 chars, clamped server-side). Readout voice only —
+     *  it never steers geometry. */
+    note?: string;
     /** The edition's WORDS, written in the same breath as the analysis —
      *  the analyze route returns copy in the SAME round trip so the user
      *  never waits for a second call: genre-correct, photo-grounded,
@@ -38,6 +42,8 @@ export interface SolverSemantics {
         feature?: string;
         sub?: string;
         teasers?: string[];
+        badge?: string;
+        rail?: string;
     };
 }
 

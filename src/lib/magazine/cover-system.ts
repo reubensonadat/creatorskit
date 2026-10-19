@@ -33,7 +33,7 @@
 // ≥ 2.5× the coverline cap height, barcode corner OPPOSITE the text mass,
 // contrast order plate > banner > badge > dim > filter > grain (never
 // shadow), premium readability floors on every face.
-// ---------------------------------------------------------------------------
+import { ARCHETYPE_OF_STYLE } from './archetypes';
 
 export type SystemStyleId =
     | 'vogue'
@@ -163,6 +163,13 @@ export interface PhotoAnalysis {
     subjectX: 'left' | 'center' | 'right'; // where the visual mass sits
     hue: number; // 0-360 dominant hue of the subject region (the colour vibe)
     sat: number; // 0-1 colourfulness of the subject region
+    /** §7 POSE — a reclining/lying subject rotates the calm grammar: the
+     *  body owns a horizontal band, so the calm zones are the TOP and
+     *  BOTTOM bands, never the side columns. Measured, never guessed. */
+    pose?: 'upright' | 'horizontal';
+    /** Subject box size as canvas fractions (w, h) — the pose evidence. */
+    subjectW?: number;
+    subjectH?: number;
 }
 
 /** Average RGB → hue (0-360°) + saturation (0-1) — the photo's colour mood. */
@@ -239,6 +246,10 @@ export function analyzePhotoFromCanvas(cv: HTMLCanvasElement): PhotoAnalysis | n
         else if (right.calm > left.calm + 0.08) subjectX = 'left';
 
         const r2 = (v: number) => Math.round(v * 100) / 100;
+        // §7 pose heuristic (no subject box here — the band pattern speaks):
+        // a reclining subject leaves BOTH horizontal bands relatively calm
+        // while both side columns are busy. That pattern = horizontal pose.
+        const horizontal = top.calm > 0.30 && bottom.calm > 0.30 && left.calm < 0.34 && right.calm < 0.34;
         return {
             headroom: r2(top.calm),
             leftSpace: r2(left.calm),
@@ -248,6 +259,7 @@ export function analyzePhotoFromCanvas(cv: HTMLCanvasElement): PhotoAnalysis | n
             subjectX,
             hue: Math.round(vibe.hue),
             sat: r2(vibe.sat),
+            pose: horizontal ? 'horizontal' : 'upright',
         };
     } catch {
         return null;
@@ -637,6 +649,35 @@ const AUTO_PICKS: SystemStyleId[] = [
     'fragments', 'time', 'eye', 'bazaar',
 ];
 
+/** Semantic genre matcher — maps freeform natural language genre descriptions
+ *  (e.g. from vision models) to the closest design-system SystemStyleId. */
+export function matchGenreToStyle(raw?: string | null): SystemStyleId | null {
+    if (!raw) return null;
+    const s = raw.toLowerCase().trim();
+    if (!s || s === 'auto') return null;
+
+    if ((AUTO_PICKS as readonly string[]).includes(s)) return s as SystemStyleId;
+
+    // Specific media & culture (check high-specificity keywords first):
+    if (/vinyl|record|album|audio|soundtrack|\bsong\b|acoustic|jazz/.test(s)) return 'vinyl';
+    if (/skate|action|sport|street|subculture|counter|raw|underground|grunge|punk|rebel|zine/.test(s)) return 'zine';
+    if (/brutalist|architect|concrete|structure|facade|geometry|monument|sculptur|urban|\bspace\b|spatial/.test(s)) return 'architectural';
+    if (/food|culinary|recipe|appetite|\bdish\b|chef|kitchen|bakery|dining|restaurant/.test(s)) return 'food';
+    if (/fashion|couture|runway|vogue|glamour|haute|model|editorial|chic|luxury/.test(s)) return 'vogue';
+    if (/bazaar|elegance|sophisticat|soft|didone|poise|beauty/.test(s)) return 'bazaar';
+    if (/gentleman|tailor|suit|menswear|classic|sharp|gq/.test(s)) return 'gq';
+    if (/minimal|kinfolk|slow|linen|quiet|scandi|interior|warm|calm|zen|earth|ceramic/.test(s)) return 'kinfolk';
+    if (/noir|shadow|dark|cinema|film|detective|moody|chiaroscuro|monochrome|grain/.test(s)) return 'noir';
+    if (/natgeo|discovery|wild|nature|adventure|travel|expedition|geograph|mountain|ocean/.test(s)) return 'natgeo';
+    if (/cyber|matrix|digital|tech|future|\bai\b|glitch|hacker|sci-fi|terminal|neon|data/.test(s)) return 'cyber';
+    if (/time|history|report|person|news|monumental|investigat|commemorat/.test(s)) return 'time';
+    if (/eye|graphic|swiss|poster|typography|helvetica|grid/.test(s)) return 'eye';
+    if (/fragment|collage|modernist|abstract|deconstruct/.test(s)) return 'fragments';
+    if (/dazed|youth|experimental|provocative|avant-garde|club|\balt\b|queer|\briot\b|indie/.test(s)) return 'dazed';
+
+    return null;
+}
+
 /** VIBE MATCH — the genre whose aesthetic fits the photo's measured colour
  *  mood wins: warm & saturated → FOOD appetite brand, gold light → couture,
  *  green/natural → quiet living or record sleeve, washed-out light →
@@ -658,8 +699,11 @@ const vibePick = (a: PhotoAnalysis): SystemStyleId => {
     }
     // Teal / cyan / blue-green — action, street, architecture → zine or gq
     if (hue >= 160 && hue < 210) return photoLight ? 'zine' : 'gq';
-    // Blue / cool → natgeo (light) or cyber (dark)
-    if (hue >= 210 && hue < 265) return photoLight ? 'natgeo' : 'cyber';
+    // Blue / cool → natgeo (light), or cyber ONLY if high saturation neon/digital (sat >= 0.5), otherwise architectural or noir
+    if (hue >= 210 && hue < 265) {
+        if (photoLight) return 'natgeo';
+        return sat >= 0.5 ? 'cyber' : 'architectural';
+    }
     // Violet / purple → dazed culture
     if (hue >= 265 && hue < 340 && sat >= 0.25) return 'dazed';
     // Fallback: prefer bold genres over quiet ones
@@ -711,8 +755,10 @@ const microWidthForLine = (maxLen: number, targetH: number): number =>
  *  finds nothing to re-cut. */
 const measureW = (maxLen: number, hPct: number, trackEm: number, uppercase: boolean): number =>
     Math.min(96, maxLen * hPct * 1.5 * ((uppercase ? 0.76 : 0.68) + Math.max(0, trackEm) * 1.05) + hPct * 0.75);
-/** Greedy word-wrap with last-line balancing — how a print desk sets a
- *  slab: the column owns the width, the words wrap to the column. */
+const SHORT_CONNECTORS = new Set(['a', 'an', 'the', 'in', 'on', 'of', 'for', 'to', 'at', 'by', 'with', 'and', 'or', 'is', 'as', 'de', 'la', 'le', 'du']);
+
+/** Greedy word-wrap with last-line balancing & widow prevention — how a
+ *  print desk sets a slab: the column owns the width, the words wrap to the column. */
 const wrapLine = (text: string, maxChars: number): string[] => {
     const clean = text.replace(/\s+/g, ' ').trim();
     const words = clean.split(' ').filter(Boolean);
@@ -729,18 +775,41 @@ const wrapLine = (text: string, maxChars: number): string[] => {
         }
     }
     if (cur) lines.push(cur);
-    if (lines.length >= 2) {
-        const last = lines.length - 1;
-        while (lines[last].length < lines[last - 1].length * 0.55) {
-            const prev = lines[last - 1].split(' ');
-            if (prev.length <= 1) break;
-            const moved = prev.pop()!;
-            lines[last - 1] = prev.join(' ');
-            lines[last] = `${moved} ${lines[last]}`;
-            if (lines[last].length > maxChars + 4) break;
+
+    // Editorial Polish Pass 1: Prevent stranded dangling prepositions at line ends
+    for (let i = 0; i < lines.length - 1; i++) {
+        const lineWords = lines[i].split(' ');
+        if (lineWords.length > 1) {
+            const lastWord = lineWords[lineWords.length - 1].toLowerCase();
+            if (SHORT_CONNECTORS.has(lastWord) && lastWord.length <= 4) {
+                const moved = lineWords.pop()!;
+                lines[i] = lineWords.join(' ');
+                lines[i + 1] = `${moved} ${lines[i + 1]}`;
+            }
         }
     }
-    return lines;
+
+    // Editorial Polish Pass 2: Rag & Widow balancing
+    if (lines.length >= 2) {
+        for (let pass = 0; pass < 3; pass++) {
+            const last = lines.length - 1;
+            const lastLineWords = lines[last].split(' ');
+            if (lastLineWords.length === 1 || lines[last].length < lines[last - 1].length * 0.50) {
+                const prevWords = lines[last - 1].split(' ');
+                if (prevWords.length > 1) {
+                    const moved = prevWords.pop()!;
+                    lines[last - 1] = prevWords.join(' ');
+                    lines[last] = `${moved} ${lines[last]}`;
+                    if (lines[last].length > maxChars + 5) {
+                        lines[last - 1] = `${lines[last - 1]} ${moved}`;
+                        lines[last] = lines[last].slice(moved.length + 1);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return lines.filter(Boolean);
 };
 /** Pick the wrapped line count whose LONGEST line fits the column at a
  *  dignified size — 1 line when the words are short, 2-3 balanced lines
@@ -871,7 +940,15 @@ export const LAYOUT_LIBRARY: LibraryLayout[] = [
 
 export type DirectionTemplate = 'TOP-MASTHEAD' | 'SIDE-STRIP' | 'DEEP-LAYER' | 'VERTICAL' | 'INVERTED';
 export type DirectionCluster = 'left' | 'right' | 'center' | 'split';
-export type DirectionTreatment = 'strip' | 'statement' | 'banner' | 'symmetric';
+export type DirectionTreatment = 'editorial' | 'strip' | 'statement' | 'banner' | 'symmetric';
+export type DirectionMastheadDepth = 'front' | 'behind';
+export type DirectionMainLinePos = 'below-chin' | 'above-head' | 'side' | 'bottom' | 'over-body';
+export type DirectionPalette = 'editorial' | 'mono' | 'duotone' | 'accent';
+export type DirectionSpecial = 'none' | 'border' | 'diagonal';
+export type DirectionTone = 'paper' | 'ink' | 'accent';
+export type DirectionMastheadScale = 'monumental' | 'classic' | 'compact';
+export type DirectionEnergy = 'quiet' | 'balanced' | 'loud';
+export type DirectionMastheadRot = 'none' | 'spine-left' | 'spine-right';
 
 export interface ArtDirection {
     /** Which masthead system anchors the page (the anatomy's positions). */
@@ -880,26 +957,55 @@ export interface ArtDirection {
     cluster?: DirectionCluster;
     /** How the feature coverline is treated. */
     treatment?: DirectionTreatment;
+    /** §4.1/§4.2 — masthead in front of the subject, or the celebrity sandwich behind it. */
+    mastheadDepth?: DirectionMastheadDepth;
+    /** §6 — where the main coverline sits relative to the subject's body. */
+    mainLinePos?: DirectionMainLinePos;
+    /** §9 — the colour system for this edition. */
+    palette?: DirectionPalette;
+    /** §10 — the special-issue signal ('border' is rare punctuation, never a default). */
+    special?: DirectionSpecial;
     /** Which floor corner carries the barcode/QR. */
     scanCorner?: 'left' | 'right';
     /** Where the badge pill sits. */
     badgeSpot?: 'top' | 'cluster' | 'corner';
     /** Ask for the rotated spine rail instead of the dateline (quiet genres). */
     rail?: boolean;
+    /** §9 — the masthead's ink: paper (light), ink (dark — light photos only), accent. */
+    tone?: DirectionTone;
+    /** ONE hex the AI actually saw in the photo (wardrobe / set / light). Hex-validated. */
+    accent?: string;
+    /** §12 — the masthead's scale attitude: monumental sprawl / classic band / compact nameplate. */
+    mastheadScale?: DirectionMastheadScale;
+    /** The edition's energy — biases grain, dim and furniture density. */
+    energy?: DirectionEnergy;
+    /** §7.6 — run the masthead VERTICAL on a spine edge (the reclining-subject
+     *  statement: the head crossing the giant rotated wordmark IS the sandwich). */
+    mastheadRot?: DirectionMastheadRot;
+    /** One-line composition rationale (the art director's voice, ≤120 chars). */
+    note?: string;
 }
 
 export const ART_DIRECTION_MENU = {
     templates: ['TOP-MASTHEAD', 'SIDE-STRIP', 'DEEP-LAYER', 'VERTICAL', 'INVERTED'],
     clusters: ['left', 'right', 'center', 'split'],
-    treatments: ['strip', 'statement', 'banner', 'symmetric'],
+    treatments: ['editorial', 'strip', 'statement', 'banner', 'symmetric'],
+    mastheadDepths: ['front', 'behind'],
+    mainLinePoses: ['below-chin', 'above-head', 'side', 'bottom', 'over-body'],
+    palettes: ['editorial', 'mono', 'duotone', 'accent'],
+    specials: ['none', 'border', 'diagonal'],
     scanCorners: ['left', 'right'],
     badgeSpots: ['top', 'cluster', 'corner'],
+    tones: ['paper', 'ink', 'accent'],
+    mastheadScales: ['monumental', 'classic', 'compact'],
+    energies: ['quiet', 'balanced', 'loud'],
+    mastheadRots: ['none', 'spine-left', 'spine-right'],
 } as const;
 
 /** Validate a raw (AI) direction object — every key checked against the
  *  live menus; unknown values are dropped, never trusted. An empty result
  *  means "no direction" and the deterministic fallback owns the solve. */
-export function sanitizeArtDirection(raw: unknown): ArtDirection {
+export function sanitizeArtDirection(raw: unknown, analysis?: PhotoAnalysis | null): ArtDirection {
     const r = (raw ?? {}) as Record<string, unknown>;
     const oneOf = <T extends string>(v: unknown, menu: readonly T[]): T | undefined =>
         typeof v === 'string' && (menu as readonly string[]).includes(v) ? (v as T) : undefined;
@@ -914,7 +1020,55 @@ export function sanitizeArtDirection(raw: unknown): ArtDirection {
     if (sc) out.scanCorner = sc;
     const bs = oneOf(r.badgeSpot, ART_DIRECTION_MENU.badgeSpots);
     if (bs) out.badgeSpot = bs;
+    const md = oneOf(r.mastheadDepth, ART_DIRECTION_MENU.mastheadDepths);
+    if (md) out.mastheadDepth = md;
+    const ml = oneOf(r.mainLinePos, ART_DIRECTION_MENU.mainLinePoses);
+    if (ml) out.mainLinePos = ml;
+    const pm = oneOf(r.palette, ART_DIRECTION_MENU.palettes);
+    if (pm) out.palette = pm;
+    const sp = oneOf(r.special, ART_DIRECTION_MENU.specials);
+    if (sp) out.special = sp;
     if (typeof r.rail === 'boolean') out.rail = r.rail;
+    const tn = oneOf(r.tone, ART_DIRECTION_MENU.tones);
+    if (tn) out.tone = tn;
+    const msc = oneOf(r.mastheadScale, ART_DIRECTION_MENU.mastheadScales);
+    if (msc) out.mastheadScale = msc;
+    const en = oneOf(r.energy, ART_DIRECTION_MENU.energies);
+    if (en) out.energy = en;
+    const mr = oneOf(r.mastheadRot, ART_DIRECTION_MENU.mastheadRots);
+    if (mr) out.mastheadRot = mr;
+    if (typeof r.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(r.accent.trim())) out.accent = r.accent.trim().toLowerCase();
+    if (typeof r.note === 'string' && r.note.trim()) out.note = r.note.trim().slice(0, 120);
+
+    // --- SEMANTIC PAIRING NORMALIZATION ---
+    // 1. PAIRING LAW — 'over-body' is strictly the opaque statement plate;
+    // ANY clean treatment (editorial / strip / banner / symmetric) paired
+    // with it is an AI contradiction — auto-correct mainLinePos to 'bottom'
+    // before the resolver can force plates the art direction never asked for.
+    if (out.mainLinePos === 'over-body' && out.treatment !== 'statement') {
+        out.mainLinePos = 'bottom';
+    }
+
+    // 2. Symmetric twin columns require BOTH flanks to be calm.
+    // If analysis indicates a crowded flank, subject reclining horizontally,
+    // or calm space < 35%, symmetric is physically impossible.
+    if (analysis && (out.treatment === 'symmetric' || out.cluster === 'split')) {
+        const leftOk = analysis.leftSpace >= 0.35;
+        const rightOk = analysis.rightSpace >= 0.35;
+        const horizontal = analysis.pose === 'horizontal';
+        if (!leftOk || !rightOk || horizontal) {
+            out.treatment = 'strip';
+            out.cluster = analysis.leftSpace > analysis.rightSpace ? 'left' : analysis.bottomSpace >= 0.4 ? 'center' : 'right';
+        }
+    }
+
+    // 3. For VERTICAL template (spine wordmark), the cluster cannot fight the spine rail.
+    if (out.template === 'VERTICAL' || out.mastheadRot === 'spine-left' || out.mastheadRot === 'spine-right') {
+        if (!out.cluster || out.cluster === 'split') {
+            out.cluster = 'center';
+        }
+    }
+
     return out;
 }
 
@@ -934,68 +1088,102 @@ export function composeSystemCover(opts: {
     direction?: ArtDirection | null;
     /** Brand-kit palette — when present the accent outranks the genre's own. */
     brand?: { primary: string; accent: string };
+    /** Archetype hint (e.g. 'vogue-deep-layer', 'time-frame', etc.) */
+    archetype?: string;
 }): ComposedCover {
     const seed = (opts.seed ?? Math.floor(Math.random() * 0xffffffff)) >>> 0;
     const rng = mulberry32(seed);
     const a = opts.analysis ?? null;
-    // VIBE MATCH: with a real photo analysis on the table, AUTO stops
-    // gambling — the genre whose aesthetic fits the photo's measured colour
-    // mood is the one that goes out (warm+saturated → FOOD, washed light →
-    // KINFOLK, washed dark → NOIR, cool → NATGEO/CYBER, violet → DAZED…).
-    const style: SystemStyleId = opts.style === 'auto' ? (a ? vibePick(a) : pickFrom(rng, AUTO_PICKS)) : opts.style;
+    const rawStyle = opts.style;
+    const style: SystemStyleId = matchGenreToStyle(rawStyle) ?? (rawStyle !== 'auto' && (AUTO_PICKS as readonly string[]).includes(rawStyle) ? (rawStyle as SystemStyleId) : (a ? vibePick(a) : pickFrom(rng, AUTO_PICKS)));
     const g = GENRES[style];
-    // Brand ink: the saved kit accent outranks the genre's accent in every
-    // style — one hue of the user's brand on an otherwise ink/paper page.
     const brandAccent = opts.brand?.accent?.trim() ?? '';
     const photoLight = opts.photoLight ?? a?.photoLight ?? false;
-    // The user's real content outranks the system's copy pools: the vibe
-    // input and text already on the canvas fill the storytelling slots.
     const content = opts.content ?? {};
-    // The AI art direction (already sanitized) — null means the
-    // deterministic fallback owns every structural choice.
-    const dir = opts.direction ?? null;
+    const dir = opts.direction ? sanitizeArtDirection(opts.direction, a) : null;
+    const archId = opts.archetype || (style ? ARCHETYPE_OF_STYLE[style] : undefined);
+
+    // §7.5 — THE AI DESIGN BRIEF, materialized. The direction now carries
+    // taste decisions beyond structure: tone (the masthead's ink), accent
+    // (one hex mined from the photo itself), mastheadScale (the §12 scale
+    // attitude) and energy (the finishing bias). Validated upstream by the
+    // sanitizer — this is the AI doing DESIGN WORK; the resolver only
+    // turns each decision into geometry.
+    const dirTone = dir?.tone ?? '';
+    const dirAccent = dir?.accent ?? '';
+    const dirScale = dir?.mastheadScale ?? '';
+    const dirEnergy = dir?.energy ?? 'balanced';
+
+    // §V — THE EDITION VARIANT ROLL. A direction pins the BRAND SYSTEM
+    // (template · cluster · treatment · palette · tone); WITHIN that
+    // system the per-click seed rolls a visibly different REALIZATION —
+    // placement band, micro voice, badge spot, teaser density. Same
+    // brand, a different issue: the one-centimetre-jitter era ends here.
+    // The roll only spends freedom the AI left on the table — an explicit
+    // pick (mainLinePos, rail, badgeSpot, treatment) always wins.
+    type FeatureBand = 'mid' | 'floor' | 'high' | 'statement';
+    let variantBand: FeatureBand = 'floor';
+    let variantMicro: 'rail' | 'dateline' = 'dateline';
+    let variantBadge: 'top' | 'cluster' | 'corner' = 'top';
+    let variantTeasers = -1;
+    if (dir) {
+        variantBand = (['high', 'mid', 'floor'] as const)[Math.floor(rng() * 3)];
+        // A loud edition may elect the statement plate as its feature
+        // treatment — only when the AI left the treatment unpicked.
+        if (!dir.treatment && dirEnergy === 'loud' && rng() < 0.25) variantBand = 'statement';
+        variantMicro = rng() < 0.45 ? 'rail' : 'dateline';
+        variantBadge = (['top', 'cluster', 'corner'] as const)[Math.floor(rng() * 3)];
+        variantTeasers =
+            dirEnergy === 'loud'
+                ? rng() < 0.6 ? 1 : 0
+                : dirEnergy === 'quiet'
+                    ? 1 + Math.floor(rng() * 2)
+                    : rng() < 0.4 ? 1 : 0;
+    }
 
     // -- template selection: the photograph dictates the composition ---------
     const hasHeadroom = a ? a.headroom > 0.5 : rng() < 0.45;
     let calmSide: 'left' | 'right' = a ? (a.leftSpace >= a.rightSpace ? 'left' : 'right') : rng() < 0.5 ? 'left' : 'right';
-    // Subject-mass tie-break: when both columns measure near-equally calm,
-    // the stack colonises the flank OPPOSITE the subject — negative space
-    // mirrors mass (the photograph dictates the composition, not the rng).
     if (a && Math.abs(a.leftSpace - a.rightSpace) < 0.06 && a.subjectX !== 'center') {
         calmSide = a.subjectX === 'left' ? 'right' : 'left';
     }
     const sideCalm = a ? Math.max(a.leftSpace, a.rightSpace) : 0.4 + rng() * 0.3;
     const bothCalm = a ? Math.min(a.leftSpace, a.rightSpace) : 0.25 + rng() * 0.3;
 
-    // The hidden preset pool: an explicit library layout outranks the rng.
     const lib = opts.layoutId ? LAYOUT_LIBRARY.find((e) => e.id === opts.layoutId) : undefined;
     if (lib && (lib.cluster === 'left' || lib.cluster === 'right')) calmSide = lib.cluster;
     if (dir?.cluster === 'left' || dir?.cluster === 'right') calmSide = dir.cluster;
 
     type Template = 'TOP-MASTHEAD' | 'SIDE-STRIP' | 'DEEP-LAYER' | 'VERTICAL' | 'INVERTED';
-    const roll = rng();
     let template: Template;
     if (dir?.template) template = dir.template;
-    else if (roll < 0.06 && sideCalm > 0.3) template = 'VERTICAL'; // Position E — ELLE side-rail masthead
-    else if (roll < 0.12) template = 'INVERTED'; // Position F — special-issue bottom masthead
-    else if (hasHeadroom) template = 'TOP-MASTHEAD'; // classic over-head / sandwich
-    else if (sideCalm > 0.42) template = 'SIDE-STRIP'; // the whitespace strategy
-    else template = 'DEEP-LAYER'; // dense photo — sandwich + bottom strip
+    else if (archId === 'time-frame' || archId === 'natgeo-frame' || archId === 'classic-vogue') template = 'TOP-MASTHEAD';
+    else if (archId === 'vogue-deep-layer' || archId === 'bazaar-soft' || archId === 'avant-garde') template = 'DEEP-LAYER';
+    else if (archId === 'indie-minimal') template = 'SIDE-STRIP';
+    else if (archId === 'inverted-commemorative') template = 'INVERTED';
+    else if (hasHeadroom) template = 'TOP-MASTHEAD';
+    else if (sideCalm > 0.42) template = 'SIDE-STRIP';
+    else template = 'DEEP-LAYER';
     if (!dir && lib) template = lib.template;
+    // §7 POSE — a horizontal body has no calm side columns: the whitespace
+    // strategy and the spine rail are vertical-pose moves. When the
+    // subject reclines, the bands carry everything (unless the AI, who was
+    // TOLD the pose, insists on a template anyway).
+    const horizontal = a?.pose === 'horizontal';
+    if (horizontal && !dir?.template && (template === 'SIDE-STRIP' || template === 'VERTICAL')) {
+        template = hasHeadroom ? 'TOP-MASTHEAD' : 'DEEP-LAYER';
+    }
 
     const text: SystemTextSpec[] = [];
     const shapes: SystemShapeSpec[] = [];
     let stamp = 0;
     const nid = (p: string) => `sys-${p}-${stamp++}`;
 
-    // Contrast pair — the ink-on-paper law, adapted to the photo's light.
     const PAPER = '#FFFFFF';
     const INK = '#000000';
     const plateFill = photoLight ? INK : PAPER;
     const plateInk = photoLight ? PAPER : INK;
 
-    // BOLD GENRES: zine, dazed, cyber, gq, noir, vogue, vinyl, natgeo, time,
-    // eye, bazaar, fragments. Determines plating, teaser count, badge style.
     const BOLD_GENRES: SystemStyleId[] = [
         'zine', 'dazed', 'cyber', 'gq', 'noir', 'vogue', 'vinyl',
         'natgeo', 'time', 'eye', 'bazaar', 'fragments',
@@ -1005,59 +1193,170 @@ export function composeSystemCover(opts: {
     // -- 1 · MASTHEAD (hierarchy 10 — the brand's fixed identity) ------------
     const mastheadWidth = g.mastheadFont.widthPct[0] + rng() * (g.mastheadFont.widthPct[1] - g.mastheadFont.widthPct[0]);
     let mhX = 0.5;
-    // Default yPct — pushed to mid-top so badge (0.06-0.09) and dateline
-    // (0.07-0.12) each own their own band above the masthead.
-    let mhY = 0.27 + rng() * 0.07;
+    let mhY = 0.22 + rng() * 0.04;
     let mhWidth = Math.round(mastheadWidth);
-    // Editorial standard: the masthead is automatically BEHIND the subject.
     let mhDepth: 'behind' | 'front' = 'behind';
     let mhRot = 0;
 
-    if (template === 'TOP-MASTHEAD') {
-        // Three clear bands: badge 0.06-0.09, dateline 0.09-0.13, masthead 0.26-0.34.
-        // Nothing overlaps — the masthead sits in the upper-mid zone, not the
-        // top-strip. With depth 'behind', it reads cleanly through the subject.
-        mhY = 0.26 + rng() * 0.08;
+    // Archetype brand placements (Position A, B, C, D, E, F) — the brand
+    // DEFAULT. A live art direction outranks it: the archetype branches
+    // are skipped and the per-template geometry below carries the pick.
+    if (!dir && archId === 'time-frame') {
+        template = 'TOP-MASTHEAD';
+        mhX = 0.5;
+        mhY = 0.12;
+        mhWidth = 50;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'natgeo-frame') {
+        template = 'TOP-MASTHEAD';
+        mhX = 0.5;
+        mhY = 0.11;
+        mhWidth = 56;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'classic-vogue') {
+        template = 'TOP-MASTHEAD';
+        mhX = 0.5;
+        mhY = 0.11;
+        mhWidth = 90;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'vogue-deep-layer') {
+        template = 'DEEP-LAYER';
+        mhX = 0.5;
+        mhY = 0.14;
+        mhWidth = 92;
         mhDepth = 'behind';
+    } else if (!dir && archId === 'bazaar-soft') {
+        template = 'DEEP-LAYER';
+        mhX = 0.5;
+        mhY = 0.13;
+        mhWidth = 88;
+        mhDepth = 'behind';
+    } else if (!dir && archId === 'indie-minimal') {
+        template = 'SIDE-STRIP';
+        mhX = 0.24;
+        mhY = 0.09;
+        mhWidth = 42;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'tabloid-stack') {
+        mhX = 0.5;
+        mhY = 0.12;
+        mhWidth = 88;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'bottom-strip') {
+        template = 'TOP-MASTHEAD';
+        mhX = 0.5;
+        mhY = 0.12;
+        mhWidth = 90;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'inverted-commemorative') {
+        template = 'INVERTED';
+        mhX = 0.5;
+        mhY = 0.88;
+        mhWidth = 74;
+        mhDepth = 'front';
+    } else if (!dir && archId === 'avant-garde') {
+        template = 'DEEP-LAYER';
+        mhX = 0.5;
+        mhY = 0.22;
+        mhWidth = 94;
+        mhDepth = 'behind';
+    } else if (template === 'TOP-MASTHEAD') {
+        mhY = hasHeadroom ? 0.11 : 0.20;
+        mhDepth = hasHeadroom ? 'front' : 'behind';
     } else if (template === 'SIDE-STRIP') {
         mhX = calmSide === 'left' ? 0.27 : 0.73;
-        mhY = 0.2 + rng() * 0.05;
-        mhWidth = Math.round(Math.min(mhWidth, 46 + Math.round(rng() * 6)));
+        mhY = 0.18 + rng() * 0.04;
+        mhWidth = Math.round(Math.min(mhWidth, 48));
         mhDepth = 'behind';
     } else if (template === 'VERTICAL') {
         mhRot = calmSide === 'left' ? -90 : 90;
         mhX = calmSide === 'left' ? 0.06 : 0.94;
         mhY = 0.44;
         mhWidth = 62;
-        // Vertical spine masthead: behind the subject by default for deep editorial dimension
         mhDepth = 'behind';
     } else if (template === 'INVERTED') {
-        mhY = 0.87;
-        mhWidth = Math.round(Math.min(mhWidth, 84));
+        mhY = 0.88;
+        mhWidth = Math.round(Math.min(mhWidth, 80));
         mhDepth = 'front';
     }
 
-    if (lib) {
+    if (lib && !archId) {
         mhX = lib.mhX;
-        // Never allow a library template to push TOP-MASTHEAD into the dateline/badge band
-        mhY = template === 'TOP-MASTHEAD' ? Math.max(0.26, lib.mhY) : lib.mhY;
+        mhY = template === 'TOP-MASTHEAD' ? Math.max(0.18, lib.mhY) : lib.mhY;
         mhWidth = Math.round(Math.min(mhWidth, lib.mhWidth));
+    }
+    // §12 SCALE ATTITUDE — the brief's mastheadScale outranks the band
+    // defaults: monumental = the heritage sprawl (taller, wider, pinned
+    // higher); compact = the newsstand nameplate (small, centred, the
+    // newspaper voice). Hierarchy law: the masthead is the page's #1
+    // size, always — the attitude changes HOW it leads, not whether.
+    let mhHeightPct = 16;
+    if (dirScale === 'monumental') {
+        mhHeightPct = 20;
+        mhWidth = Math.max(mhWidth, template === 'VERTICAL' ? 66 : 94);
+        if (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER') mhY = Math.min(mhY, 0.15);
+    } else if (dirScale === 'compact') {
+        mhHeightPct = 11;
+        if (template !== 'VERTICAL') {
+            mhX = 0.5;
+            mhWidth = Math.min(mhWidth, 54);
+        }
+    }
+    // §4.1/§4.2 — hierarchy inversion is an art-direction decision:
+    // 'behind' = the celebrity sandwich (the subject's head overlaps the
+    // brand; the hairline stroke keeps it ≥70% legible), 'front' = the
+    // classic over-head masthead. Only the flat-top templates honour it —
+    // SIDE-STRIP / VERTICAL / INVERTED own their depth grammar.
+    if (dir?.mastheadDepth && (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER')) {
+        mhDepth = dir.mastheadDepth;
+    }
+    // §10 diagonal — the cover-wrap masthead (Style Classique): the brand
+    // tips off-axis. Only the flat-top templates; it leans ±(8-14)° toward
+    // the calm side so the subject counterbalances the tilt.
+    if (dir?.special === 'diagonal' && (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER')) {
+        mhRot = (calmSide === 'left' ? -1 : 1) * (8 + Math.round(rng() * 6));
+    }
+    // §7.6 SPINE MASTHEAD — the reclining-subject statement: the major
+    // wordmark runs VERTICAL on the edge where the subject's head rests
+    // (270° reads bottom-to-top on the left spine, 90° top-to-bottom on
+    // the right), weight 900, BEHIND the head — the head crossing the
+    // giant rotated letters IS the sandwich. Additive to any template:
+    // the horizontal band the masthead vacates stays free for coverlines.
+    let spineSide: 'left' | 'right' | null = null;
+    if (dir?.mastheadRot === 'spine-left') spineSide = 'left';
+    else if (dir?.mastheadRot === 'spine-right') spineSide = 'right';
+    else if (dir && horizontal && rng() < 0.18) {
+        // §V freedom spend: the AI left the spine unpinned — the variant
+        // roll may spend it on the body's lean side for a reclining subject.
+        spineSide = a?.subjectX === 'left' ? 'left' : a?.subjectX === 'right' ? 'right' : rng() < 0.5 ? 'left' : 'right';
+    }
+    if (spineSide) {
+        mhRot = spineSide === 'left' ? -90 : 90;
+        mhX = spineSide === 'left' ? 0.075 : 0.925;
+        mhY = 0.46 + rng() * 0.04;
+        mhWidth = Math.max(mhWidth, dirScale === 'monumental' ? 74 : 60); // the vertical run length
+        mhDepth = 'behind'; // the head overlaps the rotated wordmark
     }
 
     text.push({
         id: 'box-masthead',
         text: content.masthead?.trim() || pickFrom(rng, g.mastheads),
         fontId: g.mastheadFont.fontId,
-        weight: g.mastheadFont.weight,
+        weight: spineSide ? 900 : g.mastheadFont.weight,
         italic: g.mastheadFont.italic,
         caseMode: g.mastheadFont.caseMode ?? 'uppercase',
         fitToWidth: true,
         widthPct: mhWidth,
-        heightPct: 16,
-        letterSpacingEm: g.mastheadFont.tracking,
-        color: style === 'kinfolk' ? '#F7F6F0' : PAPER,
-        // The zine lesson: a 0.015em ink hairline on a behind-depth white
-        // masthead keeps the word readable where the subject crosses it.
+        heightPct: mhHeightPct,
+        letterSpacingEm: dirScale === 'monumental' ? Math.min(0.2, g.mastheadFont.tracking + 0.015) : g.mastheadFont.tracking,
+        // §9 tone — the AI's masthead ink, contrast-guarded: ink dies on a
+        // dark photo (paper takes over); accent falls back through the
+        // brand kit and the genre accent before paper.
+        color: dirTone === 'ink'
+            ? (photoLight ? INK : PAPER)
+            : dirTone === 'accent'
+                ? (dirAccent || brandAccent || g.accent || PAPER)
+                : style === 'kinfolk' ? '#F7F6F0' : PAPER,
         strokeEm: mhDepth === 'behind' ? 0.015 : 0,
         strokeColor: INK,
         opacity: 1,
@@ -1068,17 +1367,13 @@ export function composeSystemCover(opts: {
     });
 
     // -- 2 · DATELINE (hierarchy 3, top band, machine voice) ------------------
-    // Sits in the clear zone ABOVE the masthead.
-    // Rail: rotated text down the edge (a genre signature for zine/vinyl etc.).
-    // Dateline: short centered line just below the top margin.
     let useRail = lib
-        // Bold genres NEVER use a vertical rail — the rotated edge text
-        // competes with the masthead and clutters the cover regardless of
-        // which library preset fires. Always fall through to dateline.
         ? !isBoldGenre && lib.micro === 'rail' && template !== 'VERTICAL'
         : template !== 'VERTICAL' && !isBoldGenre && (g.rail !== 'none' || rng() < 0.15);
-    // The AI may explicitly ask for the spine rail (quiet genres only).
     if (dir && dir.rail !== undefined) useRail = dir.rail && !isBoldGenre && template !== 'VERTICAL';
+    // §V — when the AI left the micro voice unpinned, the edition roll
+    // decides rail vs dateline (a real per-issue choice, not jitter).
+    else if (dir) useRail = variantMicro === 'rail' && !isBoldGenre && template !== 'VERTICAL';
     const railSide: 'left' | 'right' = g.rail !== 'none' && template !== 'SIDE-STRIP' ? g.rail : calmSide === 'left' ? 'right' : 'left';
 
     if (useRail) {
@@ -1090,8 +1385,6 @@ export function composeSystemCover(opts: {
             weight: g.microFont.weight,
             caseMode: 'uppercase',
             fitToWidth: true,
-            // Length-aware width — the rail's cap height lands at its design
-            // size instead of ballooning fat on short lines.
             widthPct: microWidthForLine(railText.replace(/\s+/g, ' ').length, 2.3),
             heightPct: 2.4,
             letterSpacingEm: 0.14,
@@ -1100,13 +1393,15 @@ export function composeSystemCover(opts: {
             rotationDeg: railSide === 'left' ? -90 : 90,
             depth: 'front',
             xPct: railSide === 'left' ? 0.055 : 0.945,
-            // 0.44, not 0.5 — a full-length rail spans ±0.30 vertically;
-            // starting at 0.44 pre-settles it clear of both the masthead's
-            // band and the bottom stack in the separation pass.
             yPct: 0.44,
         });
     } else {
         const dateText = content.dateline?.trim() || fill(rng, pickFrom(rng, g.dateline));
+        const dateY = (template === 'TOP-MASTHEAD' && mhY <= 0.16)
+            ? round002(mhY + (mhHeightPct / 200) + 0.022)
+            : mhY >= 0.18
+                ? 0.045
+                : 0.055;
         text.push({
             id: 'box-dateline',
             text: dateText,
@@ -1114,8 +1409,6 @@ export function composeSystemCover(opts: {
             weight: g.microFont.weight,
             caseMode: 'uppercase',
             fitToWidth: true,
-            // Length-aware width — a short dateline no longer stretches
-            // fat across the page; its cap height lands near 1.9% of H.
             widthPct: microWidthForLine(dateText.replace(/\s+/g, ' ').length, 1.9),
             heightPct: 1.8,
             letterSpacingEm: 0.12,
@@ -1124,193 +1417,167 @@ export function composeSystemCover(opts: {
             rotationDeg: 0,
             depth: 'front',
             xPct: 0.5,
-            // The canonical top strip — the very first band of the page,
-            // clear above the masthead's own band (0.16-0.20). The zine
-            // anatomy: the dateline owns the edge, the masthead owns the sky.
-            yPct: 0.055,
+            yPct: dateY,
         });
     }
 
     // -- 3 · FEATURE COVERLINE + SUB + TEASER STACK ---------------------------
-    // STANCE — who decides: the AI art direction (when the analyze round
-    // trip returned one) > the library variant > the photo's measured crop >
-    // the rng. Treatments: STRIP (the zine look — one wide tracked line
-    // near the floor, unplated) · STATEMENT (dual-contrast plates over the
-    // body) · BANNER (full-width special-issue strip) · SYMMETRIC (twin
-    // columns).
-    let banner = template !== 'VERTICAL' && template !== 'INVERTED' && template !== 'SIDE-STRIP'
-        && rng() < (isBoldGenre ? 0.20 : 0.08);
-
-    // The STATEMENT: a plated line crossing the subject.
-    let isStatement = !banner && (
-        (isBoldGenre && (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER') && rng() < 0.6) ||
-        (template === 'DEEP-LAYER' && rng() < 0.4)
-    );
-
-    // SYMMETRIC columns (§5.3): both flanks calm → teasers split across the
-    // opposite column while the feature cluster keeps its side.
-    let symmetric = !banner && !isStatement && template === 'TOP-MASTHEAD' && bothCalm > 0.42 && rng() < 0.45;
-
-    if (dir) {
-        // THE AI IS THE ART DIRECTOR — its menu pick outranks pool and rng.
-        banner = dir.treatment === 'banner' && template !== 'VERTICAL' && template !== 'INVERTED' && template !== 'SIDE-STRIP';
-        isStatement = dir.treatment === 'statement' && template !== 'VERTICAL' && template !== 'INVERTED';
-        symmetric = dir.treatment === 'symmetric' && template !== 'VERTICAL' && template !== 'INVERTED';
-    } else if (lib) {
-        banner = lib.variant === 'banner' && template !== 'VERTICAL' && template !== 'INVERTED' && template !== 'SIDE-STRIP';
-        // Library 'statement' variant, OR bold genre on TOP-MASTHEAD plates.
-        isStatement = !banner && (
-            (lib.variant === 'statement' && template === 'DEEP-LAYER') ||
-            (isBoldGenre && (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER'))
-        );
-        symmetric =
-            !banner &&
-            !isStatement &&
-            (lib.variant === 'symmetric' || lib.cluster === 'split') &&
-            template !== 'VERTICAL' &&
-            template !== 'INVERTED';
-    }
-
-    // CROP-AWARE — the scan's floor decides the stance's home. A busy
-    // bottom band cannot host an unplated strip, so the cluster lifts into
-    // a plated statement over the body; a calm floor keeps the strip down
-    // where the zine anatomy puts it. (bottomSpace finally earns its keep;
-    // the veto also guards the AI's pick when the photo disagrees.)
-    const bottomCalm = a ? a.bottomSpace : 0.4 + rng() * 0.3;
-    if (!banner && !isStatement && template !== 'VERTICAL' && template !== 'INVERTED' && bottomCalm < 0.34) {
-        isStatement = true;
-    } else if (isStatement && !dir && bottomCalm > 0.62 && template === 'DEEP-LAYER' && rng() < 0.5) {
+    // Treatment selection: 'editorial' is the gold standard for high-end covers.
+    // Pure, unplated typography living in the calm negative space.
+    let banner = dir?.treatment === 'banner' || (lib?.variant === 'banner');
+    let isStatement = dir?.treatment === 'statement' || (lib?.variant === 'statement');
+    let symmetric = dir?.treatment === 'symmetric' || (lib?.variant === 'symmetric') || (dir?.cluster === 'split');
+    // Treatment strip and editorial explicitly DEMAND unplated clean type.
+    // Never let mainLinePos or band rolls force statement plates over clean type.
+    if (dir?.treatment === 'strip' || dir?.treatment === 'editorial') {
         isStatement = false;
+    } else if (dir?.mainLinePos === 'over-body') {
+        isStatement = true;
+    } else if (dir && variantBand === 'statement') {
+        isStatement = true;
+    }
+    if (banner) variantBand = 'floor';
+    // §8 OVERLAY FALLBACK — a full-bleed dense photo (no calm quadrant)
+    // cannot host unplated type; the only legal crossing is an opaque
+    // statement plate. Deterministic math — no AI round trip needed.
+    if (a && !dir && !banner && !isStatement) {
+        const maxCalm = Math.max(a.leftSpace, a.rightSpace, a.bottomSpace);
+        if (maxCalm < 0.34 && a.headroom < 0.38) isStatement = true;
     }
 
     const featureText = content.feature?.trim() || fill(rng, pickFrom(rng, g.features));
     const subText = content.sub?.trim() || fill(rng, pickFrom(rng, g.subs));
 
-    // featureY: the vertical anchor for the plated cluster.
-    // Bold genres: 0.76-0.79 = lower third, clear of the subject's body,
-    // with room for the sub plate and barcode below.
-    // Quiet genres: 0.80-0.82 = the traditional bottom-strip position.
-    let featureY = isBoldGenre ? 0.76 + rng() * 0.03 : 0.80 + rng() * 0.02;
+    // Determine the active column based on AI direction, archetype, or measured calm negative space
+    let activeCluster: 'left' | 'right' | 'center' = 'left';
+    if (horizontal) {
+        // §7 POSE — the stack lives in a BAND, centred: both flanks are body.
+        activeCluster = 'center';
+    } else if (dir?.cluster === 'left' || dir?.cluster === 'right' || dir?.cluster === 'center') {
+        activeCluster = dir.cluster;
+    } else if (archId === 'bazaar-soft') {
+        activeCluster = 'right';
+    } else if (archId === 'bottom-strip' || template === 'INVERTED') {
+        activeCluster = 'center';
+    } else {
+        activeCluster = calmSide === 'left' ? 'left' : 'right';
+    }
+    // §5.3 gate — twin columns need BOTH flanks calm (≥35%), an upright
+    // subject, and a non-center stack (the twins flank the story). One busy
+    // flank, a reclining body, or a centre band turns the twins off. The
+    // sanitizer corrects AI picks; this guards the library-variant and
+    // cluster-split paths the sanitizer never sees.
+    if (symmetric && (horizontal || (a ? a.leftSpace < 0.35 || a.rightSpace < 0.35 : false) || activeCluster === 'center')) {
+        symmetric = false;
+    }
+
     let clusterX: number;
     let featureW: number;
+    let featureY: number;
 
-    if (banner) {
-        // Full-width strip: the plate is emitted in the ladder below, cut
-        // to the feature's measured cap height.
-        clusterX = 0.5;
-        featureW = 88;
-        featureY = 0.79;
-    } else if (template === 'SIDE-STRIP' || (template === 'TOP-MASTHEAD' && sideCalm > 0.45)) {
-        // Column stack — coverlines join the masthead's calm column. The
-        // strip column runs DOWN from just under the masthead (0.62+), not
-        // a lonely float at 0.70 — the stack fills the calm flank.
-        clusterX = calmSide === 'left' ? 0.3 : 0.7;
-        featureW = 42 + Math.round(rng() * 8);
-        featureY = template === 'SIDE-STRIP' ? 0.62 + rng() * 0.06 : 0.79 + rng() * 0.02;
-    } else if (template === 'DEEP-LAYER') {
-        // Dense photo — bottom strip, centered, or a plated statement over the body.
-        clusterX = 0.5;
-        featureW = isStatement ? 52 + Math.round(rng() * 8) : 58 + Math.round(rng() * 12);
-        featureY = isStatement ? 0.5 + rng() * 0.08 : 0.79 + rng() * 0.02;
-    } else if (template === 'VERTICAL') {
-        // Cluster opposite the vertical masthead's edge.
-        clusterX = calmSide === 'left' ? 0.68 : 0.32;
-        featureW = 44 + Math.round(rng() * 8);
-    } else if (template === 'INVERTED') {
-        clusterX = 0.42;
-        featureW = 46 + Math.round(rng() * 8);
-        featureY = 0.71;
+    if (activeCluster === 'left') {
+        const leftCalm = a ? Math.max(0.35, Math.min(0.72, a.leftSpace)) : 0.50;
+        // Float to the optical centroid of the calm space
+        clusterX = round002(Math.max(0.20, Math.min(0.30, leftCalm * 0.48)));
+        // Dynamically scale column width to the negative space: expansive air gets bolder width
+        featureW = round002(Math.max(38, Math.min(50, leftCalm * 72)));
+        featureY = template === 'SIDE-STRIP' ? 0.62 + rng() * 0.04 : 0.74 + rng() * 0.03;
+    } else if (activeCluster === 'right') {
+        const rightCalm = a ? Math.max(0.35, Math.min(0.72, a.rightSpace)) : 0.50;
+        clusterX = round002(Math.min(0.80, Math.max(0.70, 1 - rightCalm * 0.48)));
+        featureW = round002(Math.max(38, Math.min(50, rightCalm * 72)));
+        featureY = template === 'SIDE-STRIP' ? 0.62 + rng() * 0.04 : 0.74 + rng() * 0.03;
     } else {
-        // TOP-MASTHEAD fallback.
-        // BOLD GENRES: always center the cluster so the plated block is
-        // symmetrical and never clips the right or left edge.
-        // QUIET GENRES: keep the diagonal placement for variety.
-        if (isBoldGenre) {
-            clusterX = 0.5;
-            // Wide enough to feel like a full-bleed plate, narrow enough to
-            // leave margin on both sides (centered ±36% = 14% margin each side).
-            featureW = 70 + Math.round(rng() * 6); // 70-76%
-        } else {
-            clusterX = rng() < 0.5 ? 0.32 + rng() * 0.04 : 0.66 + rng() * 0.04;
-            featureW = 44 + Math.round(rng() * 10);
-        }
+        // Center cluster:
+        // When a vertical spine rail occupies the left edge (spine-left / VERTICAL),
+        // shift center slightly right (0.54) and cap feature width (64) so it never touches
+        // the spine letters. If spine-right, shift slightly left (0.46).
+        const hasLeftSpine = spineSide === 'left' || template === 'VERTICAL';
+        const hasRightSpine = spineSide === 'right';
+        clusterX = hasLeftSpine ? 0.54 : hasRightSpine ? 0.46 : 0.5;
+        featureW = banner ? 88 : (hasLeftSpine || hasRightSpine) ? 64 : 74;
+        featureY = template === 'INVERTED' ? 0.68 : 0.82;
     }
 
-    // The AI's cluster pick outranks the scan's default column (the banner
-    // stance always owns the full width).
-    if (dir && !banner && (dir.cluster === 'left' || dir.cluster === 'right' || dir.cluster === 'center')) {
-        clusterX = dir.cluster === 'left' ? 0.3 : dir.cluster === 'right' ? 0.7 : 0.5;
-    }
-    if (dir?.cluster === 'split' && !banner && !isStatement) symmetric = true;
-
-    // -- THE LADDER (§4) — measured, not guessed ------------------------------
-    // The zine lesson: hierarchy is SCALE DRAMA. The masthead is colossal;
-    // the feature is one confident line (strip) or a plated slab
-    // (statement); the sub is a clear rung down; teasers whisper. Every
-    // offset is computed from the same boxes the page-level guarantee
-    // measures, so the stack lands ALREADY SETTLED — separation finds
-    // nothing to move, and nothing here ever enters the scan corner's band.
     const featureLen = Math.max(6, featureText.replace(/\s+/g, ' ').trim().length);
-    // STRIP = a WIDE CENTRED kicker (the zine lesson): one line sized to
-    // its own length; the whole stack centres on its axis. Column stacks
-    // belong to the statement anatomy.
-    if (!isStatement && !banner) clusterX = 0.5;
     const featLayout = banner
-        ? { text: featureText.replace(/\s+/g, ' ').trim(), h: capHeightForLine(featureLen, 92, 3.4, 5.2), maxLen: featureLen, lines: 1 }
+        ? { text: featureText.replace(/\s+/g, ' ').trim(), h: capHeightForLine(featureLen, 88, 3.2, 5.0), maxLen: featureLen, lines: 1 }
         : isStatement
-            ? layoutForColumn(featureText, featureW, 3.2, 8.2, 3)
-            : { text: featureText.replace(/\s+/g, ' ').trim(), h: 4.2, maxLen: featureLen, lines: 1 };
+            ? layoutForColumn(featureText, featureW, 3.2, 7.5, 3)
+            : activeCluster === 'center'
+                ? { text: featureText.replace(/\s+/g, ' ').trim(), h: 4.2, maxLen: featureLen, lines: 1 }
+                : layoutForColumn(featureText, featureW, 3.4, 5.8, 3);
     const featureH = featLayout.h;
-    // Strips read as the zine kicker: low on the page, wide, one line.
-    // INVERTED flips the rule: the masthead owns the floor band, so its
-    // strip/banner sits ABOVE it instead of grazing it.
-    if (!isStatement && !banner) featureY = Math.max(featureY, 0.78);
-    if (template === 'INVERTED' && !isStatement) featureY = Math.min(featureY, 0.70);
-    const subLayout = layoutForColumn(subText, Math.min(80, Math.max(30, featureW)), 1.8, 3.4, 3);
-    const subH = round002(Math.min(featureH * 0.62, subLayout.h));
+
+    const subLayout = layoutForColumn(subText, Math.min(60, featureW), 1.7, 2.6, 3);
+    const subH = round002(Math.min(featureH * 0.58, subLayout.h));
     const subLines = subLayout.text.split('\n').length;
-    // Measured half-heights with the SAME leading (×1.12) the page's
-    // measureTextBox uses for multi-line text — the guarantee measures
-    // these exact boxes, so the stack lands already settled.
+
     const hhF = (featureH * 1.12 * featLayout.lines) / 200;
     const hhS = (subH * 1.12 * subLines) / 200;
-    // The stack's floor — the barcode/QR band starts here and those shapes
-    // carry their own text; text on them IS text on text (the loudest
-    // rule). INVERTED's floor is higher: the masthead owns 0.79-0.95.
     const STACK_FLOOR = template === 'INVERTED' ? 0.76 : 0.872;
 
-    // Keep the whole stack clear of the scan band (INVERTED: the low
-    // masthead). If the sub cannot fit under the feature above the floor,
-    // lift the FEATURE — the guarantee would otherwise resolve this
-    // reactively, with uglier results.
-    {
-        const naturalSubY = featureY + hhF + 0.017 + hhS;
-        const floorSubY = STACK_FLOOR - hhS;
-        if (floorSubY < naturalSubY) {
-            featureY = Math.max(0.30, floorSubY - hhF - 0.017 - hhS);
+    // §6 + §V — WHERE the main coverline sits. An explicit mainLinePos
+    // pins the band; otherwise the edition roll owns it (high / mid /
+    // floor / statement — four legitimately different issues of the same
+    // brand). The stack math below still owns the floor; banners own
+    // their band.
+    const mainPos: DirectionMainLinePos = dir?.mainLinePos ?? 'below-chin';
+    if (dir?.mainLinePos === 'above-head') variantBand = 'high';
+    else if (dir?.mainLinePos === 'side') variantBand = 'mid';
+    else if (dir?.mainLinePos === 'bottom') variantBand = 'floor';
+    else if (dir?.mainLinePos === 'over-body') variantBand = 'statement';
+    // §7 POSE — mid-height side columns don't exist for a reclining subject
+    // (the body owns the middle); the stack drops to the floor band.
+    if (horizontal && variantBand === 'mid') variantBand = 'floor';
+    if (variantBand === 'high' && (template === 'TOP-MASTHEAD' || template === 'DEEP-LAYER') && hasHeadroom) {
+        featureY = 0.30 + rng() * 0.03;
+    } else if (variantBand === 'mid' && (activeCluster === 'left' || activeCluster === 'right')) {
+        featureY = 0.44 + rng() * 0.05;
+    } else if (variantBand === 'statement') {
+        featureY = Math.min(featureY, 0.50 + rng() * 0.06);
+    } else if (mainPos === 'bottom') {
+        // park the stack flush against the floor — sub bottom at the floor
+        featureY = Math.max(0.30, STACK_FLOOR - hhF - 0.015 - 2 * hhS);
+    }
+    // FACE PROTECTION — with a measured headroom the chin line is known:
+    // pure type never prints on the face (a statement plate crossing the
+    // torso is legal — opaque and readable — the face is not). faceFloorY
+    // is the lowest y the statement plate may park at; the stack lift
+    // below honours it whenever the floor leaves room.
+    let faceFloorY = 0;
+    // (upright-pose math only — a reclining face is not "below the headroom")
+    if (a && !horizontal) {
+        const faceBottom = Math.max(0.10, 1 - a.headroom) + 0.17;
+        if (mainPos === 'over-body' && isStatement) {
+            faceFloorY = faceBottom + 0.10;
+            featureY = Math.min(0.62, Math.max(featureY, faceFloorY));
+        } else if (activeCluster === 'center' && !isStatement && !banner && featureY - hhF < faceBottom) {
+            featureY = Math.min(STACK_FLOOR - (hhF + 0.015 + hhS), faceBottom + hhF);
         }
     }
-    let subY = featureY + hhF + 0.017 + hhS;
+
+    {
+        const naturalSubY = featureY + hhF + 0.015 + hhS;
+        const floorSubY = STACK_FLOOR - hhS;
+        if (floorSubY < naturalSubY) {
+            featureY = Math.max(0.30, floorSubY - hhF - 0.015 - hhS);
+        }
+    }
+    let subY = featureY + hhF + 0.015 + hhS;
+
     let plateFH = 0;
     let plateSH = 0;
     let bannerH = 0;
-    // Slab anchor(s): the cluster by default, edge-clamped once the
-    // statement's measured plates exist (assigned in the isStatement
-    // branch below). The words ride their plate — one axis, Gestalt L10.
     let plateFX = clusterX;
     let plateSX = clusterX;
     const trackF = g.kickerItalic ? 0.05 : 0.08;
-    // Measured text boxes (fractions of canvas) — reCutPlates pads are
-    // computed from THESE, so plates authored from the same numbers land
-    // already flush and nothing re-cuts.
     const textHF = (featureH * 1.12 * featLayout.lines) / 100;
     const textWF = measureW(featLayout.maxLen, featureH, trackF, true) / 100;
     const textHS = (subH * 1.12 * subLines) / 100;
     const textWS = measureW(subLayout.maxLen, subH, 0.12, true) / 100;
 
     if (banner) {
-        // Full-width special-issue strip — plate first (front shapes render
-        // beneath front text), then the feature riding it, ONE teaser under.
         bannerH = textHF + 2 * Math.max(0.014, textHF * 0.38) + 0.004;
         shapes.push({
             id: nid('banner'),
@@ -1329,42 +1596,25 @@ export function composeSystemCover(opts: {
             depth: 'front',
         });
     } else if (isStatement) {
-        // DUAL CONTRAST PLATING — a wide slab behind the feature, an
-        // inverted slab flush beneath the sub: the stacked-flag cluster of
-        // couture covers. Geometry is authored to the SAME pads the page's
-        // reCutPlates uses, so the slabs land already hugging their words —
-        // authored geometry wins, nothing re-cuts, nothing moves.
         const featurePlateFill = photoLight ? INK : PAPER;
-        const subPlateFill = photoLight ? PAPER : INK; // inverted from feature
-        // reCutPlates' EXACT pad model: padX = max(0.035, textW×0.12),
-        // padY = max(0.014, textH×0.38) — authored flush, never re-cut.
+        const subPlateFill = photoLight ? PAPER : INK;
         const padYF = Math.max(0.014, textHF * 0.38);
         const padYS = Math.max(0.014, textHS * 0.38);
         plateFH = textHF + padYF * 2 + 0.004;
         plateSH = textHS + padYS * 2 + 0.004;
-        // Guarantee-clean (≥ hhF+hhS+GAP 0.020) AND slab-flush — both hold.
         const subGap = Math.max(hhF + hhS + 0.022, plateFH / 2 + plateSH / 2 + 0.003);
-        // The plated stack is TALL — lift the feature so the sub slab's
-        // bottom never kisses the scan band (front plates would cover the
-        // barcode). Authored clean beats guarantee-resolved clean.
         const stackBottom = subGap + (plateFH + plateSH) / 2;
-        if (featureY + stackBottom > STACK_FLOOR) {
-            featureY = Math.max(0.30, STACK_FLOOR - stackBottom);
+        if (featureY + stackBottom > STACK_FLOOR || featureY < faceFloorY) {
+            // clamp into [faceFloorY, floorFit]: the highest y that still
+            // parks the stack flush above the floor; the face floor wins
+            // whenever it fits under that ceiling (else the floor rules).
+            const floorFit = Math.max(0.30, STACK_FLOOR - stackBottom);
+            featureY = Math.min(Math.max(faceFloorY, featureY), floorFit);
         }
         subY = featureY + subGap;
-        // Widths follow the column + the measured line, not the full page:
-        // a left-cluster slab is a LEFT slab, not a full-width banner.
-        const plateFW = Math.min(
-            94,
-            Math.max(30, Math.round((textWF + 2 * Math.max(0.035, textWF * 0.12)) * 100)),
-        );
-        const plateSW = Math.min(
-            94,
-            Math.max(30, Math.round((textWS + 2 * Math.max(0.035, textWS * 0.12)) * 100)),
-        );
-        // A left-cluster slab is a LEFT slab — but never past the edge:
-        // both plate and its words shift in by the minimum that keeps the
-        // slab inside [0.02, 0.98].
+        const maxSidePlateW = activeCluster === 'center' ? 94 : Math.min(52, Math.max(34, featureW + 8));
+        const plateFW = Math.min(maxSidePlateW, Math.max(26, Math.round((textWF + 2 * Math.max(0.025, textWF * 0.10)) * 100)));
+        const plateSW = Math.min(maxSidePlateW, Math.max(24, Math.round((textWS + 2 * Math.max(0.025, textWS * 0.10)) * 100)));
         plateFX = Math.min(0.98 - plateFW / 200, Math.max(0.02 + plateFW / 200, clusterX));
         plateSX = Math.min(0.98 - plateSW / 200, Math.max(0.02 + plateSW / 200, clusterX));
         shapes.push({
@@ -1401,38 +1651,37 @@ export function composeSystemCover(opts: {
         });
     }
 
-    // Determine the correct ink colours for the dual-plate system.
-    // If isStatement: feature gets featurePlateInk, sub gets subPlateInk.
-    // If banner: both get plateInk. If unplated: PAPER (visible on dark photo).
     const featureColor = isStatement
-        ? (photoLight ? PAPER : INK)   // text on the feature plate (contrast to plate)
+        ? (photoLight ? PAPER : INK)
         : banner
             ? plateInk
-            : PAPER;
+            : (photoLight ? INK : PAPER);
     const subColor = isStatement
-        ? (photoLight ? INK : PAPER)   // text on the sub plate (contrast to sub plate)
-        : brandAccent || (g.accent && style === 'gq' ? g.accent : '#E8E8E8');
+        ? (photoLight ? INK : PAPER)
+        : brandAccent || (g.accent && style === 'gq' ? g.accent : (photoLight ? '#222222' : '#E8E8E8'));
+
+    // §9 — the colour system: 'mono' = silver-gravitas B&W; 'duotone' =
+    // era tint; 'accent' = ONE restrained punch on a single element (an
+    // unplated feature line wears the brand/genre accent); 'editorial' =
+    // the genre's own judgement. Photo treatment follows in §7.
+    const dirPalette = dir?.palette ?? 'editorial';
+    const accentHex = brandAccent || dirAccent || g.accent || '';
+    const featureAccent = dirPalette === 'accent' && !!accentHex && !isStatement && !banner;
 
     text.push({
         id: 'box-feature',
-        // Wrapped for statements (the print-desk slab); single line for
-        // strip (a wide centred kicker — the zine lesson) and banner.
         text: featLayout.text,
         fontId: g.voiceFont.fontId,
         weight: g.voiceFont.weight,
         italic: g.kickerItalic && !isStatement && !banner,
         caseMode: g.kickerItalic && !isStatement && !banner ? 'original' : 'uppercase',
-        // STRIP: fitToWidth with a LENGTH-aware width — short lines run
-        // tall at the zine's wide kicker, long lines stay wide (≥56) so
-        // the fitted cap height never collapses to a worm.
-        // STATEMENT/BANNER: fixed cap height so slabs can be cut to fit.
-        fitToWidth: !isStatement && !banner,
-        widthPct: !isStatement && !banner
+        fitToWidth: activeCluster === 'center' && !isStatement && !banner,
+        widthPct: activeCluster === 'center' && !isStatement && !banner
             ? Math.min(88, Math.max(56, microWidthForLine(featureLen, 4.2)))
             : featureW,
         heightPct: featureH,
         letterSpacingEm: g.kickerItalic ? 0.05 : 0.08,
-        color: featureColor,
+        color: featureAccent ? accentHex : featureColor,
         opacity: 1,
         rotationDeg: 0,
         depth: 'front',
@@ -1441,27 +1690,21 @@ export function composeSystemCover(opts: {
     });
 
     if (!banner && !(template === 'INVERTED' && !isStatement)) {
-        // (INVERTED strip/banner: the masthead owns the floor band — a
-        // sub squeezed between stack and masthead reads as clutter.)
         text.push({
             id: 'box-sub',
-            // Sub wraps to the same column budget (max 2 lines) — a
-            // 50-character sub is two dignified lines, not an overflow.
             text: subLayout.text,
             fontId: g.microFont.fontId,
             weight: Math.max(700, g.microFont.weight),
             caseMode: g.kickerItalic && !isStatement ? 'original' : 'uppercase',
             fitToWidth: false,
-            widthPct: Math.max(20, featureW - 4),
+            widthPct: featureW,
             heightPct: subH,
             letterSpacingEm: 0.12,
             color: subColor,
-            opacity: isStatement ? 1 : 0.85,
+            opacity: isStatement ? 1 : 0.88,
             rotationDeg: 0,
             depth: 'front',
             xPct: isStatement ? plateSX : clusterX,
-            // One measured rung below the feature — plate-flush when plated,
-            // airy when naked. Already settled: the guarantee finds nothing.
             yPct: subY,
         });
     }
@@ -1478,16 +1721,23 @@ export function composeSystemCover(opts: {
     ];
     const teaserCount = banner
         ? 0 // the banner IS the statement — nothing rides under it
-        : isStatement
-            ? 1
-            // Bold genres: max 1 teaser — clean poster, not a busy newsstand.
-            : isBoldGenre
-                ? (rng() < 0.4 ? 1 : 0)
-                : template === 'DEEP-LAYER'
-                    ? rng() < 0.5 ? 1 : 0
-                    : template === 'INVERTED'
-                        ? 1 + Math.floor(rng() * 2)
-                        : 1 + Math.floor(rng() * 2); // quiet genres: 1-2 teasers
+        : (mainPos === 'bottom' || dir?.treatment === 'strip')
+            ? 0 // the stack is parked flush at the floor — no rungs below
+            : isStatement
+                ? 1
+                // §V — the edition roll owns the furniture density when the AI
+                // didn't pin it: the energy bias decides how many rungs ride
+                // under the sub (clamped by pool + rungs below).
+                : variantTeasers >= 0
+                    ? variantTeasers
+                    // Bold genres: max 1 teaser — clean poster, not a busy newsstand.
+                    : isBoldGenre
+                        ? (rng() < 0.4 ? 1 : 0)
+                        : template === 'DEEP-LAYER'
+                            ? rng() < 0.5 ? 1 : 0
+                            : template === 'INVERTED'
+                                ? 1 + Math.floor(rng() * 2)
+                                : 1 + Math.floor(rng() * 2); // quiet genres: 1-2 teasers
 
     const rungs = [
         { h: round002(Math.max(1.9, subH * 0.74)), weight: 700, color: PAPER, opacity: 0.95 },
@@ -1526,6 +1776,43 @@ export function composeSystemCover(opts: {
         cursorY += hhT;
     }
 
+    // §5.5 BOTTOM STRIP — when the main line is floor-parked, the teasers
+    // run as ONE horizontal row above the stack: shared baseline, shared
+    // rhythm, equal spacing (proximity + continuity + similarity — the
+    // Gestalt read of a print bottom strip).
+    // CRITICAL SPATIAL INVARIANT:
+    // A 3-teaser horizontal strip across the page is ONLY legal when the cluster is
+    // centered (not left/right column), symmetric twin columns are OFF, and the
+    // center corridor at stripY is calm (never cutting across the subject's torso/legs).
+    const centerCalmAtStrip = a ? (a.headroom > 0.45 || a.bottomSpace > 0.45) : true;
+    if (mainPos === 'bottom' && !banner && !horizontal && template !== 'VERTICAL' && activeCluster === 'center' && !symmetric && centerCalmAtStrip) {
+        const stripY = Math.max(0.36, featureY - hhF - 0.030);
+        const picks = teaserPool
+            .slice(0, 3)
+            .map((t) => fill(rng, t).replace(/\s+/g, ' ').trim().slice(0, 18))
+            .filter(Boolean);
+        const xs = picks.length >= 3 ? [0.24, 0.5, 0.76] : picks.length === 2 ? [0.32, 0.68] : [0.5];
+        picks.forEach((t, i) => {
+            text.push({
+                id: `box-teaser-strip-${i + 1}`,
+                text: t,
+                fontId: g.microFont.fontId,
+                weight: 700,
+                caseMode: 'uppercase',
+                fitToWidth: true,
+                widthPct: microWidthForLine(t.length, 1.7),
+                heightPct: 1.7,
+                letterSpacingEm: 0.12,
+                color: PAPER,
+                opacity: 0.9,
+                rotationDeg: 0,
+                depth: 'front',
+                xPct: xs[i] ?? 0.5,
+                yPct: stripY,
+            });
+        });
+    }
+
     // SYMMETRIC split (§5.3): two teasers colonise the OPPOSITE calm column
     // at mid-height while the feature cluster keeps its own side — the
     // twin rungs step size and voice exactly like the main stack.
@@ -1548,59 +1835,126 @@ export function composeSystemCover(opts: {
                 rotationDeg: 0,
                 depth: 'front',
                 xPct: oppX,
-                yPct: 0.42 + i * (symH / 100 + 0.017),
+                yPct: 0.38 + i * (symH / 100 + 0.024),
             });
         }
     }
 
+    // -- 5 · SCAN — real EAN-13 barcode or scannable QR (folio band) ---------
+    // Rule 13: the scan sits in the corner OPPOSITE the main text mass —
+    // small (~3–5% of width, quiet corner).
+    const scanCornerOverride = dir?.scanCorner === 'left' ? 0.18 : dir?.scanCorner === 'right' ? 0.82 : null;
+    const scanX = scanCornerOverride ?? (activeCluster === 'left' ? 0.82 : activeCluster === 'right' ? 0.18 : 0.82);
+    const oppScanSide = scanX < 0.5 ? 'right' : 'left';
+    const useQr = g.preferQr && rng() < 0.45;
+    const scanY = template === 'INVERTED' ? (useQr ? 0.79 : 0.82) : (useQr ? 0.885 : 0.915);
+
     // -- 4 · BADGE (pill label — a single voice, one spot) ---------------------
     // The AI's badgeSpot outranks the default: 'top' = the zine pill in
-    // the very top band (below the dateline when one lives there);
-    // 'cluster' = riding the feature stack (the natgeo ribbon above the
-    // story); 'corner' = opposite the text mass. INVERTED always keeps it
-    // top-centre — the masthead owns the floor.
+    // the top band (never colliding with masthead);
+    // 'cluster' = riding the feature stack in the calm flank (never on the
+    // subject or statement plate); 'corner' = quiet folio counterweight
+    // opposite the barcode. INVERTED keeps it top-centre where the masthead
+    // owns the floor.
     if (template === 'INVERTED' || rng() < 0.55 || dir?.badgeSpot) {
-        const spot: 'top' | 'cluster' | 'corner' =
-            template === 'INVERTED' ? 'top' : dir?.badgeSpot ?? (isBoldGenre ? 'top' : 'corner');
-        const featureTop = featureY - (isStatement ? plateFH / 2 : banner ? bannerH / 2 : hhF);
-        const badgeY = spot === 'cluster'
-            ? Math.max(0.1, featureTop - 0.029)
-            // 'top' with a dateline in the strip sits just below it; with a
-            // spine rail instead, the pill owns 0.08 (the zine position).
-            : spot === 'top' ? (useRail ? 0.08 : 0.105) : 0.08;
-        const badgeX = spot === 'top'
-            ? 0.5
-            : spot === 'cluster'
-                ? clusterX
-                : (clusterX < 0.5 ? 0.74 + rng() * 0.04 : 0.24 + rng() * 0.04);
+        let spot: 'top' | 'cluster' | 'corner' =
+            template === 'INVERTED'
+                ? 'top'
+                : dir?.badgeSpot ?? (dir ? variantBadge : isBoldGenre ? 'top' : 'corner');
+
+        // SUBJECT & STATEMENT PROTECTION:
+        // A badge must NEVER sit directly in front of the subject's torso or face,
+        // nor stack atop a statement plate / full banner (which creates amateur rectangle sandwiching).
+        // If the cluster is centered or sits over the body, reroute cluster badges to a quiet folio corner.
+        if (spot === 'cluster' && (isStatement || banner || mainPos === 'over-body' || activeCluster === 'center')) {
+            spot = 'corner';
+        }
+
+        // Determine badge text and dynamic dimensions based on character count:
+        const rawBadge = (content.badge?.trim() || fill(rng, pickFrom(rng, g.badges))).toUpperCase().slice(0, 36);
+        const badgeLabel = rawBadge;
+        const charCount = badgeLabel.length;
+        // At standard ~1.4% cap height, monospace Space Mono is ~0.92% width per glyph + ~4.5% horizontal pill padding.
+        const idealWPct = Math.round(charCount * 0.92 + 4.5);
+        // Keep badge crisp, chic, and bounded — max 44% width so it never becomes a giant slab across the page.
+        const badgeWPct = Math.min(44, Math.max(18, idealWPct));
+        const badgeHPct = 3.6;
+
+        let badgeX = 0.5;
+        let badgeY = 0.08;
+
+        if (spot === 'cluster') {
+            // Riding the calm side column above the feature headline
+            badgeX = clusterX;
+            const featureTop = featureY - hhF;
+            badgeY = Math.max(0.14, featureTop - 0.038);
+            // If headroom was measured and badgeY collides with the face zone, push to folio corner
+            if (a && badgeY < faceFloorY && badgeY > Math.max(0.08, 1 - a.headroom - 0.05)) {
+                spot = 'corner';
+            }
+        }
+
+        if (spot === 'corner') {
+            // Classic newsstand folio counterweight: sits in the bottom corner OPPOSITE the scan
+            badgeX = oppScanSide === 'left' ? 0.18 : 0.82;
+            badgeY = template === 'INVERTED' ? 0.82 : (teaserCount >= 2 && mainPos === 'bottom' ? 0.885 : 0.915);
+        } else if (spot === 'top') {
+            if (template === 'INVERTED') {
+                // Masthead is at the bottom — top band is wide open
+                badgeX = 0.5;
+                badgeY = useRail ? 0.065 : 0.095;
+            } else if (mhY >= 0.18) {
+                // DEEP-LAYER or SIDE-STRIP — masthead top starts at mhY - 0.08 >= 0.10
+                if (useRail) {
+                    badgeX = 0.5;
+                    badgeY = 0.065;
+                } else {
+                    // Dateline sits at 0.055; badge sits in top corner opposite dateline/scan
+                    badgeX = oppScanSide === 'left' ? 0.18 : 0.82;
+                    badgeY = 0.055;
+                }
+            } else {
+                // TOP-MASTHEAD (masthead at 0.11 spans y: 0.03-0.19 across center).
+                // A centered badge at 0.105 collides with the masthead!
+                // Place as a top-corner folio chip if dateline leaves room, else bottom corner.
+                if (!useRail && scanX >= 0.5) {
+                    badgeX = 0.18;
+                    badgeY = 0.055;
+                } else if (!useRail && scanX < 0.5) {
+                    badgeX = 0.82;
+                    badgeY = 0.055;
+                } else {
+                    // Fall back to bottom folio counterweight
+                    badgeX = oppScanSide === 'left' ? 0.18 : 0.82;
+                    badgeY = 0.915;
+                }
+            }
+        }
+
+        // Clamp badgeX so it respects safe magazine frame margins (3.5% padding)
+        const safeMarginPct = badgeWPct / 200 + 0.035;
+        badgeX = Math.min(0.965 - badgeWPct / 200, Math.max(safeMarginPct, badgeX));
+
+        const cornerPct = (style === 'noir' || style === 'architectural' || isBoldGenre) ? 0 : 50;
+
         shapes.push({
             id: nid('badge'),
             kind: 'badge',
             xPct: badgeX,
             yPct: badgeY,
-            wPct: isBoldGenre ? 38 + Math.round(rng() * 10) : 30 + Math.round(rng() * 8),
-            hPct: 3.4,
+            wPct: badgeWPct,
+            hPct: badgeHPct,
             fillColor: PAPER,
             fillOn: true,
             strokeColor: INK,
             strokeW: 0,
-            cornerPct: 0,
+            cornerPct,
             rotationDeg: 0,
             opacity: 1,
             depth: 'front',
-            label: (content.badge?.trim() || fill(rng, pickFrom(rng, g.badges))).toUpperCase().slice(0, 34),
+            label: badgeLabel,
         });
     }
-
-    // -- 5 · SCAN — real EAN-13 barcode or scannable QR (folio band) ---------
-    // Rule 13: the scan sits in the corner OPPOSITE the main text mass —
-    // the AI's scanCorner pick outranks the genre default. A centered
-    // mass (bottom-strip covers) falls back to the genre corner. INVERTED
-    // lifts it above the bottom masthead.
-    const clusterSide: 'left' | 'right' = dir?.scanCorner ?? (clusterX < 0.45 ? 'left' : clusterX > 0.55 ? 'right' : g.scanCorner);
-    const scanX = clusterSide === 'left' ? 0.79 : 0.21;
-    const useQr = g.preferQr && rng() < 0.45;
-    const scanY = template === 'INVERTED' ? (useQr ? 0.79 : 0.82) : (useQr ? 0.885 : 0.915);
     if (useQr) {
         shapes.push({
             id: nid('qr'),
@@ -1640,7 +1994,63 @@ export function composeSystemCover(opts: {
     }
 
     // -- 6 · FRAME — turns the cover into a document ---------------------------
-    if (g.frame) {
+    // §10 — the special-issue frame is punctuation, never a default: the
+    // AI must explicitly ask for 'border', and the brand/genre accent
+    // outranks plain ink. Archetype frames (TIME red / NatGeo yellow)
+    // keep their own authority below.
+    if (dir?.special === 'border' && archId !== 'time-frame' && archId !== 'natgeo-frame') {
+        shapes.push({
+            id: nid('frame-special'),
+            kind: 'frame',
+            xPct: 0.5,
+            yPct: 0.5,
+            wPct: 92,
+            hPct: 94,
+            fillColor: accentHex || INK,
+            fillOn: false,
+            strokeColor: accentHex || INK,
+            strokeW: 2.5,
+            cornerPct: 0,
+            rotationDeg: 0,
+            opacity: 1,
+            depth: 'front',
+        });
+    }
+    if (archId === 'time-frame') {
+        shapes.push({
+            id: nid('frame-time'),
+            kind: 'frame',
+            xPct: 0.5,
+            yPct: 0.5,
+            wPct: 92,
+            hPct: 94,
+            fillColor: '#E10600',
+            fillOn: false,
+            strokeColor: '#E10600',
+            strokeW: 3.5,
+            cornerPct: 0,
+            rotationDeg: 0,
+            opacity: 1,
+            depth: 'front',
+        });
+    } else if (archId === 'natgeo-frame') {
+        shapes.push({
+            id: nid('frame-natgeo'),
+            kind: 'frame',
+            xPct: 0.5,
+            yPct: 0.5,
+            wPct: 92,
+            hPct: 94,
+            fillColor: '#FFCC00',
+            fillOn: false,
+            strokeColor: '#FFCC00',
+            strokeW: 3,
+            cornerPct: 0,
+            rotationDeg: 0,
+            opacity: 1,
+            depth: 'front',
+        });
+    } else if (g.frame) {
         shapes.push({
             id: nid('frame'),
             kind: 'frame',
@@ -1660,8 +2070,15 @@ export function composeSystemCover(opts: {
     }
 
     // -- 7 · PHOTO TREATMENT — dim lifts as the photo brightens ----------------
+    // The brief's energy biases the finishing: loud = deeper dim and
+    // punchier grain (the newsstand read); quiet = air (the monograph
+    // read). Clamped to the print-legal band either way.
     let bgDim = g.bgDim[0] + rng() * (g.bgDim[1] - g.bgDim[0]);
+    if (dirEnergy === 'loud') bgDim += 0.04;
+    else if (dirEnergy === 'quiet') bgDim -= 0.04;
     if (photoLight) bgDim = Math.min(0.34, bgDim + 0.08);
+    bgDim = Math.max(0.04, Math.min(0.4, bgDim));
+    const grainOpacity = Math.round(Math.min(0.45, g.grain[0] * (dirEnergy === 'loud' ? 1.3 : dirEnergy === 'quiet' ? 0.75 : 1)) * 1000) / 1000;
 
     const tags: string[] = [template];
     if (banner) tags.push('BANNER');
@@ -1671,14 +2088,23 @@ export function composeSystemCover(opts: {
     return {
         theme: `${g.label} · ${tags.join(' · ')}`,
         style,
-        archetype: tags.join(' · '),
+        // Machine tags — the §12.5 glass-pipeline trace reads these to show
+        // WHICH realization of the direction was rolled this click.
+        archetype: [
+            ...tags,
+            `BAND-${variantBand}`,
+            dirScale ? `SCALE-${dirScale}` : '',
+            dir ? `ENERGY-${dirEnergy}` : '',
+        ]
+            .filter(Boolean)
+            .join(' · '),
         text,
         shapes,
         photo: {
             bgDim: Math.round(bgDim * 1000) / 1000,
             dimWholePhoto: g.dimWhole,
-            photoFilter: g.filter,
-            grain: { enabled: true, opacity: g.grain[0], size: g.grain[1] },
+            photoFilter: dirPalette === 'mono' ? (photoLight ? 'mono' : 'noir') : dirPalette === 'duotone' ? 'vintage' : g.filter,
+            grain: { enabled: true, opacity: grainOpacity, size: g.grain[1] },
         },
     };
 }

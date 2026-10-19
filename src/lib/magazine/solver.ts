@@ -71,7 +71,7 @@
 // every placement is an optimum.
 // ---------------------------------------------------------------------------
 
-import type { ComposedCover, PhotoAnalysis, SystemShapeSpec, SystemStyleId, SystemTextSpec } from './cover-system';
+import { matchGenreToStyle, type ComposedCover, type PhotoAnalysis, type SystemShapeSpec, type SystemStyleId, type SystemTextSpec } from './cover-system';
 
 // ===========================================================================
 import { mulberry32, clamp, clamp01, overlapRatio, opticalSnap, quadrantOf, rectCx, contrastRatio, INK_LUM, PAPER_LUM } from './units';
@@ -124,9 +124,10 @@ export function solveEditorialCover(
 ): SolverResult {
     const seed = (opts.seed ?? Math.floor(Math.random() * 0xffffffff)) >>> 0;
     const rng = mulberry32(seed);
+    const semStyle = matchGenreToStyle(semantics?.genre);
     const style: SolverStyleToken =
         opts.style ??
-        (semantics?.genre && (KNOWN_STYLES as string[]).includes(semantics.genre) ? (semantics.genre as SystemStyleId) : gridVibe(g));
+        (semStyle ? (semStyle as SystemStyleId) : (semantics?.genre && (KNOWN_STYLES as string[]).includes(semantics.genre) ? (semantics.genre as SystemStyleId) : gridVibe(g)));
     const signature = resolveSignature(style);
     // §6.5 — the brand system + the photograph's composition plan. The
     // AI may hint an archetype (its route is trained on the anatomy);

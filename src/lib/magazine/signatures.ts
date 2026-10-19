@@ -109,13 +109,10 @@ const SIGNATURES: Partial<Record<SystemStyleId, StyleSignature>> = {
     zine: {},
     kinfolk: { frame: { color: '#F7F6F0', strokeW: 1.5, inset: 0.04 } },
     noir: {},
-    gq: { accent: { color: '#D4AF37', xPct: 0.24, yPct: 0.5, wPct: 12, hPct: 8 } },
+    gq: {},
     dazed: {},
     natgeo: { frame: { color: '#D4AF37', strokeW: 1.5, inset: 0.05 } },
-    cyber: {
-        accent: { color: '#00FF88', xPct: 0.08, yPct: 0.16, wPct: 8, hPct: 3 },
-        crosshairs: { positions: [[0.08, 0.08], [0.92, 0.92]], sizePct: 3 },
-    },
+    cyber: {},
     vinyl: {},
     architectural: { frame: { color: '#FFFFFF', strokeW: 2, inset: 0.05 } },
 };

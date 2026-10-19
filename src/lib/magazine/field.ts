@@ -293,6 +293,16 @@ export function gridToPhotoAnalysis(g: GridAnalysis): PhotoAnalysis {
     };
     const core = g.subjectCore ?? g.subjectBox;
     const cx = core ? rectCx(core) : 0.5;
+    // §7 POSE — the subject box's aspect is the evidence: a body wider
+    // than tall (ratio >= 1.25) is reclining/lying. That rotates the calm
+    // grammar 90°: the bands own the typography, the columns belong to
+    // the body. Measured, never guessed — the AI is TOLD, the composer
+    // enforces, the laws verify.
+    const sb = g.subjectBox;
+    const subjectW = sb ? Math.round((sb.x1 - sb.x0) * 100) / 100 : undefined;
+    const subjectH = sb ? Math.round((sb.y1 - sb.y0) * 100) / 100 : undefined;
+    const pose: PhotoAnalysis['pose'] =
+        subjectW && subjectH && subjectH > 0 && subjectW / subjectH >= 1.25 ? 'horizontal' : 'upright';
     return {
         headroom: bandCalm(0, 0, 1, 0.18),
         leftSpace: bandCalm(0, 0.18, 0.24, 0.72),
@@ -302,6 +312,9 @@ export function gridToPhotoAnalysis(g: GridAnalysis): PhotoAnalysis {
         subjectX: cx < 0.42 ? 'left' : cx > 0.58 ? 'right' : 'center',
         hue: Math.round(g.hue),
         sat: Math.round(g.satAvg * 100) / 100,
+        pose,
+        subjectW,
+        subjectH,
     } as PhotoAnalysis;
 }
 
