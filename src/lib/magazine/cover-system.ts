@@ -34,6 +34,8 @@
 // contrast order plate > banner > badge > dim > filter > grain (never
 // shadow), premium readability floors on every face.
 import { ARCHETYPE_OF_STYLE } from './archetypes';
+import type { PhotoSwatches } from './swatches';
+import type { PhotoFilterId } from './types';
 
 export type SystemStyleId =
     | 'vogue'
@@ -131,7 +133,7 @@ export interface ComposedCover {
     photo: {
         bgDim: number;
         dimWholePhoto: boolean;
-        photoFilter: 'none' | 'mono' | 'vintage' | 'noir';
+        photoFilter: PhotoFilterId;
         grain: { enabled: boolean; opacity: number; size: number };
     };
 }
@@ -170,6 +172,8 @@ export interface PhotoAnalysis {
     /** Subject box size as canvas fractions (w, h) — the pose evidence. */
     subjectW?: number;
     subjectH?: number;
+    /** Exact normalized bounding box of the cutout / subject mass. */
+    subjectBox?: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
 /** Average RGB → hue (0-360°) + saturation (0-1) — the photo's colour mood. */
@@ -309,7 +313,7 @@ interface GenreConfig {
     grain: [number, number];
     bgDim: [number, number];
     dimWhole: boolean;
-    filter: 'none' | 'mono' | 'vintage' | 'noir';
+    filter: PhotoFilterId;
     kickerItalic?: boolean;
 }
 
@@ -370,8 +374,8 @@ const GENRES: Record<SystemStyleId, GenreConfig> = {
         features: ['SPECIAL PRINT ARCHIVE — {p} / 500 COPIES', 'DOCUMENTS FROM THE STREET'],
         subs: ['NO ADS — NO MASTERS — NO RETOUCHING', 'RISO-PRINTED IN TWO COLOURS'],
         teasers: ['PLUS — A FOLD-OUT POSTER', 'FIELD NOTES FROM THE STREET', 'RISO WORKSHOP SPECIAL', 'READERS PHOTOS — PAGE 42', 'NO ADS. EVER.'],
-        railTexts: ['INDEPENDENT PRINT // TOKYO — LONDON — SEOUL', 'PRINTED MATTER — COLLECTORS EDITION'],
-        badges: ['ARCHIVE 04 // TOKYO', 'HAND-NUMBERED EDITION'],
+        railTexts: ['INDEPENDENT PRINT — ARCHIVE SERIES', 'PRINTED MATTER — COLLECTORS EDITION'],
+        badges: ['SPECIAL ARCHIVE', 'HAND-NUMBERED EDITION'],
         rail: 'left',
         scanCorner: 'left',
         preferQr: true,
@@ -562,7 +566,7 @@ const GENRES: Record<SystemStyleId, GenreConfig> = {
         microFont: { fontId: 'space-mono', weight: 700 },
         voiceFont: { fontId: 'inter', weight: 800 },
         mastheads: ['FRAGMENTS', 'ARCHIVE', 'PASSAGE', 'ELEMENT', 'MONOLITH'],
-        dateline: ['EDITORIAL POSTER  |  SERIES {n} — TOKYO / BERLIN', 'SWISS CHRONICLE  |  FOLIO {n}'],
+        dateline: ['EDITORIAL POSTER  |  SERIES {n} — ARCHIVAL MONOGRAPH', 'SWISS CHRONICLE  |  FOLIO {n}'],
         features: ['THE HUMAN ARCHIVE', 'ANATOMY OF MOVEMENT', 'CONCRETE MEMORY'],
         subs: ['a study in urban presence and fractured space', 'light, posture, and silent architecture'],
         teasers: ['01 / SPATIAL DYNAMICS', '02 / TEMPORAL TRACE', '03 / SYSTEM OVERVIEW'],
@@ -1090,6 +1094,11 @@ export function composeSystemCover(opts: {
     brand?: { primary: string; accent: string };
     /** Archetype hint (e.g. 'vogue-deep-layer', 'time-frame', etc.) */
     archetype?: string;
+    /** §16 — the photo palette (measured + AI-harmonized). When present,
+     *  the typography's ink and paper become the photograph's own deepest
+     *  shadow and lightest surface, and the accent chain gains the photo's
+     *  dominant saturated hue. */
+    swatches?: PhotoSwatches | null;
 }): ComposedCover {
     const seed = (opts.seed ?? Math.floor(Math.random() * 0xffffffff)) >>> 0;
     const rng = mulberry32(seed);
@@ -1098,7 +1107,15 @@ export function composeSystemCover(opts: {
     const style: SystemStyleId = matchGenreToStyle(rawStyle) ?? (rawStyle !== 'auto' && (AUTO_PICKS as readonly string[]).includes(rawStyle) ? (rawStyle as SystemStyleId) : (a ? vibePick(a) : pickFrom(rng, AUTO_PICKS)));
     const g = GENRES[style];
     const brandAccent = opts.brand?.accent?.trim() ?? '';
+    // §Brand — the PRIMARY is the structural tint (badge plate, frame
+    // stroke). It used to be a dead control: only the accent was ever
+    // consumed here, so the kit's primary input changed nothing.
+    const brandPrimary = opts.brand?.primary?.trim() ?? '';
     const photoLight = opts.photoLight ?? a?.photoLight ?? false;
+    // §16 — the photo palette. Measured upstream, harmonized against the
+    // AI's claims; absent for stock work (pure ink/paper, unchanged).
+    const sw = opts.swatches ?? null;
+    const photoAccent = sw?.accentPrimary || '';
     const content = opts.content ?? {};
     const dir = opts.direction ? sanitizeArtDirection(opts.direction, a) : null;
     const archId = opts.archetype || (style ? ARCHETYPE_OF_STYLE[style] : undefined);
@@ -1164,7 +1181,15 @@ export function composeSystemCover(opts: {
     else if (hasHeadroom) template = 'TOP-MASTHEAD';
     else if (sideCalm > 0.42) template = 'SIDE-STRIP';
     else template = 'DEEP-LAYER';
-    if (!dir && lib) template = lib.template;
+    if (!dir && lib) {
+        // VETO: Never let a blind layout library template force INVERTED or VERTICAL
+        // when the photo has ample calm headroom (>= 45%)!
+        if (hasHeadroom && (lib.template === 'INVERTED' || lib.template === 'VERTICAL')) {
+            template = 'TOP-MASTHEAD';
+        } else {
+            template = lib.template;
+        }
+    }
     // §7 POSE — a horizontal body has no calm side columns: the whitespace
     // strategy and the spine rail are vertical-pose moves. When the
     // subject reclines, the bands carry everything (unless the AI, who was
@@ -1179,8 +1204,13 @@ export function composeSystemCover(opts: {
     let stamp = 0;
     const nid = (p: string) => `sys-${p}-${stamp++}`;
 
-    const PAPER = '#FFFFFF';
-    const INK = '#000000';
+    // §16 THE PHOTO PALETTE — ink and paper are the photograph's own tones
+    // (deepest shadow / lightest surface) when swatches are on the table,
+    // so the type reads printed WITH the image, not stamped on it. The
+    // extractor guarantees paper ≥0.90 and ink ≤0.17 luminance, so every
+    // plating and polarity decision below keeps its contrast by construction.
+    const PAPER = sw?.paperNeutral || '#FFFFFF';
+    const INK = sw?.inkDark || '#000000';
     const plateFill = photoLight ? INK : PAPER;
     const plateInk = photoLight ? PAPER : INK;
 
@@ -1350,12 +1380,14 @@ export function composeSystemCover(opts: {
         heightPct: mhHeightPct,
         letterSpacingEm: dirScale === 'monumental' ? Math.min(0.2, g.mastheadFont.tracking + 0.015) : g.mastheadFont.tracking,
         // §9 tone — the AI's masthead ink, contrast-guarded: ink dies on a
-        // dark photo (paper takes over); accent falls back through the
-        // brand kit and the genre accent before paper.
+        // dark photo (paper takes over). With the brand kit ON the kit's
+        // accent OUTRANKS the AI's pick — a saved kit is law, not a
+        // suggestion — then the AI accent, photo accent and genre accent
+        // before paper.
         color: dirTone === 'ink'
             ? (photoLight ? INK : PAPER)
             : dirTone === 'accent'
-                ? (dirAccent || brandAccent || g.accent || PAPER)
+                ? (brandAccent || dirAccent || photoAccent || g.accent || PAPER)
                 : style === 'kinfolk' ? '#F7F6F0' : PAPER,
         strokeEm: mhDepth === 'behind' ? 0.015 : 0,
         strokeColor: INK,
@@ -1376,6 +1408,7 @@ export function composeSystemCover(opts: {
     else if (dir) useRail = variantMicro === 'rail' && !isBoldGenre && template !== 'VERTICAL';
     const railSide: 'left' | 'right' = g.rail !== 'none' && template !== 'SIDE-STRIP' ? g.rail : calmSide === 'left' ? 'right' : 'left';
 
+    let dateText = '';
     if (useRail) {
         const railText = content.rail?.trim() || fill(rng, pickFrom(rng, g.railTexts));
         text.push({
@@ -1388,7 +1421,10 @@ export function composeSystemCover(opts: {
             widthPct: microWidthForLine(railText.replace(/\s+/g, ' ').length, 2.3),
             heightPct: 2.4,
             letterSpacingEm: 0.14,
-            color: PAPER,
+            // The rail is the dateline's twin micro voice — with the brand
+            // kit ON it carries the accent (the dateline branch already
+            // does); without a kit it stays classic paper.
+            color: brandAccent || PAPER,
             opacity: 0.82,
             rotationDeg: railSide === 'left' ? -90 : 90,
             depth: 'front',
@@ -1396,7 +1432,7 @@ export function composeSystemCover(opts: {
             yPct: 0.44,
         });
     } else {
-        const dateText = content.dateline?.trim() || fill(rng, pickFrom(rng, g.dateline));
+        dateText = (content.dateline?.trim() || fill(rng, pickFrom(rng, g.dateline))).toUpperCase();
         const dateY = (template === 'TOP-MASTHEAD' && mhY <= 0.16)
             ? round002(mhY + (mhHeightPct / 200) + 0.022)
             : mhY >= 0.18
@@ -1427,8 +1463,6 @@ export function composeSystemCover(opts: {
     let banner = dir?.treatment === 'banner' || (lib?.variant === 'banner');
     let isStatement = dir?.treatment === 'statement' || (lib?.variant === 'statement');
     let symmetric = dir?.treatment === 'symmetric' || (lib?.variant === 'symmetric') || (dir?.cluster === 'split');
-    // Treatment strip and editorial explicitly DEMAND unplated clean type.
-    // Never let mainLinePos or band rolls force statement plates over clean type.
     if (dir?.treatment === 'strip' || dir?.treatment === 'editorial') {
         isStatement = false;
     } else if (dir?.mainLinePos === 'over-body') {
@@ -1437,12 +1471,15 @@ export function composeSystemCover(opts: {
         isStatement = true;
     }
     if (banner) variantBand = 'floor';
-    // §8 OVERLAY FALLBACK — a full-bleed dense photo (no calm quadrant)
-    // cannot host unplated type; the only legal crossing is an opaque
-    // statement plate. Deterministic math — no AI round trip needed.
-    if (a && !dir && !banner && !isStatement) {
-        const maxCalm = Math.max(a.leftSpace, a.rightSpace, a.bottomSpace);
-        if (maxCalm < 0.34 && a.headroom < 0.38) isStatement = true;
+
+    // SUBJECT SANCTITY:
+    // Never allow a blind layout library template or arbitrary roll to force an opaque statement plate
+    // or banner over the cutout subject.
+    // If negative space is available (calm side >= 35% or headroom >= 40%), pure unplated 'editorial'
+    // typography is enforced by doctrine.
+    if (!dir && (sideCalm >= 0.35 || hasHeadroom)) {
+        isStatement = false;
+        banner = false;
     }
 
     const featureText = content.feature?.trim() || fill(rng, pickFrom(rng, g.features));
@@ -1457,8 +1494,13 @@ export function composeSystemCover(opts: {
         activeCluster = dir.cluster;
     } else if (archId === 'bazaar-soft') {
         activeCluster = 'right';
-    } else if (archId === 'bottom-strip' || template === 'INVERTED') {
+    } else if (archId === 'bottom-strip') {
         activeCluster = 'center';
+    } else if (a && (a.rightSpace >= 0.38 || a.leftSpace >= 0.38)) {
+        // When one flank is calm, always choose the calm flank over centering on the subject!
+        activeCluster = a.rightSpace >= a.leftSpace ? 'right' : 'left';
+    } else if (template === 'INVERTED') {
+        activeCluster = calmSide === 'left' ? 'left' : 'right';
     } else {
         activeCluster = calmSide === 'left' ? 'left' : 'right';
     }
@@ -1617,6 +1659,12 @@ export function composeSystemCover(opts: {
         const plateSW = Math.min(maxSidePlateW, Math.max(24, Math.round((textWS + 2 * Math.max(0.025, textWS * 0.10)) * 100)));
         plateFX = Math.min(0.98 - plateFW / 200, Math.max(0.02 + plateFW / 200, clusterX));
         plateSX = Math.min(0.98 - plateSW / 200, Math.max(0.02 + plateSW / 200, clusterX));
+        // SUBJECT SANCTITY RULE:
+        // A statement plate or banner must NEVER cover the cutout subject with depth: 'front'.
+        // If a subject is present (a or a.subjectBox), any plate crossing the subject must have
+        // depth: 'behind' so the cutout subject remains 100% visible in the foreground,
+        // or be suppressed into clean unplated typography.
+        const plateDepth: 'front' | 'behind' = (a?.subjectBox || a) ? 'behind' : 'front';
         shapes.push({
             id: nid('plate-feature'),
             kind: 'rect',
@@ -1631,7 +1679,7 @@ export function composeSystemCover(opts: {
             cornerPct: 0,
             rotationDeg: 0,
             opacity: 0.97,
-            depth: 'front',
+            depth: plateDepth,
         });
         shapes.push({
             id: nid('plate-sub'),
@@ -1647,7 +1695,7 @@ export function composeSystemCover(opts: {
             cornerPct: 0,
             rotationDeg: 0,
             opacity: 0.97,
-            depth: 'front',
+            depth: plateDepth,
         });
     }
 
@@ -1665,7 +1713,7 @@ export function composeSystemCover(opts: {
     // unplated feature line wears the brand/genre accent); 'editorial' =
     // the genre's own judgement. Photo treatment follows in §7.
     const dirPalette = dir?.palette ?? 'editorial';
-    const accentHex = brandAccent || dirAccent || g.accent || '';
+    const accentHex = brandAccent || dirAccent || photoAccent || g.accent || '';
     const featureAccent = dirPalette === 'accent' && !!accentHex && !isStatement && !banner;
 
     text.push({
@@ -1843,20 +1891,29 @@ export function composeSystemCover(opts: {
     // -- 5 · SCAN — real EAN-13 barcode or scannable QR (folio band) ---------
     // Rule 13: the scan sits in the corner OPPOSITE the main text mass —
     // small (~3–5% of width, quiet corner).
+    const mastheadInBottom = template === 'INVERTED' || mhY >= 0.65;
     const scanCornerOverride = dir?.scanCorner === 'left' ? 0.18 : dir?.scanCorner === 'right' ? 0.82 : null;
     const scanX = scanCornerOverride ?? (activeCluster === 'left' ? 0.82 : activeCluster === 'right' ? 0.18 : 0.82);
     const oppScanSide = scanX < 0.5 ? 'right' : 'left';
     const useQr = g.preferQr && rng() < 0.45;
-    const scanY = template === 'INVERTED' ? (useQr ? 0.79 : 0.82) : (useQr ? 0.885 : 0.915);
+    // When masthead is in bottom half (e.g. INVERTED), barcode MUST sit safely in the top corner (scanY = 0.065),
+    // never stamped over bottom masthead letters!
+    const scanY = mastheadInBottom ? 0.065 : (useQr ? 0.885 : 0.915);
 
     // -- 4 · BADGE (pill label — a single voice, one spot) ---------------------
     // The AI's badgeSpot outranks the default: 'top' = the zine pill in
-    // the top band (never colliding with masthead);
-    // 'cluster' = riding the feature stack in the calm flank (never on the
-    // subject or statement plate); 'corner' = quiet folio counterweight
-    // opposite the barcode. INVERTED keeps it top-centre where the masthead
-    // owns the floor.
-    if (template === 'INVERTED' || rng() < 0.55 || dir?.badgeSpot) {
+    // RULE #1: The less clutter, the more premium. High-end covers breathe.
+    // Badges must NEVER be forced by default. Clutter destroys luxury.
+    // Only generate a badge if:
+    // 1. Explicitly requested by user content (content.badge?.trim())
+    // 2. Explicitly directed by AI (dir?.badgeSpot)
+    // 3. For gritty indie zine / brutalist genres where physical stickers are stylistic, at low frequency (~20%)
+    const wantsBadge = Boolean(
+        content.badge?.trim() ||
+        dir?.badgeSpot ||
+        ((style === 'zine') && rng() < 0.20)
+    );
+    if (wantsBadge) {
         let spot: 'top' | 'cluster' | 'corner' =
             template === 'INVERTED'
                 ? 'top'
@@ -1871,7 +1928,26 @@ export function composeSystemCover(opts: {
         }
 
         // Determine badge text and dynamic dimensions based on character count:
-        const rawBadge = (content.badge?.trim() || fill(rng, pickFrom(rng, g.badges))).toUpperCase().slice(0, 36);
+        let rawBadge = (content.badge?.trim() || fill(rng, pickFrom(rng, g.badges))).toUpperCase().slice(0, 36);
+        // Token de-duplication: If badge duplicates words from dateline (e.g. "TOKYO", "ISSUE 04"), swap to editorial badge
+        const dateTokens = (dateText || '').split(/[\s•·—–\/\-]+/).map(s => s.trim().toUpperCase()).filter(s => s.length >= 3);
+        const hasDuplicateToken = dateTokens.some(token => rawBadge.includes(token));
+        if (hasDuplicateToken) {
+            const altBadges = [
+                'SPECIAL ARCHIVE',
+                'COLLECTOR PRINT',
+                'DEFINITIVE CUT',
+                'GLOBAL MONOGRAPH',
+                'SERIES 2026',
+                'LIMITED RUN',
+                'ARCHIVAL SELECTION',
+            ];
+            const safeBadges = altBadges.filter(b => {
+                const bWords = b.split(/[\s•·—–\/\-]+/).map(s => s.trim().toUpperCase());
+                return bWords.every(w => !dateTokens.includes(w));
+            });
+            rawBadge = pickFrom(rng, safeBadges.length > 0 ? safeBadges : altBadges);
+        }
         const badgeLabel = rawBadge;
         const charCount = badgeLabel.length;
         // At standard ~1.4% cap height, monospace Space Mono is ~0.92% width per glyph + ~4.5% horizontal pill padding.
@@ -1900,9 +1976,10 @@ export function composeSystemCover(opts: {
             badgeY = template === 'INVERTED' ? 0.82 : (teaserCount >= 2 && mainPos === 'bottom' ? 0.885 : 0.915);
         } else if (spot === 'top') {
             if (template === 'INVERTED') {
-                // Masthead is at the bottom — top band is wide open
-                badgeX = 0.5;
-                badgeY = useRail ? 0.065 : 0.095;
+                // Masthead is at bottom; dateline is top-center.
+                // Place badge in the corner opposite the scan so they never stack as twin centered labels!
+                badgeX = oppScanSide === 'left' ? 0.18 : 0.82;
+                badgeY = 0.065;
             } else if (mhY >= 0.18) {
                 // DEEP-LAYER or SIDE-STRIP — masthead top starts at mhY - 0.08 >= 0.10
                 if (useRail) {
@@ -1944,7 +2021,10 @@ export function composeSystemCover(opts: {
             yPct: badgeY,
             wPct: badgeWPct,
             hPct: badgeHPct,
-            fillColor: PAPER,
+            // §Brand — the kit's primary tints the badge plate (the
+            // renderer flips the label ink against the fill, so any
+            // primary stays legible).
+            fillColor: brandPrimary || PAPER,
             fillOn: true,
             strokeColor: INK,
             strokeW: 0,
@@ -2006,9 +2086,9 @@ export function composeSystemCover(opts: {
             yPct: 0.5,
             wPct: 92,
             hPct: 94,
-            fillColor: accentHex || INK,
+            fillColor: brandPrimary || accentHex || INK,
             fillOn: false,
-            strokeColor: accentHex || INK,
+            strokeColor: brandPrimary || accentHex || INK,
             strokeW: 2.5,
             cornerPct: 0,
             rotationDeg: 0,
@@ -2050,7 +2130,7 @@ export function composeSystemCover(opts: {
             opacity: 1,
             depth: 'front',
         });
-    } else if (g.frame) {
+    } else if (g.frame && dir?.special === 'border') {
         shapes.push({
             id: nid('frame'),
             kind: 'frame',
@@ -2058,9 +2138,9 @@ export function composeSystemCover(opts: {
             yPct: 0.5,
             wPct: 90,
             hPct: 93,
-            fillColor: g.frame.color,
+            fillColor: brandPrimary || g.frame.color,
             fillOn: false,
-            strokeColor: g.frame.color,
+            strokeColor: brandPrimary || g.frame.color,
             strokeW: g.frame.strokeW,
             cornerPct: 0,
             rotationDeg: 0,

@@ -203,14 +203,14 @@ export function solveEditorialCover(
                                 archetype.stack === 'both-sym' || archetype.stack === 'both-asym'
                                     ? 'both'
                                     : archetype.stack === 'top'
-                                      ? 'top'
-                                      : (archetype.stack as 'left' | 'right' | 'bottom');
+                                        ? 'top'
+                                        : (archetype.stack as 'left' | 'right' | 'bottom');
                             const go =
                                 want === 'both' || want === 'bottom' || want === 'top'
                                     ? want
                                     : plan.stackSide === 'both'
-                                      ? want
-                                      : plan.stackSide;
+                                        ? want
+                                        : plan.stackSide;
                             if (go === 'left' && z.cx < 0.44) c -= 0.9;
                             else if (go === 'right' && z.cx > 0.56) c -= 0.9;
                             else if (go === 'bottom' && z.cy > 0.62) c -= 0.9;
@@ -347,7 +347,12 @@ export function solveEditorialCover(
         // -- the cluster: feature / sub / teasers, distributed in-zone --------
         const clZ = zoneOf(2);
         if (clZ && cost[2][assign[2]] < INFEASIBLE) {
-            const statement = !!g.subjectBox && overlapRatio(clZ, g.subjectBox) > 0.35 && clZ.calm < 0.55;
+            // SUBJECT SANCTITY: Never put opaque front plates or big boxes over the cutout subject!
+            // If the cluster crosses the subject box, its depth is 'behind' (the classic sandwich),
+            // and plates are strictly disabled so the cutout subject remains 100% visible in the foreground.
+            const crossesSubject = !!g.subjectBox && overlapRatio(clZ, g.subjectBox) > 0.15;
+            const statement = false;
+            const clusterDepth: 'front' | 'behind' = crossesSubject ? 'behind' : 'front';
             const ladder = solveTypeLadder(style, clZ.h, statement, signature.typeScale);
             const stackX = opticalSnap(clamp(clZ.cx, 0.12, 0.88));
             const widthPct = Math.round(clamp(clZ.w * 100 * 0.92, 24, 60));
@@ -364,11 +369,11 @@ export function solveEditorialCover(
                 yPct: Math.round(opticalSnap(top) * 1000) / 1000,
                 widthPct,
                 rotationDeg: 0,
-                plate: statement,
-                depth: 'front',
+                plate: false,
+                depth: clusterDepth,
                 heightPct: ladder.feature,
                 zoneLum: zoneLumOf(clZ),
-                polarity: statement ? 'plate' : 'ink',
+                polarity: 'ink',
             };
             placements.push(featP);
 
@@ -380,11 +385,11 @@ export function solveEditorialCover(
                 yPct: Math.round(opticalSnap(subY) * 1000) / 1000,
                 widthPct: Math.max(20, widthPct - 4),
                 rotationDeg: 0,
-                plate: statement,
-                depth: 'front',
+                plate: false,
+                depth: clusterDepth,
                 heightPct: ladder.sub,
                 zoneLum: zoneLumOf(clZ),
-                polarity: statement ? 'plate' : 'ink',
+                polarity: 'ink',
             };
             placements.push(subP);
 
@@ -397,16 +402,15 @@ export function solveEditorialCover(
                 widthPct: Math.max(18, widthPct - 8),
                 rotationDeg: 0,
                 plate: false,
-                depth: 'front',
+                depth: clusterDepth,
                 heightPct: ladder.teaser,
                 zoneLum: zoneLumOf(clZ),
                 polarity: 'ink',
             });
 
             // Ink physics — bare ink needs contrast ≥ 3.2 against its zone;
-            // otherwise the rung demands a plate (the app's plating law
-            // re-cuts the rect; we only rule on necessity).
-            if (!statement) {
+            // only plate if NOT crossing the subject in front (front plates over subjects are forbidden).
+            if (!crossesSubject) {
                 const inkLum = g.light ? PAPER_LUM : INK_LUM;
                 if (contrastRatio(inkLum, zoneLumOf(clZ)) < 3.2) {
                     featP.plate = true;
@@ -492,13 +496,16 @@ export function solveEditorialCover(
         ladder: mat.ladder,
         alternates,
         ...(archetype ? { archetype: archetype.id, plan } : {}),
+        // §16 — the photo palette rides along for downstream consumers
+        // (solver plates, pipeline trace) even though geometry owns this file.
+        ...(semantics?.swatches ? { swatches: semantics.swatches } : {}),
     };
 }
 
 // ===========================================================================
 
 // ── public API preserved: the page imports stay valid ──────────────
-export { analyzeGridFromCanvas, gridToPhotoAnalysis } from './field';
+export { analyzeGridFromCanvas, gridToPhotoAnalysis, getCutoutBoundingBox } from './field';
 export type { GridAnalysis } from './field';
 export { applySolverToCover } from './skeleton';
 export { formatSolverReport } from './laws';

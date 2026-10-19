@@ -118,7 +118,7 @@ VALID FONT IDS (no others exist — a wrong id silently breaks the render):
 
 VALID SHAPE KINDS — this is your plating kit:
 - { "kind": "rect", ... } — a SOLID PLATE. fillColor is the plate fill; strokeW 0-30 adds a border; cornerPct 0-50 rounds corners (0 = sharp print corners).
-- { "kind": "badge", "fillColor": "#FFFFFF", "strokeColor": "#000000", "wPct": 30, "hPct": 3.5, "label": "ISSUE 04 • TOKYO" } — a SELF-CONTAINED text strip: fillColor is the plate, strokeColor is the LABEL text colour, label is auto-UPPERCASED Space Mono (max 36 chars).
+- { "kind": "badge", "fillColor": "#FFFFFF", "strokeColor": "#000000", "wPct": 30, "hPct": 3.5, "label": "SPECIAL ARCHIVE" } — a SELF-CONTAINED text strip: fillColor is the plate, strokeColor is the LABEL text colour, label is auto-UPPERCASED Space Mono (max 36 chars). Use ONLY when explicitly needed; luxury covers prefer unplated calm space.
 - { "kind": "barcode", "xPct": 0.84, "yPct": 0.94, "wPct": 18-22, "hPct": 5-6.5, "fillColor": "#FFFFFF", "strokeColor": "#000000", "label": "9-13 DIGITS, e.g. 4901234567890" } — a REAL EAN-13 barcode: the label's digits drive the bar pattern (check digit computed, guard bars extended, digits auto-spaced underneath). Digits that cannot fit are hidden, never squashed.
 - { "kind": "qr", "xPct": 0.82-0.86, "yPct": 0.86-0.91, "wPct": 10-16, "hPct": 10-16 (keep wPct == hPct — it renders square), "fillColor": "#FFFFFF", "strokeColor": "#000000", "label": "https://the-link-to-encode" } — a REAL scannable QR code encoding the label (a URL or short text). Use sparingly, for "scan for more" moments.
 - { "kind": "frame", "xPct": 0.5, "yPct": 0.5, "wPct": 90, "hPct": 93, "fillOn": false, "strokeColor": "#FFFFFF", "strokeW": 2 } — full-bleed border.
@@ -135,7 +135,7 @@ PREMIUM READABILITY LAW (applies to EVERY element you place):
 
 LEGIBILITY & EDITORIAL INTEGRITY — THE #1 RULE:
 A. Negative Space Colonization: Place typography inside calm quadrants (headroom, calm flank columns, or calm bottom band). Ensure high contrast: crisp #FFFFFF text on dark areas, #000000 on light areas.
-B. High-end editorial covers (Vogue, GQ, TIME, Dazed, Harper's Bazaar) rely on pure, unplated typography in negative space, NEVER amateur stacked colored rectangles (no clunky yellow/black slabs across the body). Solid shapes are reserved for: sleek pill badges (kind: "badge", e.g. "ISSUE 04 • TOKYO"), full border frames (kind: "frame", e.g. TIME red border, NatGeo yellow border), or barcodes.
+B. High-end editorial covers (Vogue, GQ, TIME, Dazed, Harper's Bazaar) rely on pure, unplated typography in negative space, NEVER amateur stacked colored rectangles (no clunky yellow/black slabs across the body). The less clutter, the more premium. Solid shapes are reserved for: sleek pill badges (kind: "badge", e.g. "SPECIAL EDITION", only when truly needed), full border frames (kind: "frame", e.g. TIME red border, NatGeo yellow border), or barcodes. When in doubt, omit the badge and let the typography breathe.
 C. Group related copy by Gestalt Proximity: Kicker + Headline + Sub-deck form a single tight visual unit with consistent vertical alignment.
 D. NEVER use shadows: "shadow": false and "shadowMode": "none" on EVERY text element. Real print typography is crisp and sharp.
 
@@ -159,7 +159,7 @@ const STYLE_PLAYBOOKS: Record<Exclude<StyleId, 'auto'>, string> = {
 
     zine: `PLAYBOOK — INDIE ZINE / SWISS STREET (photocopy energy):
 - Masthead: 'archivo' or 'anton', weight 900, widthPct 84-92, letterSpacingEm -0.01 to 0.02, yPct 0.22-0.28. Optionally strokeEm 0.015 with strokeColor #000000 for a crisp keyline.
-- Top: a white BADGE (fillColor #FFFFFF, strokeColor #000000, wPct 30-38, hPct 3.5, cornerPct 0) with an archive stamp label like "ARCHIVE 04 // TOKYO".
+- Top: a white BADGE (fillColor #FFFFFF, strokeColor #000000, wPct 30-38, hPct 3.5, cornerPct 0) with an archive stamp label like "SPECIAL ARCHIVE // VOL. 04".
 - Coverline: 'inter' 700 white, bottom band yPct 0.83-0.86, edition copy ("SPECIAL PRINT ARCHIVE — 01 / 500 COPIES").
 - Shapes: badge top-center + barcode bottom-LEFT (xPct 0.16, yPct 0.94).
 - photoStyle: bgDim 0.18-0.24, dimWholePhoto TRUE, photoFilter "none", grain opacity 0.24-0.30 size 2 (distressed).`,
@@ -576,10 +576,11 @@ export async function POST(req: NextRequest) {
             ? `PHOTO ANALYSIS (measured from the canvas): headroom calm ${pct(pa.headroom)}%, left column ${pct(pa.leftSpace)}%, right column ${pct(pa.rightSpace)}%, bottom band ${pct(pa.bottomSpace)}%, subject sits ${pa.subjectX || 'center'}, photo reads ${pa.photoLight ? 'light' : 'dark'}.${pa.pose === 'horizontal' ? `
 SUBJECT POSE: HORIZONTAL — the subject lies/reclines across the frame. The calm zones are the TOP and BOTTOM bands; the side columns belong to the body. Cluster "center" with the stack in a band, mastheadDepth "front" over the calm band (or INVERTED) — NEVER a side-column stack. If the subject's HEAD rests at the left/right edge, the statement edition is mastheadRot "spine-left"/"spine-right" — the bold vertical masthead runs down that edge.` : ''}
 TEMPLATE DECISION TREE — the measured calm zones pick the composition:
-- calm headroom (>=50%) → masthead top-full yPct 0.16-0.20; depth "front" = the classic over-head masthead, depth "behind" = the sandwich. Coverlines stack in the calmer side column or the bottom band.
-- calm side column (>=42%) → put the masthead AND the coverline stack inside that strip (masthead xPct 0.27 left / 0.73 right, widthPct 46-54); barcode in the opposite bottom corner.
-- dense everywhere → masthead depth "behind" (the deep layer), coverlines as a centered bottom strip (yPct 0.80-0.86); if one bold line must cross the subject it is ONLY legal as an ink-on-paper STATEMENT plate.
-- the barcode/QR corner is OPPOSITE the main text mass.`
+- calm headroom (>=45%) → masthead top-full yPct 0.12-0.18; depth "front" = the classic over-head masthead, depth "behind" = the sandwich. Coverlines stack in the calmer side column or the bottom band. NEVER pick INVERTED when calm headroom >= 45%!
+- calm side column (>=38%) → put the coverline stack inside that strip (cluster "left" or "right" opposite the subject); barcode in the opposite corner.
+- CUTOUT SUBJECT SANCTITY: NEVER put opaque statement boxes or plates over the cut-out subject in front (depth "front"). Pure unplated editorial typography in negative space is the high-fashion standard.
+- BARCODE SANCTITY: barcode/QR corner sits OPPOSITE the main text mass. If masthead is at the bottom, barcode is in the TOP corner, NEVER stamped over masthead letters!
+- COPY DE-DUPLICATION: dateline and badge must NEVER repeat the same words or issue numbers. Badge must be a distinct editorial category (e.g. SPECIAL EDITION, ARCHIVE 2026, COLLECTOR ISSUE).`
             : 'PHOTO ANALYSIS: unavailable — infer the calm zones from the photo description and apply the same decision tree.';
 
         const columnStrategy = `COVERLINE COLUMN STRATEGY (apply after placing the feature coverline):
@@ -675,11 +676,16 @@ ${selectedStyleGuidance}
 
 Respond with strictly valid JSON only (no markdown fences, no commentary):
 {
-  "summary": "Rich 1-2 sentence visual description of the photo (subject, action, wardrobe, setting, lighting)",
-  "genre": "${style === 'auto' ? 'chosen_genre_from_list' : style}",
-  "mood": ["mood1", "mood2", "mood3"],
-  "subjectFocus": "concise description of the subject focal point",
-  "archetype": "one archetype id from the ARCHETYPES list",
+"summary": "Rich 1-2 sentence visual description of the photo (subject, action, wardrobe, setting, lighting)",
+"genre": "${style === 'auto' ? 'chosen_genre_from_list' : style}",
+"mood": ["mood1", "mood2", "mood3"],
+"subjectFocus": "concise description of the subject focal point",
+"archetype": "one archetype id from the ARCHETYPES list",
+"swatches": {
+"accentPrimary": "#RRGGBB — the single most dominant SATURATED colour you can see (a sneaker, scarf, jacket panel, neon sign, painted wall)",
+"paperNeutral": "#RRGGBB — the lightest neutral surface (concrete, sky, studio paper, worn white tee)",
+"inkDark": "#RRGGBB — the deepest shadow tone (jacket shadow, asphalt, charcoal backdrop)"
+},
   "direction": {
     "template": "TOP-MASTHEAD | SIDE-STRIP | DEEP-LAYER | VERTICAL | INVERTED",
     "cluster": "left | right | center | split",
@@ -704,16 +710,16 @@ Respond with strictly valid JSON only (no markdown fences, no commentary):
     "feature": "Loudest headline specific to this photo (max 44 chars)",
     "sub": "Sub-headline expanding the story (max 60 chars)",
     "teasers": ["teaser line 1", "teaser line 2", "teaser line 3"],
-    "badge": "Short uppercase pill text (e.g. ISSUE 04 // TOKYO, max 28 chars)",
+    "badge": "Optional uppercase pill text (omit or leave empty for clean luxury covers; max 28 chars)",
     "rail": "Spine metadata / photography credit / essay tagline (max 64 chars)"
   }
 }
 
 THE STRUCTURAL LAWBOOK (the 60-cover anatomy — obey it, never fight it):
 1. FIXED BRAND, VARIABLE COMPOSITION: the archetype pins the brand system (masthead position + family + tone + scan corner); the photograph's negative space picks the composition dropped into it. The brand never moves per issue — the composition does.
-2. NEGATIVE SPACE LOGIC: typography lives in the CALM zones the measurements point to. Subject right → cluster "left"; subject left → "right"; centered with open flanks → "split"; full-bleed dense → cluster "center" + treatment "statement" (opaque plate) — pure type never crosses a busy zone.
+2. NEGATIVE SPACE LOGIC: typography lives in the CALM zones the measurements point to. Subject right → cluster "left"; subject left → "right"; centered with open flanks → "split". CUTOUT SUBJECT SANCTITY: NEVER put opaque statement boxes or plates over the cut-out subject in front (depth "front"). Pure unplated typography in negative space is the gold standard.
 3. SANDWICH LEGIBILITY: mastheadDepth "behind" (the celebrity override) is legal ONLY when the masthead stays >=70% legible around the subject's head — the brain must reconstruct the wordmark. Calm headroom → "front" (the classic over-head band).
-4. MUTUAL COMPATIBILITY & FACE PROTECTION: "treatment" and "mainLinePos" must harmonize: treatment "strip" or "editorial" (clean, unplated typography) REQUIRES mainLinePos "bottom" or "below-chin" in a calm negative-space band. mainLinePos "over-body" is STRICTLY reserved for treatment "statement" (opaque contrast plates crossing the torso). NEVER emit treatment "strip" with mainLinePos "over-body". The face is an absolute NO-TEXT zone; nothing ever prints on the face.
+4. MUTUAL COMPATIBILITY & FACE PROTECTION: "treatment" and "mainLinePos" must harmonize: treatment "strip" or "editorial" (clean, unplated typography) in a calm negative-space band is always preferred. Never place opaque boxes or plates over the cutout subject in front. The face is an absolute NO-TEXT zone; nothing ever prints on the face.
 5. SYMMETRIC FLANKS: treatment "symmetric" is strictly legal ONLY if BOTH left column >=35% AND right column >=35% in the measured facts. If either flank is 0% or busy, "symmetric" is forbidden — pick "editorial" or "strip" in the calm zone.
 6. HIERARCHY RATIO — exaggerate, never polite: masthead 100 → feature 50-70 → teasers 25-35. Small differences read as mistakes. The masthead is the page's #1 size, always.
 7. GESTALT: proximity (kicker + feature + sub = ONE tight unit) · alignment (one axis per cluster) · similarity (siblings share voice) · continuity (the eye travels one path). Hierarchy steps ONE rung at a time.
@@ -750,12 +756,14 @@ THIS EDITION'S ASSIGNMENT (roll #${assignment.seed} — art-direct THIS issue; t
 4. Energy: ${assignment.energy}
 5. Wildcard: ${assignment.wildcard}
 
-CRITICAL PERCEPTION DIRECTIVE:
-Look at the attached image carefully. Extract subject specifics:
-- What is the subject wearing? (Colors, materials, streetwear, tailoring, sportswear)
+CRITICAL PERCEPTION DIRECTIVE (the photo is transmitted at high resolution — read it like film, not like a thumbnail):
+Look at the attached image with extraordinary material sensitivity. Extract subject specifics:
+- What is the subject wearing? (Colors, materials, streetwear, tailoring, sportswear — name the FABRIC where visible: corduroy, silk, raw denim, leather, embroidery, knit gauge, sheen vs matte)
+- Micro-details: wristwatch, jewelry, eyewear, sneaker colorway, bag hardware, buttons, stitching — the small true things that make copy specific
+- Gaze direction and expression: where do the eyes point, what does the mouth hold back?
 - What is the subject doing? (Action, stillness, motion, expression, gesture)
-- What is the setting and light? (Urban asphalt, concrete architecture, studio shadows, warm kitchen, golden hour)
-- What single accent color (#RRGGBB) can you pick directly from the photo (e.g. sneakers, jacket, neon sign, backdrop)?
+- What is the setting and light? (Urban asphalt, concrete architecture, studio shadows, warm kitchen, golden hour — and WHERE does the key light come from?)
+- "swatches" — sample THREE exact hex codes directly from the pixels: accentPrimary (the strongest saturated hue), paperNeutral (the lightest neutral surface), inkDark (the deepest shadow). Sampled, never invented — the app re-measures them from the pixels and discards a hex that is not truly in the photo.
 Ground every word of your copy in what is genuinely visible in the photograph.
 
 The MEASURED facts are ground truth — the attached photo confirms wardrobe, mood and specifics. Return the JSON only.`;
@@ -808,7 +816,11 @@ The MEASURED facts are ground truth — the attached photo confirms wardrobe, mo
                                 },
                             ],
                             generationConfig: {
-                                temperature: 0.95,
+                                // Perception sweet spot: 0.88 keeps editorial
+                                // copy inventive while holding the JSON schema
+                                // tight (higher cooks hallucinated hexes;
+                                // lower writes robotic headlines).
+                                temperature: mode === 'analyze' ? 0.88 : 0.95,
                                 topP: 0.95,
                                 maxOutputTokens: mode === 'analyze' ? 2048 : 8192,
                                 responseMimeType: 'application/json',
@@ -958,6 +970,17 @@ The MEASURED facts are ground truth — the attached photo confirms wardrobe, mo
             // line is clamped to its render budget so the app can trust
             // the copy verbatim; the masthead is scrubbed to wordmark-safe
             // characters and uppercased (it is a logo, not a sentence).
+            // §16 — the vision model's claimed photo palette. Hex-validated
+            // here; the client re-measures the true swatches from pixels and
+            // its harmonizer discards any claim that is not in the photo.
+            const swRaw = (s.swatches ?? {}) as Record<string, unknown>;
+            const hexOfSw = (v: unknown): string =>
+                typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim().toUpperCase() : '';
+            const swatches = {
+                ...(hexOfSw(swRaw.accentPrimary) ? { accentPrimary: hexOfSw(swRaw.accentPrimary) } : {}),
+                ...(hexOfSw(swRaw.paperNeutral) ? { paperNeutral: hexOfSw(swRaw.paperNeutral) } : {}),
+                ...(hexOfSw(swRaw.inkDark) ? { inkDark: hexOfSw(swRaw.inkDark) } : {}),
+            };
             const c = (s.copy ?? {}) as Record<string, unknown>;
             const line = (v: unknown, max: number) =>
                 str(v, max).replace(/\s+/g, ' ').trim();
@@ -990,6 +1013,7 @@ The MEASURED facts are ground truth — the attached photo confirms wardrobe, mo
                     ...(Object.keys(direction).length ? { direction } : {}),
                     ...(dirNote && direction.note ? { note: direction.note } : {}),
                     ...(Object.keys(copy).length ? { copy } : {}),
+                    ...(Object.keys(swatches).length ? { swatches } : {}),
                 },
                 // §12.5 GLASS PIPELINE — the debug payload the page prints in
                 // the console trace: the assignment roll, the exact measured

@@ -109,8 +109,10 @@ Placement is decided by **where the photo is calm**, in this priority:
    palette when color fights the type.
 5. **Grain** — opacity 0.10 (glossy) → 0.42 (photocopy). Unifies photo and
    type into one printed object.
-6. **Never shadows.** Print type is crisp. Contrast comes from geometry
-   (plates) and light (dim), never blur.
+6. **Never shadows ON TYPE.** Print type is crisp. Contrast comes from
+   geometry (plates) and light (dim), never blur. (The SUBJECT, however,
+   is a physical object — see §10: its sandwich depth passes are optical
+   physics, not typographic effects.)
 
 ---
 
@@ -164,3 +166,95 @@ When analyzing inspiration covers, decompose each one into this table —
 component → zone → hierarchy weight → contrast device → movement device.
 That decomposition (never a subject description) is the input the AI prompt
 system and new presets should be built from.
+
+---
+
+## 10. The Photo Palette & Optical Sandwich Depth (§16 upgrades)
+
+Three engine upgrades bind the typography to the photograph itself. They
+live in [`src/lib/magazine/swatches.ts`](../src/lib/magazine/swatches.ts),
+the analyze route, and the renderer.
+
+### 10.1 The 896px perception budget
+
+The vision thumbnail sent to the perception model is **896px wide at JPEG
+q0.88** (was 512px). This is the resolution at which fabric weave
+(corduroy ribs, silk sheen, knit gauge), micro accessories (watch faces,
+jewelry, sneaker colorways) and gaze direction survive compression — the
+difference between "a person in a jacket" and magazine-grade specifics.
+The perception directive explicitly asks for materials, micro-details,
+gaze, and key-light direction. Analyze-mode temperature is tuned to
+**0.88** (topP 0.95): high enough for editorial copy, low enough that
+JSON schemas and hex claims hold.
+
+### 10.2 The three-swatch extractor
+
+`extractPhotoSwatches()` mines the palette deterministically from a
+96×120 downsample — one pixel pass, zero AI calls:
+
+| Swatch | How it is mined | Guarantee |
+|---|---|---|
+| `accentPrimary` | the colour bucket (4-bit/channel histogram) maximizing saturation × √frequency among buckets ≥0.28 sat, ≥0.35% of frame | retargeted into the legible luminance band (0.18–0.85); `''` when the photo is monochrome — an invented accent is a lie |
+| `paperNeutral` | mean of the brightest ~18% of pixels | desaturated 55% toward its own gray, lifted to ≥0.90 luminance |
+| `inkDark` | mean of the darkest ~18% | desaturated 65%, pressed to ≤0.17 luminance |
+
+The vision model also claims the three hexes (`swatches` in the analyze
+JSON); `harmonizeAiSwatches()` validates every claim against the
+measurement — a claimed hex that is not plausibly IN the photo (channel
+distance > 96 for neutrals, > 132 for the accent) is silently replaced by
+the measured truth. Same doctrine as coordinates: **measured facts outrank
+the brief.**
+
+**Where the swatches ink the type:** in `composeSystemCover`, `PAPER` and
+`INK` become the photo's own `paperNeutral` / `inkDark` (every masthead,
+rail, plate, frame and polarity decision inherits them — contrast is
+preserved by the luminance guarantees above), and the accent chain gains
+the photo's hue: `brandAccent || dirAccent || photoAccent || genre.accent`.
+
+### 10.3 The optical sandwich depth passes
+
+When any typography sits in the behind band, the cutout subject is
+rendered as a lit object, not a sticker — three passes pre-composited
+ONCE into a cached underlay (keyed by cutout · palette · canvas size), so
+steady-state rendering costs one `drawImage`, cheaper than the old
+single-shadow pass:
+
+1. **Wide ambient occlusion** — a soft wash around the silhouette,
+   inked with `rgba(inkDark, 0.30)`, blur ≈ 3% of canvas height. The
+   room the subject stands in.
+2. **Directional contact shadow** — cast AWAY from the photo's measured
+   key light (`extractLightAngle()`: the luminance centroid; default
+   upper-left studio key on flat light) with a gravity bias, blur ≈ 1.2%.
+   The letters behind the subject's edges take the weight.
+3. **Rim light** — a `paperNeutral`-tinted silhouette offset TOWARD the
+   key light at 40% alpha with a 1px feather; the opaque cutout drawn
+   after covers all but the lit crescent, separating subject from
+   letterforms the way a lit object separates from a wall.
+
+Type itself never blurs — the glyphs stay print-crisp; it is the subject
+that becomes three-dimensional.
+
+## 11. The Brand-Kit Law (why PRIMARY and ACCENT both bite)
+
+The saved brand kit (`BRAND: ON` · PRIMARY · ACCENT) is **law, not a
+suggestion**. Both paths now enforce it deterministically:
+
+- **ACCENT colours exactly ONE carrier, guaranteed present.** The
+  dateline already wore the kit accent first; the side rail — the
+  dateline's twin micro voice, which replaces it in rail editions — now
+  does too. One of the two branches always runs, so a kit accent can no
+  longer vanish from an edition.
+- **PRIMARY is the structural tint** (it used to be a dead control — the
+  composer never read it): it fills the issue badge plate and strokes
+  the frames (special-issue border and genre frame; the iconic TIME red
+  and NatGeo yellow archetypes keep their own authority). The badge
+  renderer flips its label ink against the plate fill, so any primary
+  stays legible.
+- **The kit outranks the AI.** In the masthead tone-'accent' chain the
+  kit accent now precedes the art director's pick, matching the API
+  contract that brand hues are "the ONLY hues allowed beyond ink/paper".
+- **The AI-direct path snaps home.** Layouts assembled straight from the
+  model's JSON get a post-pass: every saturated (hue-bearing) text colour
+  becomes the kit accent; badge plates and saturated frame strokes take
+  the kit primary. Neutral ink/paper/gray is untouched, so plated
+  compositions keep their polarity.

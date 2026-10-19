@@ -32,8 +32,93 @@ import QRCode from 'qrcode';
 import { GOOGLE_FONTS_LIST, getGoogleFontsStylesheetUrl } from '@/app/match-cut/google-fonts';
 import { analyzePhotoFromCanvas, composeSystemCover, LAYOUT_LIBRARY, matchGenreToStyle, type SystemContentInput, type SystemStyleId, type ArtDirection } from '@/lib/magazine/cover-system';
 import { loadBrandKit, updateBrandKit } from '@/lib/brand-kit';
-import { analyzeGridFromCanvas, gridToPhotoAnalysis, solveEditorialCover, applySolverToCover, type GridAnalysis, type SolverSemantics, type SolverResult } from '@/lib/magazine/solver';
+import { analyzeGridFromCanvas, gridToPhotoAnalysis, getCutoutBoundingBox, solveEditorialCover, applySolverToCover, type GridAnalysis, type SolverSemantics, type SolverResult } from '@/lib/magazine/solver';
 import { traceCoverPipeline } from '@/lib/magazine/pipeline-trace';
+import { extractPhotoSwatches, extractLightAngle, harmonizeAiSwatches, downsampleForSwatches, brightenTo, rgbaFromHex, type PhotoSwatches } from '@/lib/magazine/swatches';
+import type { PhotoFilterId } from '@/lib/magazine/types';
+
+/** §16 OPTICAL SANDWICH DEPTH — the cached underlay canvas that sits
+ *  between the behind-band typography and the cutout subject. Three
+ *  physical passes, built once per (cutout, palette, size) and reused:
+ *
+ *    PASS 1 · wide ambient occlusion — the room the subject stands in
+ *             presses a soft wash around the silhouette (ink from the
+ *             photo's own deepest shadow tone, not flat black).
+ *    PASS 2 · directional contact shadow — cast AWAY from the photo's
+ *             measured key light with a gravity bias: the subject is
+ *             physically resting on the page, and the letters behind
+ *             its edges take the weight.
+ *    PASS 3 · rim light — a paper-toned silhouette offset TOWARD the
+ *             key light; the opaque cutout drawn afterwards covers all
+ *             but the lit crescent, so the subject separates from the
+ *             letterforms the way a lit object separates from a wall.
+ *
+ *  Print type itself stays crisp (no blur on glyphs — the #1 law); this
+ *  is the SUBJECT being three-dimensional, not the type. */
+const buildSandwichDepthUnderlay = (
+    cutout: HTMLImageElement,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+    W: number,
+    H: number,
+    sw: PhotoSwatches | null,
+    light: { dx: number; dy: number },
+): HTMLCanvasElement | null => {
+    try {
+        const off = document.createElement('canvas');
+        off.width = Math.max(1, W);
+        off.height = Math.max(1, H);
+        const ctx = off.getContext('2d');
+        if (!ctx) return null;
+        const inkHex = sw?.inkDark || '#000000';
+        const rimHex = brightenTo(sw?.paperNeutral || '#FFFFFF', 236);
+        const lx = light.dx;
+        const ly = light.dy;
+
+        // PASS 1 — wide ambient occlusion (the room around the subject).
+        ctx.save();
+        ctx.shadowColor = rgbaFromHex(inkHex, 0.30);
+        ctx.shadowBlur = Math.max(18, Math.round(H * 0.030));
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = Math.max(2, Math.round(H * 0.003));
+        ctx.drawImage(cutout, dx, dy, dw, dh);
+        ctx.restore();
+
+        // PASS 2 — tight directional contact shadow, cast away from the
+        // key light with a gravity bias.
+        ctx.save();
+        ctx.shadowColor = rgbaFromHex(inkHex, 0.42);
+        ctx.shadowBlur = Math.max(8, Math.round(H * 0.012));
+        ctx.shadowOffsetX = -lx * H * 0.011;
+        ctx.shadowOffsetY = (-ly * 0.85 + 0.25) * H * 0.009;
+        ctx.drawImage(cutout, dx, dy, dw, dh);
+        ctx.restore();
+
+        // PASS 3 — rim light on the lit edge (paper-toned silhouette,
+        // offset toward the light, softly feathered).
+        const rim = document.createElement('canvas');
+        rim.width = Math.max(1, Math.ceil(dw));
+        rim.height = Math.max(1, Math.ceil(dh));
+        const rctx = rim.getContext('2d');
+        if (rctx) {
+            rctx.drawImage(cutout, 0, 0, rim.width, rim.height);
+            rctx.globalCompositeOperation = 'source-in';
+            rctx.fillStyle = rimHex;
+            rctx.fillRect(0, 0, rim.width, rim.height);
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+            ctx.filter = 'blur(1px)';
+            ctx.drawImage(rim, dx + lx * H * 0.005, dy + ly * H * 0.005, dw, dh);
+            ctx.filter = 'none';
+            ctx.restore();
+        }
+        return off;
+    } catch {
+        return null;
+    }
+};
 import { diagnoseSituation, recallPrecedents, reconcile, runCritiqueLoop, candidateFrom } from '@/lib/magazine/brain';
 import { settleIntoCalm, type SettleMove } from '@/lib/magazine/settle';
 import { TactileScrubber } from '@/components/tactile-scrubber';
@@ -395,6 +480,24 @@ interface GrainSettings {
 
 const DEFAULT_GRAIN: GrainSettings = { enabled: false, opacity: 0.18, size: 2 };
 
+export const PHOTO_FILTER_PRESETS: { id: PhotoFilterId; label: string; filterCss: string }[] = [
+    { id: 'none', label: 'ORIGINAL', filterCss: 'none' },
+    { id: 'mono', label: 'B&W MONO', filterCss: 'grayscale(100%) contrast(110%)' },
+    { id: 'vintage', label: 'VINTAGE', filterCss: 'sepia(35%) contrast(105%) brightness(95%)' },
+    { id: 'noir', label: '35MM NOIR', filterCss: 'grayscale(100%) contrast(150%) brightness(90%)' },
+    { id: 'editorial', label: 'EDITORIAL', filterCss: 'contrast(112%) saturate(112%) brightness(102%)' },
+    { id: 'sepia', label: 'ARCHIVAL SEPIA', filterCss: 'sepia(80%) contrast(95%) brightness(96%) hue-rotate(-15deg)' },
+    { id: 'faded', label: 'FADED MATTE', filterCss: 'contrast(90%) brightness(108%) saturate(85%)' },
+    { id: 'cinematic', label: 'CINEMATIC', filterCss: 'contrast(118%) saturate(125%) hue-rotate(-8deg) brightness(96%)' },
+    { id: 'analog', label: 'PORTRA ANALOG', filterCss: 'sepia(18%) saturate(115%) contrast(104%) brightness(102%)' },
+    { id: 'cyber', label: 'CYBER PUNK', filterCss: 'contrast(130%) saturate(145%) hue-rotate(185deg) brightness(92%)' },
+];
+
+export function getPhotoFilterCss(id: PhotoFilterId | string): string {
+    const found = PHOTO_FILTER_PRESETS.find((p) => p.id === id);
+    return found ? found.filterCss : 'none';
+}
+
 /** One undo step — everything the canvas composites, captured before a change. */
 interface UndoSnapshot {
     layers: TextLayer[];
@@ -404,7 +507,7 @@ interface UndoSnapshot {
     grain: GrainSettings;
     bgDim: number;
     dimWholePhoto?: boolean;
-    photoFilter?: 'none' | 'mono' | 'vintage' | 'noir';
+    photoFilter?: PhotoFilterId;
 }
 
 /** Deterministic seeded PRNG — the grain tile is stable across redraws/exports. */
@@ -458,6 +561,11 @@ const withAlpha = (hex: string, a: number): string => {
 /** Rounded-rect path via arcTo — identical on every engine (no roundRect dependency). */
 const pathRoundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
     const rr = Math.max(0, Math.min(r, Math.min(Math.abs(w), Math.abs(h)) / 2));
+    if (rr <= 0) {
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        return;
+    }
     ctx.beginPath();
     ctx.moveTo(x + rr, y);
     ctx.lineTo(x + w - rr, y);
@@ -1247,7 +1355,11 @@ const guaranteeNoTextOverlap = (layers: TextLayer[], fixedShapes?: ShapeLayer[])
 // centre. A plate can never be stranded mid-canvas while its word settles
 // elsewhere (the ghost-plate bug); plates already covering their text are
 // left untouched — authored geometry wins, always.
-const reCutPlates = (layers: TextLayer[], shapes: ShapeLayer[]): ShapeLayer[] => {
+const reCutPlates = (
+    layers: TextLayer[],
+    shapes: ShapeLayer[],
+    subjectBox?: { x0: number; y0: number; x1: number; y1: number } | null,
+): ShapeLayer[] => {
     const texts = layers
         .filter((l) => l.text.trim() && Math.abs((l.rotationDeg || 0) % 180) <= 12)
         .map((l) => {
@@ -1313,6 +1425,33 @@ const reCutPlates = (layers: TextLayer[], shapes: ShapeLayer[]): ShapeLayer[] =>
         const y1 = Math.min(0.982, owner.y1 + padY);
         const calcW = (x1 - x0) * 100;
         const calcH = (y1 - y0) * 100;
+
+        // SUBJECT SANCTITY RULE:
+        // A big opaque plate or banner in front of the cutout subject destroys the visual.
+        // If the plate overlaps the cutout subject:
+        // 1. If owner text is 'behind', the plate is set to 'behind' (the subject cuts cleanly in front).
+        // 2. If owner text is 'front', DROP THE FRONT PLATE (return []) so the text renders
+        //    as pure, unplated high-fashion editorial typography without any box covering the subject!
+        if (subjectBox) {
+            const overlapX = Math.max(0, Math.min(x1, subjectBox.x1) - Math.max(x0, subjectBox.x0));
+            const overlapY = Math.max(0, Math.min(y1, subjectBox.y1) - Math.max(y0, subjectBox.y0));
+            const overlapsSubject = overlapX > 0.04 && overlapY > 0.04;
+            if (overlapsSubject) {
+                if (owner.l.depth === 'behind') {
+                    return [{
+                        ...s,
+                        depth: 'behind',
+                        xPct: (x0 + x1) / 2,
+                        yPct: (y0 + y1) / 2,
+                        wPct: Math.max(s.wPct, calcW),
+                        hPct: Math.max(s.hPct, calcH),
+                    }];
+                }
+                // In front of subject: DROP FRONT PLATE! Clean typography only.
+                return [];
+            }
+        }
+
         return [{
             ...s,
             depth: owner.l.depth,
@@ -1539,8 +1678,10 @@ export default function TextBehindPage() {
     const [bgDim, setBgDim] = useState(0);
     /** Dim entire photo (both background AND cutout together) */
     const [dimWholePhoto, setDimWholePhoto] = useState(false);
-    /** Photo color grade preset (monochrome, vintage, noir, or original) */
-    const [photoFilter, setPhotoFilter] = useState<'none' | 'mono' | 'vintage' | 'noir'>('none');
+    /** Photo color grade preset (10 curated editorial and film looks) */
+    const [photoFilter, setPhotoFilter] = useState<PhotoFilterId>('none');
+    /** Whether to show all 10 color grades or just the initial 4 */
+    const [showAllFilters, setShowAllFilters] = useState(false);
 
     // --- Magazine Presets & AI Studio state ---
     const [editorialOpen, setEditorialOpen] = useState(false);
@@ -1582,6 +1723,14 @@ export default function TextBehindPage() {
      *  deterministic solver owns every coordinate; this only describes. */
     const [aiSemantics, setAiSemantics] = useState<SolverSemantics | null>(null);
     const [aiAnalyzing, setAiAnalyzing] = useState(false);
+    /** §16 PHOTO PALETTE — the three swatches (accentPrimary · paperNeutral ·
+     *  inkDark) measured from the clean background photo the moment it
+     *  lands, then harmonized with the vision model's claims when an
+     *  art-direction round trip happens. Feeds the composer's typographic
+     *  inks and the sandwich's optical depth passes. */
+    const [photoSwatches, setPhotoSwatches] = useState<PhotoSwatches | null>(null);
+    const photoLightAngleRef = useRef<{ dx: number; dy: number }>({ dx: -0.61, dy: -0.79 });
+    const depthUnderlayRef = useRef<{ key: string; canvas: HTMLCanvasElement | null } | null>(null);
     /** SESSION PERSISTENCE — the art direction for the photo on the canvas
      *  is cached in localStorage keyed by a pixel fingerprint. Refresh the
      *  browser with the same photo → the direction restores instantly with
@@ -1605,11 +1754,36 @@ export default function TextBehindPage() {
             if (fp && fp === stored.fp) {
                 setAiSemantics(stored.sem);
                 dirPhotoSrcRef.current = bgImage.src;
+                // §16 — a cached direction carries its harmonized palette;
+                // restore it so the depth passes and composer inks survive
+                // the refresh too.
+                if (stored.sem.swatches) {
+                    setPhotoSwatches(stored.sem.swatches);
+                    depthUnderlayRef.current = null;
+                }
             }
         } catch {
             /* corrupt cache — ignore */
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bgImage]);
+
+    // §16 — measure the photo's palette + key-light direction the moment a
+    // clean background photo lands. Deterministic (one 96×120 pixel pass),
+    // zero AI calls; when a vision round trip later claims swatches, they
+    // are validated against THIS measurement.
+    useEffect(() => {
+        depthUnderlayRef.current = null; // new photo — rebuild the depth passes
+        if (!bgImage) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setPhotoSwatches(null);
+            return;
+        }
+        const off = downsampleForSwatches(bgImage, 96, 120);
+        if (!off) return;
+        const measured = extractPhotoSwatches(off);
+        if (measured) setPhotoSwatches(measured);
+        photoLightAngleRef.current = extractLightAngle(off);
     }, [bgImage]);
 
     /** AI THOUGHT PROCESS & TELEMETRY STREAM
@@ -1841,7 +2015,7 @@ export default function TextBehindPage() {
                                 id: 't-vision',
                                 step: 2,
                                 label: 'AI Vision Cortex Processing',
-                                detail: 'Transmitting 512px vision thumbnail to AI · Analyzing wardrobe & gaze',
+                                detail: 'Transmitting 896px vision thumbnail to AI · Reading fabric weave, accessories & gaze',
                                 status: 'running',
                                 timestampMs: elapsed,
                             });
@@ -2076,14 +2250,22 @@ export default function TextBehindPage() {
         if (!solveNextRef.current) return;
         solveNextRef.current = false;
         if (!autoLayout) return;
+        const cutoutBox = cutoutImage ? getCutoutBoundingBox(cutoutImage) : null;
         const settled = guaranteeNoTextOverlap(layers, shapes);
         setLayers(settled);
-        setShapes(reCutPlates(settled, shapes));
+        setShapes(reCutPlates(settled, shapes, cutoutBox));
     }, [layers, shapes, autoLayout]);
 
     const [grain, setGrain] = useState<GrainSettings>(DEFAULT_GRAIN);
-    /** Collapsed by default — the advanced kit only appears when asked for. */
-    const [advancedOpen, setAdvancedOpen] = useState(false);
+    /** Visible naturally by default when scrolling down — shapes & overlays are immediately accessible without clicking */
+    const [advancedOpen, setAdvancedOpen] = useState(true);
+
+    // Auto-expand advanced tools whenever shapes exist so they remain visible naturally
+    useEffect(() => {
+        if (shapes.length > 0) {
+            setAdvancedOpen(true);
+        }
+    }, [shapes.length]);
 
     const activeShape = shapes.find((s) => s.id === activeShapeId) ?? null;
 
@@ -2656,7 +2838,7 @@ export default function TextBehindPage() {
                 {
                     ...DEFAULT_TEXT_LAYER,
                     id: 'box-spine',
-                    text: 'INDEPENDENT PRINT // TOKYO — LONDON — SEOUL',
+                    text: 'INDEPENDENT PRINT — ARCHIVE SERIES',
                     fontId: 'space-mono',
                     weight: 700,
                     caseMode: 'uppercase',
@@ -2713,7 +2895,7 @@ export default function TextBehindPage() {
                     glow: 0,
                     blend: 'normal',
                     depth: 'front',
-                    label: 'ARCHIVE 04 // TOKYO',
+                    label: 'SPECIAL ARCHIVE // 01 / 500',
                 },
             ]);
             setGrain({ enabled: true, opacity: 0.26, size: 2 });
@@ -3537,7 +3719,7 @@ export default function TextBehindPage() {
                 {
                     ...DEFAULT_TEXT_LAYER,
                     id: 'box-dateline',
-                    text: 'EDITORIAL POSTER  |  SERIES 01 — TOKYO / BERLIN',
+                    text: 'EDITORIAL POSTER  |  SERIES 01 — ARCHIVAL MONOGRAPH',
                     fontId: 'space-mono',
                     weight: 700,
                     caseMode: 'uppercase',
@@ -3882,7 +4064,12 @@ export default function TextBehindPage() {
         try {
             const img = bgImage;
             if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                const targetW = 512;
+                // 896px — the perception budget that keeps fabric weave
+                // (corduroy ribs, silk sheen, knit gauge), micro accessories
+                // (watch faces, jewelry, sneaker colorways) and gaze
+                // direction legible to the vision model. At 512px those
+                // dissolve into mush and the copy comes back generic.
+                const targetW = 896;
                 const targetH = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * targetW));
                 const off = document.createElement('canvas');
                 off.width = targetW;
@@ -3890,13 +4077,13 @@ export default function TextBehindPage() {
                 const ctx = off.getContext('2d');
                 if (!ctx) return null;
                 ctx.drawImage(img, 0, 0, targetW, targetH);
-                const url = off.toDataURL('image/jpeg', 0.82);
+                const url = off.toDataURL('image/jpeg', 0.88);
                 const b64 = url.split(',')[1];
                 return b64 && b64.length > 100 ? b64 : null;
             }
             const src = canvasRef.current;
             if (!src || src.width === 0 || src.height === 0) return null;
-            const targetW = 512;
+            const targetW = 896;
             const targetH = Math.max(1, Math.round((src.height / src.width) * targetW));
             const off = document.createElement('canvas');
             off.width = targetW;
@@ -3904,7 +4091,7 @@ export default function TextBehindPage() {
             const ctx = off.getContext('2d');
             if (!ctx) return null;
             ctx.drawImage(src, 0, 0, targetW, targetH);
-            const url = off.toDataURL('image/jpeg', 0.72);
+            const url = off.toDataURL('image/jpeg', 0.80);
             const b64 = url.split(',')[1];
             return b64 && b64.length > 100 ? b64 : null;
         } catch {
@@ -3975,6 +4162,25 @@ export default function TextBehindPage() {
         }
         dirPhotoSrcRef.current = bgImage?.src ?? '';
         dirDebugRef.current = (data as any).debug ?? null;
+        // §16 — harmonize the AI's claimed swatches against the measured
+        // palette: a hex that is not plausibly IN this photo dies here and
+        // the pixel measurement wins (same doctrine as coordinates).
+        try {
+            const sem = data.semantics as SolverSemantics;
+            const off = bgImage ? downsampleForSwatches(bgImage, 96, 120) : null;
+            const measured = off ? extractPhotoSwatches(off) : null;
+            const harmonized = harmonizeAiSwatches((sem as { swatches?: Parameters<typeof harmonizeAiSwatches>[0] }).swatches, measured);
+            if (harmonized) {
+                sem.swatches = harmonized;
+                setPhotoSwatches(harmonized);
+                depthUnderlayRef.current = null; // palette changed — rebuild depth
+            } else if (measured) {
+                setPhotoSwatches(measured);
+            }
+            if (off) photoLightAngleRef.current = extractLightAngle(off);
+        } catch {
+            /* palette harmonization is best-effort — the solve proceeds */
+        }
         try {
             const fp = photoFingerprint(bgImage ?? null);
             if (fp) localStorage.setItem(DIR_CACHE_KEY, JSON.stringify({ fp, sem: data.semantics }));
@@ -4172,6 +4378,37 @@ export default function TextBehindPage() {
                 });
             }
 
+            // BRAND KIT LAW — the saved palette is not a suggestion. This
+            // AI-direct path maps the model's hues verbatim, so with the
+            // kit ON we snap them home: every saturated (hue-bearing)
+            // text colour becomes the brand accent; the badge plate and
+            // saturated frame strokes take the brand primary. Neutral
+            // ink/paper/gray survives untouched — plated compositions
+            // keep their polarity, and the badge renderer flips its
+            // label ink against the fill, so legibility always holds.
+            if (brandUse && (brandAccent || brandPrimary)) {
+                const hueSpread = (hx: string) => {
+                    const h = hx.replace('#', '');
+                    if (h.length !== 6) return 0;
+                    const r = parseInt(h.slice(0, 2), 16);
+                    const g = parseInt(h.slice(2, 4), 16);
+                    const b = parseInt(h.slice(4, 6), 16);
+                    return Math.max(r, g, b) - Math.min(r, g, b);
+                };
+                if (brandAccent) {
+                    newLayers.forEach((l) => {
+                        if (hueSpread(l.color) > 60) l.color = brandAccent;
+                    });
+                }
+                newShapes.forEach((s) => {
+                    if (s.kind === 'badge' && brandPrimary) {
+                        s.fillColor = brandPrimary;
+                    } else if (s.kind === 'frame' && (brandPrimary || brandAccent) && hueSpread(s.strokeColor) > 60) {
+                        s.strokeColor = brandPrimary || brandAccent;
+                    }
+                });
+            }
+
             // USER RULING — auto layout must NEVER lock elements to
             // positions. Text on a rect/plate/square is intended design,
             // not a collision: the ONLY automatic intervention is
@@ -4179,13 +4416,14 @@ export default function TextBehindPage() {
             // plates re-cutting to follow words the separation moved.
             // The full law engine stays available via the explicit
             // law button — never in the automatic path.
+            const cutoutBox = cutoutImage ? getCutoutBoundingBox(cutoutImage) : null;
             const guaranteed = guaranteeNoTextOverlap(newLayers, newShapes);
 
             if (guaranteed.length > 0) {
                 setLayers(guaranteed);
                 setActiveLayerId(guaranteed[0].id);
             }
-            setShapes(reCutPlates(guaranteed, newShapes));
+            setShapes(reCutPlates(guaranteed, newShapes, cutoutBox));
 
             // Apply photo style
             if (layout.photoStyle) {
@@ -4257,6 +4495,7 @@ export default function TextBehindPage() {
         // the grid carries everything the old region scan measured, so the
         // opening step of ASSEMBLE is a single instant pass, not two
         // full-canvas reads.
+        const cutoutBox = cutoutImage ? getCutoutBoundingBox(cutoutImage) : null;
         let analysis: ReturnType<typeof analyzePhotoFromCanvas> = null;
         let grid: GridAnalysis | null = null;
         try {
@@ -4268,16 +4507,19 @@ export default function TextBehindPage() {
                 const ctx = off.getContext('2d');
                 if (ctx) {
                     ctx.drawImage(img, 0, 0, off.width, off.height);
-                    grid = analyzeGridFromCanvas(off);
+                    grid = analyzeGridFromCanvas(off, cutoutBox);
                     analysis = grid ? gridToPhotoAnalysis(grid) : analyzePhotoFromCanvas(off);
                 }
             } else {
                 const cv = canvasRef.current;
-                grid = cv ? analyzeGridFromCanvas(cv) : null;
+                grid = cv ? analyzeGridFromCanvas(cv, cutoutBox) : null;
                 analysis = grid ? gridToPhotoAnalysis(grid) : cv ? analyzePhotoFromCanvas(cv) : null;
             }
         } catch {
             /* canvas sampling unavailable — fall back to seeded templates */
+        }
+        if (analysis && cutoutBox) {
+            analysis.subjectBox = cutoutBox;
         }
 
         // THE SOLVER PASS — perception meets geometry. The AI (optional)
@@ -4404,6 +4646,9 @@ export default function TextBehindPage() {
                 ...(poolEntry ? { layoutId: poolEntry.id } : {}),
                 brand: brandUse ? { primary: brandPrimary, accent: brandAccent } : undefined,
                 archetype: sem?.archetypeHint || undefined,
+                // §16 — the harmonized photo palette inks the typography
+                // (the AI round trip's set, else the raw measurement).
+                swatches: sem?.swatches ?? photoSwatches ?? null,
             });
         const critique =
             situation && grid
@@ -4590,7 +4835,40 @@ export default function TextBehindPage() {
         // re-cut to follow any words that moved. Nothing is pruned,
         // nothing is pinned, no frame clamps — separation only.
         const preSettle = [...newLayers, ...solverTexts];
-        const guaranteed = guaranteeNoTextOverlap(preSettle, [...newShapes, ...solverDecor]);
+        const allShapes = [...newShapes, ...solverDecor];
+
+        // BARCODE SANCTITY PASS:
+        // A barcode or QR code must NEVER overlap the masthead or any headline!
+        const mhLayer = preSettle.find((l) => l.id === 'box-masthead');
+        if (mhLayer) {
+            const { hw: mHw, hh: mHh } = measureTextBox(mhLayer);
+            const mhX0 = mhLayer.xPct - mHw;
+            const mhX1 = mhLayer.xPct + mHw;
+            const mhY0 = mhLayer.yPct - mHh;
+            const mhY1 = mhLayer.yPct + mHh;
+            allShapes.forEach((s) => {
+                if (s.kind === 'barcode' || s.kind === 'qr') {
+                    const sHw = s.wPct / 200;
+                    const sHh = s.hPct / 200;
+                    const sX0 = s.xPct - sHw;
+                    const sX1 = s.xPct + sHw;
+                    const sY0 = s.yPct - sHh;
+                    const sY1 = s.yPct + sHh;
+                    const xO = Math.min(mhX1, sX1) - Math.max(mhX0, sX0);
+                    const yO = Math.min(mhY1, sY1) - Math.max(mhY0, sY0);
+                    if (xO > 0 && yO > 0) {
+                        // Relocate barcode to opposite vertical pole
+                        if (mhLayer.yPct > 0.5) {
+                            s.yPct = 0.065;
+                        } else {
+                            s.yPct = s.kind === 'qr' ? 0.885 : 0.915;
+                        }
+                    }
+                }
+            });
+        }
+
+        const guaranteed = guaranteeNoTextOverlap(preSettle, allShapes);
         // §14 CALM SETTLING — one measured nudge along x toward the calmest
         // stretch of each band (the grid's column profile windowed to the
         // text's y-range). The guarantee's y is law; separation-only: no
@@ -4617,8 +4895,9 @@ export default function TextBehindPage() {
             );
             settleMoves = settledRun.moves;
         }
+        const effectiveSubjectBox = cutoutBox || grid?.subjectBox || null;
         setLayers(settled);
-        setShapes([...reCutPlates(settled, [...newShapes, ...solverDecor])]);
+        setShapes([...reCutPlates(settled, allShapes, effectiveSubjectBox)]);
         setActiveLayerId('box-masthead');
 
         // §12.5 THE GLASS PIPELINE — one console readout of EVERY decision
@@ -4763,8 +5042,9 @@ export default function TextBehindPage() {
                 layers.map((l) => (textMap.has(l.id) ? { ...l, text: textMap.get(l.id)! } : l)),
                 relabeled,
             );
+            const cutoutBox = cutoutImage ? getCutoutBoundingBox(cutoutImage) : null;
             setLayers(settled);
-            setShapes(reCutPlates(settled, relabeled));
+            setShapes(reCutPlates(settled, relabeled, cutoutBox));
             completeThoughtProcess({
                 sem: aiSemantics,
                 note: 'Copy Rewritten & Plates Recut (0 Collisions)',
@@ -4816,13 +5096,7 @@ export default function TextBehindPage() {
 
             // Layer 0: Background photo
             if (bgImage) {
-                if (photoFilter === 'mono') {
-                    ctx.filter = 'grayscale(100%) contrast(110%)';
-                } else if (photoFilter === 'vintage') {
-                    ctx.filter = 'sepia(35%) contrast(105%) brightness(95%)';
-                } else if (photoFilter === 'noir') {
-                    ctx.filter = 'grayscale(100%) contrast(150%) brightness(90%)';
-                }
+                ctx.filter = getPhotoFilterCss(photoFilter);
 
                 ctx.drawImage(bgImage, 0, 0, W, H);
                 ctx.filter = 'none';
@@ -5057,27 +5331,32 @@ export default function TextBehindPage() {
                 const dx = (W - dw) / 2;
                 const dy = (H - dh) / 2;
 
-                // CINEMATIC AMBIENT DEPTH OCCLUSION PASS:
-                // When typography sits behind the subject, the subject casts an authentic,
-                // soft ambient contact shadow onto the text letters behind it.
+                // §16 OPTICAL SANDWICH DEPTH (v2 — the physical edition):
+                // When typography sits behind the subject, the subject is a
+                // LIT OBJECT in a room, not a flat sticker. Three passes —
+                // ambient occlusion, a directional contact shadow cast away
+                // from the photo's measured key light, and a paper-toned rim
+                // light on the lit edge — are pre-composited ONCE into a
+                // cached underlay keyed by (cutout · palette · size), so the
+                // steady-state render costs ONE drawImage (cheaper than the
+                // old single-pass shadow it replaces).
                 const hasBehindText = layers.some((l) => l.depth === 'behind' && l.text.trim());
                 if (hasBehindText) {
-                    ctx.save();
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.60)';
-                    ctx.shadowBlur = Math.max(16, Math.round(H * 0.020));
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = Math.max(3, Math.round(H * 0.006));
-                    ctx.drawImage(cutoutImage, dx, dy, dw, dh);
-                    ctx.restore();
+                    const sw = photoSwatches;
+                    const light = photoLightAngleRef.current;
+                    const key = `${cutoutImage.src}|${sw?.inkDark ?? ''}|${sw?.paperNeutral ?? ''}|${W}x${H}|${light.dx.toFixed(3)},${light.dy.toFixed(3)}`;
+                    let underlay = depthUnderlayRef.current;
+                    if (!underlay || underlay.key !== key) {
+                        underlay = {
+                            key,
+                            canvas: buildSandwichDepthUnderlay(cutoutImage, dx, dy, dw, dh, W, H, sw, light),
+                        };
+                        depthUnderlayRef.current = underlay;
+                    }
+                    if (underlay.canvas) ctx.drawImage(underlay.canvas, 0, 0);
                 }
 
-                if (photoFilter === 'mono') {
-                    ctx.filter = 'grayscale(100%) contrast(110%)';
-                } else if (photoFilter === 'vintage') {
-                    ctx.filter = 'sepia(35%) contrast(105%) brightness(95%)';
-                } else if (photoFilter === 'noir') {
-                    ctx.filter = 'grayscale(100%) contrast(150%) brightness(90%)';
-                }
+                ctx.filter = getPhotoFilterCss(photoFilter);
 
                 ctx.drawImage(cutoutImage, dx, dy, dw, dh);
                 ctx.filter = 'none';
@@ -5143,6 +5422,7 @@ export default function TextBehindPage() {
                     // Comfortable vertical breathing room
                     h = Math.max(h, Math.round(badgeFont * 2.1));
                     shapeBoxW = actualW;
+                    w = actualW;
                 } else if (s.kind === 'barcode') {
                     w = Math.max(w, Math.round(W * 0.18));
                     const minBarH = Math.max(28, Math.round(H * 0.038));
@@ -5438,8 +5718,8 @@ export default function TextBehindPage() {
                         ctx.fill();
                     }
                 }
-                // Border / outline — available on every shape kind.
-                if (s.strokeW > 0) {
+                // Border / outline — primitive shapes (rect, circle, line, button). Compound shapes (badge, barcode, qr, frame) handle their own stroke cleanly without phantom inner slices.
+                if (s.strokeW > 0 && (s.kind === 'rect' || s.kind === 'circle' || s.kind === 'line' || s.kind === 'button')) {
                     ctx.globalAlpha = s.opacity;
                     ctx.strokeStyle = s.strokeColor;
                     ctx.lineWidth = lw;
@@ -5597,7 +5877,7 @@ export default function TextBehindPage() {
                 });
             }
         },
-        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim, dimWholePhoto, photoFilter, shapes, activeShapeId, grain, iconTick, handleIconReady]
+        [bgImage, cutoutImage, layers, activeLayerId, guides, bgDim, dimWholePhoto, photoFilter, shapes, activeShapeId, grain, iconTick, handleIconReady, photoSwatches]
     );
 
     // Repaint on canvas changes
@@ -6080,10 +6360,12 @@ export default function TextBehindPage() {
                                 const f = e.dataTransfer.files?.[0];
                                 if (f && f.type.startsWith('image/')) void handleBgFile(f);
                             }}
+                            className="text-behind-stage"
                             style={{
                                 flex: 1,
                                 minHeight: 0,
                                 width: '100%',
+                                height: '100%',
                                 backgroundColor: '#e5e7eb',
                                 backgroundImage: 'conic-gradient(#ffffff 90deg, #e5e7eb 90deg 180deg, #ffffff 180deg 270deg, #e5e7eb 270deg)',
                                 backgroundSize: '20px 20px',
@@ -6776,35 +7058,93 @@ export default function TextBehindPage() {
                                         </div>
 
                                         {/* Photo Filter Presets */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
-                                            <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>PHOTO COLOR GRADE</span>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                                                {[
-                                                    { id: 'none', label: 'ORIGINAL' },
-                                                    { id: 'mono', label: 'B&W MONO' },
-                                                    { id: 'vintage', label: 'VINTAGE' },
-                                                    { id: 'noir', label: '35MM NOIR' },
-                                                ].map((f) => (
-                                                    <button
-                                                        key={f.id}
-                                                        type="button"
-                                                        onClick={() => { pushUndo(); setPhotoFilter(f.id as any); }}
-                                                        style={{
-                                                            padding: '4px 2px',
-                                                            border: '1.5px solid #000',
-                                                            background: photoFilter === f.id ? '#000' : '#fff',
-                                                            color: photoFilter === f.id ? '#FFE500' : '#000',
-                                                            fontSize: '0.52rem',
-                                                            fontFamily: 'monospace',
-                                                            fontWeight: 900,
-                                                            cursor: 'pointer',
-                                                            textAlign: 'center'
-                                                        }}
-                                                    >
-                                                        {f.label}
-                                                    </button>
-                                                ))}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.58rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>PHOTO COLOR GRADE</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAllFilters((v) => !v)}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        padding: '0 2px',
+                                                        fontSize: '0.55rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        color: '#000',
+                                                        textDecoration: 'underline',
+                                                    }}
+                                                >
+                                                    {showAllFilters ? '− LESS' : '+ MORE (6)'}
+                                                </button>
                                             </div>
+
+                                            {/* Primary 4 presets (always visible) */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                                                {PHOTO_FILTER_PRESETS.slice(0, 4).map((f) => {
+                                                    const isSelected = photoFilter === f.id;
+                                                    return (
+                                                        <button
+                                                            key={f.id}
+                                                            type="button"
+                                                            onClick={() => { pushUndo(); setPhotoFilter(f.id); }}
+                                                            style={{
+                                                                padding: '5px 2px',
+                                                                border: '1.5px solid #000',
+                                                                background: isSelected ? '#000' : '#fff',
+                                                                color: isSelected ? '#FFE500' : '#000',
+                                                                fontSize: '0.52rem',
+                                                                fontFamily: 'monospace',
+                                                                fontWeight: 900,
+                                                                cursor: 'pointer',
+                                                                textAlign: 'center',
+                                                            }}
+                                                        >
+                                                            {f.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Expanded 6 presets */}
+                                            {showAllFilters && (
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, marginTop: 2 }}>
+                                                    {PHOTO_FILTER_PRESETS.slice(4).map((f) => {
+                                                        const isSelected = photoFilter === f.id;
+                                                        return (
+                                                            <button
+                                                                key={f.id}
+                                                                type="button"
+                                                                onClick={() => { pushUndo(); setPhotoFilter(f.id); }}
+                                                                style={{
+                                                                    padding: '5px 2px',
+                                                                    border: '1.5px solid #000',
+                                                                    background: isSelected ? '#000' : '#fff',
+                                                                    color: isSelected ? '#FFE500' : '#000',
+                                                                    fontSize: '0.52rem',
+                                                                    fontFamily: 'monospace',
+                                                                    fontWeight: 900,
+                                                                    cursor: 'pointer',
+                                                                    textAlign: 'center',
+                                                                }}
+                                                            >
+                                                                {f.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            {/* Active filter note if one of the more presets is selected while collapsed */}
+                                            {!showAllFilters && PHOTO_FILTER_PRESETS.slice(4).some((p) => p.id === photoFilter) && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.54rem', fontFamily: 'monospace', color: '#555', marginTop: 2 }}>
+                                                    <span>ACTIVE PRESET:</span>
+                                                    <span style={{ background: '#000', color: '#FFE500', padding: '1px 6px', fontWeight: 900, border: '1px solid #000' }}>
+                                                        {PHOTO_FILTER_PRESETS.find((p) => p.id === photoFilter)?.label}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -7042,7 +7382,7 @@ export default function TextBehindPage() {
                                                         type="text"
                                                         value={aiPrompt}
                                                         onChange={(e) => setAiPrompt(e.target.value)}
-                                                        placeholder="Vibe / Theme (e.g. Tokyo cyber, autumn trenchcoat, ISSUE 07)..."
+                                                        placeholder="Vibe / Theme (e.g. Editorial fashion, cinematic trenchcoat, indie zine)..."
                                                         style={{
                                                             flex: 1,
                                                             padding: '7px 10px',
@@ -8116,46 +8456,7 @@ export default function TextBehindPage() {
                                 />
                             </div>
 
-                            {/* 4. Export Card — mobile sheet: NEXT */}
-                            <div className="brutalist-card" data-ck-cat="next" style={{ padding: 14 }}>
-                                {sectionTitle(<Download size={14} />, 'Export Poster')}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-                                    <button className="brutalist-button brutalist-button-primary" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 1)}>
-                                        PNG · NATIVE
-                                    </button>
-                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 2)}>
-                                        PNG · 2×
-                                    </button>
-                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 1)}>
-                                        JPG · NATIVE
-                                    </button>
-                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
-                                        JPG · 2×
-                                    </button>
-                                    <button
-                                        className="brutalist-button"
-                                        style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }}
-                                        disabled={!bgImage || exporting || sendingHandoff}
-                                        onClick={() => setHandoffModalOpen(true)}
-                                    >
-                                        → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
-                                    </button>
-                                </div>
-                                {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}
-                                {exportNote && !exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{exportNote}</div>}
-
-                                {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
-                                {exportNote && !exporting && (
-                                    <NextStepRow currentHref="/text-behind" heading="Poster saved — keep going" />
-                                )}
-                                {!cutoutImage && bgImage && (
-                                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', marginTop: 6, lineHeight: 1.5 }}>
-                                        No cutout uploaded — text renders on top of photo. Add a transparent PNG for the behind-subject effect.
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 5. Advanced Image Editing — collapsed by default on desktop.
+                            {/* 4. Advanced Image Editing — visible naturally on desktop.
                                 Mobile sheets: SHAPES (shape UI) + EFFECTS (film grain). */}
                             <div className="brutalist-card" data-ck-cat="shapes effects" style={{ padding: 14 }}>
                                 <button
@@ -8632,6 +8933,45 @@ export default function TextBehindPage() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* 5. Export Card — mobile sheet: NEXT (sits below advanced image editing) */}
+                            <div className="brutalist-card" data-ck-cat="next" style={{ padding: 14 }}>
+                                {sectionTitle(<Download size={14} />, 'Export Poster')}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                                    <button className="brutalist-button brutalist-button-primary" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 1)}>
+                                        PNG · NATIVE
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('png', 2)}>
+                                        PNG · 2×
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 1)}>
+                                        JPG · NATIVE
+                                    </button>
+                                    <button className="brutalist-button" style={{ padding: '8px 6px', fontSize: '0.7rem' }} disabled={!bgImage || exporting} onClick={() => handleExport('jpg', 2)}>
+                                        JPG · 2×
+                                    </button>
+                                    <button
+                                        className="brutalist-button"
+                                        style={{ gridColumn: '1 / -1', padding: '8px 6px', fontSize: '0.68rem' }}
+                                        disabled={!bgImage || exporting || sendingHandoff}
+                                        onClick={() => setHandoffModalOpen(true)}
+                                    >
+                                        → OPEN IN THUMBNAIL LAB (NO DOWNLOAD)
+                                    </button>
+                                </div>
+                                {exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#B45309' }}>RENDERING…</div>}
+                                {exportNote && !exporting && <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{exportNote}</div>}
+
+                                {/* NEXT → hand-off row (docs/TOOL_INTEGRATION_PLAN.md §4.3) */}
+                                {exportNote && !exporting && (
+                                    <NextStepRow currentHref="/text-behind" heading="Poster saved — keep going" />
+                                )}
+                                {!cutoutImage && bgImage && (
+                                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: '#666', marginTop: 6, lineHeight: 1.5 }}>
+                                        No cutout uploaded — text renders on top of photo. Add a transparent PNG for the behind-subject effect.
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                     </div>
@@ -8923,6 +9263,12 @@ export default function TextBehindPage() {
                         display: none !important;
                     }
                 }
+                @media (min-width: 981px) and (max-width: 1240px) {
+                    .text-behind-layout {
+                        grid-template-columns: minmax(0, 1fr) 375px !important;
+                        gap: 10px !important;
+                    }
+                }
                 @media (max-width: 980px) {
                     /* Pin to the real viewport — no parent padding/background can
                        leak a gap above or below the studio. */
@@ -8970,21 +9316,34 @@ export default function TextBehindPage() {
                         max-height: none !important;
                         position: relative !important;
                         display: flex !important;
+                        flex-direction: column !important;
                         align-items: center !important;
                         justify-content: center !important;
                         margin: 0 !important;
                         border: none !important;
                         width: 100% !important;
+                        height: 100% !important;
                         background-size: 16px 16px !important;
                         /* Reserve the toolbar lane — canvas never touches the bar */
                         padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
                         box-sizing: border-box !important;
                     }
-                    .text-behind-viewport canvas {
-                        max-width: 100% !important;
+                    .text-behind-stage {
+                        width: 100% !important;
+                        height: 100% !important;
                         max-height: 100% !important;
+                    }
+                    .text-behind-viewport canvas {
+                        max-width: calc(100% - 14px) !important;
+                        max-height: calc(100% - 14px) !important;
                         width: auto !important;
                         height: auto !important;
+                    }
+                    .ck-thought-hud-container {
+                        top: 6px !important;
+                        left: 8px !important;
+                        right: 8px !important;
+                        max-width: calc(100vw - 16px) !important;
                     }
                     .text-behind-meta-strip {
                         display: none !important;
@@ -9013,11 +9372,11 @@ export default function TextBehindPage() {
                         -webkit-overflow-scrolling: touch !important;
                         animation: ckSheetUp 220ms cubic-bezier(0.32, 0.72, 0, 1);
                     }
-                    /* Dense categories get the tall sheet */
+                    /* Dense categories get the tall sheet, leaving headroom for live canvas feedback */
                     .ck-sheet-text .text-behind-controls-scroll,
                     .ck-sheet-shapes .text-behind-controls-scroll {
-                        height: 85vh !important;
-                        max-height: 85vh !important;
+                        height: min(78vh, 680px) !important;
+                        max-height: min(78vh, 680px) !important;
                     }
                     .ck-sheet-open .text-behind-controls-scroll::-webkit-scrollbar {
                         width: 4px;
@@ -9025,6 +9384,7 @@ export default function TextBehindPage() {
                     .ck-sheet-open .text-behind-controls-scroll::-webkit-scrollbar-thumb {
                         background: #000;
                     }
+
                     @keyframes ckSheetUp {
                         from { transform: translateY(100%); }
                         to { transform: translateY(0); }

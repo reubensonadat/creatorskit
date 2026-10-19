@@ -27,6 +27,17 @@ export interface SolverSemantics {
      *  deterministic composer materializes the geometry. Never a
      *  coordinate — the sanitizer drops anything off-menu. */
     direction?: ArtDirection;
+    /** §16 — the PHOTO PALETTE, three swatches (accentPrimary ·
+     *  paperNeutral · inkDark) the vision model claims and the on-device
+     *  pixel extractor measures. The harmonized set rides the same round
+     *  trip as the direction; the composer inks its typography with the
+     *  photo's own tones so type reads as PRINTED WITH the photograph,
+     *  not stamped on it. Empty-string accent = monochrome photo. */
+    swatches?: {
+        accentPrimary: string;
+        paperNeutral: string;
+        inkDark: string;
+    };
     /** §7.5 — the art director's one-line rationale for this edition's
      *  composition (≤120 chars, clamped server-side). Readout voice only —
      *  it never steers geometry. */

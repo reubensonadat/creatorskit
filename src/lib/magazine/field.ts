@@ -42,7 +42,43 @@ export interface GridAnalysis {
     rowProfile: Float32Array;
 }
 
-export function analyzeGridFromCanvas(cv: HTMLCanvasElement): GridAnalysis | null {
+/** Scan a transparent PNG cutout to find the exact normalized bounding box of the non-transparent subject pixels. */
+export function getCutoutBoundingBox(cvOrImg: HTMLCanvasElement | HTMLImageElement): Rect | null {
+    try {
+        const W = 96;
+        const H = 120;
+        const off = document.createElement('canvas');
+        off.width = W;
+        off.height = H;
+        const ctx = off.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return null;
+        ctx.drawImage(cvOrImg, 0, 0, W, H);
+        const data = ctx.getImageData(0, 0, W, H).data;
+        let minX = W;
+        let maxX = 0;
+        let minY = H;
+        let maxY = 0;
+        let hits = 0;
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const alpha = data[(y * W + x) * 4 + 3];
+                if (alpha > 25) {
+                    hits++;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (hits < 15 || maxX <= minX || maxY <= minY) return null;
+        return rectOf(minX / W, minY / H, maxX / W, maxY / H);
+    } catch {
+        return null;
+    }
+}
+
+export function analyzeGridFromCanvas(cv: HTMLCanvasElement, cutoutBox?: Rect | null): GridAnalysis | null {
     try {
         const ctx = cv.getContext('2d', { willReadFrequently: true });
         if (!ctx) return null;
@@ -162,9 +198,14 @@ export function analyzeGridFromCanvas(cv: HTMLCanvasElement): GridAnalysis | nul
             const s = [...arr].sort((a, b) => a - b);
             return s[clamp(Math.floor(q * (s.length - 1)), 0, s.length - 1)];
         };
-        let subjectBox: Rect | null = null;
-        let subjectCore: Rect | null = null;
-        if (hitXs.length >= 5) {
+        let subjectBox: Rect | null = cutoutBox ?? null;
+        let subjectCore: Rect | null = cutoutBox ? rectOf(
+            clamp(cutoutBox.x0 + (cutoutBox.x1 - cutoutBox.x0) * 0.15, 0, 1),
+            clamp(cutoutBox.y0 + (cutoutBox.y1 - cutoutBox.y0) * 0.15, 0, 1),
+            clamp(cutoutBox.x1 - (cutoutBox.x1 - cutoutBox.x0) * 0.15, 0, 1),
+            clamp(cutoutBox.y1 - (cutoutBox.y1 - cutoutBox.y0) * 0.15, 0, 1),
+        ) : null;
+        if (!subjectBox && hitXs.length >= 5) {
             subjectBox = rectOf(
                 clamp(quantile(hitXs, 0.08), 0, 1),
                 clamp(quantile(hitYs, 0.08), 0, 1),
@@ -315,6 +356,7 @@ export function gridToPhotoAnalysis(g: GridAnalysis): PhotoAnalysis {
         pose,
         subjectW,
         subjectH,
+        subjectBox: g.subjectBox,
     } as PhotoAnalysis;
 }
 

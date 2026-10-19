@@ -179,9 +179,15 @@ export function applySolverToCover(cover: ComposedCover, solved: SolverResult): 
                 yPct: featSpec.yPct,
                 wPct: w,
                 hPct: h,
-                fillColor: solved.photoLight ? '#000000' : '#FFFFFF',
+                // §16 — the plate inks with the photo's own tones when the
+                // palette rode along; stock ink/paper otherwise.
+                fillColor: solved.photoLight
+                    ? (solved.swatches?.inkDark ?? '#000000')
+                    : (solved.swatches?.paperNeutral ?? '#FFFFFF'),
                 fillOn: true,
-                strokeColor: solved.photoLight ? '#000000' : '#FFFFFF',
+                strokeColor: solved.photoLight
+                    ? (solved.swatches?.inkDark ?? '#000000')
+                    : (solved.swatches?.paperNeutral ?? '#FFFFFF'),
                 strokeW: 0,
                 cornerPct: 0,
                 rotationDeg: 0,

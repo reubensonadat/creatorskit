@@ -3,6 +3,7 @@
 // the type-level import cycle with laws/signatures is legal.
 
 import type { TypeLadder } from './ladder';
+import type { PhotoSwatches } from './swatches';
 import type { SolverStyleToken, NormalizedSignature } from './signatures';
 import type { DecorationShape } from './decorations';
 import type { LayoutViolation } from './laws';
@@ -40,5 +41,20 @@ export interface SolverResult {
     /** §6.5 — the brand template that owned this solve, + its photo plan */
     archetype?: string;
     plan?: CompositionPlan;
+    /** §16 — the harmonized photo palette that traveled with the semantics.
+     *  Consumed downstream (plates, trace) even when geometry stands alone. */
+    swatches?: PhotoSwatches;
 }
+export type PhotoFilterId =
+    | 'none'
+    | 'mono'
+    | 'vintage'
+    | 'noir'
+    | 'editorial'
+    | 'sepia'
+    | 'faded'
+    | 'cinematic'
+    | 'analog'
+    | 'cyber';
+
 export type { Grid };
