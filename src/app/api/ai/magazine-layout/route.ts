@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ART_DIRECTION_MENU, LAYOUT_LIBRARY, sanitizeArtDirection } from '@/lib/magazine/cover-system';
 import { ARCHETYPES, listArchetypes } from '@/lib/magazine/archetypes';
 
+export const runtime = 'edge';
+
 // ---------------------------------------------------------------------------
 // Magazine Auto-Cover prompt system
 //
