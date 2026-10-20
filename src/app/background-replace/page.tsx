@@ -112,6 +112,7 @@ export default function BackgroundRemoverPage() {
     const [error, setError] = useState<string | null>(null);
     const [doneWith, setDoneWith] = useState<MatteEngine | null>(null);
     const [preview, setPreview] = useState<'cutout' | 'original'>('cutout');
+    const [backdrop, setBackdrop] = useState<'checker' | 'dark' | 'black' | 'white'>('checker');
     const [dropActive, setDropActive] = useState(false);
     const [isNarrow, setIsNarrow] = useState(false);
 
@@ -377,7 +378,7 @@ export default function BackgroundRemoverPage() {
                         </button>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                                 {(['cutout', 'original'] as const).map((p) => (
                                     <button
                                         key={p}
@@ -398,15 +399,47 @@ export default function BackgroundRemoverPage() {
                                         {p === 'cutout' ? 'CUTOUT' : 'ORIGINAL'}
                                     </button>
                                 ))}
+
+                                {preview === 'cutout' && hasResult && (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+                                        <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 800, color: '#555' }}>BG:</span>
+                                        {(['checker', 'dark', 'black', 'white'] as const).map((b) => (
+                                            <button
+                                                key={b}
+                                                type="button"
+                                                onClick={() => setBackdrop(b)}
+                                                style={{
+                                                    padding: '3px 7px',
+                                                    fontSize: '0.58rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    border: '1.5px solid #000',
+                                                    background: backdrop === b ? '#FFDD00' : '#fff',
+                                                    color: '#000',
+                                                    cursor: 'pointer',
+                                                }}
+                                                title={`Test cutout against ${b} background`}
+                                            >
+                                                {b.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
                                 {doneWith && !busy && (
                                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 900, color: '#166534' }}>
-                                        <CheckCircle2 size={13} /> CUT {doneWith === 'browser' ? 'ON MY DEVICE' : 'ON SERVER'}
+                                        <CheckCircle2 size={13} /> CUT {doneWith === 'browser' ? 'ON MY DEVICE' : 'ON SERVER'} · NO WHITE HALO
                                     </span>
                                 )}
                             </div>
                             <div
                                 style={{
-                                    ...CHECKERBOARD,
+                                    ...(backdrop === 'checker' || preview === 'original' ? CHECKERBOARD : {}),
+                                    background: preview === 'cutout' ? (
+                                        backdrop === 'dark' ? '#18181b' :
+                                        backdrop === 'black' ? '#000000' :
+                                        backdrop === 'white' ? '#ffffff' : undefined
+                                    ) : undefined,
                                     border: '2px solid #000',
                                     borderRadius: 8,
                                     minHeight: isNarrow ? 300 : 380,

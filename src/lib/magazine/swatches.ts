@@ -31,10 +31,25 @@ export const rgbToHex = (r: number, g: number, b: number): string =>
     `#${[r, g, b].map((v) => clampCh(v).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 
 export const hexToRgb = (hex: string): Rgb | null => {
-    const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
-    if (!m) return null;
-    const n = parseInt(m[1], 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    if (!hex || typeof hex !== 'string') return null;
+    const clean = hex.trim().replace(/^#/, '');
+    if (clean.length === 3) {
+        const r = parseInt(clean[0] + clean[0], 16);
+        const g = parseInt(clean[1] + clean[1], 16);
+        const b = parseInt(clean[2] + clean[2], 16);
+        if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+        return [r, g, b];
+    }
+    const m = /^([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(clean);
+    if (m) {
+        const n = parseInt(m[1], 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    const rgbM = /^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(hex.trim());
+    if (rgbM) {
+        return [parseInt(rgbM[1], 10), parseInt(rgbM[2], 10), parseInt(rgbM[3], 10)];
+    }
+    return null;
 };
 
 export const isHexColor = (v: unknown): v is string =>

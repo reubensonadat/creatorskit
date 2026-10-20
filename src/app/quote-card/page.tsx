@@ -4730,61 +4730,119 @@ export default function QuoteCardPage() {
                     .ck-sheet-next .text-behind-desktop-cards > [data-ck-cat~='next'] {
                         display: block !important;
                     }
-                    /* ---- Touch sizing: every control a real finger target ---- */
+                    /* =========================================================
+                       PHASE-6 MOBILE SIZING & OPTIMIZATION (Precise, Proportional)
+                       Eliminates blunt blanket !important overrides that blew up
+                       steppers, preset cards, layer pills, and inputs.
+                       ========================================================= */
+
+                    /* 1. General Brutalist Buttons inside sheet (clean, finger-friendly default) */
                     .ck-sheet-open .text-behind-controls-scroll button {
-                        font-size: 0.78rem !important;
-                        min-height: 42px !important;
-                        max-width: 100% !important;
-                        padding: 8px 12px !important;
+                        font-size: 0.68rem;
+                        min-height: 32px;
+                        max-width: 100%;
+                        padding: 6px 10px;
+                        box-sizing: border-box;
                     }
                     .ck-sheet-open .text-behind-controls-scroll button svg {
-                        width: 16px !important;
-                        height: 16px !important;
+                        width: 13px;
+                        height: 13px;
                     }
+
+                    /* 2. Primary / Main Action Buttons */
+                    .ck-sheet-open .text-behind-controls-scroll .brutalist-button-primary,
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='background: #000'],
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='background:#000'] {
+                        min-height: 38px;
+                        padding: 7px 12px;
+                        font-size: 0.72rem;
+                    }
+
+                    /* 3. TactileScrubber Component Controls */
+                    .ck-sheet-open .text-behind-controls-scroll button[title='Decrease value'],
+                    .ck-sheet-open .text-behind-controls-scroll button[title='Increase value'] {
+                        width: 20px !important;
+                        min-width: 20px !important;
+                        max-width: 20px !important;
+                        height: 20px !important;
+                        min-height: 20px !important;
+                        max-height: 20px !important;
+                        padding: 0 !important;
+                        font-size: 0.72rem !important;
+                        line-height: 1 !important;
+                        border: 1.5px solid #000 !important;
+                    }
+                    /* Preset chips inside TactileScrubber */
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='border: 1.5px solid #000'] > button,
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='border:1.5px solid #000'] > button {
+                        min-height: 22px !important;
+                        height: 22px !important;
+                        padding: 2px 5px !important;
+                        font-size: 0.58rem !important;
+                        line-height: 1 !important;
+                    }
+
+                    /* 4. Number inputs */
+                    .ck-sheet-open .text-behind-controls-scroll input[type='number'] {
+                        min-height: unset !important;
+                        height: 26px !important;
+                        max-height: 26px !important;
+                        width: 44px !important;
+                        padding: 2px 4px !important;
+                        font-size: 0.72rem !important;
+                        font-family: monospace !important;
+                        font-weight: 900 !important;
+                        border: 1.5px solid #000 !important;
+                        background: #fff !important;
+                        text-align: center !important;
+                        box-sizing: border-box !important;
+                    }
+
+                    /* 5. Standard Text Inputs & Textareas */
                     .ck-sheet-open .text-behind-controls-scroll input[type='text'],
-                    .ck-sheet-open .text-behind-controls-scroll input[type='number'],
                     .ck-sheet-open .text-behind-controls-scroll textarea {
-                        font-size: 1rem !important; /* 16px stops iOS focus-zoom */
-                        min-height: 46px !important;
+                        font-size: 0.85rem !important;
+                        min-height: 36px !important;
+                        padding: 6px 8px !important;
                         box-sizing: border-box !important;
                         max-width: 100% !important;
                     }
-                    .ck-sheet-open .text-behind-controls-scroll input[type='range'] {
-                        min-height: 44px !important;
-                        height: 44px !important;
+                    .ck-sheet-open .text-behind-controls-scroll textarea {
+                        min-height: 56px !important;
                     }
+                    .ck-sheet-open .text-behind-controls-scroll input[type='range'] {
+                        min-height: 36px !important;
+                        height: 36px !important;
+                    }
+                    /* Color inputs: compact tactile swatches */
                     .ck-sheet-open .text-behind-controls-scroll input[type='color'] {
-                        width: 44px !important;
-                        height: 44px !important;
-                        min-width: 44px !important;
-                        border: 2px solid #000 !important;
-                        padding: 2px !important;
+                        width: 26px !important;
+                        height: 22px !important;
+                        min-width: 26px !important;
+                        min-height: 22px !important;
+                        border: 1.5px solid #000 !important;
+                        padding: 0 !important;
+                        cursor: pointer !important;
+                        border-radius: 2px !important;
+                        background: none !important;
                     }
                     .ck-sheet-open .text-behind-controls-scroll select {
-                        font-size: 0.95rem !important;
-                        min-height: 44px !important;
-                        padding: 10px !important;
+                        font-size: 0.82rem !important;
+                        min-height: 36px !important;
+                        padding: 6px 8px !important;
                     }
-                    /* Dense desktop chip-grids -> roomy phone grids
-                       (inline styles are beaten by !important + attribute selectors) */
-                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(5,'] {
-                        grid-template-columns: repeat(3, 1fr) !important;
-                    }
-                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(4,'] {
-                        grid-template-columns: repeat(2, 1fr) !important;
-                    }
-                    /* Empty-state drop zone never overflows narrow phones
-                       (it's a clickable div with an inline min-width: 360px) */
+
+                    /* 6. Empty-state drop zone never overflows narrow phones */
                     .text-behind-viewport div[style*='min-width:360px'] {
                         min-width: 0 !important;
                         max-width: 100% !important;
                         box-sizing: border-box !important;
                         margin: 12px !important;
                     }
-                    /* Reset confirmation popover — real touch targets */
+                    /* Reset confirmation popover */
                     .text-behind-confirm-pop button {
-                        min-height: 44px !important;
-                        font-size: 0.72rem !important;
+                        min-height: 38px !important;
+                        font-size: 0.70rem !important;
                     }
                 }
             `}</style>

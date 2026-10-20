@@ -349,15 +349,129 @@ export async function refineCutoutEdges(blob: Blob): Promise<Blob> {
         }
 
         const n = w * h;
+        const alpha = new Uint8Array(n);
+        const isSolidInterior = new Uint8Array(n);
+
+        // PASS 1 — Smooth alpha + identify solid, non-white interior foreground pixels
         for (let i = 0; i < n; i++) {
             const idx = i * 4 + 3;
             const sharp = out[idx];
-            // Topology locks — never invent or erase solid pixels
-            if (sharp === 0 || sharp === 255) continue;
-            const smoothed = LUT[alphaData[idx]];
-            out[idx] = smoothed === 0 || smoothed === 255
-                ? (smoothed === 255 && sharp >= 128 ? 255 : smoothed === 0 && sharp < 128 ? 0 : sharp)
-                : Math.min(255, Math.round(smoothed * 0.65 + sharp * 0.35));
+            let a = sharp;
+            if (sharp > 0 && sharp < 255) {
+                const smoothed = LUT[alphaData[idx]];
+                a = smoothed === 0 || smoothed === 255
+                    ? (smoothed === 255 && sharp >= 128 ? 255 : smoothed === 0 && sharp < 128 ? 0 : sharp)
+                    : Math.min(255, Math.round(smoothed * 0.65 + sharp * 0.35));
+            }
+            alpha[i] = a;
+
+            if (a >= 235) {
+                const pi = i * 4;
+                const lum = 0.299 * out[pi] + 0.587 * out[pi + 1] + 0.114 * out[pi + 2];
+                // Exclude pure white background mask dilation from being counted as solid interior
+                if (lum < 242) {
+                    isSolidInterior[i] = 1;
+                }
+            }
+        }
+
+        // PASS 2 — Defringe / Alpha Choke: trim white halo bleed on boundary pixels
+        const edgeIndices: number[] = [];
+        const newAlpha = new Uint8Array(alpha);
+
+        for (let y = 0; y < h; y++) {
+            const row = y * w;
+            for (let x = 0; x < w; x++) {
+                const idx = row + x;
+                const a = alpha[idx];
+                if (a === 0) continue;
+
+                const isBorder = (
+                    x === 0 || x === w - 1 || y === 0 || y === h - 1 ||
+                    alpha[idx - 1] === 0 || alpha[idx + 1] === 0 ||
+                    alpha[idx - w] === 0 || alpha[idx + w] === 0
+                );
+
+                if (isBorder || a < 240) {
+                    edgeIndices.push(idx);
+                    const pi = idx * 4;
+                    const lum = 0.299 * out[pi] + 0.587 * out[pi + 1] + 0.114 * out[pi + 2];
+
+                    // If outer perimeter pixel is contaminated with light/white background
+                    if (isBorder) {
+                        if (lum > 225) {
+                            newAlpha[idx] = 0; // eliminate 1px white dilation
+                        } else if (lum > 195) {
+                            newAlpha[idx] = Math.round(a * 0.35); // choke faint white edge
+                        }
+                    }
+                }
+            }
+        }
+
+        // PASS 3 — Color Decontamination: un-premultiply white & propagate true interior color
+        const MAX_SEARCH = 3;
+        for (let k = 0; k < edgeIndices.length; k++) {
+            const idx = edgeIndices[k];
+            const a = newAlpha[idx];
+            const pi = idx * 4;
+            if (a === 0) {
+                out[pi + 3] = 0;
+                continue;
+            }
+            out[pi + 3] = a;
+
+            const x = idx % w;
+            const y = Math.floor(idx / w);
+            const lum = 0.299 * out[pi] + 0.587 * out[pi + 1] + 0.114 * out[pi + 2];
+
+            // Search for nearest solid interior pixel
+            let bestDist = 999;
+            let bestIdx = -1;
+
+            for (let dy = -MAX_SEARCH; dy <= MAX_SEARCH; dy++) {
+                const ny = y + dy;
+                if (ny < 0 || ny >= h) continue;
+                const nrow = ny * w;
+                for (let dx = -MAX_SEARCH; dx <= MAX_SEARCH; dx++) {
+                    const nx = x + dx;
+                    if (nx < 0 || nx >= w) continue;
+                    const nidx = nrow + nx;
+                    if (isSolidInterior[nidx]) {
+                        const d = dx * dx + dy * dy;
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestIdx = nidx;
+                            if (d <= 1) break;
+                        }
+                    }
+                }
+                if (bestDist <= 1) break;
+            }
+
+            if (bestIdx !== -1) {
+                const bpi = bestIdx * 4;
+                const sR = out[bpi];
+                const sG = out[bpi + 1];
+                const sB = out[bpi + 2];
+
+                if (lum > 200) {
+                    // White-contaminated edge -> replace with true interior color
+                    out[pi] = sR;
+                    out[pi + 1] = sG;
+                    out[pi + 2] = sB;
+                } else if (a < 225) {
+                    // Un-premultiply white (255) + blend with interior color
+                    const normA = a / 255;
+                    const blendRatio = Math.max(0.2, normA);
+                    for (let c = 0; c < 3; c++) {
+                        const obs = out[pi + c];
+                        const unpremul = Math.max(0, Math.min(255, (obs - 255 * (1 - normA)) / normA));
+                        const solidC = out[bpi + c];
+                        out[pi + c] = Math.round(unpremul * blendRatio + solidC * (1 - blendRatio));
+                    }
+                }
+            }
         }
 
         bctx.putImageData(baseData, 0, 0);

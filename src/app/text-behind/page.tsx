@@ -34,7 +34,7 @@ import { analyzePhotoFromCanvas, composeSystemCover, LAYOUT_LIBRARY, matchGenreT
 import { loadBrandKit, updateBrandKit } from '@/lib/brand-kit';
 import { analyzeGridFromCanvas, gridToPhotoAnalysis, getCutoutBoundingBox, solveEditorialCover, applySolverToCover, type GridAnalysis, type SolverSemantics, type SolverResult } from '@/lib/magazine/solver';
 import { traceCoverPipeline } from '@/lib/magazine/pipeline-trace';
-import { extractPhotoSwatches, extractLightAngle, harmonizeAiSwatches, downsampleForSwatches, brightenTo, rgbaFromHex, type PhotoSwatches } from '@/lib/magazine/swatches';
+import { extractPhotoSwatches, extractLightAngle, harmonizeAiSwatches, downsampleForSwatches, brightenTo, rgbaFromHex, hexToRgb, lum255, type PhotoSwatches } from '@/lib/magazine/swatches';
 import type { PhotoFilterId } from '@/lib/magazine/types';
 
 /** §16 OPTICAL SANDWICH DEPTH — the cached underlay canvas that sits
@@ -96,35 +96,58 @@ const buildSandwichDepthUnderlay = (
         ctx.drawImage(cutout, dx, dy, dw, dh);
         ctx.restore();
 
-        // PASS 3 — rim light on the lit edge (paper-toned silhouette,
-        // offset toward the light, softly feathered).
-        const rim = document.createElement('canvas');
-        rim.width = Math.max(1, Math.ceil(dw));
-        rim.height = Math.max(1, Math.ceil(dh));
-        const rctx = rim.getContext('2d');
-        if (rctx) {
-            rctx.drawImage(cutout, 0, 0, rim.width, rim.height);
-            rctx.globalCompositeOperation = 'source-in';
-            rctx.fillStyle = rimHex;
-            rctx.fillRect(0, 0, rim.width, rim.height);
-            ctx.save();
-            ctx.globalAlpha = 0.4;
-            ctx.filter = 'blur(1px)';
-            ctx.drawImage(rim, dx + lx * H * 0.005, dy + ly * H * 0.005, dw, dh);
-            ctx.filter = 'none';
-            ctx.restore();
-        }
         return off;
     } catch {
         return null;
     }
 };
+
+/** §16.2 THE PALETTE HARMONIZER — one click repaints the whole cover in
+ *  the photo's own colours. Polarity-safe: every hex is re-inked by what
+ *  it already is — a saturated hue becomes the photo's accent, a light
+ *  neutral becomes the photo's paper, a dark neutral becomes the photo's
+ *  ink — so plates stay plates, night type stays light, and the badge
+ *  renderer's polarity flip keeps every label legible. Functional print
+ *  furniture (barcode, QR) is lawfully untouched: scanners are
+ *  colour-blind and demand pure ink on paper. */
+const harmonizePalettePass = (
+    layers: TextLayer[],
+    shapes: ShapeLayer[],
+    sw: PhotoSwatches,
+): { layers: TextLayer[]; shapes: ShapeLayer[] } => {
+    const remap = (hex: string): string => {
+        if (!hex || typeof hex !== 'string') return hex;
+        const rgb = hexToRgb(hex);
+        if (!rgb) return hex;
+        const max = Math.max(rgb[0], rgb[1], rgb[2]);
+        const min = Math.min(rgb[0], rgb[1], rgb[2]);
+        if (max - min > 50 && sw.accentPrimary) return sw.accentPrimary; // a hue → the photo's hue
+        return lum255(rgb[0], rgb[1], rgb[2]) >= 128 ? sw.paperNeutral : sw.inkDark; // a neutral → its own polarity
+    };
+    return {
+        layers: layers.map((l) => ({
+            ...l,
+            color: remap(l.color),
+            strokeColor: l.strokeColor ? remap(l.strokeColor) : l.strokeColor,
+        })),
+        shapes: shapes.map((s) => {
+            if (s.kind === 'barcode' || s.kind === 'qr') return s; // scannability law
+            return {
+                ...s,
+                fillColor: s.fillColor ? remap(s.fillColor) : s.fillColor,
+                strokeColor: s.strokeColor ? remap(s.strokeColor) : s.strokeColor,
+            };
+        }),
+    };
+};
+
 import { diagnoseSituation, recallPrecedents, reconcile, runCritiqueLoop, candidateFrom } from '@/lib/magazine/brain';
 import { settleIntoCalm, type SettleMove } from '@/lib/magazine/settle';
 import { TactileScrubber } from '@/components/tactile-scrubber';
 import { gateAction } from '@/components/AdGate';
 import {
     removeBackgroundBrowser,
+    refineCutoutEdges,
     standardizeSourceImage,
     BROWSER_MODELS,
     prewarmBackgroundEngine,
@@ -286,6 +309,7 @@ interface TextLayer {
     widthPct: number;
     heightPct: number;
     letterSpacingEm: number;
+    align?: 'left' | 'center' | 'right'; // per-textbox line alignment (default: center)
     color: string;
     opacity: number;
     fillMode: 'solid' | 'gradient';
@@ -314,6 +338,7 @@ const DEFAULT_TEXT_LAYER: TextLayer = {
     widthPct: 86,
     heightPct: 14,
     letterSpacingEm: 0.02,
+    align: 'center',
     color: '#000000',
     opacity: 1,
     fillMode: 'solid',
@@ -501,7 +526,7 @@ export function getPhotoFilterCss(id: PhotoFilterId | string): string {
 /** One undo step — everything the canvas composites, captured before a change. */
 interface UndoSnapshot {
     layers: TextLayer[];
-    activeLayerId: string;
+    activeLayerId: string | null;
     shapes: ShapeLayer[];
     activeShapeId: string | null;
     grain: GrainSettings;
@@ -1590,7 +1615,11 @@ export default function TextBehindPage() {
 
     // --- multiple text layers -----------------------------------------------
     const [layers, setLayers] = useState<TextLayer[]>([DEFAULT_TEXT_LAYER]);
-    const [activeLayerId, setActiveLayerId] = useState<string>(DEFAULT_TEXT_LAYER.id);
+    // string | null: null means NOTHING is selected (empty-canvas click).
+    // Highlights (canvas outline, LAYERS/SHAPES list rows, nudging) all
+    // compare against this raw id — the panel's activeLayer fallback only
+    // binds controls, it is never a selection.
+    const [activeLayerId, setActiveLayerId] = useState<string | null>(DEFAULT_TEXT_LAYER.id);
 
     const activeLayer = layers.find((l) => l.id === activeLayerId) ?? layers[0] ?? DEFAULT_TEXT_LAYER;
 
@@ -1682,6 +1711,16 @@ export default function TextBehindPage() {
     const [photoFilter, setPhotoFilter] = useState<PhotoFilterId>('none');
     /** Whether to show all 10 color grades or just the initial 4 */
     const [showAllFilters, setShowAllFilters] = useState(false);
+
+    // --- Progressive Disclosure & Smooth Navigation state & refs ---
+    const [photosOpen, setPhotosOpen] = useState(true);
+    const [textBoxesOpen, setTextBoxesOpen] = useState(true);
+    const [styleLooksOpen, setStyleLooksOpen] = useState(true);
+    const photosCardRef = useRef<HTMLDivElement>(null);
+    const editorialCardRef = useRef<HTMLDivElement>(null);
+    const textBoxesCardRef = useRef<HTMLDivElement>(null);
+    const styleLooksCardRef = useRef<HTMLDivElement>(null);
+    const shapesCardRef = useRef<HTMLDivElement>(null);
 
     // --- Magazine Presets & AI Studio state ---
     const [editorialOpen, setEditorialOpen] = useState(false);
@@ -2285,6 +2324,7 @@ export default function TextBehindPage() {
         const s = makeShape(kind, shapes.length);
         setShapes((prev) => [...prev, s]);
         setActiveShapeId(s.id);
+        setActiveLayerId(null);
         setAdvancedOpen(true);
     };
 
@@ -2366,6 +2406,56 @@ export default function TextBehindPage() {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [undo, redo]);
+
+    // ARROW-KEY NUDGING: with a selection active, ↑↓←→ move the SELECTED
+    // item — never the page. This sidesteps the frame/drag contention
+    // entirely: what's selected is what moves. Fine step per tap (0.25% of
+    // canvas), coarse with Shift (1%). Hold-to-repeat glides smoothly, and
+    // undo history gets ONE entry per nudge burst (600ms), not per keystroke.
+    const lastNudgeAtRef = useRef(0);
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+            const dirs: Record<string, [number, number]> = {
+                ArrowLeft: [-1, 0],
+                ArrowRight: [1, 0],
+                ArrowUp: [0, -1],
+                ArrowDown: [0, 1],
+            };
+            const dir = dirs[e.key];
+            if (!dir) return;
+            const hasText = layers.some((l) => l.id === activeLayerId);
+            const hasShape = !hasText && shapes.some((s) => s.id === activeShapeId);
+            if (!hasText && !hasShape) return; // nothing selected → arrows keep their page-scroll meaning
+            e.preventDefault();
+            const step = e.shiftKey ? 0.01 : 0.0025;
+            const dx = dir[0] * step;
+            const dy = dir[1] * step;
+            const now = Date.now();
+            if (now - lastNudgeAtRef.current > 600) pushUndo();
+            lastNudgeAtRef.current = now;
+            if (hasText) {
+                setLayers((prev) =>
+                    prev.map((l) =>
+                        l.id === activeLayerId
+                            ? { ...l, xPct: Math.max(0, Math.min(1, l.xPct + dx)), yPct: Math.max(0, Math.min(1, l.yPct + dy)) }
+                            : l
+                    )
+                );
+            } else {
+                setShapes((prev) =>
+                    prev.map((s) =>
+                        s.id === activeShapeId
+                            ? { ...s, xPct: Math.max(0, Math.min(1, s.xPct + dx)), yPct: Math.max(0, Math.min(1, s.yPct + dy)) }
+                            : s
+                    )
+                );
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [layers, shapes, activeLayerId, activeShapeId, pushUndo]);
 
     /** Metrics for each text layer — powers multi-layer hit testing & dragging. */
     const metricsRef = useRef<Record<string, TextMetrics>>({});
@@ -2594,13 +2684,39 @@ export default function TextBehindPage() {
         if (!file) return;
         try {
             const std = await standardizeSourceImage(file);
-            setCutoutImage(std.img);
-            setCutoutInfo(`${std.width} × ${std.height}px · YOUR PNG`);
-            void idbPut('cutout', std.blob);
+            const refinedBlob = await refineCutoutEdges(std.blob);
+            const refinedStd = await standardizeSourceImage(refinedBlob);
+            setCutoutImage(refinedStd.img);
+            setCutoutInfo(`${refinedStd.width} × ${refinedStd.height}px · Refined PNG (No Halo)`);
+            void idbPut('cutout', refinedStd.blob);
         } catch {
             setCutoutInfo('Could not open that cutout PNG.');
         }
     }, []);
+
+    /** Re-refines the currently loaded cutout to clean any remaining white edge fringe */
+    const handleRefineCurrentCutout = useCallback(async () => {
+        if (!cutoutImage) return;
+        try {
+            setMatte({
+                busy: true,
+                engine: 'browser',
+                message: 'Polishing & defringing cutout edges…',
+                percent: 70,
+            });
+            const res = await fetch(cutoutImage.src);
+            const blob = await res.blob();
+            const refinedBlob = await refineCutoutEdges(blob);
+            const refinedStd = await standardizeSourceImage(refinedBlob);
+            setCutoutImage(refinedStd.img);
+            setCutoutInfo(`${refinedStd.width} × ${refinedStd.height}px · Defringed & Decontaminated`);
+            void idbPut('cutout', refinedStd.blob);
+            setMatte(null);
+        } catch (err) {
+            console.error('[handleRefineCurrentCutout] error:', err);
+            setMatte(null);
+        }
+    }, [cutoutImage]);
 
 
 
@@ -2633,6 +2749,7 @@ export default function TextBehindPage() {
         };
         setLayers((prev) => [...prev, newLayer]);
         setActiveLayerId(newId);
+        setActiveShapeId(null);
         void ensurePosterFontReady(newLayer.fontId, newLayer.weight, newLayer.italic);
     };
 
@@ -2646,6 +2763,7 @@ export default function TextBehindPage() {
         };
         setLayers((prev) => [...prev, duplicated]);
         setActiveLayerId(newId);
+        setActiveShapeId(null);
     };
 
     const handleDeleteActiveTextBox = () => {
@@ -4029,6 +4147,12 @@ export default function TextBehindPage() {
             ]);
             setGrain({ enabled: true, opacity: 0.10, size: 1 });
         }
+        // Progressive disclosure: once a preset is applied, focus text boxes & style
+        setTextBoxesOpen(true);
+        if (bgImage) setPhotosOpen(false);
+        setTimeout(() => {
+            textBoxesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 80);
     };
 
     /** Stable identity of the CURRENT photo — a tiny grayscale hash of its
@@ -4449,6 +4573,30 @@ export default function TextBehindPage() {
         } finally {
             setAiGenerating(false);
         }
+    };
+
+    /** §16.2 — THE PALETTE HARMONIZER. One click repaints the existing
+     *  cover in the photo's own mined palette (accent · paper · ink).
+     *  Fresh measurement wins over the cached swatches (cheap 96×120
+     *  pass); polarity-safe, undoable, and the brand kit is untouched —
+     *  this is explicit user intent to theme to the PHOTO, while the
+     *  kit keeps governing future generations. */
+    const handleHarmonizePalette = () => {
+        if (!bgImage) {
+            setAiError("Add a background photo first — the palette is mined from its pixels.");
+            return;
+        }
+        const cv = downsampleForSwatches(bgImage);
+        const sw = (cv ? extractPhotoSwatches(cv) : null) ?? photoSwatches;
+        if (!sw) {
+            setAiError("Could not read this photo's pixels — try re-adding the image.");
+            return;
+        }
+        pushUndo();
+        setPhotoSwatches(sw);
+        const next = harmonizePalettePass(layers, shapes, sw);
+        setLayers(next.layers);
+        setShapes(next.shapes);
     };
 
     // --- SYSTEM ASSEMBLY ------------------------------------------------------
@@ -5088,6 +5236,7 @@ export default function TextBehindPage() {
             ctx.clearRect(0, 0, W, H);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
+            if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
 
             if (opts.opaqueBg) {
                 ctx.fillStyle = opts.opaqueBg;
@@ -5169,6 +5318,7 @@ export default function TextBehindPage() {
                     const widths = lines.map((line) => ctx.measureText(line || ' ').width);
                     const widest = Math.max(...widths, 1);
                     const lineH = px * 1.10;
+                    if ('letterSpacing' in ctx) ls.letterSpacing = '0px';
                     return { widest, blockW: widest, blockH: lineH * lines.length, lineH };
                 };
 
@@ -5217,7 +5367,16 @@ export default function TextBehindPage() {
                 const rotRad = (l.rotationDeg * Math.PI) / 180;
                 const cosA = Math.abs(Math.cos(rotRad));
                 const sinA = Math.abs(Math.sin(rotRad));
-                const halfW = (m.blockW * cosA + m.blockH * sinA) / 2;
+                // TEXTBOX ENVELOPE: the widthPct band IS the textbox — the same
+                // doctrine measureTextBox() uses for the overlap laws. LEFT/RIGHT
+                // lines hug the envelope edges, so even one short line visibly
+                // answers the dial, and the clamp below keeps the whole envelope
+                // (not just the glyphs) inside the safe margins. CENTER stays
+                // measured-block-true: every legacy layout is pixel-identical.
+                const envW = Math.min((W * l.widthPct) / 100, maxSafeW);
+                const alignMode = l.align ?? 'center';
+                const effW = alignMode === 'center' ? m.blockW : Math.max(m.blockW, envW);
+                const halfW = (effW * cosA + m.blockH * sinA) / 2;
                 const halfH = (m.blockW * sinA + m.blockH * cosA) / 2;
                 const safeMarginX = W * 0.03;
                 let posX = l.xPct * W;
@@ -5306,17 +5465,30 @@ export default function TextBehindPage() {
                 }
 
                 const firstMid = -(m.blockH / 2) + m.lineH / 2;
+                // PER-TEXTBOX LINE ALIGNMENT: each line's edge is pinned to the
+                // envelope — left edge for LEFT, right edge for RIGHT, dead
+                // centre for CENTER. ctx.textAlign stays 'center', so each line
+                // is anchored at (edge ± lineWidth/2), measured live with the
+                // final font so tracking/weight changes are honoured. The hit
+                // box (metrics) becomes the envelope, so grabbing, dragging and
+                // snap magnets track the visible textbox, not just the glyphs.
                 lines.forEach((line, i) => {
                     const y = firstMid + i * m.lineH;
-                    if (strokePx > 0) ctx.strokeText(line, 0, y);
-                    ctx.fillText(line, 0, y);
+                    let ax = 0;
+                    if (alignMode !== 'center') {
+                        const lw = ctx.measureText(line || ' ').width;
+                        ax = alignMode === 'left' ? -effW / 2 + lw / 2 : effW / 2 - lw / 2;
+                    }
+                    if (strokePx > 0) ctx.strokeText(line, ax, y);
+                    ctx.fillText(line, ax, y);
                 });
+                if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
                 ctx.restore();
 
                 metricsRef.current[l.id] = {
                     cx: posX,
                     cy: posY,
-                    w: m.blockW,
+                    w: effW,
                     h: m.blockH,
                     rot: (l.rotationDeg * Math.PI) / 180,
                     fontPx,
@@ -5374,6 +5546,7 @@ export default function TextBehindPage() {
             // Shape overlay renderer (advanced image editing) — every kind shares
             // one model: fill (body) + border (outline) + glow + blend + rotation.
             const drawShapeLayer = (s: ShapeLayer) => {
+                if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
                 let w = Math.max(4, (s.wPct / 100) * W);
                 let h = Math.max(2, (s.hPct / 100) * H);
                 // TRUE circle (mobile ruling 2026-10-02): independent w/h would
@@ -5404,6 +5577,7 @@ export default function TextBehindPage() {
                     // require at least radius (~h/2) padding so text never touches the curvature.
                     const capsulePad = (s.cornerPct >= 40) ? Math.round(h * 0.48) : Math.round(badgeFont * 0.95);
                     let padX = Math.max(14, capsulePad);
+                    if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
                     ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
                     let textW = ctx.measureText(badgeLabel).width;
 
@@ -5438,13 +5612,22 @@ export default function TextBehindPage() {
                 const lw = Math.max(1, (W / 1000) * Math.max(1, s.strokeW));
                 let posX = s.xPct * W;
                 let posY = s.yPct * H;
-                // Barcodes and QR codes must strictly respect the magazine frame margin (6.5% X, 5.5% Y)
+                // Barcodes and QR codes must strictly respect the magazine frame margin (6.5% X, 5.5% Y).
+                // OVERSIZED SHAPES ARE EXEMPT: a page frame spans ~90%+ of the
+                // canvas by design and can never fit the margin envelope —
+                // clamping it anyway pins it immovably at centre on every
+                // repaint (the "stuck frame" bug: the drag writes state, the
+                // draw clamps it home). Only clamp what actually fits.
                 const safeMarginX = (s.kind === 'barcode' || s.kind === 'qr') ? W * 0.065 : W * 0.035;
                 const safeMarginY = (s.kind === 'barcode' || s.kind === 'qr') ? H * 0.055 : H * 0.035;
-                if (posX - shapeBoxW / 2 < safeMarginX) posX = safeMarginX + shapeBoxW / 2;
-                if (posX + shapeBoxW / 2 > W - safeMarginX) posX = W - safeMarginX - shapeBoxW / 2;
-                if (posY - h / 2 < safeMarginY) posY = safeMarginY + h / 2;
-                if (posY + h / 2 > H - safeMarginY) posY = H - safeMarginY - h / 2;
+                if (shapeBoxW + safeMarginX * 2 < W) {
+                    if (posX - shapeBoxW / 2 < safeMarginX) posX = safeMarginX + shapeBoxW / 2;
+                    if (posX + shapeBoxW / 2 > W - safeMarginX) posX = W - safeMarginX - shapeBoxW / 2;
+                }
+                if (h + safeMarginY * 2 < H) {
+                    if (posY - h / 2 < safeMarginY) posY = safeMarginY + h / 2;
+                    if (posY + h / 2 > H - safeMarginY) posY = H - safeMarginY - h / 2;
+                }
 
                 ctx.save();
                 ctx.translate(posX, posY);
@@ -5634,6 +5817,7 @@ export default function TextBehindPage() {
                     } else {
                         ctx.fillStyle = s.fillColor || '#000000';
                     }
+                    if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.font = `700 ${badgeFont}px "Space Mono", monospace, monospace`;
@@ -5646,6 +5830,7 @@ export default function TextBehindPage() {
                     // Optical vertical centering for all-caps monospace (-4% font size offset)
                     const opticalOffsetY = -Math.round(badgeFont * 0.04);
                     ctx.fillText(badgeLabel, 0, opticalOffsetY);
+                    if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
                     ctx.restore();
                 } else if (s.kind === 'frame') {
                     // Clean bleed margin border (corner tick crosshairs eliminated)
@@ -5939,11 +6124,13 @@ export default function TextBehindPage() {
     };
 
     const hitTestShapes = (x: number, y: number, touch = false): string | null => {
-        // A page frame (or any huge hollow scaffold) is structure, not a
-        // prop — it must never swallow clicks meant for the content inside.
-        const front = shapes.filter(
-            (s) => s.depth === 'front' && !(s.kind === 'frame' && s.wPct > 80 && s.hPct > 80)
-        );
+        // Plain AABB picking for shapes — pointer PRECEDENCE is what keeps
+        // a page frame or plate from swallowing clicks meant for the
+        // content on top of it (see handlePointerDown: text always gets
+        // the first chance at the pointer, shapes only where no text is
+        // under it; a frame is therefore grabbable across its whole face,
+        // because the words inside already had theirs).
+        const front = shapes.filter((s) => s.depth === 'front');
         const behind = shapes.filter((s) => s.depth === 'behind');
         const ordered = [...front.slice().reverse(), ...behind.slice().reverse()];
 
@@ -5967,27 +6154,60 @@ export default function TextBehindPage() {
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (!bgImage) return;
         const p = canvasPoint(e);
+        const isTouch = e.pointerType === 'touch';
 
-        // Shapes win the click first — they are the props you just placed.
-        const shapeId = hitTestShapes(p.x, p.y, e.pointerType === 'touch');
+        // TEXT WINS THE CLICK — the words are the cover's substance;
+        // plates, bars and page frames are backdrops under them. This is
+        // what keeps a frame on screen from making every text item
+        // untouchable: click the words and you get the words, wherever a
+        // plate or frame also sits underneath.
+        const hitId = hitTestLayers(p.x, p.y, isTouch);
+        if (hitId) {
+            setActiveLayerId(hitId);
+            setActiveShapeId(null);
+            setTextBoxesOpen(true);
+            setTimeout(() => {
+                textBoxesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 60);
+            if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                setActiveSheet('text');
+            }
+            const m = metricsRef.current[hitId];
+            if (!m) return;
+            dragRef.current = { active: true, kind: 'text', layerId: hitId, movedPx: 0, ox: m.cx - p.x, oy: m.cy - p.y };
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older touch browsers */ }
+            return;
+        }
+
+        // No text under the pointer → shapes get the click. A page frame
+        // is now grabbable across its whole face: the words inside it
+        // already had their chance above, so its large bounds can no
+        // longer steal anything.
+        const shapeId = hitTestShapes(p.x, p.y, isTouch);
         if (shapeId) {
             const sm = shapeMetricsRef.current[shapeId];
+            // STRICT SINGLE-SELECTION: grabbing a shape releases any text
+            // layer — exactly one thing is ever selected at a time.
             setActiveShapeId(shapeId);
+            setActiveLayerId(null);
+            setAdvancedOpen(true);
+            setTimeout(() => {
+                shapesCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 60);
+            if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                setActiveSheet('shapes');
+            }
             if (!sm) return;
             dragRef.current = { active: true, kind: 'shape', shapeId, movedPx: 0, ox: sm.cx - p.x, oy: sm.cy - p.y };
             try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older touch browsers */ }
             return;
         }
+        // Empty canvas / the photo itself — nothing can be selected here.
+        // The image isn't editable from the canvas, so tapping it simply
+        // releases whatever was highlighted: one canvas, one selection,
+        // or none at all.
+        setActiveLayerId(null);
         setActiveShapeId(null);
-
-        const hitId = hitTestLayers(p.x, p.y, e.pointerType === 'touch');
-        if (!hitId) return;
-
-        setActiveLayerId(hitId);
-        const m = metricsRef.current[hitId];
-        if (!m) return;
-        dragRef.current = { active: true, kind: 'text', layerId: hitId, movedPx: 0, ox: m.cx - p.x, oy: m.cy - p.y };
-        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older touch browsers */ }
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -6069,6 +6289,10 @@ export default function TextBehindPage() {
             edgesY.push({ at: b.t, guide: b.t }, { at: b.b, guide: b.b }, { at: b.cy, guide: b.cy, center: true });
         });
         shapes.forEach((s) => {
+            // A page frame is furniture, not an alignment neighbour — its
+            // near-canvas edges would magnetize every drag into sticky
+            // snap walls around the whole working area.
+            if (s.kind === 'frame') return;
             if (selfIsShape && s.id === drag.shapeId) return;
             const m = shapeMetricsRef.current[s.id];
             if (!m) return;
@@ -6868,7 +7092,14 @@ export default function TextBehindPage() {
                             <div className="text-behind-meta-strip" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 6px', flexShrink: 0, gap: 8 }}>
                                 {/* The size/active caption stays untouched — icons sit to its right */}
                                 <span style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#666' }}>
-                                    {canvasW} × {canvasH}px · Active: #{layers.findIndex((l) => l.id === activeLayerId) + 1} ({activeLayer.depth.toUpperCase()})
+                                    {canvasW} × {canvasH}px ·{' '}
+                                    {activeLayerId ? (
+                                        <>Active: #{layers.findIndex((l) => l.id === activeLayerId) + 1} ({activeLayer.depth.toUpperCase()})</>
+                                    ) : activeShapeId ? (
+                                        <>Active: Shape #{shapes.findIndex((s) => s.id === activeShapeId) + 1} ({(activeShape?.kind ?? 'shape').toUpperCase()})</>
+                                    ) : (
+                                        <>Canvas · No selection</>
+                                    )}
                                 </span>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <button
@@ -6946,40 +7177,93 @@ export default function TextBehindPage() {
                         {/* Desktop Continuous Cards Column */}
                         <div className="text-behind-desktop-cards">
                             {/* 1. Photos & Subject Cutout Card — mobile sheet: PHOTO */}
-                            <div className="brutalist-card" data-ck-cat="photo" style={{ padding: 14 }}>
-                                {sectionTitle(<ImagePlus size={14} />, 'Photos & Cutout')}
-                                <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666', marginBottom: 10 }}>
-                                    STANDARDIZED CANVAS RENDERING · 100% PRIVATE ON-DEVICE AI
+                            <div ref={photosCardRef} className="brutalist-card" data-ck-cat="photo" style={{ padding: 14 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: photosOpen ? 10 : 0 }}>
+                                    <div
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: bgImage ? 'pointer' : 'default', userSelect: 'none' }}
+                                        onClick={() => bgImage && setPhotosOpen(!photosOpen)}
+                                    >
+                                        {sectionTitle(<ImagePlus size={14} />, 'Photos & Cutout')}
+                                        {bgImage && (
+                                            <span style={{ fontSize: '0.52rem', fontFamily: 'monospace', fontWeight: 900, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', border: '1px solid #16a34a' }}>
+                                                ✓ READY
+                                            </span>
+                                        )}
+                                    </div>
+                                    {bgImage && (
+                                        <button
+                                            type="button"
+                                            className="brutalist-button"
+                                            style={{
+                                                fontSize: '0.54rem',
+                                                fontFamily: 'monospace',
+                                                fontWeight: 900,
+                                                padding: '3px 8px',
+                                                border: '1.5px solid #000',
+                                                background: photosOpen ? '#fff' : '#FFE500',
+                                                color: '#000',
+                                                cursor: 'pointer',
+                                            }}
+                                            onClick={() => setPhotosOpen(!photosOpen)}
+                                        >
+                                            {photosOpen ? 'COLLAPSE [−]' : 'EXPAND [+]'}
+                                        </button>
+                                    )}
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                                    <button
-                                        className="brutalist-button brutalist-button-primary"
-                                        style={{ padding: '9px 8px', fontSize: '0.72rem' }}
-                                        onClick={() => bgInputRef.current?.click()}
-                                    >
-                                        {bgImage ? 'CHANGE PHOTO ↻' : '+ UPLOAD PHOTO'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="brutalist-button"
-                                        style={{ padding: '9px 8px', fontSize: '0.72rem' }}
-                                        disabled={!bgImage || !!matte?.busy}
-                                        onClick={() => void handleAutoCutout()}
-                                    >
-                                        {matte?.busy ? 'CUTTING OUT…' : '↻ RE-CUT SUBJECT'}
-                                    </button>
-                                </div>
+                                {photosOpen && (
+                                    <>
+                                        <div style={{ fontSize: '0.58rem', fontFamily: 'monospace', color: '#666', marginBottom: 10 }}>
+                                            STANDARDIZED CANVAS RENDERING · 100% PRIVATE ON-DEVICE AI
+                                        </div>
 
-                                {cutoutInfo ? (
-                                    <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#16a34a', marginBottom: 8, padding: '6px 8px', background: '#f0fdf4', border: '1.5px solid #16a34a' }}>
-                                        ✓ {cutoutInfo}
-                                    </div>
-                                ) : (
-                                    <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#888', marginBottom: 8 }}>
-                                        {bgImage ? 'Subject cutout not generated yet.' : 'Upload a photo to extract the subject.'}
-                                    </div>
-                                )}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                                            <button
+                                                className="brutalist-button brutalist-button-primary"
+                                                style={{ padding: '9px 8px', fontSize: '0.72rem' }}
+                                                onClick={() => bgInputRef.current?.click()}
+                                            >
+                                                {bgImage ? 'CHANGE PHOTO ↻' : '+ UPLOAD PHOTO'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="brutalist-button"
+                                                style={{ padding: '9px 8px', fontSize: '0.72rem' }}
+                                                disabled={!bgImage || !!matte?.busy}
+                                                onClick={() => void handleAutoCutout()}
+                                            >
+                                                {matte?.busy ? 'CUTTING OUT…' : '↻ RE-CUT SUBJECT'}
+                                            </button>
+                                        </div>
+
+                                        {cutoutInfo ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                                                <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', fontWeight: 900, color: '#16a34a', padding: '6px 8px', background: '#f0fdf4', border: '1.5px solid #16a34a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span>✓ {cutoutInfo}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleRefineCurrentCutout()}
+                                                        style={{
+                                                            fontSize: '0.52rem',
+                                                            fontFamily: 'monospace',
+                                                            fontWeight: 900,
+                                                            background: '#fff',
+                                                            color: '#000',
+                                                            border: '1px solid #16a34a',
+                                                            padding: '2px 6px',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        title="Decontaminate edges to remove white halo"
+                                                    >
+                                                        DEFRINGE EDGES
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', color: '#888', marginBottom: 8 }}>
+                                                {bgImage ? 'Subject cutout not generated yet.' : 'Upload a photo to extract the subject.'}
+                                            </div>
+                                        )}
 
                                 {bgInfo && (
                                     <div style={{ fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 700, color: '#000', marginBottom: 8, padding: '4px 6px', background: '#f5f5f5', border: '1px solid #ddd' }}>
@@ -7158,10 +7442,12 @@ export default function TextBehindPage() {
                                         RESET / REMOVE PHOTO
                                     </button>
                                 )}
+                                    </>
+                                )}
                             </div>
 
                             {/* Magazine Cover & Editorial Presets Card */}
-                            <div className="brutalist-card" data-ck-cat="text photo" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: editorialOpen ? 12 : 0, background: '#FAFAFA' }}>
+                            <div ref={editorialCardRef} className="brutalist-card" data-ck-cat="text photo" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: editorialOpen ? 12 : 0, background: '#FAFAFA' }}>
                                 <div
                                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
                                     onClick={() => setEditorialOpen(!editorialOpen)}
@@ -7373,6 +7659,43 @@ export default function TextBehindPage() {
                                                         style={{ width: 22, height: 20, padding: 0, border: '1px solid #000', background: 'none', cursor: 'pointer' }}
                                                     />
                                                 </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleHarmonizePalette}
+                                                    title="Palette Harmonizer — repaint every text layer, plate, badge and frame in this photo's own mined palette (accent · paper · ink). Polarity-safe and undoable; barcodes/QRs stay scanner-legal. The brand kit keeps governing future generations."
+                                                    style={{
+                                                        padding: '3px 7px',
+                                                        fontSize: '0.55rem',
+                                                        fontFamily: 'monospace',
+                                                        fontWeight: 900,
+                                                        border: '1px solid #000',
+                                                        background: '#FFF',
+                                                        color: '#000',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                    }}
+                                                >
+                                                    HARMONIZE
+                                                </button>
+                                                {photoSwatches && (
+                                                    <span
+                                                        title={`Mined from this photo — accent ${photoSwatches.accentPrimary || 'none (monochrome)'} · paper ${photoSwatches.paperNeutral} · ink ${photoSwatches.inkDark}`}
+                                                        style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}
+                                                    >
+                                                        {([photoSwatches.accentPrimary, photoSwatches.paperNeutral, photoSwatches.inkDark] as const).map((hx, i) => (
+                                                            <span
+                                                                key={i}
+                                                                style={{
+                                                                    width: 10,
+                                                                    height: 10,
+                                                                    border: '1px solid #000',
+                                                                    background: hx || 'repeating-linear-gradient(45deg, #ddd 0 2px, #999 2px 4px)',
+                                                                    display: 'inline-block',
+                                                                }}
+                                                            />
+                                                        ))}
+                                                    </span>
+                                                )}
                                             </div>
 
                                             {/* Prompt / Vibe input + Clean Two-Button Flow */}
@@ -7604,11 +7927,16 @@ export default function TextBehindPage() {
                             </div>
 
                             {/* 2. Text Boxes & Typography Card — mobile sheet: TEXT */}
-                            <div className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                {/* Multi-Textbox Selector */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 10, borderBottom: '1.5px solid #000' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div ref={textBoxesCardRef} className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}
+                                        onClick={() => setTextBoxesOpen(!textBoxesOpen)}
+                                    >
                                         {sectionTitle(<TypeIcon size={14} />, `Text Boxes (${layers.length})`)}
+                                        <ChevronDown size={14} style={{ transform: textBoxesOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
                                         <button
                                             type="button"
                                             onClick={handleAddTextBox}
@@ -7624,9 +7952,32 @@ export default function TextBehindPage() {
                                                 gap: 4,
                                             }}
                                         >
-                                            <Plus size={12} /> ADD TEXT BOX
+                                            <Plus size={12} /> ADD
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTextBoxesOpen(!textBoxesOpen)}
+                                            className="brutalist-button"
+                                            style={{
+                                                padding: '4px 8px',
+                                                fontSize: '0.54rem',
+                                                fontFamily: 'monospace',
+                                                fontWeight: 900,
+                                                background: textBoxesOpen ? '#fff' : '#FFE500',
+                                                color: '#000',
+                                                border: '1.5px solid #000',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            {textBoxesOpen ? 'COLLAPSE [−]' : 'EXPAND [+]'}
                                         </button>
                                     </div>
+                                </div>
+
+                                {textBoxesOpen && (
+                                    <>
+                                        {/* Multi-Textbox Selector */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 10, borderBottom: '1.5px solid #000' }}>
 
                                     {/* Layer Pill Bar */}
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -7636,7 +7987,11 @@ export default function TextBehindPage() {
                                                 <button
                                                     key={l.id}
                                                     type="button"
-                                                    onClick={() => setActiveLayerId(l.id)}
+                                                    className="text-behind-layer-pill"
+                                                    onClick={() => {
+                                                        setActiveLayerId(l.id);
+                                                        setActiveShapeId(null);
+                                                    }}
                                                     style={{
                                                         padding: '5px 8px',
                                                         border: '2px solid #000',
@@ -7674,6 +8029,7 @@ export default function TextBehindPage() {
                                         <div style={{ display: 'flex', gap: 4 }}>
                                             <button
                                                 type="button"
+                                                className="text-behind-layer-action"
                                                 onClick={handleDuplicateActiveTextBox}
                                                 style={{
                                                     padding: '3px 6px',
@@ -7693,6 +8049,7 @@ export default function TextBehindPage() {
                                             {layers.length > 1 && (
                                                 <button
                                                     type="button"
+                                                    className="text-behind-layer-action"
                                                     onClick={handleDeleteActiveTextBox}
                                                     style={{
                                                         padding: '3px 6px',
@@ -7715,6 +8072,7 @@ export default function TextBehindPage() {
                                         <div style={{ display: 'flex', gap: 4 }}>
                                             <button
                                                 type="button"
+                                                className="text-behind-layer-action"
                                                 onClick={() => patchLayer({ depth: 'behind' })}
                                                 style={{
                                                     padding: '3px 6px',
@@ -7731,6 +8089,7 @@ export default function TextBehindPage() {
                                             </button>
                                             <button
                                                 type="button"
+                                                className="text-behind-layer-action"
                                                 onClick={() => patchLayer({ depth: 'front' })}
                                                 style={{
                                                     padding: '3px 6px',
@@ -8203,12 +8562,41 @@ export default function TextBehindPage() {
                                         })}
                                     </div>
                                 </div>
-                            </div>
+                            </>
+                        )}
+                    </div>
 
-                            {/* 3. Style Presets, Blends & Geometry Card — mobile sheet: TEXT */}
-                            <div className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {/* 3. Style Presets, Blends & Geometry Card — mobile sheet: TEXT */}
+                    <div ref={styleLooksCardRef} className="brutalist-card" data-ck-cat="text" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: styleLooksOpen ? 14 : 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div
+                                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => setStyleLooksOpen(!styleLooksOpen)}
+                            >
                                 {sectionTitle(<Scissors size={14} />, 'Style & Poster Looks')}
+                                <ChevronDown size={14} style={{ transform: styleLooksOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setStyleLooksOpen(!styleLooksOpen)}
+                                className="brutalist-button"
+                                style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.54rem',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 900,
+                                    background: styleLooksOpen ? '#fff' : '#FFE500',
+                                    color: '#000',
+                                    border: '1.5px solid #000',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                {styleLooksOpen ? 'COLLAPSE [−]' : 'EXPAND [+]'}
+                            </button>
+                        </div>
 
+                        {styleLooksOpen && (
+                            <>
                                 {/* 10 Style Presets */}
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -8280,6 +8668,32 @@ export default function TextBehindPage() {
                                     )}
                                 </div>
 
+                                {/* Line Alignment */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        {(['left', 'center', 'right'] as const).map((a) => (
+                                            <button
+                                                key={a}
+                                                onClick={() => patchLayer({ align: a })}
+                                                className="brutalist-button"
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '5px 6px',
+                                                    fontSize: '0.62rem',
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: 900,
+                                                    background: (layer.align ?? 'center') === a ? '#FFDD00' : '#fff',
+                                                }}
+                                            >
+                                                {a === 'left' ? 'LEFT' : a === 'right' ? 'RIGHT' : 'CENTER'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div style={{ fontSize: '0.55rem', fontFamily: 'monospace', color: '#666', letterSpacing: '0.04em' }}>
+                                        ARROW KEYS NUDGE SELECTION · SHIFT = ×4 STEP
+                                    </div>
+                                </div>
+
                                 {/* Spacing & Opacity */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     <TactileScrubber
@@ -8313,7 +8727,7 @@ export default function TextBehindPage() {
                                             {layer.blend === 'normal' ? 'SOLID' : layer.blend.toUpperCase()}
                                         </span>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                                    <div className="text-behind-blend-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
                                         {[
                                             { id: 'normal', label: 'SOLID' },
                                             { id: 'overlay', label: 'OVERLAY' },
@@ -8326,7 +8740,7 @@ export default function TextBehindPage() {
                                                     key={b.id}
                                                     type="button"
                                                     onClick={() => patchLayer({ blend: b.id as BlendMode })}
-                                                    className="brutalist-button"
+                                                    className="brutalist-button text-behind-blend-btn"
                                                     style={{
                                                         padding: '6px 2px',
                                                         fontSize: '0.62rem',
@@ -8360,7 +8774,7 @@ export default function TextBehindPage() {
                                                 key={mode}
                                                 type="button"
                                                 onClick={() => patchLayer({ fillMode: mode })}
-                                                className="brutalist-button"
+                                                className="brutalist-button text-behind-fill-btn"
                                                 style={{
                                                     flex: 1,
                                                     padding: '6px 8px',
@@ -8454,11 +8868,13 @@ export default function TextBehindPage() {
                                     presets={[{ label: '0°', value: 0 }, { label: '90°', value: 90 }, { label: '180°', value: 180 }, { label: '270°', value: 270 }]}
                                     width="100%"
                                 />
-                            </div>
+                            </>
+                        )}
+                    </div>
 
-                            {/* 4. Advanced Image Editing — visible naturally on desktop.
-                                Mobile sheets: SHAPES (shape UI) + EFFECTS (film grain). */}
-                            <div className="brutalist-card" data-ck-cat="shapes effects" style={{ padding: 14 }}>
+                    {/* 4. Advanced Image Editing — visible naturally on desktop.
+                        Mobile sheets: SHAPES (shape UI) + EFFECTS (film grain). */}
+                    <div ref={shapesCardRef} className="brutalist-card" data-ck-cat="shapes effects" style={{ padding: 14 }}>
                                 <button
                                     type="button"
                                     onClick={() => setAdvancedOpen((o) => !o)}
@@ -8590,10 +9006,14 @@ export default function TextBehindPage() {
                                                     const isActive = s.id === activeShapeId;
                                                     const kindLabel = s.kind === 'rect' ? 'RECT' : s.kind === 'line' ? 'LINE' : s.kind === 'beam' ? 'BEAM' : s.kind === 'circle' ? 'CIRCLE' : s.kind === 'button' ? 'BUTTON' : s.kind === 'barcode' ? 'BARCODE' : s.kind === 'badge' ? 'BADGE' : s.kind === 'qr' ? 'QR' : s.kind === 'frame' ? 'FRAME' : 'ICON';
                                                     return (
-                                                        <span key={s.id} style={{ display: 'inline-flex', alignItems: 'stretch', border: '2px solid #000', background: isActive ? '#4DD2FF' : '#fff' }}>
+                                                        <span key={s.id} className="text-behind-shape-pill" style={{ display: 'inline-flex', alignItems: 'stretch', border: '2px solid #000', background: isActive ? '#4DD2FF' : '#fff' }}>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setActiveShapeId(isActive ? null : s.id)}
+                                                                onClick={() => {
+                                                                    const next = isActive ? null : s.id;
+                                                                    setActiveShapeId(next);
+                                                                    if (next) setActiveLayerId(null);
+                                                                }}
                                                                 style={{ padding: '5px 7px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.62rem', fontFamily: 'monospace', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 5 }}
                                                             >
                                                                 <span style={{ opacity: 0.6 }}>#{index + 1}</span>
@@ -9460,61 +9880,237 @@ export default function TextBehindPage() {
                     .ck-sheet-effects .ck-cat-shapeui {
                         display: none !important;
                     }
-                    /* ---- Touch sizing: every control a real finger target ---- */
+                    /* =========================================================
+                       PHASE-6 MOBILE SIZING & OPTIMIZATION (Precise, Proportional)
+                       Eliminates blunt blanket !important overrides that blew up
+                       steppers, preset cards, layer pills, and rotation inputs.
+                       ========================================================= */
+
+                    /* 1. General Brutalist Buttons inside sheet (clean, finger-friendly default) */
                     .ck-sheet-open .text-behind-controls-scroll button {
-                        font-size: 0.78rem !important;
-                        min-height: 42px !important;
-                        max-width: 100% !important;
-                        padding: 8px 12px !important;
+                        font-size: 0.68rem;
+                        min-height: 32px;
+                        max-width: 100%;
+                        padding: 6px 10px;
+                        box-sizing: border-box;
                     }
                     .ck-sheet-open .text-behind-controls-scroll button svg {
-                        width: 16px !important;
-                        height: 16px !important;
+                        width: 13px;
+                        height: 13px;
                     }
+
+                    /* 2. Primary / Main Action Buttons */
+                    .ck-sheet-open .text-behind-controls-scroll .brutalist-button-primary,
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='background: #000'],
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='background:#000'] {
+                        min-height: 38px;
+                        padding: 7px 12px;
+                        font-size: 0.72rem;
+                    }
+
+                    /* 3. TactileScrubber Component Controls (Fixes steppers & angle input from Screenshots 4 & 5) */
+                    .ck-sheet-open .text-behind-controls-scroll button[title='Decrease value'],
+                    .ck-sheet-open .text-behind-controls-scroll button[title='Increase value'] {
+                        width: 20px !important;
+                        min-width: 20px !important;
+                        max-width: 20px !important;
+                        height: 20px !important;
+                        min-height: 20px !important;
+                        max-height: 20px !important;
+                        padding: 0 !important;
+                        font-size: 0.72rem !important;
+                        line-height: 1 !important;
+                        border: 1.5px solid #000 !important;
+                    }
+                    /* Preset chips inside TactileScrubber (0°, 90°, 180°, 270°, OFF, THIN, MED, BOLD, etc.) */
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='border: 1.5px solid #000'] > button,
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='border:1.5px solid #000'] > button {
+                        min-height: 22px !important;
+                        height: 22px !important;
+                        padding: 2px 5px !important;
+                        font-size: 0.58rem !important;
+                        line-height: 1 !important;
+                    }
+
+                    /* 4. Number inputs (Fixes angle input popping out in Screenshot 5) */
+                    .ck-sheet-open .text-behind-controls-scroll input[type='number'] {
+                        min-height: unset !important;
+                        height: 26px !important;
+                        max-height: 26px !important;
+                        width: 44px !important;
+                        padding: 2px 4px !important;
+                        font-size: 0.72rem !important;
+                        font-family: monospace !important;
+                        font-weight: 900 !important;
+                        border: 1.5px solid #000 !important;
+                        background: #fff !important;
+                        text-align: center !important;
+                        box-sizing: border-box !important;
+                    }
+
+                    /* 5. Standard Text Inputs & Textareas */
                     .ck-sheet-open .text-behind-controls-scroll input[type='text'],
-                    .ck-sheet-open .text-behind-controls-scroll input[type='number'],
                     .ck-sheet-open .text-behind-controls-scroll textarea {
-                        font-size: 1rem !important; /* 16px stops iOS focus-zoom */
-                        min-height: 46px !important;
+                        font-size: 0.85rem !important;
+                        min-height: 36px !important;
+                        padding: 6px 8px !important;
                         box-sizing: border-box !important;
                         max-width: 100% !important;
                     }
-                    .ck-sheet-open .text-behind-controls-scroll input[type='range'] {
-                        min-height: 44px !important;
-                        height: 44px !important;
+                    .ck-sheet-open .text-behind-controls-scroll textarea {
+                        min-height: 56px !important;
                     }
+                    .ck-sheet-open .text-behind-controls-scroll input[type='range'] {
+                        min-height: 36px !important;
+                        height: 36px !important;
+                    }
+                    /* Color inputs: compact tactile swatches, not giant 44px blocks (Fixes Screenshot 2) */
                     .ck-sheet-open .text-behind-controls-scroll input[type='color'] {
-                        width: 44px !important;
-                        height: 44px !important;
-                        min-width: 44px !important;
-                        border: 2px solid #000 !important;
-                        padding: 2px !important;
+                        width: 26px !important;
+                        height: 22px !important;
+                        min-width: 26px !important;
+                        min-height: 22px !important;
+                        border: 1.5px solid #000 !important;
+                        padding: 0 !important;
+                        cursor: pointer !important;
+                        border-radius: 2px !important;
+                        background: none !important;
                     }
                     .ck-sheet-open .text-behind-controls-scroll select {
-                        font-size: 0.95rem !important;
+                        font-size: 0.82rem !important;
+                        min-height: 36px !important;
+                        padding: 6px 8px !important;
+                    }
+
+                    /* 6. Magazine & Editorial Preset Cards (Fixes Screenshot 1) */
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='grid-template-columns: 1fr 1fr'] > button {
                         min-height: 44px !important;
-                        padding: 10px !important;
+                        padding: 5px 6px !important;
+                        gap: 2px !important;
                     }
-                    /* Dense desktop chip-grids -> roomy phone grids
-                       (inline styles are beaten by !important + attribute selectors) */
-                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(5,'] {
-                        grid-template-columns: repeat(3, 1fr) !important;
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='grid-template-columns: 1fr 1fr'] > button > div:first-child {
+                        font-size: 0.60rem !important;
+                        letter-spacing: 0.02em !important;
+                        line-height: 1.15 !important;
                     }
-                    .ck-sheet-open .text-behind-controls-scroll div[style*='repeat(4,'] {
-                        grid-template-columns: repeat(2, 1fr) !important;
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='grid-template-columns: 1fr 1fr'] > button > div:last-child {
+                        font-size: 0.48rem !important;
+                        line-height: 1.15 !important;
                     }
-                    /* Empty-state drop zone never overflows narrow phones
-                       (it's a clickable div with an inline min-width: 360px) */
+
+                    /* 7. AI Auto-Cover & Brand Kit Controls (Fixes Screenshots 1 & 2) */
+                    .ck-sheet-open .text-behind-controls-scroll button[title*='AUTO-LAYOUT'],
+                    .ck-sheet-open .text-behind-controls-scroll button[title*='Brand Kit'],
+                    .ck-sheet-open .text-behind-controls-scroll button[title*='Palette Harmonizer'] {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                        padding: 2px 7px !important;
+                        font-size: 0.54rem !important;
+                    }
+                    .ck-sheet-open .text-behind-controls-scroll .byok-btn,
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='GEMINI'],
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='OPENAI'],
+                    .ck-sheet-open .text-behind-controls-scroll button[style*='GROQ'] {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                        padding: 2px 7px !important;
+                        font-size: 0.54rem !important;
+                    }
+                    .ck-sheet-open .text-behind-controls-scroll button[title*='ANALYZE & ASSEMBLE'],
+                    .ck-sheet-open .text-behind-controls-scroll button[title*='REWRITE WORDS'] {
+                        min-height: 36px !important;
+                        height: 36px !important;
+                        padding: 5px 6px !important;
+                        font-size: 0.58rem !important;
+                        gap: 4px !important;
+                    }
+
+                    /* 8. Textbox & Layer Manager Controls (Fixes Screenshot 3) */
+                    .ck-sheet-open .text-behind-controls-scroll div[style*='justify-content: space-between'] button[style*='monospace'] {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                        padding: 2px 7px !important;
+                        font-size: 0.56rem !important;
+                    }
+                    .text-behind-layer-pill {
+                        min-height: 28px !important;
+                        height: 28px !important;
+                        padding: 2px 7px !important;
+                        font-size: 0.62rem !important;
+                        gap: 5px !important;
+                    }
+                    .text-behind-layer-pill span:last-child {
+                        font-size: 0.48rem !important;
+                        padding: 1px 3px !important;
+                    }
+                    .text-behind-layer-action {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                        padding: 2px 6px !important;
+                        font-size: 0.56rem !important;
+                        gap: 3px !important;
+                    }
+                    .text-behind-layer-action svg {
+                        width: 10px !important;
+                        height: 10px !important;
+                    }
+
+                    /* 9. Segmented Controls: Blend Mode & Fill Mode (Fixes Screenshot 4) */
+                    .text-behind-blend-grid {
+                        display: grid !important;
+                        grid-template-columns: repeat(4, 1fr) !important;
+                        gap: 4px !important;
+                    }
+                    .text-behind-blend-btn {
+                        min-height: 28px !important;
+                        height: 28px !important;
+                        padding: 3px 2px !important;
+                        font-size: 0.58rem !important;
+                    }
+                    .text-behind-fill-btn {
+                        min-height: 28px !important;
+                        height: 28px !important;
+                        padding: 3px 6px !important;
+                        font-size: 0.60rem !important;
+                    }
+
+                    /* 10. Shapes & Layers Controls (Fixes Screenshot 5) */
+                    .ck-cat-shapeui button[style*='addShape'] {
+                        min-height: 28px !important;
+                        height: 28px !important;
+                        padding: 4px 4px !important;
+                        font-size: 0.56rem !important;
+                        gap: 3px !important;
+                    }
+                    .ck-cat-shapeui .text-behind-shape-pill {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                    }
+                    .ck-cat-shapeui .text-behind-shape-pill button {
+                        min-height: 26px !important;
+                        height: 26px !important;
+                        padding: 2px 6px !important;
+                        font-size: 0.56rem !important;
+                    }
+                    .ck-cat-shapeui .text-behind-shape-pill button:last-child {
+                        padding: 0 5px !important;
+                    }
+                    .ck-cat-shapeui .text-behind-shape-pill svg {
+                        width: 9px !important;
+                        height: 9px !important;
+                    }
+
+                    /* 11. Empty-state drop zone never overflows narrow phones */
                     .text-behind-viewport div[style*='min-width:360px'] {
                         min-width: 0 !important;
                         max-width: 100% !important;
                         box-sizing: border-box !important;
                         margin: 12px !important;
                     }
-                    /* Reset confirmation popover — real touch targets */
+                    /* Reset confirmation popover */
                     .text-behind-confirm-pop button {
-                        min-height: 44px !important;
-                        font-size: 0.72rem !important;
+                        min-height: 38px !important;
+                        font-size: 0.70rem !important;
                     }
                 }
             `}</style>

@@ -258,3 +258,18 @@ suggestion**. Both paths now enforce it deterministically:
   becomes the kit accent; badge plates and saturated frame strokes take
   the kit primary. Neutral ink/paper/gray is untouched, so plated
   compositions keep their polarity.
+
+### 11.1 The one-click Harmonizer (§16.2)
+
+`HARMONIZE`, next to the brand kit controls, repaints the layers ALREADY
+on the canvas in the photo's own mined palette — the inverse direction of
+§11: the kit governs future generations; the Harmonizer is explicit user
+intent to theme the current cover to the photograph. The pass is
+**polarity-safe**: each existing hex is re-inked by what it already is —
+saturated hues become `accentPrimary`, light neutrals become
+`paperNeutral`, dark neutrals become `inkDark` — so plates stay plates,
+night type stays light, and the badge label's polarity flip keeps every
+chip legible. Barcodes and QR codes are exempt (scannability law), the
+action is undoable, and the three measured swatches are shown live as
+chips beside the button (a hatched chip means the photo is genuinely
+monochrome — an invented accent would be a lie).
