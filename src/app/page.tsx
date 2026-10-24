@@ -5,13 +5,59 @@ import { ChevronRight, ExternalLink } from 'lucide-react';
 import { NATIVE_TOOLS, CURATED_DIRECTORY } from '@/data/tools';
 import { hapticTap } from '@/lib/haptics';
 import AdBanner from '@/components/AdBanner';
+import AdSenseUnit from '@/components/AdSenseUnit';
+
+// Homepage FAQ (AdSense remediation 2026-10-23) — rendered as an on-page
+// section AND emitted as FAQPage structured data below, so the substance
+// reviewers read and the graph search engines read are the same words.
+const HOME_FAQS = [
+  {
+    q: 'Is CreatorsKit really free?',
+    a: 'Yes — every tool is free with no signup, no watermark and no export limits. The site is funded by ads placed in reserved page slots beside the workspace, never inside a tool flow or on anything you download. There is no premium tier hiding the second half of the workflow.',
+  },
+  {
+    q: 'Do I need to create an account?',
+    a: 'No. There is nothing to sign up for: no email, no password, no profile. Tools open ready to use, and your settings and working files are stored on your own device — you can inspect and delete everything at /your-data.',
+  },
+  {
+    q: 'Are my photos and videos uploaded to a server?',
+    a: 'No. Processing happens on your device, in your browser. Your files are never transmitted or stored on a server. The few optional features that touch the internet — like the server background-removal mode or AI planning with your own API key — are explicit opt-ins, named in the Privacy Policy.',
+  },
+  {
+    q: 'Can I use the tools on my phone?',
+    a: 'Yes. Every tool is built mobile-first and works in any modern mobile browser. You can also install CreatorsKit as an app (PWA) from the browser menu — installed, the tools work offline and open like native apps.',
+  },
+  {
+    q: 'Is the work I create watermarked?',
+    a: 'Never. Exports are clean, full-quality files with no watermark — the only watermark in the suite is the optional one YOU add to your own images with the Batch Watermark tool.',
+  },
+  {
+    q: 'Who is CreatorsKit for?',
+    a: 'Creators and freelancers who produce content and get paid for it: video creators, influencers, photographers, designers and small studios. The suite covers the full arc — scripting, captions, effects, formatting, protection, invoicing and contracts — with payment fields for MoMo and bank rails built in for West African creators, and everything works everywhere else too.',
+  },
+];
+
+const HOME_FAQ_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: HOME_FAQS.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
 
 export default function Home() {
   return (
     <div style={{ background: "#f4f4f5", minHeight: "100vh", color: "#000000", overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
+      {/* FAQPage structured data — same words as the on-page FAQ section */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(HOME_FAQ_JSON_LD) }}
+      />
       {/* ─── HERO (TRUE LANDSCAPE SHOWCASE · WANDER.ph INSPIRED) ────────── */}
       <section style={{ padding: "clamp(20px, 3.5vw, 36px) clamp(16px, 5vw, 24px) clamp(24px, 4vw, 40px)", maxWidth: 1200, margin: "0 auto" }}>
-        
+
         {/* ─── TRUE LANDSCAPE SHOWCASE BANNER (Clean, Unobstructed Artwork) ─── */}
         <div
           style={{
@@ -445,33 +491,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── GOOGLE AD SLOT BANNER ───────────────────────────────────────── */}
+      {/* ─── GOOGLE AD SLOT BANNER (real unit — invisible until configured) ── */}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(16px, 5vw, 24px) 36px" }}>
-        <div
-          id="google-ad-slot-middle"
-          style={{
-            minHeight: 90,
-            background: "#ffffff",
-            border: "2px dashed #000000",
-            borderRadius: "4px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#444444",
-            fontSize: "0.75rem",
-            fontFamily: "monospace",
-            padding: 16,
-            boxShadow: "3px 3px 0 #000000",
-          }}
-        >
-          <span style={{ fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.12em", color: "#000000" }}>
-            ADVERTISEMENT
-          </span>
-          <span style={{ fontSize: "0.7rem", marginTop: 4, textAlign: "center", color: "#666666" }}>
-            High-Viewability Google AdSense Leaderboard Slot
-          </span>
-        </div>
+        <AdSenseUnit slot={process.env.NEXT_PUBLIC_ADSENSE_SLOT_HOME} format="horizontal" style={{ minHeight: 90 }} />
       </div>
 
       {/* ─── SECTION 2: CURATED EXTERNAL TOOLS ───────────────────────────── */}
@@ -686,6 +708,135 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ─── EDITORIAL: WHY THE SUITE EXISTS (AdSense remediation 2026-10-23) ─ */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "56px clamp(16px, 5vw, 24px) 0" }}>
+        <div style={{ borderTop: "3px solid #000000", paddingTop: 22 }}>
+          <div
+            style={{
+              display: "inline-block",
+              fontSize: "0.62rem",
+              fontWeight: 900,
+              fontFamily: "monospace",
+              letterSpacing: "0.14em",
+              background: "#FFE500",
+              border: "2px solid #000000",
+              boxShadow: "2px 2px 0 #000000",
+              padding: "3px 10px",
+              marginBottom: 14,
+            }}
+          >
+            WHY CREATORSKIT
+          </div>
+          <h2 style={{ fontSize: "clamp(1.4rem, 3.6vw, 1.9rem)", fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.15, margin: "0 0 16px" }}>
+            The complete workflow between &ldquo;idea&rdquo; and &ldquo;invoice paid&rdquo;
+          </h2>
+          <div style={{ display: "grid", gap: 14 }}>
+            <p style={{ fontSize: "0.94rem", lineHeight: 1.7, color: "#333333", margin: 0 }}>
+              Most creator tools solve one slice of the job and pretend the rest does not exist. The video editor has no
+              captions, the caption tool has no resize, the resize tool definitely has no invoice — so a single sponsored
+              post turns into an afternoon of tab-hopping between subscriptions. CreatorsKit is the full pipeline in one
+              place: script it on the teleprompter, cut it with match cuts and highlights, caption it, resize it for every
+              platform, protect it with a watermark, then invoice the brand that paid for it — with an agreement behind the
+              invoice and a receipt after payment lands.
+            </p>
+            <p style={{ fontSize: "0.94rem", lineHeight: 1.7, color: "#333333", margin: 0 }}>
+              The second difference is where the work happens. Every tool runs on your device: photos, videos, voice notes
+              and client details are processed by your own browser and never uploaded to a server. That is not just a
+              privacy promise — on an expensive data plan it is the difference between editing a reel for free and paying
+              to upload your own files to someone else&rsquo;s computer. It also means the tools keep working offline, once
+              installed as an app.
+            </p>
+            <p style={{ fontSize: "0.94rem", lineHeight: 1.7, color: "#333333", margin: 0 }}>
+              The third difference is the price structure: no accounts, no watermarks, no export limits, no
+              &ldquo;free trial&rdquo; that ends mid-project. The tools are funded by ads in reserved page slots — beside
+              the workspace and at the bottom of a scroll, never inside a tool flow and never stamped onto anything you
+              download. If it is not good enough to ship a client deliverable through, it does not ship at all.
+            </p>
+          </div>
+
+          {/* Pillar cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 26 }}>
+            {[
+              {
+                n: "01",
+                t: "On-device processing",
+                d: "Your files are edited by your browser, not uploaded. Faster on slow connections, private by architecture.",
+              },
+              {
+                n: "02",
+                t: "One connected pipeline",
+                d: "Every tool hands its output to the next — captions feed highlighters, cutouts feed posters, invoices follow deals.",
+              },
+              {
+                n: "03",
+                t: "Free core, forever",
+                d: "No accounts, no watermarks, no export caps. Light ads outside the workflow pay the bills.",
+              },
+              {
+                n: "04",
+                t: "Built for real conditions",
+                d: "Made in Ghana for phones, data plans and payment rails — MoMo invoice fields included — where the work actually happens.",
+              },
+            ].map((c) => (
+              <div
+                key={c.n}
+                style={{
+                  background: "#ffffff",
+                  border: "2px solid #000000",
+                  boxShadow: "3px 3px 0 #000000",
+                  padding: "14px 16px",
+                }}
+              >
+                <span style={{ fontSize: "0.62rem", fontWeight: 900, fontFamily: "monospace", background: "#000000", color: "#FFE500", padding: "2px 7px" }}>
+                  {c.n}
+                </span>
+                <h3 style={{ fontSize: "0.92rem", fontWeight: 900, margin: "10px 0 6px", letterSpacing: "-0.01em" }}>{c.t}</h3>
+                <p style={{ fontSize: "0.84rem", lineHeight: 1.6, color: "#444444", margin: 0 }}>{c.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FAQ (AdSense remediation 2026-10-23) ───────────────────────────── */}
+      <section style={{ maxWidth: 860, margin: "0 auto", padding: "48px clamp(16px, 5vw, 24px) 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: "0.66rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.1em", background: "#000000", color: "#ffffff", padding: "2px 7px" }}>
+            FAQ
+          </span>
+          <h2 style={{ fontSize: "1.3rem", fontWeight: 900, margin: 0, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+            Questions creators ask
+          </h2>
+          <div style={{ flex: 1, height: 2, background: "#000000", minWidth: 20 }} />
+        </div>
+        <div style={{ display: "grid", gap: 0, border: "2px solid #000000", background: "#ffffff", boxShadow: "3px 3px 0 #000000" }}>
+          {HOME_FAQS.map((f, i) => (
+            <details key={i} open={i === 0} style={{ borderTop: i === 0 ? "none" : "2px solid #e4e4e7" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  padding: "13px 16px",
+                  fontSize: "0.93rem",
+                  fontWeight: 900,
+                  letterSpacing: "-0.01em",
+                  listStyle: "none",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                {f.q}
+                <span aria-hidden style={{ fontFamily: "monospace", fontWeight: 900, fontSize: "1rem", flexShrink: 0 }}>
+                  +
+                </span>
+              </summary>
+              <p style={{ padding: "0 16px 15px", fontSize: "0.88rem", lineHeight: 1.7, color: "#444444", margin: 0 }}>{f.a}</p>
+            </details>
+          ))}
         </div>
       </section>
 

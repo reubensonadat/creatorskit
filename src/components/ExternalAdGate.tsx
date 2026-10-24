@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { X, ArrowUpRight } from 'lucide-react';
+import AdSenseUnit from '@/components/AdSenseUnit';
 
 /**
  * ExternalAdGate — the mobile ad bridge for curated external links
@@ -31,6 +32,11 @@ const listeners = new Set<GateListener>();
 let bannerShownThisSession = false;
 
 const GATE_COUNTDOWN_SECONDS = 3;
+
+// Real AdSense unit for the sponsor-break screen (AdSense remediation
+// 2026-10-23). Empty until the unit id exists — and an empty unit renders
+// nothing, never a simulated ad box.
+const GATE_SLOT = process.env.NEXT_PUBLIC_ADSENSE_SLOT_GATE;
 
 // In-house cross-promos until real AdSense units ship (mirrors AdBanner /
 // ToolLayout side-ad placeholders — same "ready for AdSense" contract).
@@ -177,29 +183,11 @@ export function ExternalAdGateHost() {
               </button>
             </div>
 
-            {/* Ad unit placeholder (AdSense-ready, mirrors AdBanner contract) */}
-            <div
-              id="ck-ad-gate-slot"
-              style={{
-                margin: 12,
-                height: 220,
-                border: '2px dashed #000000',
-                background: '#fafafa',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                textAlign: 'center',
-                padding: 12,
-              }}
-            >
-              <span style={{ fontSize: '0.6rem', fontWeight: 900, background: '#000', color: '#fff', padding: '2px 8px', fontFamily: 'monospace' }}>
-                ADVERTISEMENT
-              </span>
-              <span style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace' }}>
-                [ 320×480 Mobile Interstitial / AdSense ]
-              </span>
+            {/* Real ad unit inside the sponsor break (AdSense remediation
+                2026-10-23): renders nothing until the gate slot id is
+                configured — never a simulated ad box again. */}
+            <div id="ck-ad-gate-slot" style={{ margin: 12, minHeight: 220 }}>
+              <AdSenseUnit slot={GATE_SLOT} format="rectangle" style={{ minHeight: 220 }} />
             </div>
 
             {/* Destination chip — where "continue" actually goes */}

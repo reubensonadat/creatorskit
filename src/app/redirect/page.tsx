@@ -4,6 +4,15 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, ShieldCheck, CheckCircle2, RotateCcw } from 'lucide-react';
+import AdSenseUnit from '@/components/AdSenseUnit';
+
+// Real AdSense unit ids for the redirect bridge page (AdSense remediation
+// 2026-10-23). The page previously drew four dashed "ADVERTISEMENT" boxes —
+// simulated ad frames are a policy violation and read as low-effort filler
+// during review. Unset ids render nothing at all.
+const SLOT_REDIRECT_TOP = process.env.NEXT_PUBLIC_ADSENSE_SLOT_REDIRECT_TOP;
+const SLOT_REDIRECT_SIDE = process.env.NEXT_PUBLIC_ADSENSE_SLOT_REDIRECT_SIDE;
+const SLOT_REDIRECT_BOTTOM = process.env.NEXT_PUBLIC_ADSENSE_SLOT_REDIRECT_BOTTOM;
 
 function RedirectInterstitialContent() {
   const searchParams = useSearchParams();
@@ -77,32 +86,9 @@ function RedirectInterstitialContent() {
         </span>
       </div>
 
-      {/* TOP AD SECTOR (Google Adsense Leaderboard) */}
-      <div style={{ maxWidth: 1280, margin: '0 auto 20px' }}>
-        <div
-          id="ad-sector-top"
-          className="redirect-leaderboard"
-          style={{
-            width: '100%',
-            minHeight: 110,
-            background: '#ffffff',
-            border: '3px solid #000000',
-            boxShadow: '4px 4px 0 #000000',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            textAlign: 'center',
-          }}
-        >
-          <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#000', color: '#fff', padding: '2px 8px', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4 }}>
-            ADVERTISEMENT · TOP BANNER
-          </span>
-          <span style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace' }}>
-            [ 728x90 Leaderboard / 970x90 Google AdSense Placement ]
-          </span>
-        </div>
+      {/* TOP AD (real unit — invisible until the slot id is configured) */}
+      <div id="ad-sector-top" style={{ maxWidth: 1280, margin: '0 auto 20px' }}>
+        <AdSenseUnit slot={SLOT_REDIRECT_TOP} format="horizontal" style={{ minHeight: 90 }} />
       </div>
 
       {/* 3-COLUMN AD & REDIRECT STAGE */}
@@ -117,29 +103,9 @@ function RedirectInterstitialContent() {
           alignItems: 'start',
         }}
       >
-        {/* LEFT SKYSCRAPER AD SECTOR (Google Adsense) */}
-        <div
-          id="ad-sector-left"
-          className="redirect-side"
-          style={{
-            minHeight: 480,
-            background: '#ffffff',
-            border: '3px solid #000000',
-            boxShadow: '4px 4px 0 #000000',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            textAlign: 'center',
-          }}
-        >
-          <span style={{ fontSize: '0.62rem', fontWeight: 900, background: '#000', color: '#fff', padding: '2px 6px', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8 }}>
-            ADVERTISEMENT
-          </span>
-          <span style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace', writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: '16px 0' }}>
-            [ 160x600 / 300x600 Google AdSense Skyscraper ]
-          </span>
+        {/* LEFT SKYSCRAPER AD (real unit — invisible until configured) */}
+        <div id="ad-sector-left" className="redirect-side">
+          <AdSenseUnit slot={SLOT_REDIRECT_SIDE} format="vertical" style={{ width: 300, minHeight: 600 }} responsive={false} />
         </div>
 
         {/* CENTER INTERSTITIAL BOX */}
@@ -260,58 +226,15 @@ function RedirectInterstitialContent() {
           </div>
         </div>
 
-        {/* RIGHT SKYSCRAPER AD SECTOR (Google Adsense) */}
-        <div
-          id="ad-sector-right"
-          className="redirect-side"
-          style={{
-            minHeight: 480,
-            background: '#ffffff',
-            border: '3px solid #000000',
-            boxShadow: '4px 4px 0 #000000',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            textAlign: 'center',
-          }}
-        >
-          <span style={{ fontSize: '0.62rem', fontWeight: 900, background: '#000', color: '#fff', padding: '2px 6px', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8 }}>
-            ADVERTISEMENT
-          </span>
-          <span style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace', writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: '16px 0' }}>
-            [ 160x600 / 300x600 Google AdSense Skyscraper ]
-          </span>
+        {/* RIGHT SKYSCRAPER AD (real unit — invisible until configured) */}
+        <div id="ad-sector-right" className="redirect-side">
+          <AdSenseUnit slot={SLOT_REDIRECT_SIDE} format="vertical" style={{ width: 300, minHeight: 600 }} responsive={false} />
         </div>
       </div>
 
-      {/* BOTTOM AD SECTOR (Google Adsense Leaderboard) */}
-      <div style={{ maxWidth: 1280, margin: '20px auto 0' }}>
-        <div
-          id="ad-sector-bottom"
-          className="redirect-leaderboard"
-          style={{
-            width: '100%',
-            minHeight: 110,
-            background: '#ffffff',
-            border: '3px solid #000000',
-            boxShadow: '4px 4px 0 #000000',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            textAlign: 'center',
-          }}
-        >
-          <span style={{ fontSize: '0.65rem', fontWeight: 900, background: '#000', color: '#fff', padding: '2px 8px', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4 }}>
-            ADVERTISEMENT · BOTTOM BANNER
-          </span>
-          <span style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace' }}>
-            [ 728x90 Leaderboard / Responsive Google AdSense Slot ]
-          </span>
-        </div>
+      {/* BOTTOM AD (real unit — invisible until configured) */}
+      <div id="ad-sector-bottom" style={{ maxWidth: 1280, margin: '20px auto 0' }}>
+        <AdSenseUnit slot={SLOT_REDIRECT_BOTTOM} format="horizontal" style={{ minHeight: 90 }} />
       </div>
     </div>
   );

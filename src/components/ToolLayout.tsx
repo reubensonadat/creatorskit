@@ -7,45 +7,15 @@ import { ChevronLeft, X, PanelLeftOpen, ListChecks } from "lucide-react";
 
 import { SiteNavList, findTool } from "@/components/nav/SiteNav";
 import { adPlanFor } from "@/data/ads";
+import ToolArticle from "@/components/ToolArticle";
+import AdSenseUnit from "@/components/AdSenseUnit";
 
-function AdRailSlot({ id, height, label }: { id: string; height: number; label: string }) {
-  return (
-    <div
-      id={id}
-      style={{
-        width: "100%",
-        height,
-        border: "2px dashed #000000",
-        background: "#fafafa",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        textAlign: "center",
-        padding: 10,
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          fontSize: "0.6rem",
-          fontWeight: 900,
-          background: "#000",
-          color: "#fff",
-          padding: "2px 8px",
-          fontFamily: "monospace",
-          textTransform: "uppercase",
-        }}
-      >
-        Advertisement
-      </span>
-      <span style={{ fontSize: "0.58rem", fontFamily: "monospace", color: "#888" }}>
-        [ {label} · AdSense-ready ]
-      </span>
-    </div>
-  );
-}
+// AdSense unit ids (AdSense remediation 2026-10-23): real <ins> units replace
+// the old dashed placeholder boxes, which read as simulated ads next to thin
+// tool pages and fed the "Low value content" rejection. Unset → renders
+// nothing (invisible), never a fake ad frame.
+const SLOT_RAIL = process.env.NEXT_PUBLIC_ADSENSE_SLOT_RAIL;
+const SLOT_ANCHOR = process.env.NEXT_PUBLIC_ADSENSE_SLOT_ANCHOR;
 
 export default function ToolLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -346,10 +316,17 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
         <main className="tool-layout-main" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
           {children}
 
+          {/* Editorial layer (AdSense remediation 2026-10-23): unique,
+              substantive guide + FAQ below every tool, with HowTo/FAQPage
+              structured data. This is what turns "app canvas with no text"
+              into a page reviewers and crawlers can actually value. */}
+          <ToolArticle pathname={pathname} />
+
           {/* THE one desktop ad banner (owner ruling 2026-10-07): a single
               right-side 300×600 rail, CSS-gated to ≥1600px viewports, shown
-              only for tools whose plan (src/data/ads.ts) keeps it on. */}
-          {adPlan.rail ? (
+              only for tools whose plan (src/data/ads.ts) keeps it on. Real
+              AdSense unit — invisible until the slot id is configured. */}
+          {adPlan.rail && SLOT_RAIL ? (
             <aside
               className="tool-layout-ad-rail"
               aria-label="Advertisement"
@@ -366,31 +343,16 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
                 overflowY: "auto",
               }}
             >
-              <AdRailSlot id="ck-rail-right-300x600" height={600} label="300 × 600" />
+              <AdSenseUnit slot={SLOT_RAIL} format="vertical" style={{ width: 300, minHeight: 600 }} responsive={false} />
             </aside>
           ) : null}
 
           {/* THE one phone banner for this tool (per-tool plan): sticky
-              320×50 anchor, CSS-gated to ≤768px, tools that opt out get
-              nothing. Sits under the consent bar until it is answered. */}
-          {adPlan.mobileAnchor ? (
+              320×50 anchor, CSS-gated to ≤768px. Real AdSense anchor unit —
+              invisible until the slot id is configured. */}
+          {adPlan.mobileAnchor && SLOT_ANCHOR ? (
             <div className="ck-anchor-ad" aria-label="Advertisement" id="ck-anchor-mobile-320x50">
-              <span
-                style={{
-                  fontSize: "0.56rem",
-                  fontWeight: 900,
-                  background: "#000",
-                  color: "#fff",
-                  padding: "2px 7px",
-                  fontFamily: "monospace",
-                  textTransform: "uppercase",
-                }}
-              >
-                Ad
-              </span>
-              <span style={{ fontSize: "0.58rem", fontFamily: "monospace", color: "#888" }}>
-                [ 320 × 50 anchor · AdSense-ready ]
-              </span>
+              <AdSenseUnit slot={SLOT_ANCHOR} format="horizontal" style={{ width: 320, height: 50 }} responsive={false} />
             </div>
           ) : null}
         </main>

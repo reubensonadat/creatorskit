@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { BLOG_POSTS, type BlogPost } from '@/data/blog-posts';
 import { fetchPostBySlugFromDatabase, fetchPostsFromDatabase } from '@/lib/supabase';
 import AdBanner from '@/components/AdBanner';
+import AdSenseUnit from '@/components/AdSenseUnit';
 import NewsletterCard from '@/components/blog/NewsletterCard';
 import SocialShareBar from '@/components/blog/SocialShareBar';
 import {
@@ -610,28 +611,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           {/* Top Rectangle Ad (300x250) */}
           <AdBanner slot="rectangle" />
 
-          {/* Vertical Skyscraper Ad Space */}
-          <div
-            style={{
-              width: '100%',
-              minHeight: 480,
-              border: '2px dashed #9ca3af',
-              background: '#ffffff',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxSizing: 'border-box',
-            }}
-          >
-            <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 900, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
-              ADVERTISEMENT
-            </span>
-            <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#9ca3af' }}>
-              300 x 600 Half Page / Skyscraper
-            </span>
-          </div>
+          {/* Vertical Skyscraper Ad — real unit, invisible until configured
+              (AdSense remediation 2026-10-23: no more dashed placeholder) */}
+          <AdSenseUnit
+            slot={process.env.NEXT_PUBLIC_ADSENSE_SLOT_BLOG_RAIL}
+            format="vertical"
+            style={{ width: 300, minHeight: 600 }}
+            responsive={false}
+          />
 
           {/* Bottom Sticky Rectangle Ad */}
           <AdBanner slot="rectangle" />
