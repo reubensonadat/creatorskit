@@ -453,6 +453,34 @@ export const TOOL_CONTENT: Record<string, ToolContent> = {
             { label: 'Your Data', href: '/your-data', note: 'See and manage storage' },
         ],
     },
+
+    '/qr-city': {
+        heading: 'About QR City Metropolis',
+        intro: [
+            'QR City Metropolis transforms standard QR codes into living, interactive 3D voxel cities. Every dark module becomes a skyscraper or landmark citadel with physical spring damping, custom rooftop antennas, and illuminated window tier slits.',
+            'Switching to Scan Mode drops the camera angle to a flat top-down view, instantly aligning the blocks into a crisp, 100% phone-scannable QR code. It bridges functional utility with high-end generative 3D visual design.',
+        ],
+        steps: [
+            { title: 'Enter your destination', detail: 'Type or paste any URL, social link, or plain text into the input box to instantly generate the city matrix.' },
+            { title: 'Explore the 3D skyline', detail: 'Drag to rotate the camera around the metropolis or pitch the view. Hover and click individual skyscrapers to bounce them with harmonic spring physics.' },
+            { title: 'Choose a city theme', detail: 'Select from Cyberpunk 2077, Tokyo Night, Matrix Construct, or Brutalist Concrete styling.' },
+            { title: 'Scan or export', detail: 'Switch to Scan Mode to scan directly off the screen with any phone, or download a high-resolution PNG snapshot.' },
+        ],
+        useCases: [
+            { title: 'Creator interactive marketing', detail: 'Stand out from boring black-and-white QR codes on livestreams, event displays, portfolios, and pitch decks.' },
+            { title: 'Physical print & posters', detail: 'Export high-contrast scans or 3D renders for magazine covers, badges, and merch.' },
+            { title: 'Live presentation demos', detail: 'Engage audience members during talks by letting them inspect the 3D voxel city before scanning.' },
+        ],
+        faqs: [
+            { q: 'Can phones actually scan the QR code?', a: 'Yes. In Scan Mode (or top-down view), the modules align into standard high-contrast QR patterns that iOS Camera, Android Camera, and any QR scanner app decode instantly.' },
+            { q: 'Does it require Three.js or WebGL?', a: 'No. The entire 3D projection, sorting, and physics simulation runs on a lightweight HTML5 2D Canvas engine with zero heavy 3D engine overhead.' },
+            { q: 'Does my text or link leave my device?', a: 'No. The QR matrix generation and canvas rendering happen 100% locally in your browser.' },
+        ],
+        related: [
+            { label: 'Text Behind Image', href: '/text-behind', note: 'Poster depth studio' },
+            { label: 'Quote Card Studio', href: '/quote-card', note: 'Social graphics' },
+        ],
+    },
 };
 
 /** Lookup helper — returns content for an exact tool href, else undefined. */

@@ -19,6 +19,8 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import {
   LayoutGrid,
+  Building2,
+  Component,
   ChevronDown,
   Search,
   X,
@@ -50,6 +52,8 @@ import { externalLinkClick } from '@/components/ExternalAdGate';
 
 // ─── Icon resolver — the single name→icon map in the codebase ────────────────
 const ICONS: Record<string, LucideIcon> = {
+  Building2,
+  Component,
   FileText,
   Images,
   MonitorPlay,
@@ -259,169 +263,169 @@ export default function SiteNav({
               overflow: 'hidden',
             }}
           >
-          {/* Search */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 10px',
-              borderBottom: isDark ? '1px solid #27272a' : '2px solid #000000',
-              background: isDark ? '#09090b' : '#f4f4f5',
-            }}
-          >
-            <Search size={13} color={isDark ? '#a1a1aa' : '#71717a'} />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${VISIBLE_TOOLS.length} tools…`}
+            {/* Search */}
+            <div
               style={{
-                flex: 1,
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                color: isDark ? '#ffffff' : '#000000',
-                fontFamily: 'monospace',
-                fontSize: '0.78rem',
-                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 10px',
+                borderBottom: isDark ? '1px solid #27272a' : '2px solid #000000',
+                background: isDark ? '#09090b' : '#f4f4f5',
               }}
-            />
-            {query && (
-              <button
-                onClick={() => setQuery('')}
-                aria-label="Clear search"
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: isDark ? '#a1a1aa' : '#71717a' }}
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* List */}
-          <div
-            className="no-scrollbar"
-            style={{ overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}
-          >
-            {groups.length === 0 && (
-              <div
+            >
+              <Search size={13} color={isDark ? '#a1a1aa' : '#71717a'} />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search ${VISIBLE_TOOLS.length} tools…`}
                 style={{
-                  padding: '18px 10px',
-                  textAlign: 'center',
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: isDark ? '#ffffff' : '#000000',
                   fontFamily: 'monospace',
-                  fontSize: '0.72rem',
+                  fontSize: '0.78rem',
                   fontWeight: 700,
-                  color: isDark ? '#71717a' : '#71717a',
                 }}
-              >
-                No tools match “{query}”
-              </div>
-            )}
-            {groups.map((g) => (
-              <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: isDark ? '#a1a1aa' : '#71717a' }}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* List */}
+            <div
+              className="no-scrollbar"
+              style={{ overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}
+            >
+              {groups.length === 0 && (
                 <div
                   style={{
+                    padding: '18px 10px',
+                    textAlign: 'center',
                     fontFamily: 'monospace',
-                    fontSize: '0.58rem',
-                    fontWeight: 900,
-                    letterSpacing: '0.12em',
-                    color: '#71717a',
-                    padding: '4px 8px 2px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: isDark ? '#71717a' : '#71717a',
                   }}
                 >
-                  {g.label}
+                  No tools match “{query}”
                 </div>
-                {g.items.map((tool) => {
-                  const Icon = resolveToolIcon(tool.icon);
-                  const active = currentHref === tool.href;
-                  const isExtLink = tool.isExternal === true;
-                  const extTarget = tool.externalUrl || tool.href;
-                  return (
-                    <Link
-                      key={tool.href}
-                      href={tool.href}
-                      onClick={(e) => {
-                        setOpen(false);
-                        if (isExtLink) externalLinkClick(e, extTarget, tool.label);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '7px 8px',
-                        borderRadius: 4,
-                        textDecoration: 'none',
-                        background: active ? (isDark ? '#27272a' : '#000000') : 'transparent',
-                        color: active ? '#ffffff' : isDark ? '#ffffff' : '#000000',
-                        border: '1px solid transparent',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!active) e.currentTarget.style.background = isDark ? '#1f1f23' : '#f4f4f5';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <Icon size={14} style={{ flexShrink: 0 }} />
-                      <span
+              )}
+              {groups.map((g) => (
+                <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.58rem',
+                      fontWeight: 900,
+                      letterSpacing: '0.12em',
+                      color: '#71717a',
+                      padding: '4px 8px 2px',
+                    }}
+                  >
+                    {g.label}
+                  </div>
+                  {g.items.map((tool) => {
+                    const Icon = resolveToolIcon(tool.icon);
+                    const active = currentHref === tool.href;
+                    const isExtLink = tool.isExternal === true;
+                    const extTarget = tool.externalUrl || tool.href;
+                    return (
+                      <Link
+                        key={tool.href}
+                        href={tool.href}
+                        onClick={(e) => {
+                          setOpen(false);
+                          if (isExtLink) externalLinkClick(e, extTarget, tool.label);
+                        }}
                         style={{
-                          flex: 1,
-                          fontFamily: 'monospace',
-                          fontSize: '0.74rem',
-                          fontWeight: 900,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '7px 8px',
+                          borderRadius: 4,
+                          textDecoration: 'none',
+                          background: active ? (isDark ? '#27272a' : '#000000') : 'transparent',
+                          color: active ? '#ffffff' : isDark ? '#ffffff' : '#000000',
+                          border: '1px solid transparent',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!active) e.currentTarget.style.background = isDark ? '#1f1f23' : '#f4f4f5';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!active) e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        {tool.label}
-                      </span>
-                      {tool.isExternal ? (
-                        <ArrowUpRight size={12} style={{ flexShrink: 0, color: '#71717a' }} />
-                      ) : (
+                        <Icon size={14} style={{ flexShrink: 0 }} />
                         <span
                           style={{
+                            flex: 1,
                             fontFamily: 'monospace',
-                            fontSize: '0.55rem',
+                            fontSize: '0.74rem',
                             fontWeight: 900,
-                            letterSpacing: '0.08em',
-                            color: '#71717a',
-                            flexShrink: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {tool.hint}
+                          {tool.label}
                         </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+                        {tool.isExternal ? (
+                          <ArrowUpRight size={12} style={{ flexShrink: 0, color: '#71717a' }} />
+                        ) : (
+                          <span
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.55rem',
+                              fontWeight: 900,
+                              letterSpacing: '0.08em',
+                              color: '#71717a',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {tool.hint}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
 
-          {/* Footer */}
-          <Link
-            href="/"
-            onClick={() => setOpen(false)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 12px',
-              borderTop: isDark ? '1px solid #27272a' : '2px solid #000000',
-              background: isDark ? '#09090b' : '#f4f4f5',
-              color: isDark ? '#ffffff' : '#000000',
-              textDecoration: 'none',
-              fontFamily: 'monospace',
-              fontSize: '0.68rem',
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            <span>All tools home</span>
-            <span style={{ color: '#71717a' }}>CK.win</span>
-          </Link>
+            {/* Footer */}
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                borderTop: isDark ? '1px solid #27272a' : '2px solid #000000',
+                background: isDark ? '#09090b' : '#f4f4f5',
+                color: isDark ? '#ffffff' : '#000000',
+                textDecoration: 'none',
+                fontFamily: 'monospace',
+                fontSize: '0.68rem',
+                fontWeight: 900,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}
+            >
+              <span>All tools home</span>
+              <span style={{ color: '#71717a' }}>CK.win</span>
+            </Link>
           </div>,
           document.body,
         )}

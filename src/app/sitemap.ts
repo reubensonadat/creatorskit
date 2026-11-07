@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { SITE_BASE_URL } from '@/lib/seo';
 import { BLOG_POSTS } from '@/data/blog-posts';
+import { COMPONENT_SITES } from '@/data/component-directory';
 
 export default function sitemap(): MetadataRoute.Sitemap {
     const now = new Date();
@@ -37,6 +38,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/receipt', 0.8, 'weekly'),
 
         // ── Everyday studio tools ───────────────────────────────────────────
+        entry('/qr-city', 0.85, 'daily'),
         entry('/teleprompter', 0.85, 'daily'),
         entry('/thumbnail-lab', 0.85, 'daily'),
         entry('/auto-captions', 0.8, 'weekly'),
@@ -58,6 +60,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
         entry('/color-gradient', 0.6, 'weekly'),
 
         entry('/blog', 0.7, 'daily'),
+
+        // ── UI component directory (owner personal armory, 2026-11-05) ────
+        entry('/components', 0.6, 'weekly'),
+        ...COMPONENT_SITES.map((s) => entry(`/components/${s.slug}`, 0.5, 'monthly')),
 
         // ── Research posts — every article must be discoverable ────────────
         // (SEO audit 2026-10-10: they were previously absent, leaving 13
