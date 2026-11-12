@@ -12,6 +12,12 @@
  *               DiceBear, libraries.dev/orbs, MapLibre from the campus guide,
  *               …). Generic filler libraries were removed on purpose. Do not
  *               re-add "everyman" sets without a ruling.
+ *   2026-11-10  third ruling — the hub now live-searches THIS file's
+ *               descriptions as you type (grouped by category), and a new
+ *               AGENT & CHAT UI category: assistant-ui, CopilotKit, AI
+ *               Elements, prompt-kit, Craftwork, json-render. uiwiki.co
+ *               joins copy-paste. Astryx + "coss ui" unresolved (dead or
+ *               mismatched domains from this network) — add on owner URL.
  *
  * Every page in /components derives from this file:
  *   · /components            → hub (grid + federated search)
@@ -39,10 +45,23 @@
  *     404 → Bing strategy · dicebear/blobatar/koboyo/drawbly → link strategy
  *   · uiverse.io Cloudflare bot-walls every route → Bing (works)
  *   · DuckDuckGo html/lite blocked from this network → Bing (works)
+ *   · added 2026-11-10: assistant-ui sitemap 729 · copilotkit 179 ·
+ *     prompt-kit 56 · ai-elements redirects to elements.ai-sdk.dev ·
+ *     craftwork sitemap-index only → link · json-render → GitHub link ·
+ *     uiwiki 1,110 component pages · Magic UI already on the shelf
+ *   · second batch 2026-11-10: rams 185 · saved 459 · movin 1,255 ·
+ *     designminis 169 · gradlab / userinterface.wiki / svgl / obsidianui
+ *     → link · uxsnaps Vercel-walled → Bing 11 · nexvyn sitemap 404 →
+ *     Bing 12 · skipped by ruling: BotPrompts (grok prompts),
+ *     Compositor (image editor), Originkit (already listed), Designeer
+ *     (domain is a portfolio) · still unresolved: Astryx, coss ui,
+ *     Kinetics, Scrolltide, beUI, Doodle Icons, Symbl, Wellmade,
+ *     Feral Gradients — add on owner URL.
  */
 
 export type DirectoryCategoryId =
     | 'copy-paste'
+    | 'agent-ui'
     | 'animation'
     | 'assets-3d'
     | 'primitives'
@@ -105,6 +124,11 @@ export const DIRECTORY_CATEGORIES: DirectoryCategory[] = [
         id: 'copy-paste',
         label: 'COPY, PASTE, SHIP',
         blurb: 'Component libraries you install or paste straight into your codebase — no design work required.',
+    },
+    {
+        id: 'agent-ui',
+        label: 'AGENT & CHAT UI',
+        blurb: 'Faces for AI agents — chat threads, streaming text, tool-call traces, generative UI. The components every copilot, assistant and agent product needs.',
     },
     {
         id: 'animation',
@@ -403,6 +427,199 @@ export const COMPONENT_SITES: ComponentSite[] = [
         searchUrl: 'https://sileo.aaryan.design/',
         tags: ['react', 'indie', 'designer'],
     },
+    {
+        slug: 'uiwiki',
+        name: 'uiwiki.co',
+        url: 'https://uiwiki.co',
+        domain: 'uiwiki.co',
+        category: 'copy-paste',
+        tagline: '1,100+ ready-made UI sections — headers, content blocks, footers — as Figma templates, from a wiki of the best UI sites',
+        description:
+            'A wiki-style library of complete UI sections: every component page is one real design — a header, a content layout, a footer — documented with a written description of the pattern and delivered as Figma templates. Browse by section type and grab the whole pattern instead of assembling atoms.',
+        stack: ['Figma'],
+        pricing: 'FREE + PRO',
+        bestFor: ['Full page sections', 'Figma templates', 'Landing page structure'],
+        highlights: [
+            '1,100+ complete sections — steal entire headers and content blocks, not atoms',
+            'Every entry documented with what the pattern shows and when to use it',
+            'Free tier with pro upgrades, plus a /search page for direct browsing',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://uiwiki.co/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://uiwiki.co/search',
+        tags: ['sections', 'figma', 'landing page', 'patterns'],
+    },
+    {
+        slug: 'obsidianui',
+        name: 'ObsidianUI',
+        url: 'https://obsidianui.dev',
+        domain: 'obsidianui.dev',
+        category: 'copy-paste',
+        tagline: 'A React + Tailwind components library for refined UI — polished copy-paste components, no lock-in',
+        description:
+            'A component library for people who care about the last 10 percent: React and Tailwind components tuned for refined, understated interfaces. Copy the code, keep it in your project, make it yours — no npm dependency, no theming lock-in.',
+        stack: ['React', 'Tailwind', 'TypeScript'],
+        pricing: 'FREE',
+        bestFor: ['Polished production UI', 'Copy-paste workflows', 'Tailwind projects'],
+        highlights: [
+            'Components tuned for restraint — spacing and contrast handled for you',
+            'Copy-paste ownership: the code lives in your repo after install',
+            'Built React-first with Tailwind styling',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://obsidianui.dev',
+        tags: ['react', 'tailwind', 'components'],
+    },
+
+    // ═══ AGENT & CHAT UI ═══════════════════════════════════════════════════
+    {
+        slug: 'assistant-ui',
+        name: 'assistant-ui',
+        url: 'https://www.assistant-ui.com',
+        domain: 'www.assistant-ui.com',
+        category: 'agent-ui',
+        featured: true,
+        tagline: 'The frontend library for AI agents — open-source React components and runtimes for AI chat: streaming, tools, persistence (2.9M weekly downloads)',
+        description:
+            'The most-installed way to give an agent a face: drop-in React chat components plus runtimes that handle streaming responses, message persistence, tool-call rendering and human-in-the-loop approval in TypeScript. Works with the AI SDK, LangGraph or any custom backend, and every piece is themable with Tailwind and shadcn tokens.',
+        stack: ['React', 'TypeScript', 'Tailwind'],
+        pricing: 'FREE',
+        license: 'MIT',
+        bestFor: ['Agent chat windows', 'Streaming responses', 'Tool calls + approvals'],
+        highlights: [
+            'Thread, composer and message primitives with streaming markdown built in',
+            'Runtimes for the AI SDK, LangGraph and custom agents — history and persistence included',
+            '2.9M weekly npm downloads, fully themable, MIT-licensed',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://www.assistant-ui.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://www.assistant-ui.com/docs',
+        tags: ['chat', 'streaming', 'tool calls', 'react'],
+    },
+    {
+        slug: 'copilotkit',
+        name: 'CopilotKit',
+        url: 'https://www.copilotkit.ai',
+        domain: 'www.copilotkit.ai',
+        category: 'agent-ui',
+        tagline: 'The enterprise-ready frontend stack for agents — generative UI, agent chat and runtime hooks for React (38k GitHub stars)',
+        description:
+            'A full framework for putting LLMs and agents inside real apps: React components for chat and generative UI, plus AG-UI, an open protocol that streams agent state straight into your components. Wire in LangGraph, CrewAI or a custom agent and the UI reacts to what it is doing.',
+        stack: ['React', 'TypeScript', 'Python agents'],
+        pricing: 'FREE',
+        bestFor: ['In-app copilots', 'Generative UI from agent state', 'Agent + human workflows'],
+        highlights: [
+            'Chat, suggestions and generative-UI components out of the box',
+            'AG-UI open protocol streams agent events into live components',
+            '38k GitHub stars and production enterprise users',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://www.copilotkit.ai/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://www.copilotkit.ai',
+        tags: ['copilot', 'chat', 'generative ui', 'ag-ui'],
+    },
+    {
+        slug: 'ai-elements',
+        name: 'AI Elements',
+        url: 'https://ai-elements.dev',
+        domain: 'ai-elements.dev',
+        category: 'agent-ui',
+        tagline: 'shadcn/ui patterns for AI-native apps from Vercel — 21 components for reasoning, tool calls, plans and conversation',
+        description:
+            'A component library and custom registry built on top of shadcn/ui for AI applications: conversation, reasoning traces, tool invocations, plans and file handling as copy-paste components that follow shadcn conventions. Part of the AI SDK ecosystem, so wiring streaming data in is one prop, not a rewrite.',
+        stack: ['React', 'shadcn/ui', 'Tailwind'],
+        pricing: 'FREE',
+        bestFor: ['AI product UIs', 'Reasoning + tool-call display', 'shadcn-based projects'],
+        highlights: [
+            '21 shadcn-style components designed specifically for agent UX',
+            'Registry-based — install per component into your own codebase',
+            'Backed by Vercel as part of the AI SDK family',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://elements.ai-sdk.dev/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://elements.ai-sdk.dev/docs',
+        tags: ['shadcn', 'ai sdk', 'react', 'chat'],
+    },
+    {
+        slug: 'prompt-kit',
+        name: 'prompt-kit',
+        url: 'https://www.prompt-kit.com',
+        domain: 'prompt-kit.com',
+        category: 'agent-ui',
+        tagline: 'Core building blocks for AI apps — 19 accessible, customizable shadcn/ui components for chat, completions and prompts',
+        description:
+            'Nineteen high-quality components covering the whole AI interface surface: conversation threads, prompt inputs with autocomplete, loading and response states. Install straight into a project as a shadcn registry, or let a coding agent pull components via MCP.',
+        stack: ['React', 'shadcn/ui', 'Tailwind'],
+        pricing: 'FREE',
+        bestFor: ['Chat interfaces', 'Prompt inputs', 'AI feature states'],
+        highlights: [
+            '19 components purpose-built for AI interaction patterns',
+            'shadcn registry + MCP install — an agent can fetch them itself',
+            'Accessible, customizable, zero lock-in',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://prompt-kit.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://prompt-kit.com/docs',
+        tags: ['shadcn', 'chat', 'mcp', 'react'],
+    },
+    {
+        slug: 'craftwork',
+        name: 'Craftwork Components',
+        url: 'https://craftwork.design/components',
+        domain: 'craftwork.design',
+        category: 'agent-ui',
+        tagline: '1,224 animated React + Tailwind components curated from the best open-source libraries — live previews, copy-paste code, MCP for agents',
+        description:
+            'A giant, tastefully curated catalog of animated React and Tailwind components aggregated from proven open-source libraries, every one with a live preview and copy-paste code. Ships an MCP server so a coding agent can search the catalog and wire components in itself, and the wider site adds free design resources beyond components.',
+        stack: ['React', 'Tailwind', 'MCP'],
+        pricing: 'FREE',
+        bestFor: ['Browsing quality components fast', 'Agent-driven installs', 'Animated UI'],
+        highlights: [
+            '1,224 components with live previews, curated from proven libraries',
+            'MCP server lets a coding agent copy components straight into the codebase',
+            'Backed by a wider free design-resources catalog',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://craftwork.design/components',
+        tags: ['catalog', 'mcp', 'tailwind', 'animated'],
+    },
+    {
+        slug: 'json-render',
+        name: 'json-render',
+        url: 'https://github.com/vercel-labs/json-render',
+        domain: 'github.com',
+        category: 'agent-ui',
+        tagline: 'The generative-UI framework from Vercel Labs — agents emit JSON, it renders 36 shadcn/ui components safely on the client',
+        description:
+            'The Vercel approach to generative UI: the model outputs constrained JSON and json-render maps it onto a vetted set of shadcn/ui components, so agents can compose interfaces without shipping arbitrary code to the browser. The safety-first middle ground between canned responses and raw generated markup.',
+        stack: ['React', 'shadcn/ui', 'TypeScript'],
+        pricing: 'FREE',
+        bestFor: ['Generative UI from agents', 'Safe model-driven rendering', 'Agent-authored interfaces'],
+        highlights: [
+            'Model emits JSON, not code — 36 shadcn/ui components rendered client-side',
+            'Constrained generation keeps agent UIs safe and predictable',
+            'Open source from Vercel Labs',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://github.com/vercel-labs/json-render',
+        tags: ['generative ui', 'json', 'shadcn', 'vercel'],
+    },
+    {
+        slug: 'rams',
+        name: 'Rams',
+        url: 'https://rams.ai',
+        domain: 'rams.ai',
+        category: 'agent-ui',
+        tagline: 'Scores the UI your coding agents write — 365 design rules, 0–100 per change, fixes returned as patches',
+        description:
+            'The QA layer for agent-written interfaces: Rams reviews the UI your coding agents ship against 365 design rules, scores every change from 0 to 100 and returns the fixes as patches the agent applies itself. Build agent UI with the libraries above, then let Rams keep the quality above the line.',
+        stack: ['CI-friendly', 'Agent workflows'],
+        pricing: 'FREE',
+        bestFor: ['Reviewing agent-written UI', 'Automated design QA', 'Keeping AI output sharp'],
+        highlights: [
+            '365 design rules checked on every change the agent makes',
+            '0–100 score per change, with the exact fixes as patches',
+            'Works with any coding agent — the reviewer in the loop',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://rams.ai/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://rams.ai',
+        tags: ['design qa', 'scoring', 'agents', 'review'],
+    },
 
     // ═══ MOTION & EFFECTS ══════════════════════════════════════════════════
     {
@@ -632,6 +849,27 @@ export const COMPONENT_SITES: ComponentSite[] = [
         searchUrl: 'https://libraries.dev/',
         tags: ['orbs', 'shaders', 'experimental'],
     },
+    {
+        slug: 'nexvyn',
+        name: 'Nexvyn UI',
+        url: 'https://nexvyn.com',
+        domain: 'nexvyn.com',
+        category: 'animation',
+        tagline: 'Animated React components built for Next.js and Tailwind — drop-in motion for every section',
+        description:
+            'A set of animated React components purpose-built around Next.js and Tailwind: hero effects, reveals, hovers and section transitions that install into the stack you already run. The site renders client-side only, so this directory searches it via Bing site-queries and links straight through.',
+        stack: ['React', 'Next.js', 'Tailwind'],
+        pricing: 'FREE',
+        bestFor: ['Next.js projects', 'Animated sections', 'Tailwind-first teams'],
+        highlights: [
+            'Components built for the Next.js + Tailwind stack specifically',
+            'Motion for heroes, reveals, hovers and transitions',
+            'Live results served via Bing site-search from this directory',
+        ],
+        search: { strategy: 'bing', priority: 12 },
+        searchUrl: 'https://nexvyn.com/',
+        tags: ['animated', 'nextjs', 'tailwind'],
+    },
 
     // ═══ 3D, ILLUSTRATION & GENERATIVE ═════════════════════════════════════
     {
@@ -766,6 +1004,27 @@ export const COMPONENT_SITES: ComponentSite[] = [
         searchUrl: 'https://drawbly.dev/',
         tags: ['bookmark', 'dev'],
     },
+    {
+        slug: 'gradlab',
+        name: 'GradLab',
+        url: 'https://gradlab.app',
+        domain: 'gradlab.app',
+        category: 'assets-3d',
+        tagline: 'Free animated mesh-gradient generator — tune it live, export PNG, MP4 or HTML for hero sections',
+        description:
+            'An owner favorite for hero sections: dial in an animated mesh gradient live, then export it as a PNG still, an MP4 video or a raw HTML/CSS snippet that keeps animating on the page. The fastest way to a premium-looking hero background without touching a shader.',
+        stack: ['HTML/CSS', 'Video'],
+        pricing: 'FREE',
+        bestFor: ['Hero sections', 'Animated backgrounds', 'Mesh gradients'],
+        highlights: [
+            'Animated mesh gradients tuned live in the browser',
+            'Export as PNG, MP4 or self-contained HTML',
+            'Free, no account needed',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://gradlab.app',
+        tags: ['gradients', 'hero', 'generator', 'animation'],
+    },
 
     // ═══ SYSTEMS & PRIMITIVES ══════════════════════════════════════════════
     {
@@ -859,6 +1118,48 @@ export const COMPONENT_SITES: ComponentSite[] = [
         searchUrl: 'https://refero.design/',
         tags: ['screens', 'reference'],
     },
+    {
+        slug: 'motionsites',
+        name: 'MotionSites',
+        url: 'https://motionsites.ai',
+        domain: 'motionsites.ai',
+        category: 'inspiration',
+        tagline: 'AI-powered web design lessons and references for building standout motion-led sites',
+        description:
+            'MotionSites is a curated library for developing AI design skills through distinctive web design references and practical lessons. Use it when a project needs stronger visual direction, motion, and agency-level polish rather than another generic component.',
+        stack: ['Design reference', 'AI design'],
+        pricing: 'FREE + PRO',
+        bestFor: ['Motion-led websites', 'AI design skills', 'Agency-style references'],
+        highlights: [
+            'Focused on web design that stands out from generic AI output',
+            'Practical lessons paired with a curated visual library',
+            'Useful reference point for motion, composition and polish',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://motionsites.ai/',
+        tags: ['motion', 'ai', 'web-design'],
+    },
+    {
+        slug: 'uxsnaps',
+        name: 'UXSnaps',
+        url: 'https://uxsnaps.com',
+        domain: 'uxsnaps.com',
+        category: 'inspiration',
+        tagline: 'UI teardowns of apps used by millions — new ones every week, patterns from products that ship',
+        description:
+            'Weekly teardowns of real, massively-used products: what their UI does, why it works and what to steal. The site sits behind a Vercel security checkpoint, so this directory searches it via Bing site-queries instead — the teardowns themselves are one click through.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Real-product patterns', 'Weekly fresh examples', 'Proven layouts'],
+        highlights: [
+            'Teardowns of apps with millions of real users',
+            'New teardowns every week — the feed never goes stale',
+            'Live results served via Bing site-search from this directory',
+        ],
+        search: { strategy: 'bing', priority: 11 },
+        searchUrl: 'https://uxsnaps.com/',
+        tags: ['teardowns', 'real apps', 'patterns'],
+    },
 
     // ═══ TASTE GALLERIES ═══════════════════════════════════════════════════
     {
@@ -902,6 +1203,48 @@ export const COMPONENT_SITES: ComponentSite[] = [
         search: { strategy: 'link' },
         searchUrl: 'https://godly.website/',
         tags: ['curated', 'editorial', 'vibes'],
+    },
+    {
+        slug: 'saved',
+        name: 'Saved',
+        url: 'https://saved.design',
+        domain: 'saved.design',
+        category: 'galleries',
+        tagline: 'Daily design inspiration — a fresh drop of the best work on the web, every single day',
+        description:
+            'A daily design inspiration feed: new sites, type and motion picked every day, so the eye stays sharp without doom-scrolling a dozen feeds. Come here when a project needs a direction, not a component.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Daily inspiration', 'Art direction', 'Type + motion references'],
+        highlights: [
+            'Fresh curation every day — never a stale feed',
+            'Sites, typography and motion in one daily drop',
+            '459 pages of past drops searchable from this directory',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://saved.design/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://saved.design',
+        tags: ['inspiration', 'daily', 'curation'],
+    },
+    {
+        slug: 'userinterface-wiki',
+        name: 'userinterface.wiki',
+        url: 'https://userinterface.wiki',
+        domain: 'userinterface.wiki',
+        category: 'galleries',
+        tagline: 'A living manual on UX laws, motion and typography — the theory behind why good UI works',
+        description:
+            'A living manual of interface craft: UX laws, motion principles and typography rules, each explained with demonstrations. Not a component source — the place to learn why a component works, so the designs assembled from this directory actually land.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['UX fundamentals', 'Motion principles', 'Typography rules'],
+        highlights: [
+            'UX laws explained with clear demonstrations',
+            'Motion and type sections you can apply the same day',
+            'A living wiki — continuously updated, not a stale blog',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://userinterface.wiki',
+        tags: ['ux laws', 'motion', 'typography', 'learning'],
     },
 
     // ═══ ICONS ═════════════════════════════════════════════════════════════
@@ -951,6 +1294,48 @@ export const COMPONENT_SITES: ComponentSite[] = [
         search: { strategy: 'link' },
         searchUrl: 'https://icon-sets.iconify.design/?query={q}',
         tags: ['meta-search', 'all-sets'],
+    },
+    {
+        slug: 'movin',
+        name: 'movin.design',
+        url: 'https://movin.design',
+        domain: 'movin.design',
+        category: 'icons',
+        tagline: '1,679 open-source animated SVG icons plus motion components and tools — icons that move on hover',
+        description:
+            'Motion design for the smallest UI pieces: 1,679 open-source animated SVG icons you can drop into any stack, alongside motion components and tools. The icons animate on hover by default — the detail that makes a static page feel alive.',
+        stack: ['SVG', 'React', 'Web'],
+        pricing: 'FREE',
+        bestFor: ['Animated icons', 'Hover feedback', 'Motion accents'],
+        highlights: [
+            '1,679 animated SVG icons, all open source',
+            'More than icons: motion components and tools on the same shelf',
+            '1,255 sitemap URLs searchable from this directory',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://movin.design/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://movin.design',
+        tags: ['animated icons', 'svg', 'motion'],
+    },
+    {
+        slug: 'svgl',
+        name: 'SVGL',
+        url: 'https://svgl.app',
+        domain: 'svgl.app',
+        category: 'icons',
+        tagline: '670+ brand and tech logos as clean, searchable SVGs — one click, yours',
+        description:
+            'The logo library every footer and auth screen needs: 670+ brand and tech logos as clean, uniform SVGs, searchable and copyable in one click. No tracking pixels, no rasterized edges — the correct mark, every time.',
+        stack: ['SVG'],
+        pricing: 'FREE',
+        bestFor: ['Brand logos', 'Auth screens', 'Footer social rows'],
+        highlights: [
+            '670+ logos as clean, consistent SVGs',
+            'Search, click, done — no accounts, no downloads folder',
+            'Uniform styling so mixed brands still look intentional',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://svgl.app',
+        tags: ['logos', 'svg', 'brands'],
     },
 
     // ═══ SPECIALIZED ENGINES ═══════════════════════════════════════════════
@@ -1021,6 +1406,216 @@ export const COMPONENT_SITES: ComponentSite[] = [
         search: { strategy: 'sitemap', sitemapUrl: 'https://tweakcn.com/sitemap.xml' },
         searchUrl: 'https://tweakcn.com/',
         tags: ['shadcn', 'themes', 'css-vars'],
+    },
+    {
+        slug: 'refract',
+        name: 'Refract (Design Minis)',
+        url: 'https://www.designminis.com/refract',
+        domain: 'designminis.com',
+        category: 'tools',
+        tagline: 'Put any image behind fluted or rain glass — one of the Design Minis, a rack of tiny single-problem design tools',
+        description:
+            'A single-problem tool done right: upload an image and Refract puts it behind fluted or rain glass, then export the result. It lives in Design Minis, a growing rack of tiny design tools — each one solves a job a big editor makes you work for.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Glassmorphism effects', 'Fluted-glass heroes', 'Quick image treatments'],
+        highlights: [
+            'Fluted and rain-glass effects on any image, straight in the browser',
+            'Part of Design Minis — a whole rack of single-problem tools',
+            '169 tool pages searchable from this directory',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://www.designminis.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://www.designminis.com/refract',
+        tags: ['glass effect', 'image tool', 'mini tools'],
+    },
+    {
+        slug: 'asciinator',
+        name: 'ASCIInator',
+        url: 'https://asciinator.app',
+        domain: 'asciinator.app',
+        category: 'tools',
+        tagline: 'Clean ASCII art from any image — export PNG, SVG or TXT, everything runs in the browser',
+        description:
+            'Drop in an image and get clean, high-quality ASCII art back. Everything runs client-side — no uploads, no account, nothing stored or sent — and the result exports as a PNG image, an SVG vector or plain text for terminals, READMEs and posters.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['ASCII art', 'Terminal visuals', 'README art'],
+        highlights: [
+            'Runs entirely in the browser — images never leave the device',
+            'Export as PNG, SVG or TXT',
+            'Free, no account needed',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://asciinator.app',
+        tags: ['ascii', 'image', 'generator', 'text-art'],
+    },
+    {
+        slug: 'grainrad',
+        name: 'Grainrad',
+        url: 'https://grainrad.com',
+        domain: 'grainrad.com',
+        category: 'tools',
+        tagline: 'Free WebGPU ASCII and dithering effects at 60fps',
+        description:
+            'A WebGPU playground that turns images into ASCII art and dithered effects in real time — everything computes on the GPU, so effects stay smooth at 60fps. A minimalist single-purpose tool: load an image, pick an effect, watch it render live.',
+        stack: ['WebGPU'],
+        pricing: 'FREE',
+        bestFor: ['ASCII effects', 'Dithering', 'Real-time image treatments'],
+        highlights: [
+            'WebGPU-powered — 60fps real-time effects',
+            'ASCII and dithering in one tool',
+            'Free, straight in the browser',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://grainrad.com',
+        tags: ['ascii', 'dithering', 'webgpu', 'effects'],
+    },
+    {
+        slug: 'gradientool',
+        name: 'Gradientool',
+        url: 'https://www.gradientool.com',
+        domain: 'gradientool.com',
+        category: 'assets-3d',
+        tagline: 'Random gradients with infinite unique outputs — export up to 8K',
+        description:
+            'A simple tool for infinite unique outputs: spin up random gradients until one lands, then export it at up to 8K resolution for wallpapers, heroes and backgrounds. The no-frills way to find a gradient you actually like.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Gradient backgrounds', '8K exports', 'Random exploration'],
+        highlights: [
+            'Infinite unique gradient outputs',
+            'Export up to 8K resolution',
+            'Free, no account needed',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://www.gradientool.com',
+        tags: ['gradients', 'generator', 'wallpaper', 'hero'],
+    },
+    {
+        slug: 'productrally',
+        name: 'Product Rally',
+        url: 'https://productrally.com',
+        domain: 'productrally.com',
+        category: 'galleries',
+        tagline: 'The weekly board of design and maker tools — new every Monday, community-voted',
+        description:
+            'One board of design and maker tools, refreshed every Monday. Anyone signed in posts and votes, and the top three of the week freeze on Sunday. A living, community-run discovery feed — check in weekly to catch tools before they blow up.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Weekly discovery', 'New tool drops', 'Community picks'],
+        highlights: [
+            'Fresh board of design and maker tools every Monday',
+            'Community posts and votes, top three freeze weekly',
+            '906 pages searchable from this directory',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://productrally.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://productrally.com',
+        tags: ['community', 'weekly', 'discovery', 'maker tools'],
+    },
+    {
+        slug: 'metalforge',
+        name: 'MetalForge',
+        url: 'https://metalforge.xyz',
+        domain: 'metalforge.xyz',
+        category: 'animation',
+        tagline: 'Metal shaders for SwiftUI and React Native, tuned with sliders — no shader code to write',
+        description:
+            'Beautiful shaders for SwiftUI, React Native and the web without writing a line of shader code. Tweak sliders until the effect lands, then take the output as a real .metal file, a Skia shader or a web component and drop it straight into your app.',
+        stack: ['SwiftUI', 'React Native', 'Web'],
+        pricing: 'FREE',
+        bestFor: ['App shader effects', 'SwiftUI motion', 'React Native motion'],
+        highlights: [
+            'Slider-tuned shaders — no shader code needed',
+            'Exports real .metal files, Skia shaders or web components',
+            'Free, straight in the browser',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://metalforge.xyz',
+        tags: ['shaders', 'metal', 'skia', 'motion'],
+    },
+    {
+        slug: 'ditther',
+        name: 'Ditther',
+        url: 'https://ditther.com',
+        domain: 'ditther.com',
+        category: 'tools',
+        tagline: 'Browser photo and video effects — dither, halftone, ASCII, pixel art, 160+ effects up to 4K',
+        description:
+            'A free online effects editor that runs in the browser: pixel art, halftone, ASCII, dithering and 160+ more effects on photos and video, with text, motion and exports up to 4K. No install, no account gymnastics.',
+        stack: ['Web'],
+        pricing: 'FREE',
+        bestFor: ['Retro image effects', 'Dither and halftone art', 'Pixel art'],
+        highlights: [
+            '160+ effects across photo and video',
+            'ASCII, dithering, halftone, pixel art in one editor',
+            'Up to 4K export, no install',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://ditther.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://ditther.com',
+        tags: ['dithering', 'halftone', 'ascii', 'pixel-art'],
+    },
+    {
+        slug: 'tokokino',
+        name: 'Tokokino',
+        url: 'https://tokokino.com',
+        domain: 'tokokino.com',
+        category: 'tools',
+        tagline: 'Product screenshots and animated demos with device frames, annotations and a timeline editor',
+        description:
+            'Create polished product screenshots and animated demos: device frames, backgrounds, annotations and timeline editing, with fast image or GIF/WebM exports. The fastest route from raw capture to a marketing-ready shot.',
+        stack: ['Web'],
+        pricing: 'FREE + PRO',
+        bestFor: ['App store screenshots', 'Animated product demos', 'Marketing shots'],
+        highlights: [
+            'Device frames, backgrounds and annotations',
+            'Timeline editing for animated demos',
+            'Image, GIF and WebM exports',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://tokokino.com/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://tokokino.com',
+        tags: ['screenshots', 'demos', 'mockups', 'marketing'],
+    },
+    {
+        slug: 'benday',
+        name: 'benday',
+        url: 'https://benday.kacemmathlouthi.dev',
+        domain: 'benday.kacemmathlouthi.dev',
+        category: 'agent-ui',
+        tagline: 'Turns any logo into an animated dot-field thinking indicator for AI and agent UIs',
+        description:
+            'An open-code shadcn primitive that halftones any logo into an animated dot-field — a thinking indicator built for AI and agent interfaces. Twenty-one presets, copy the code, no package to depend on.',
+        stack: ['React', 'shadcn/ui'],
+        pricing: 'FREE',
+        bestFor: ['Agent loading states', 'AI thinking indicators', 'Branded spinners'],
+        highlights: [
+            'Any logo becomes an animated dot-field indicator',
+            'Open-code shadcn primitive with 21 presets',
+            'No package dependency — copy and own it',
+        ],
+        search: { strategy: 'sitemap', sitemapUrl: 'https://benday.kacemmathlouthi.dev/sitemap.xml', bingFallback: true },
+        searchUrl: 'https://benday.kacemmathlouthi.dev',
+        tags: ['shadcn', 'loader', 'agent-ui', 'logo'],
+    },
+    {
+        slug: 'spherium',
+        name: 'Spherium',
+        url: 'https://tryspherium.com',
+        domain: 'tryspherium.com',
+        category: 'assets-3d',
+        tagline: '3D dot globes and maps in WebGL — export as SVG',
+        description:
+            'An advanced WebGL globe and map generator: build 3D dot globes and dot maps, style them live, then export as clean SVG for sites, decks and posters. Big-world visuals without touching Three.js.',
+        stack: ['WebGL', 'SVG'],
+        pricing: 'FREE',
+        bestFor: ['3D globes', 'Dot maps', 'SVG exports'],
+        highlights: [
+            'WebGL dot-globe and map generator',
+            'Exports as SVG',
+            'Free, straight in the browser',
+        ],
+        search: { strategy: 'link' },
+        searchUrl: 'https://tryspherium.com',
+        tags: ['globe', 'map', '3d', 'svg'],
     },
 ];
 

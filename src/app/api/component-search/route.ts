@@ -38,7 +38,7 @@ import {
 } from '@/data/component-directory';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

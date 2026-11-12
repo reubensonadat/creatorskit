@@ -55,6 +55,83 @@ function hoverLift(el: HTMLElement, on: boolean, baseShadow: string) {
     el.style.boxShadow = on ? baseShadow.replace(/[\d.]+px/g, (m) => `${parseFloat(m) + 2}px`) : baseShadow;
 }
 
+// ─── Shelf search: match the directory's own descriptions ─────────────────────
+// Owner ruling 2026-11-10: typing in the bar instantly searches the entries
+// themselves — name, tagline, description, tags, stack, bestFor, highlights —
+// and the matches render grouped under their category (the "skills"). Enter
+// then layers the federated web sweep on top.
+
+interface ShelfMatchGroup {
+    id: DirectoryCategoryId;
+    label: string;
+    sites: ComponentSite[];
+}
+
+function shelfScore(site: ComponentSite, tokens: string[]): number {
+    const cat = categoryById(site.category);
+    const fields: Array<[string, number]> = [
+        [site.name.toLowerCase(), 8],
+        [site.tagline.toLowerCase(), 5],
+        [site.tags.join(' ').toLowerCase(), 4],
+        [site.stack.join(' ').toLowerCase(), 4],
+        [site.description.toLowerCase(), 3],
+        [site.highlights.join(' ').toLowerCase(), 2],
+        [site.bestFor.join(' ').toLowerCase(), 2],
+        [cat.label.toLowerCase(), 2],
+    ];
+    let score = 0;
+    for (const token of tokens) {
+        let hit = 0;
+        for (const [text, weight] of fields) {
+            if (text.includes(token)) hit += weight;
+        }
+        if (!hit) return 0; // every word must match somewhere (AND search)
+        score += hit;
+    }
+    return score;
+}
+
+function matchShelfSites(raw: string): ComponentSite[] {
+    const tokens = raw.trim().toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+    if (!tokens.length) return [];
+    return ORDERED_SITES
+        .map((site, i) => ({ site, i, score: shelfScore(site, tokens) }))
+        .filter((m) => m.score > 0)
+        .sort((a, b) => b.score - a.score || a.i - b.i)
+        .map((m) => m.site);
+}
+
+/** Group matched sites under their category; group order follows each group's best-matched site. */
+function groupSitesByCategory(sites: ComponentSite[]): ShelfMatchGroup[] {
+    const groups: ShelfMatchGroup[] = [];
+    const at = new Map<DirectoryCategoryId, number>();
+    for (const s of sites) {
+        const found = at.get(s.category);
+        if (found === undefined) {
+            at.set(s.category, groups.length);
+            groups.push({ id: s.category, label: categoryById(s.category).label, sites: [s] });
+        } else {
+            groups[found].sites.push(s);
+        }
+    }
+    return groups;
+}
+
+/** A mono category header (the "skill") with its matched cards underneath. */
+function CategorySection({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
+    return (
+        <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ width: 12, height: 12, background: '#000', flexShrink: 0 }} aria-hidden="true" />
+                <h2 style={{ margin: 0, fontFamily: 'monospace', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.1em' }}>{label}</h2>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.62rem', fontWeight: 800, color: '#888' }}>({count})</span>
+                <span style={{ flex: 1, height: '2px', background: '#000', minWidth: 20 }} aria-hidden="true" />
+            </div>
+            {children}
+        </div>
+    );
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PricingBadge({ pricing }: { pricing: ComponentSite['pricing'] }) {
@@ -489,6 +566,17 @@ export default function DirectoryExplorer() {
         return [...likedSites, ...pool.filter((s) => !rank.has(s.slug))];
     }, [activeCategory, likes]);
 
+    // Live "shelf" search over the directory's own text (owner ruling
+    // 2026-11-10): matches the entries' names, taglines, descriptions, tags,
+    // stack and detail-page bullets as you type, grouped by category. Enter
+    // then layers the federated web sweep on top for the same query.
+    const shelfMatches = useMemo(() => matchShelfSites(input), [input]);
+    const shelfGroups = useMemo(() => groupSitesByCategory(shelfMatches), [shelfMatches]);
+    const shelfFilterActive = !query && input.trim().length >= 2;
+
+    const queryShelfMatches = useMemo(() => matchShelfSites(query), [query]);
+    const queryShelfGroups = useMemo(() => groupSitesByCategory(queryShelfMatches), [queryShelfMatches]);
+
     const totalFound = data?.sources.reduce((n, s) => n + (s.status === 'ok' ? s.results.length : 0), 0) ?? 0;
     const liveSources = data?.sources.filter((s) => s.status !== 'skipped') ?? [];
 
@@ -561,7 +649,7 @@ export default function DirectoryExplorer() {
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') runSearch(input);
                         }}
-                        placeholder="search every library at once — try “3d button”"
+                        placeholder="type to search this shelf's descriptions — Enter sweeps the whole web"
                         aria-label="Search all component libraries"
                         style={{
                             flex: 1,
@@ -672,6 +760,36 @@ export default function DirectoryExplorer() {
                         )}
                     </div>
 
+                    {queryShelfGroups.length > 0 && (
+                        <div style={{ background: '#fff', border: '3px solid #000', borderRadius: 10, boxShadow: '4px 4px 0 #000', padding: 16, marginBottom: 14 }}>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.66rem', fontWeight: 900, color: '#dc2626', letterSpacing: '0.06em', marginBottom: 12 }}>
+                                FROM YOUR SHELF · {queryShelfMatches.length} CATEGORIZED MATCH{queryShelfMatches.length === 1 ? '' : 'ES'}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+                                {queryShelfGroups.map((g) => (
+                                    <div key={g.id}>
+                                        <div style={{ fontFamily: 'monospace', fontSize: '0.58rem', fontWeight: 800, color: '#888', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                            {g.label} ({g.sites.length})
+                                        </div>
+                                        {g.sites.map((site) => (
+                                            <Link
+                                                key={site.slug}
+                                                href={`/components/${site.slug}`}
+                                                title={site.tagline}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 0', fontWeight: 800, fontSize: '0.78rem', color: '#000', textDecoration: 'none' }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                                            >
+                                                {site.name}
+                                                <ArrowUpRight size={11} strokeWidth={2.5} style={{ flexShrink: 0, color: '#666' }} />
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {error && (
                         <div style={{ background: '#fff', border: '3px solid #dc2626', borderRadius: 10, padding: 14, fontWeight: 700, color: '#dc2626', marginBottom: 14 }}>
                             {error} — try again, or use the site search links below.
@@ -700,8 +818,65 @@ export default function DirectoryExplorer() {
                 </section>
             )}
 
+            {/* ── Live shelf search: descriptions on the shelf, grouped by category ── */}
+            {!query && shelfFilterActive && (
+                <section>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900, color: '#dc2626', letterSpacing: '0.06em' }}>
+                            SHELF MATCHES · “{input.trim()}” · {shelfMatches.length} SITE{shelfMatches.length === 1 ? '' : 'S'}
+                        </span>
+                        <button
+                            onClick={() => setInput('')}
+                            aria-label="Clear shelf filter"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                fontFamily: 'monospace',
+                                fontSize: '0.6rem',
+                                fontWeight: 900,
+                                letterSpacing: '0.05em',
+                                background: '#fff',
+                                border: '2px solid #000',
+                                borderRadius: 6,
+                                boxShadow: '2px 2px 0 #000',
+                                padding: '4px 8px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <X size={12} strokeWidth={2.75} /> CLEAR
+                        </button>
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', fontWeight: 700, color: '#666', letterSpacing: '0.04em' }}>
+                            ENTER = ALSO SWEEP THE WEB
+                        </span>
+                    </div>
+
+                    {shelfGroups.length > 0 ? (
+                        shelfGroups.map((g) => (
+                            <CategorySection key={g.id} label={g.label} count={g.sites.length}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 14 }}>
+                                    {g.sites.map((site) => (
+                                        <SiteCard
+                                            key={site.slug}
+                                            site={site}
+                                            liked={liked(site.slug)}
+                                            onToggleLike={() => toggle(site.slug)}
+                                        />
+                                    ))}
+                                </div>
+                            </CategorySection>
+                        ))
+                    ) : (
+                        <p style={{ fontSize: '0.85rem', color: '#555', margin: '0 0 14px', fontWeight: 500, maxWidth: 640 }}>
+                            Nothing on your shelf matches that — press Enter (or hit Search) to sweep every listed
+                            library's own site on the web instead.
+                        </p>
+                    )}
+                </section>
+            )}
+
             {/* ── Browse mode: category chips + grid ── */}
-            {!query && (
+            {!query && !shelfFilterActive && (
                 <section>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
                         <button
