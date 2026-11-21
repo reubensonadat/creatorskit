@@ -75,6 +75,18 @@ export const NATIVE_TOOLS: ToolItem[] = [
     badge: 'NEW',
   },
   {
+    label: 'Logo Designer',
+    href: '/logo-designer',
+    hint: 'PIXEL GRID → SMOOTH SVG',
+    desc: 'Paint a logo on a pixel grid, dial in the curve smoothing, export production-ready SVG or PNG — no Illustrator needed. Runs 100% in the browser',
+    isFlagship: false,
+    category: 'studio',
+    chrome: 'fullscreen',
+    status: 'live',
+    icon: 'PenTool',
+    badge: 'NEW',
+  },
+  {
     label: 'QR City Metropolis',
     href: '/qr-city',
     hint: '3D VOXEL QR CODE',
