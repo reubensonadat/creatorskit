@@ -81,7 +81,7 @@ export const NATIVE_TOOLS: ToolItem[] = [
     desc: 'Paint a logo on a pixel grid, dial in the curve smoothing, export production-ready SVG or PNG — no Illustrator needed. Runs 100% in the browser',
     isFlagship: false,
     category: 'studio',
-    chrome: 'fullscreen',
+    chrome: 'embedded',
     status: 'live',
     icon: 'PenTool',
     badge: 'NEW',
