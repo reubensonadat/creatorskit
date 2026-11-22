@@ -160,7 +160,7 @@ export function nextDocNumber(kind: VaultKind): string | null {
     const latest = entries[0].docNumber || '';
     const match = latest.match(/(\d+)\D*$/); // trailing digit run (e.g. INV-2026-0042 → 0042)
     if (!match || match.index === undefined) return null;
-  
+
     const digits = match[1];
     const counter = parseInt(digits, 10) + 1;
     const padded = String(counter).padStart(digits.length, '0');
@@ -182,7 +182,10 @@ export function rememberClient(client: SavedClient): SavedClient[] {
     const merged: SavedClient = {
         ...client,
         name,
-        contact: client.contact || (idx >= 0 ? entries[idx].contact : ''),
+        // An explicitly cleared contact ('') must overwrite the saved one —
+        // falling back to the old value here resurrected deleted emails and
+        // phone numbers every time the client chip was used again.
+        contact: client.contact !== undefined ? client.contact : (idx >= 0 ? entries[idx].contact : ''),
         lastUsed: Date.now(),
     };
     if (idx >= 0) {

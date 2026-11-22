@@ -885,7 +885,12 @@ function BusinessSuiteContent() {
   const tax = (taxableAmount * taxPercentage) / 100;
   const totalAmount = taxableAmount + tax;
   const depositRequired = (totalAmount * depositPercentage) / 100;
-  const balanceDue = Math.max(0, totalAmount - amountPaid);
+  // The printed balance respects the stated deposit: an unpaid invoice with
+  // a 50% deposit shows the remaining 50% as BALANCE DUE, consistent with
+  // the "Upfront Deposit" row right above it (and with payments once they
+  // land). totalAmount − amountPaid alone printed the FULL total there.
+  const committedDeposit = depositPercentage > 0 && depositPercentage < 100 ? depositRequired : 0;
+  const balanceDue = Math.max(0, totalAmount - Math.max(amountPaid, committedDeposit));
 
   // ─── PAYMENT CHANNELS ─────────────────────────────────────────
   const [paymentType, setPaymentType] = useState<'momo' | 'bank' | 'paystack' | 'wire'>('momo');

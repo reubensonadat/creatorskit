@@ -27,6 +27,15 @@ export default function SharedDocumentView({
 }) {
     const { sym, subtotal, tax, total, paid, balance } = receiptTotals(data);
     const x = data.x || {};
+
+    // Invoices/contracts state an upfront deposit. The balance the client
+    // reads must respect that commitment: an unpaid invoice with a 50%
+    // deposit owes the remaining 50% — not the full total printed one row
+    // above the deposit line. (Receipts keep the plain total − paid rule.)
+    const depositPct = Number(x.dep || 0);
+    const depositAmt = Number(x.depr || 0);
+    const committedDeposit = depositPct > 0 && depositPct < 100 ? depositAmt : 0;
+    const docBalance = Math.max(0, total - Math.max(paid, committedDeposit));
     const items = data.it.map((item, idx) => ({
         id: String(idx),
         description: item.d,
@@ -63,7 +72,7 @@ export default function SharedDocumentView({
             depositPercentage: Number(x.dep || 0),
             depositRequired: Number(x.depr || 0),
             amountPaid: paid,
-            balanceDue: balance,
+            balanceDue: docBalance,
             paymentType: (data.pt as InvoiceData['paymentType']) || 'bank',
             momoNetwork: data.mn,
             momoNumber: data.mu,
@@ -115,7 +124,7 @@ export default function SharedDocumentView({
             totalAmount: total,
             depositPercentage: Number(x.dep || 0),
             depositRequired: Number(x.depr || 0),
-            balanceDue: balance,
+            balanceDue: docBalance,
             paymentType: 'fixed',
             paymentMethodDetails: x.pmd || undefined,
             usagePeriod: String(x.up || ''),
@@ -203,10 +212,10 @@ export default function SharedDocumentView({
             data.pt === 'momo'
                 ? `MoMo · ${data.mn || 'Mobile Money'} · ${formatPhoneNumberForDisplay(data.mu) || ''}`.trim()
                 : data.pt === 'bank'
-                  ? `Bank · ${data.bn || 'Bank'} · ${data.ba || ''}`.trim()
-                  : data.pt === 'paystack'
-                    ? 'Paystack Payment Link'
-                    : 'Bank Wire Transfer',
+                    ? `Bank · ${data.bn || 'Bank'} · ${data.ba || ''}`.trim()
+                    : data.pt === 'paystack'
+                        ? 'Paystack Payment Link'
+                        : 'Bank Wire Transfer',
     };
     return <ReceiptDocument data={docData} qrUrl={qrUrl} docKind={data.k} showBranding={showBranding} />;
 }
