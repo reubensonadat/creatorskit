@@ -53,12 +53,30 @@ export default function ShortLinkClientView() {
                         return;
                     }
                 }
-                setError(true);
-                setLoading(false);
             } catch (err) {
-                setError(true);
-                setLoading(false);
+                // fall through
             }
+
+            // Fallback: Check local cache (e.g. testing locally or creator preview)
+            if (typeof window !== 'undefined') {
+                try {
+                    const cached = localStorage.getItem(`ck_doc_${params.id}`);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (parsed?.payload_string) {
+                            const decoded = decodeReceipt(parsed.payload_string);
+                            if (decoded) {
+                                setData(decoded);
+                                setLoading(false);
+                                return;
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            setError(true);
+            setLoading(false);
         }
 
         loadDocument();

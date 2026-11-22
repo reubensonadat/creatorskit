@@ -27,6 +27,12 @@ export interface StoredReceipt {
   created_at?: string;
 }
 
+export interface SaveReceiptResult {
+  success: boolean;
+  shortId: string;
+  error?: string;
+}
+
 /**
  * Save a receipt to Supabase and local storage, returning the short code for branded share links.
  */
@@ -44,7 +50,7 @@ export async function saveReceiptToDatabase(data: {
   paymentChannel?: string;
   payloadString: string;
   metadata?: any;
-}): Promise<string> {
+}): Promise<SaveReceiptResult> {
   // Use existing ID or generate clean 6-character slug
   const shortId = data.id || Math.random().toString(36).substring(2, 8);
 
@@ -65,30 +71,35 @@ export async function saveReceiptToDatabase(data: {
     metadata: data.metadata,
   };
 
-  // 1. Save to Next.js local documents API
-  try {
-    if (typeof window !== 'undefined') {
+  // 1. Keep in client localStorage as fast cache
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`ck_doc_${shortId}`, JSON.stringify(record));
       fetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
       }).catch(() => {});
-
-      // 2. Also keep in client localStorage for instant offline retrieval
-      localStorage.setItem(`ck_doc_${shortId}`, JSON.stringify(record));
+    } catch (e) {
+      // Ignore storage errors
     }
-  } catch (e) {
-    // Ignore storage errors
   }
 
-  // 3. Save to Supabase (upsert)
+  // 2. Try Supabase (upsert)
+  let dbSuccess = false;
+  let dbError: string | undefined;
   try {
-    await supabase.from('receipts').upsert([record]);
-  } catch (err) {
-    // Supabase non-blocking fallback
+    const res = await supabase.from('receipts').upsert([record]);
+    if (res.error) {
+      dbError = res.error.message;
+    } else {
+      dbSuccess = true;
+    }
+  } catch (err: any) {
+    dbError = err?.message || 'Database connection error';
   }
 
-  return shortId;
+  return { success: dbSuccess, shortId, error: dbError };
 }
 
 /**

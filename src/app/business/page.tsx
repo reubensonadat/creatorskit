@@ -363,6 +363,7 @@ function BusinessSuiteContent() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabType) || 'invoice';
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(() => searchParams.get('id') || null);
 
   const switchTab = useCallback((tab: TabType) => {
     setActiveTab(tab);
@@ -1097,6 +1098,7 @@ function BusinessSuiteContent() {
             const decoded = decodeReceipt(stored.payload_string);
             if (decoded) {
               applyReceiptPayloadToState(decoded);
+              setActiveDocumentId(docId);
               isDraftHydratedRef.current = true;
               setIsMounted(true);
               return;
@@ -2332,13 +2334,48 @@ function BusinessSuiteContent() {
     };
   };
 
-  const buildReceiptLink = async (): Promise<string> => {
+  // Database upload fallback dialog states
+  const [showDbFallbackModal, setShowDbFallbackModal] = useState(false);
+  const [pendingShareAction, setPendingShareAction] = useState<'copy' | 'whatsapp' | null>(null);
+  const [pendingFallbackLink, setPendingFallbackLink] = useState<string | null>(null);
+
+  const handleAcceptFallbackLink = async () => {
+    if (!pendingFallbackLink) return;
+    const link = pendingFallbackLink;
+    setShowDbFallbackModal(false);
+
+    if (pendingShareAction === 'copy') {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      }
+      setClientLinkCopied(true);
+      setSmartStatusMessage('Offline fallback link copied to clipboard!');
+      setTimeout(() => {
+        setClientLinkCopied(false);
+        setSmartStatusMessage(null);
+      }, 3000);
+    } else if (pendingShareAction === 'whatsapp') {
+      window.open(`https://wa.me/?text=${encodeURIComponent(buildShareMessage(link))}`, '_blank');
+    }
+    setPendingShareAction(null);
+    setPendingFallbackLink(null);
+  };
+
+  const handleDeclineFallbackLink = () => {
+    setShowDbFallbackModal(false);
+    setPendingShareAction(null);
+    setPendingFallbackLink(null);
+    setSmartStatusMessage('Upload canceled. Tap "Print Document" or "Save Picture" to send directly.');
+    setTimeout(() => setSmartStatusMessage(null), 4000);
+  };
+
+  const createOrGetDocumentLink = async (action: 'copy' | 'whatsapp') => {
     const payload = buildReceiptPayload();
     const encoded = encodeReceipt(payload);
+    const currentId = activeDocumentId || searchParams.get('id') || undefined;
 
-    // Save directly to database with short clean slug
-    const currentId = searchParams.get('id') || undefined;
-    const shortId = await saveReceiptToDatabase({
+    // 1. Attempt database upload
+    const saveResult = await saveReceiptToDatabase({
       id: currentId,
       receiptNumber: payload.rn,
       creatorName,
@@ -2354,15 +2391,65 @@ function BusinessSuiteContent() {
       metadata: { kind: payload.k ?? activeTab },
     });
 
-    const finalId = shortId || currentId || Math.random().toString(36).substring(2, 8);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('tab', activeTab);
-      url.searchParams.set('id', finalId);
-      url.searchParams.delete('d');
-      url.searchParams.delete('r');
-      window.history.replaceState({}, '', url.toString());
+    const finalId = saveResult.shortId;
+    const cleanUrl = `${window.location.origin}/r/${finalId}`;
+    const fallbackUrl = `${window.location.origin}/r/${finalId}?d=${encoded}`;
+
+    if (saveResult.success) {
+      setActiveDocumentId(finalId);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', activeTab);
+        url.searchParams.set('id', finalId);
+        url.searchParams.delete('d');
+        url.searchParams.delete('r');
+        window.history.replaceState({}, '', url.toString());
+      }
+      setReceiptShortUrl(cleanUrl);
+      recordToVault(cleanUrl);
+
+      if (action === 'copy') {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(cleanUrl);
+        }
+        setClientLinkCopied(true);
+        setSmartStatusMessage('Document saved online · Short link copied!');
+        setTimeout(() => {
+          setClientLinkCopied(false);
+          setSmartStatusMessage(null);
+        }, 3000);
+      } else if (action === 'whatsapp') {
+        window.open(`https://wa.me/?text=${encodeURIComponent(buildShareMessage(cleanUrl))}`, '_blank');
+      }
+    } else {
+      // Database upload failed — ask user whether to take fallback link or print directly
+      setPendingShareAction(action);
+      setPendingFallbackLink(fallbackUrl);
+      setShowDbFallbackModal(true);
     }
+  };
+
+  const buildReceiptLink = async (): Promise<string> => {
+    const payload = buildReceiptPayload();
+    const encoded = encodeReceipt(payload);
+    const currentId = activeDocumentId || searchParams.get('id') || undefined;
+    const saveResult = await saveReceiptToDatabase({
+      id: currentId,
+      receiptNumber: payload.rn,
+      creatorName,
+      creatorEmail,
+      creatorPhone,
+      clientName,
+      currency,
+      totalAmount,
+      amountPaid,
+      balanceDue,
+      paymentChannel: paymentType,
+      payloadString: encoded,
+      metadata: { kind: payload.k ?? activeTab },
+    });
+    const finalId = saveResult.shortId;
+    setActiveDocumentId(finalId);
     return `${window.location.origin}/r/${finalId}`;
   };
 
@@ -2370,22 +2457,7 @@ function BusinessSuiteContent() {
     if (isCopyingLink) return;
     setIsCopyingLink(true);
     try {
-      const link = await ensureReceiptShortUrl();
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(link);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = link;
-        el.style.position = 'fixed';
-        el.style.opacity = '0';
-        document.body.appendChild(el);
-        el.focus();
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      setClientLinkCopied(true);
-      setTimeout(() => setClientLinkCopied(false), 2500);
+      await createOrGetDocumentLink('copy');
     } catch (err) {
       console.error('Failed to copy client link:', err);
     } finally {
@@ -2394,9 +2466,7 @@ function BusinessSuiteContent() {
   };
 
   const shareReceiptOnWhatsApp = async () => {
-    const link = await ensureReceiptShortUrl();
-    const text = `Hello ${clientContact || clientName}! Here is your official payment receipt (${receiptNumber}) from ${creatorName}. Open it to view, print or download: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    await sendWhatsAppSummary();
   };
 
   // ─── SUPABASE SHORT LINK FOR THE SCANNABLE QR ──────────────────
@@ -2515,6 +2585,9 @@ function BusinessSuiteContent() {
       setSmartStatusMessage('Could not open this document (unrecognised snapshot format).');
       setTimeout(() => setSmartStatusMessage(null), 3000);
       return;
+    }
+    if (entry.shortId) {
+      setActiveDocumentId(entry.shortId);
     }
     applyReceiptPayloadToState(decoded);
     setSmartStatusMessage(`Opened ${entry.docNumber} (${entry.clientName}) — edit and re-share freely.`);
@@ -6743,6 +6816,91 @@ function BusinessSuiteContent() {
           setTimeout(() => setSmartStatusMessage(null), 3500);
         }}
       />
+
+      {/* ─── DATABASE UPLOAD FAILED FALLBACK CONFIRMATION MODAL ─── */}
+      {showDbFallbackModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.82)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              border: '2px solid #000',
+              boxShadow: '6px 6px 0 #000',
+              maxWidth: 480,
+              width: '100%',
+              padding: '24px 20px',
+              fontFamily: 'monospace',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.62rem', fontWeight: 900, padding: '2px 8px', textTransform: 'uppercase' }}>
+                DATABASE UPLOAD FAILED
+              </span>
+            </div>
+
+            <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem', fontWeight: 900, letterSpacing: '-0.02em', color: '#000' }}>
+              Could Not Save Document Online
+            </h3>
+
+            <p style={{ fontSize: '0.74rem', color: '#444', lineHeight: 1.5, margin: '0 0 18px' }}>
+              The database is currently unreachable or paused. Would you like to take the offline fallback link (contains your document data in the URL), or cancel and print/save the document directly?
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                type="button"
+                onClick={handleAcceptFallbackLink}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: '#000',
+                  color: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '3px 3px 0 #000',
+                  fontWeight: 900,
+                  fontSize: '0.78rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+              >
+                ✓ Yes, Give Me The Offline Link (Long URL)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeclineFallbackLink}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  background: '#fff',
+                  color: '#000',
+                  border: '2px solid #000',
+                  boxShadow: '2px 2px 0 #000',
+                  fontWeight: 900,
+                  fontSize: '0.74rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+              >
+                ✕ No, Cancel (I Will Print / Send PDF Directly)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

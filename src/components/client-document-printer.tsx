@@ -273,16 +273,16 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
         justifyContent: 'space-between',
         gap: 12,
         width: '100%',
-        background: '#141417',
-        border: '1px solid #27272a',
-        borderRadius: 8,
-        padding: '10px 12px',
+        background: '#ffffff',
+        border: '2px solid #000000',
+        boxShadow: '2px 2px 0px #000000',
+        borderRadius: 4,
+        padding: '11px 13px',
         cursor: 'pointer',
-        color: '#fff',
-        fontFamily: 'inherit',
-        fontSize: '0.82rem',
+        color: '#000000',
+        fontFamily: 'monospace',
         textAlign: 'left',
-        transition: 'border-color 0.15s ease, background 0.15s ease',
+        transition: 'transform 0.1s ease, box-shadow 0.1s ease',
         boxSizing: 'border-box',
     };
 
@@ -469,40 +469,42 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                     </ReceiptPrinter.Output>
                 </ReceiptPrinter.Root>
 
-                {/* Tier 3 — PAY strip: modern, executive payment card with channel filtering */}
+                {/* Tier 3 — PAY strip: CreatorsKit Signature Neo-Brutalist Payment Card */}
                 {showPayStrip && (
                     <div
                         className="screen-only"
                         style={{
                             width: '100%',
-                            maxWidth: 460,
-                            background: 'linear-gradient(180deg, #18181b 0%, #101013 100%)',
-                            border: '1px solid #27272a',
-                            borderRadius: 10,
-                            padding: '16px 18px',
+                            maxWidth: isThermal ? 420 : 520,
+                            background: '#ffffff',
+                            color: '#000000',
+                            border: '2.5px solid #000000',
+                            borderRadius: 4,
+                            padding: '18px 20px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: 10,
+                            gap: 12,
                             boxSizing: 'border-box',
-                            boxShadow: '0 16px 36px -12px rgba(0, 0, 0, 0.6)',
+                            boxShadow: '5px 5px 0px #000000',
+                            fontFamily: 'monospace',
                         }}
                     >
                         {/* Header */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 6, borderBottom: '1px solid #27272a' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 10, borderBottom: '2px solid #000000', flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#f4f4f5' }}>
-                                    Payment Options
+                                <span style={{ fontSize: '0.80rem', fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#000', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <CreditCard size={15} /> Payment Options &amp; Instructions
                                 </span>
                                 {depositPercent > 0 && (
-                                    <span style={{ background: '#27272a', color: '#fef08a', fontSize: '0.6rem', fontWeight: 800, padding: '2px 7px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em', border: '1px solid #3f3f46' }}>
+                                    <span style={{ background: '#FFE500', color: '#000', fontSize: '0.62rem', fontWeight: 900, padding: '2px 8px', border: '1.5px solid #000', borderRadius: 2, textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'monospace' }}>
                                         {depositPercent}% Deposit
                                     </span>
                                 )}
                             </div>
-                            <span style={{ fontSize: '0.62rem', color: '#71717a' }}>Tap row to copy</span>
+                            <span style={{ fontSize: '0.62rem', color: '#666', fontFamily: 'monospace', fontWeight: 700 }}>Tap to copy</span>
                         </div>
 
-                        {/* Mobile Money Row (Only rendered if creator configured Mobile Money) */}
+                        {/* Mobile Money Row */}
                         {isMomo && (
                             <button
                                 type="button"
@@ -510,14 +512,14 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                 style={payRowStyle}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                    <div style={{ width: 34, height: 34, borderRadius: 6, background: '#27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#f59e0b' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 3, background: '#FFE500', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#000' }}>
                                         <Smartphone size={17} />
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left' }}>
-                                        <span style={{ fontSize: '0.6rem', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                                        <span style={{ fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 900, fontFamily: 'monospace' }}>
                                             {currentData.mn || 'Mobile Money'} {currentData.x?.mnm ? `· ${currentData.x.mnm}` : ''}
                                         </span>
-                                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#ffffff', letterSpacing: '0.03em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#000000', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                                             {formatPhoneNumberForDisplay(currentData.mu)}
                                         </span>
                                     </div>
@@ -526,24 +528,26 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: 5,
-                                    padding: '5px 10px',
-                                    borderRadius: 5,
+                                    padding: '6px 12px',
+                                    borderRadius: 3,
                                     fontSize: '0.66rem',
-                                    fontWeight: 800,
+                                    fontWeight: 900,
                                     textTransform: 'uppercase',
-                                    background: payCopied === 'momo' ? '#064e3b' : '#27272a',
-                                    color: payCopied === 'momo' ? '#34d399' : '#e4e4e7',
-                                    border: payCopied === 'momo' ? '1px solid #10b981' : '1px solid #3f3f46',
+                                    fontFamily: 'monospace',
+                                    background: payCopied === 'momo' ? '#00FF88' : '#000000',
+                                    color: payCopied === 'momo' ? '#000000' : '#ffffff',
+                                    border: '1.5px solid #000000',
+                                    boxShadow: '1.5px 1.5px 0 #000',
                                     flexShrink: 0,
                                     transition: 'all 0.15s ease',
                                 }}>
-                                    {payCopied === 'momo' ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
-                                    <span>{payCopied === 'momo' ? 'Copied (No Spaces)' : 'Copy'}</span>
+                                    {payCopied === 'momo' ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
+                                    <span>{payCopied === 'momo' ? 'Copied ✓' : 'Copy'}</span>
                                 </div>
                             </button>
                         )}
 
-                        {/* Bank Transfer Row (Only rendered if creator configured Bank Transfer) */}
+                        {/* Bank Transfer Row */}
                         {isBank && (
                             <button
                                 type="button"
@@ -551,14 +555,14 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                 style={payRowStyle}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                    <div style={{ width: 34, height: 34, borderRadius: 6, background: '#27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#60a5fa' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 3, background: '#e0f2fe', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#0284c7' }}>
                                         <Building2 size={17} />
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left' }}>
-                                        <span style={{ fontSize: '0.6rem', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                                        <span style={{ fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 900, fontFamily: 'monospace' }}>
                                             {currentData.bn || 'Bank Transfer'} {currentData.x?.ban ? `· ${currentData.x.ban}` : ''}
                                         </span>
-                                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#ffffff', letterSpacing: '0.03em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <span style={{ fontSize: '0.90rem', fontWeight: 900, color: '#000000', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                                             {currentData.ba}
                                         </span>
                                     </div>
@@ -567,24 +571,26 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: 5,
-                                    padding: '5px 10px',
-                                    borderRadius: 5,
+                                    padding: '6px 12px',
+                                    borderRadius: 3,
                                     fontSize: '0.66rem',
-                                    fontWeight: 800,
+                                    fontWeight: 900,
                                     textTransform: 'uppercase',
-                                    background: payCopied === 'bank' ? '#064e3b' : '#27272a',
-                                    color: payCopied === 'bank' ? '#34d399' : '#e4e4e7',
-                                    border: payCopied === 'bank' ? '1px solid #10b981' : '1px solid #3f3f46',
+                                    fontFamily: 'monospace',
+                                    background: payCopied === 'bank' ? '#00FF88' : '#000000',
+                                    color: payCopied === 'bank' ? '#000000' : '#ffffff',
+                                    border: '1.5px solid #000000',
+                                    boxShadow: '1.5px 1.5px 0 #000',
                                     flexShrink: 0,
                                     transition: 'all 0.15s ease',
                                 }}>
-                                    {payCopied === 'bank' ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
-                                    <span>{payCopied === 'bank' ? 'Copied' : 'Copy'}</span>
+                                    {payCopied === 'bank' ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
+                                    <span>{payCopied === 'bank' ? 'Copied ✓' : 'Copy'}</span>
                                 </div>
                             </button>
                         )}
 
-                        {/* Paystack Online Row (Only rendered if Paystack enabled) */}
+                        {/* Paystack Online Row */}
                         {isPaystack && currentData.x?.ps && (
                             <a
                                 href={currentData.x.ps}
@@ -593,20 +599,20 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                 style={{
                                     ...payRowStyle,
                                     textDecoration: 'none',
-                                    background: '#09090b',
-                                    borderColor: '#22c55e',
+                                    background: '#f0fdf4',
+                                    borderColor: '#16a34a',
                                 }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                    <div style={{ width: 34, height: 34, borderRadius: 6, background: '#052e16', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#22c55e' }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 3, background: '#22c55e', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#000' }}>
                                         <CreditCard size={17} />
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left' }}>
-                                        <span style={{ fontSize: '0.6rem', color: '#86efac', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                                        <span style={{ fontSize: '0.62rem', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 900, fontFamily: 'monospace' }}>
                                             Instant Online Checkout
                                         </span>
-                                        <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#ffffff' }}>
-                                            Pay with Card / MoMo / Apple Pay
+                                        <span style={{ fontSize: '0.86rem', fontWeight: 900, color: '#000000', fontFamily: 'monospace' }}>
+                                            Pay via Card / Mobile Money / Apple Pay →
                                         </span>
                                     </div>
                                 </div>
@@ -614,13 +620,16 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: 5,
-                                    padding: '5px 12px',
-                                    borderRadius: 5,
+                                    padding: '6px 12px',
+                                    borderRadius: 3,
                                     fontSize: '0.68rem',
-                                    fontWeight: 800,
+                                    fontWeight: 900,
+                                    fontFamily: 'monospace',
                                     textTransform: 'uppercase',
                                     background: '#22c55e',
                                     color: '#000000',
+                                    border: '1.5px solid #000',
+                                    boxShadow: '1.5px 1.5px 0 #000',
                                     flexShrink: 0,
                                 }}>
                                     <span>Pay Online</span>
@@ -636,18 +645,18 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                             style={payRowStyle}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                <div style={{ width: 34, height: 34, borderRadius: 6, background: '#27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#e4e4e7', fontSize: '0.85rem', fontWeight: 900 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: 3, background: '#000', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: '0.90rem', fontWeight: 900, fontFamily: 'monospace' }}>
                                     {sym}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left' }}>
-                                    <span style={{ fontSize: '0.6rem', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                                    <span style={{ fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 900, fontFamily: 'monospace' }}>
                                         {depositAmount && depositAmount > 0 ? `Deposit Due (${depositPercent}%)` : 'Total Amount Due'}
                                     </span>
-                                    <span style={{ fontSize: '0.94rem', fontWeight: 900, color: '#ffffff' }}>
+                                    <span style={{ fontSize: '0.98rem', fontWeight: 900, color: '#000000', fontFamily: 'monospace' }}>
                                         {sym}{payableAmount.toLocaleString()}
                                         {depositAmount && depositAmount > 0 ? (
-                                            <span style={{ fontSize: '0.66rem', color: '#a1a1aa', fontWeight: 500, marginLeft: 8 }}>
-                                                (Total: {sym}{total.toLocaleString()})
+                                            <span style={{ fontSize: '0.68rem', color: '#666', fontWeight: 700, marginLeft: 8 }}>
+                                                (Full Total: {sym}{total.toLocaleString()})
                                             </span>
                                         ) : null}
                                     </span>
@@ -657,27 +666,29 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 5,
-                                padding: '5px 10px',
-                                borderRadius: 5,
+                                padding: '6px 12px',
+                                borderRadius: 3,
                                 fontSize: '0.66rem',
-                                fontWeight: 800,
+                                fontWeight: 900,
                                 textTransform: 'uppercase',
-                                background: payCopied === 'amount' ? '#064e3b' : '#27272a',
-                                color: payCopied === 'amount' ? '#34d399' : '#e4e4e7',
-                                border: payCopied === 'amount' ? '1px solid #10b981' : '1px solid #3f3f46',
+                                fontFamily: 'monospace',
+                                background: payCopied === 'amount' ? '#00FF88' : '#000000',
+                                color: payCopied === 'amount' ? '#000000' : '#ffffff',
+                                border: '1.5px solid #000000',
+                                boxShadow: '1.5px 1.5px 0 #000',
                                 flexShrink: 0,
                                 transition: 'all 0.15s ease',
                             }}>
-                                {payCopied === 'amount' ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
-                                <span>{payCopied === 'amount' ? 'Copied' : 'Copy'}</span>
+                                {payCopied === 'amount' ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
+                                <span>{payCopied === 'amount' ? 'Copied ✓' : 'Copy'}</span>
                             </div>
                         </button>
 
                         {/* MoMo Helper tips */}
                         {isMomo && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', background: '#09090b', borderRadius: 6, border: '1px solid #27272a' }}>
-                                <span style={{ fontSize: '0.65rem', color: '#a1a1aa', lineHeight: 1.4 }}>
-                                    <strong style={{ color: '#e4e4e7' }}>MoMo:</strong> Dial <strong>*170#</strong> (MTN) or <strong>*110#</strong> (Telecel) → Send Money → Paste copied number (<strong style={{ color: '#34d399' }}>{sanitizeNumberForCopy(currentData.mu)}</strong>, zero spaces) &amp; amount.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: '#fef9c3', borderRadius: 3, border: '1.5px solid #000', boxShadow: '2px 2px 0 #000' }}>
+                                <span style={{ fontSize: '0.68rem', color: '#000', lineHeight: 1.45, fontFamily: 'monospace' }}>
+                                    <strong>MoMo instructions:</strong> Dial <strong>*170#</strong> (MTN) or <strong>*110#</strong> (Telecel) → Send Money → Paste copied number (<strong style={{ background: '#000', color: '#fff', padding: '1px 4px' }}>{sanitizeNumberForCopy(currentData.mu)}</strong>) &amp; exact amount.
                                 </span>
                             </div>
                         )}
@@ -690,25 +701,27 @@ export default function ClientDocumentPrinter({ data, docId }: { data: ReceiptPa
                         className="screen-only"
                         style={{
                             width: '100%',
-                            maxWidth: 460,
-                            background: 'linear-gradient(180deg, #064e3b20 0%, #064e3b0a 100%)',
-                            border: '1px solid #059669',
-                            borderRadius: 8,
-                            padding: '12px 16px',
+                            maxWidth: isThermal ? 420 : 520,
+                            background: '#ecfdf5',
+                            border: '2.5px solid #059669',
+                            boxShadow: '4px 4px 0 #047857',
+                            borderRadius: 4,
+                            padding: '14px 18px',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 12,
                             boxSizing: 'border-box',
+                            fontFamily: 'monospace',
                         }}
                     >
-                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#ffffff' }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 3, background: '#059669', border: '1.5px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#ffffff' }}>
                             <Check size={18} strokeWidth={3} />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left' }}>
-                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#ecfdf5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, textAlign: 'left', fontFamily: 'monospace' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#064e3b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                 {isReceipt ? 'Official Receipt · Paid in Full' : 'Invoice Settled · Paid in Full'}
                             </span>
-                            <span style={{ fontSize: '0.67rem', color: '#a7f3d0' }}>
+                            <span style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 700 }}>
                                 Payment of {sym}{(paid || total).toLocaleString()} confirmed. No further payment required.
                             </span>
                         </div>
