@@ -1080,6 +1080,11 @@ function BusinessSuiteContent() {
           applyReceiptPayloadToState(decoded);
           isDraftHydratedRef.current = true;
           setIsMounted(true);
+          // Clean the URL immediately to remove any legacy long payload strings
+          const url = new URL(window.location.href);
+          url.searchParams.delete('d');
+          url.searchParams.delete('r');
+          window.history.replaceState({}, '', url.toString());
           return;
         }
       }
@@ -2331,8 +2336,10 @@ function BusinessSuiteContent() {
     const payload = buildReceiptPayload();
     const encoded = encodeReceipt(payload);
 
-    // Save to Supabase for clean short link
+    // Save directly to database with short clean slug
+    const currentId = searchParams.get('id') || undefined;
     const shortId = await saveReceiptToDatabase({
+      id: currentId,
       receiptNumber: payload.rn,
       creatorName,
       creatorEmail,
@@ -2344,18 +2351,19 @@ function BusinessSuiteContent() {
       balanceDue,
       paymentChannel: paymentType,
       payloadString: encoded,
-      metadata: { kind: payload.k ?? 'receipt' },
+      metadata: { kind: payload.k ?? activeTab },
     });
 
-    const finalId = shortId || Math.random().toString(36).substring(2, 8);
+    const finalId = shortId || currentId || Math.random().toString(36).substring(2, 8);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', activeTab);
       url.searchParams.set('id', finalId);
-      url.searchParams.set('d', encoded);
+      url.searchParams.delete('d');
+      url.searchParams.delete('r');
       window.history.replaceState({}, '', url.toString());
     }
-    return `${window.location.origin}/r/${finalId}?d=${encoded}`;
+    return `${window.location.origin}/r/${finalId}`;
   };
 
   const copyClientLink = async () => {

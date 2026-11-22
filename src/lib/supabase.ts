@@ -31,6 +31,7 @@ export interface StoredReceipt {
  * Save a receipt to Supabase and local storage, returning the short code for branded share links.
  */
 export async function saveReceiptToDatabase(data: {
+  id?: string;
   receiptNumber: string;
   creatorName: string;
   creatorEmail?: string;
@@ -44,8 +45,8 @@ export async function saveReceiptToDatabase(data: {
   payloadString: string;
   metadata?: any;
 }): Promise<string> {
-  // Generate random 6-character clean slug
-  const shortId = Math.random().toString(36).substring(2, 8);
+  // Use existing ID or generate clean 6-character slug
+  const shortId = data.id || Math.random().toString(36).substring(2, 8);
 
   const record: StoredReceipt = {
     id: shortId,
@@ -80,9 +81,9 @@ export async function saveReceiptToDatabase(data: {
     // Ignore storage errors
   }
 
-  // 3. Save to Supabase
+  // 3. Save to Supabase (upsert)
   try {
-    await supabase.from('receipts').insert([record]);
+    await supabase.from('receipts').upsert([record]);
   } catch (err) {
     // Supabase non-blocking fallback
   }

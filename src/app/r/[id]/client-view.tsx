@@ -25,8 +25,7 @@ export default function ShortLinkClientView() {
         async function loadDocument() {
             if (!params?.id) return;
 
-            // 1. Check if document payload is embedded directly in URL (?d= or ?r=)
-            // This guarantees the document loads 100% reliably even when Supabase is paused or offline!
+            // 1. Check if document payload is embedded in URL (?d= or ?r=) for backward compatibility
             if (typeof window !== 'undefined') {
                 const search = new URLSearchParams(window.location.search);
                 const inline = search.get('d') || search.get('r');
@@ -35,6 +34,10 @@ export default function ShortLinkClientView() {
                     if (decoded) {
                         setData(decoded);
                         setLoading(false);
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete('d');
+                        url.searchParams.delete('r');
+                        window.history.replaceState({}, '', url.toString());
                         return;
                     }
                 }
