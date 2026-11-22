@@ -892,6 +892,29 @@ function BusinessSuiteContent() {
   const committedDeposit = depositPercentage > 0 && depositPercentage < 100 ? depositRequired : 0;
   const balanceDue = Math.max(0, totalAmount - Math.max(amountPaid, committedDeposit));
 
+  // Receipts are proof of payment — their balance is simply what is still
+  // owed AFTER the money that actually landed (totalAmount − amountPaid).
+  // Deposit math belongs to invoices/contracts only; letting it leak here is
+  // what printed "Amount paid GH₵0 / Balance due GH₵750" on a receipt.
+  const receiptBalanceDue = Math.max(0, totalAmount - amountPaid);
+
+  // A receipt can never honestly read "Amount paid GH₵0". The first time a
+  // document lands on the receipt tab with nothing marked as paid, assume
+  // paid-in-full (the usual reason you print a receipt). ACTUAL AMOUNT
+  // RECEIVED stays editable for deposits / partial payments.
+  const prevTabForReceiptRef = useRef<TabType | null>(null);
+  useEffect(() => {
+    if (
+      activeTab === 'receipt' &&
+      prevTabForReceiptRef.current !== 'receipt' &&
+      amountPaid === 0 &&
+      totalAmount > 0
+    ) {
+      setAmountPaid(Math.round(totalAmount * 100) / 100);
+    }
+    prevTabForReceiptRef.current = activeTab;
+  }, [activeTab, amountPaid, totalAmount]);
+
   // ─── PAYMENT CHANNELS ─────────────────────────────────────────
   const [paymentType, setPaymentType] = useState<'momo' | 'bank' | 'paystack' | 'wire'>('momo');
 
@@ -1919,7 +1942,8 @@ function BusinessSuiteContent() {
 
       // Tailor for Payment Receipt
       if (targetTab === 'receipt') {
-        setAmountPaid(total > 0 ? total : 3750);
+        // Prove the money that actually parsed — no demo fallback amounts.
+        setAmountPaid(total);
         if (!parsed.receiptNumber && !receiptNumber) {
           setReceiptNumber(nextDocNumber('receipt') || defaultDocNumber('REC'));
         }
@@ -2424,7 +2448,7 @@ function BusinessSuiteContent() {
       currency,
       totalAmount,
       amountPaid,
-      balanceDue,
+      balanceDue: payload.k === 'receipt' ? receiptBalanceDue : balanceDue,
       paymentChannel: paymentType,
       payloadString: encoded,
       metadata: { kind: payload.k ?? activeTab },
@@ -2491,7 +2515,7 @@ function BusinessSuiteContent() {
       currency,
       totalAmount,
       amountPaid,
-      balanceDue,
+      balanceDue: payload.k === 'receipt' ? receiptBalanceDue : balanceDue,
       paymentChannel: paymentType,
       payloadString: encoded,
       metadata: { kind: payload.k ?? activeTab },
@@ -2818,7 +2842,8 @@ function BusinessSuiteContent() {
     tax,
     totalAmount,
     amountPaid,
-    balanceDue,
+    // Receipts prove payment: plain total − paid, never deposit-aware math.
+    balanceDue: receiptBalanceDue,
     paymentType,
     payChannel,
   };
@@ -6019,21 +6044,23 @@ function BusinessSuiteContent() {
               </div>
 
               <div className="ck-form-grid-2" style={{ marginBottom: 10 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
-                    UPFRONT DEPOSIT (%)
-                  </label>
-                  <select
-                    value={depositPercentage}
-                    onChange={(e) => setDepositPercentage(parseInt(e.target.value))}
-                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                  >
-                    <option value={50}>50% Upfront (Standard Best Practice)</option>
-                    <option value={100}>100% Upfront (Full Payment)</option>
-                    <option value={30}>30% Deposit</option>
-                    <option value={0}>0% (Net 30 / Post-Delivery)</option>
-                  </select>
-                </div>
+                {activeTab !== 'receipt' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
+                      UPFRONT DEPOSIT (%)
+                    </label>
+                    <select
+                      value={depositPercentage}
+                      onChange={(e) => setDepositPercentage(parseInt(e.target.value))}
+                      style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      <option value={50}>50% Upfront (Standard Best Practice)</option>
+                      <option value={100}>100% Upfront (Full Payment)</option>
+                      <option value={30}>30% Deposit</option>
+                      <option value={0}>0% (Net 30 / Post-Delivery)</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
                     REVISION LIMIT
