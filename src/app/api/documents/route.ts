@@ -69,6 +69,9 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     };
 
+    if (memoryDocs.has(id)) {
+      memoryDocs.delete(id);
+    }
     memoryDocs.set(id, doc);
 
     return NextResponse.json({ success: true, id, data: doc });

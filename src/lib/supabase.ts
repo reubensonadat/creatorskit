@@ -74,6 +74,7 @@ export async function saveReceiptToDatabase(data: {
   // 1. Keep in client localStorage as fast cache
   if (typeof window !== 'undefined') {
     try {
+      localStorage.removeItem(`ck_doc_${shortId}`);
       localStorage.setItem(`ck_doc_${shortId}`, JSON.stringify(record));
       fetch('/api/documents', {
         method: 'POST',
@@ -85,11 +86,15 @@ export async function saveReceiptToDatabase(data: {
     }
   }
 
-  // 2. Try Supabase (upsert)
+  // 2. Save to database: explicitly DELETE existing row first, then INSERT fresh (no upsert)
   let dbSuccess = false;
   let dbError: string | undefined;
   try {
-    const res = await supabase.from('receipts').upsert([record]);
+    // Delete any existing record with this id first
+    await supabase.from('receipts').delete().eq('id', shortId);
+
+    // Insert clean fresh record
+    const res = await supabase.from('receipts').insert([record]);
     if (res.error) {
       dbError = res.error.message;
     } else {
