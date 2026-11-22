@@ -2249,6 +2249,7 @@ function BusinessSuiteContent() {
   // ─── SHAREABLE CLIENT RECEIPT LINK ────────────────────────────
   const [clientLinkCopied, setClientLinkCopied] = useState(false);
   const [isCopyingLink, setIsCopyingLink] = useState(false);
+  const [isUpdatingSentDoc, setIsUpdatingSentDoc] = useState(false);
 
   // Per-tab template extras stored alongside the payload in the database, so
   // shared links render the creator's real invoice/agreement/letterhead template
@@ -2374,7 +2375,7 @@ function BusinessSuiteContent() {
 
   // Database upload fallback dialog states
   const [showDbFallbackModal, setShowDbFallbackModal] = useState(false);
-  const [pendingShareAction, setPendingShareAction] = useState<'copy' | 'whatsapp' | null>(null);
+  const [pendingShareAction, setPendingShareAction] = useState<'copy' | 'whatsapp' | 'update' | null>(null);
   const [pendingFallbackLink, setPendingFallbackLink] = useState<string | null>(null);
 
   const handleAcceptFallbackLink = async () => {
@@ -2407,7 +2408,7 @@ function BusinessSuiteContent() {
     setTimeout(() => setSmartStatusMessage(null), 4000);
   };
 
-  const createOrGetDocumentLink = async (action: 'copy' | 'whatsapp') => {
+  const createOrGetDocumentLink = async (action: 'copy' | 'whatsapp' | 'update') => {
     const payload = buildReceiptPayload();
     const encoded = encodeReceipt(payload);
     const currentId = activeDocumentId || searchParams.get('id') || undefined;
@@ -2446,7 +2447,16 @@ function BusinessSuiteContent() {
       setReceiptShortUrl(cleanUrl);
       recordToVault(cleanUrl);
 
-      if (action === 'copy') {
+      if (action === 'update') {
+        // Living links: same /r/<id>, refreshed content. No clipboard, no
+        // re-share needed — the client's already-open link shows the fix.
+        setSmartStatusMessage(
+          saveResult.updatedExisting
+            ? `✓ Live link updated to v${saveResult.revision ?? 2} — everyone opening it now sees your latest version.`
+            : 'Document saved online — share the link with your client.'
+        );
+        setTimeout(() => setSmartStatusMessage(null), 5000);
+      } else if (action === 'copy') {
         if (navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(cleanUrl);
         }
@@ -2505,6 +2515,24 @@ function BusinessSuiteContent() {
 
   const shareReceiptOnWhatsApp = async () => {
     await sendWhatsAppSummary();
+  };
+
+  // ─── LIVING LINKS: push fixes to an already-sent document ─────────
+  // The recipient's /r/<id> view reads straight from the database row, so
+  // re-saving under the SAME short id updates what they see. No new link,
+  // no "please use this new one" message — the original link just heals.
+  const updateSentDocument = async () => {
+    if (!activeDocumentId || isUpdatingSentDoc) return;
+    setIsUpdatingSentDoc(true);
+    try {
+      await createOrGetDocumentLink('update');
+    } catch (err) {
+      console.error('Failed to update sent document:', err);
+      setSmartStatusMessage('Could not reach the update service — check your connection and try again.');
+      setTimeout(() => setSmartStatusMessage(null), 4000);
+    } finally {
+      setIsUpdatingSentDoc(false);
+    }
   };
 
   // ─── SUPABASE SHORT LINK FOR THE SCANNABLE QR ──────────────────
@@ -6272,6 +6300,35 @@ function BusinessSuiteContent() {
                   )}
                   {isCopyingLink ? 'Saving...' : clientLinkCopied ? 'Link Copied' : 'Copy Link'}
                 </button>
+                {activeDocumentId && (
+                  <button
+                    onClick={updateSentDocument}
+                    disabled={isUpdatingSentDoc}
+                    title="Push your latest edits to the link your client already has — same link, updated content"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: '#f59e0b',
+                      color: '#000',
+                      border: '2px solid #000',
+                      borderRadius: '4px',
+                      boxShadow: '2px 2px 0 #000',
+                      height: 38,
+                      padding: '0 12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      cursor: isUpdatingSentDoc ? 'wait' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      opacity: isUpdatingSentDoc ? 0.85 : 1,
+                    }}
+                  >
+                    {isUpdatingSentDoc ? <ThinkingOrb size={20} state="working" /> : <RefreshCw size={14} />}
+                    {isUpdatingSentDoc ? 'Updating…' : 'Update Sent Version'}
+                  </button>
+                )}
                 <button
                   onClick={sendWhatsAppSummary}
                   title="Share document link via WhatsApp"
@@ -6648,6 +6705,36 @@ function BusinessSuiteContent() {
                 )}
                 {isCopyingLink ? 'SAVING LINK...' : clientLinkCopied ? 'LINK COPIED!' : 'COPY CLIENT LINK'}
               </button>
+              {activeDocumentId && (
+                <button
+                  onClick={updateSentDocument}
+                  disabled={isUpdatingSentDoc}
+                  title="Push your latest edits to the link your client already has"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    background: '#f59e0b',
+                    color: '#000',
+                    border: '2px solid #000',
+                    borderRadius: '4px',
+                    boxShadow: '3px 3px 0 #000',
+                    height: 40,
+                    padding: '0 10px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    cursor: isUpdatingSentDoc ? 'wait' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    opacity: isUpdatingSentDoc ? 0.85 : 1,
+                  }}
+                >
+                  {isUpdatingSentDoc ? <ThinkingOrb size={20} state="working" /> : <RefreshCw size={14} />}
+                  {isUpdatingSentDoc ? 'UPDATING…' : 'UPDATE SENT DOC'}
+                </button>
+              )}
               <button
                 onClick={sendWhatsAppSummary}
                 title="Send document link via WhatsApp"

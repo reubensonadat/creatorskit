@@ -15,9 +15,17 @@ import ClientDocumentPrinter from '@/components/client-document-printer';
  * the real invoice/agreement/letterhead template, print & save — lives in the
  * ONE centralized ClientDocumentPrinter.
  */
+/** Send-history metadata stored alongside the payload (living links). */
+type DocMeta = {
+    revision?: number;
+    first_sent_at?: string;
+    updated_at?: string;
+};
+
 export default function ShortLinkClientView() {
     const params = useParams<{ id: string }>();
     const [data, setData] = useState<ReceiptPayload | null>(null);
+    const [meta, setMeta] = useState<DocMeta | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
 
@@ -49,6 +57,7 @@ export default function ShortLinkClientView() {
                     const decoded = decodeReceipt(stored.payload_string);
                     if (decoded) {
                         setData(decoded);
+                        setMeta((stored.metadata as DocMeta) || null);
                         setLoading(false);
                         return;
                     }
@@ -72,7 +81,7 @@ export default function ShortLinkClientView() {
                             }
                         }
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
             setError(true);
@@ -103,8 +112,43 @@ export default function ShortLinkClientView() {
         );
     }
 
+    const revision = Number(meta?.revision || 1);
+    const updatedLabel = meta?.updated_at
+        ? new Date(meta.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+
     return (
         <div style={{ minHeight: '100vh', background: '#09090b' }}>
+            {/* Living links: the sender corrected this document after sharing.
+                Hidden when the client prints or saves — the paper is clean. */}
+            <style>{`@media print { .ck-updated-banner { display: none !important; } }`}</style>
+            {revision > 1 && (
+                <div
+                    className="ck-updated-banner"
+                    role="status"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                        padding: '10px 16px',
+                        background: '#78350f',
+                        color: '#fde68a',
+                        fontFamily: 'monospace',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.03em',
+                        textAlign: 'center',
+                    }}
+                >
+                    <span style={{ fontSize: '0.8rem' }}>✦</span>
+                    <span>
+                        This document was updated by the sender after it was first sent — you are viewing the latest
+                        version (v{revision}{updatedLabel ? `, updated ${updatedLabel}` : ''}).
+                    </span>
+                </div>
+            )}
             <ClientDocumentPrinter data={data} docId={params?.id} />
             {/* Stage 0 growth loop (docs/BUSINESS_MODEL_PLAN.md §8): every
                 shared invoice/receipt/agreement advertises the free suite. */}

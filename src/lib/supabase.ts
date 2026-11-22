@@ -31,6 +31,10 @@ export interface SaveReceiptResult {
   success: boolean;
   shortId: string;
   error?: string;
+  /** Send-history metadata written alongside the payload (living links). */
+  revision?: number;
+  /** True when this save updated a document that was already shared. */
+  updatedExisting?: boolean;
 }
 
 /**
@@ -54,6 +58,37 @@ export async function saveReceiptToDatabase(data: {
   // Use existing ID or generate clean 6-character slug
   const shortId = data.id || Math.random().toString(36).substring(2, 8);
 
+  // ── LIVING LINKS ──────────────────────────────────────────────────────────
+  // Saving under an existing id UPDATES a document the client may already
+  // have open. Track the send history in metadata so the recipient page can
+  // honestly badge "updated after sending" and the sender sees "v2 pushed".
+  let revision = 1;
+  let firstSentAt = new Date().toISOString();
+  let updatedExisting = false;
+  if (data.id) {
+    try {
+      const { data: prevRow } = await supabase
+        .from('receipts')
+        .select('metadata')
+        .eq('id', data.id)
+        .maybeSingle();
+      if (prevRow) {
+        updatedExisting = true;
+        const prevMeta = prevRow.metadata || {};
+        revision = Number(prevMeta.revision || 1) + 1;
+        firstSentAt = prevMeta.first_sent_at || firstSentAt;
+      }
+    } catch {
+      /* history lookup is best-effort — the save itself must proceed */
+    }
+  }
+  const recordMeta: Record<string, any> = {
+    ...data.metadata,
+    revision,
+    first_sent_at: firstSentAt,
+  };
+  if (updatedExisting) recordMeta.updated_at = new Date().toISOString();
+
   const record: StoredReceipt = {
     id: shortId,
     receipt_number: data.receiptNumber,
@@ -68,7 +103,7 @@ export async function saveReceiptToDatabase(data: {
     status: data.amountPaid >= data.totalAmount ? 'paid' : 'partial',
     payment_channel: data.paymentChannel,
     payload_string: data.payloadString,
-    metadata: data.metadata,
+    metadata: recordMeta,
   };
 
   // 1. Keep in client localStorage as fast cache
@@ -80,7 +115,7 @@ export async function saveReceiptToDatabase(data: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
-      }).catch(() => {});
+      }).catch(() => { });
     } catch (e) {
       // Ignore storage errors
     }
@@ -104,7 +139,7 @@ export async function saveReceiptToDatabase(data: {
     dbError = err?.message || 'Database connection error';
   }
 
-  return { success: dbSuccess, shortId, error: dbError };
+  return { success: dbSuccess, shortId, error: dbError, revision, updatedExisting };
 }
 
 /**
@@ -119,7 +154,7 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
         const parsed = JSON.parse(cached);
         if (parsed?.payload_string) return parsed as StoredReceipt;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // 2. Check Next.js local API
@@ -130,7 +165,7 @@ export async function getReceiptByShortId(id: string): Promise<StoredReceipt | n
         const json = await res.json();
         if (json?.data?.payload_string) return json.data as StoredReceipt;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // 3. Check Supabase
@@ -210,14 +245,14 @@ export async function updateReceiptSignature(
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem(`ck_doc_${id}`, JSON.stringify(updatedRecord));
-        } catch {}
+        } catch { }
 
         // 2. Update local API
         fetch('/api/documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedRecord),
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // 3. Update Supabase
@@ -229,7 +264,7 @@ export async function updateReceiptSignature(
             metadata: updatedRecord.metadata,
           })
           .eq('id', id);
-      } catch {}
+      } catch { }
 
       return updatedRecord;
     }
@@ -357,7 +392,7 @@ export async function saveBouquetToDatabase(data: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(() => {});
+      }).catch(() => { });
     } catch {
       // Non-blocking
     }
@@ -450,7 +485,7 @@ export async function getBouquetByShortId(id: string): Promise<StoredBouquet | n
         .from('digital_bouquets')
         .update({ view_count: (data.view_count || 0) + 1 })
         .eq('id', id)
-        .then(() => {});
+        .then(() => { });
 
       return data as StoredBouquet;
     }
