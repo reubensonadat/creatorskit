@@ -29,7 +29,12 @@ import {
   FolderOpen,
   PenLine,
   RotateCcw,
+  Sparkles,
+  Eye,
+  ArrowLeft,
 } from 'lucide-react';
+import { ByokModal, ByokButton } from '@/components/ai/ByokModal';
+import { generateBusinessDocumentWithAi } from '@/lib/business-ai';
 import {
   extractColorsFromImage,
   parseNaturalPrompt,
@@ -242,12 +247,12 @@ const CREATOR_TYPE_PRESETS: CreatorTypePreset[] = [
     sub: 'Blank slate — full custom',
     niche: 'Creative Professional',
     items: [
-      { description: 'Custom Deliverable — Enter your own description', quantity: 1, rate: 1500, platform: 'Other' },
+      { description: 'Custom Creative Deliverable', quantity: 1, rate: 1500, platform: 'Other' },
     ],
     depositPercentage: 50,
-    turnaroundDays: 7,
-    revisionRounds: 2,
-    usagePeriod: '30 Days',
+    turnaroundDays: 14,
+    revisionRounds: 0,
+    usagePeriod: 'None',
     contractScope: 'Professional creative services as agreed between both parties.',
     contractTitle: 'SERVICE CONTRACT',
   },
@@ -383,19 +388,23 @@ function BusinessSuiteContent() {
   const [creatorLocation, setCreatorLocation] = useState('Accra, Ghana');
   const [creatorNiche, setCreatorNiche] = useState('Tech & Lifestyle Creator');
 
-  const [clientName, setClientName] = useState('Synapse');
-  const [clientContact, setClientContact] = useState('Synapse');
-  const [clientEmail, setClientEmail] = useState('partnerships@synapse.com');
-  const [clientAddress, setClientAddress] = useState('Airport Residential, Accra');
+  const [clientName, setClientName] = useState('');
+  const [clientContact, setClientContact] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
 
   const [currency, setCurrency] = useState<CurrencyType>('GHS');
-  const [invoiceNumber, setInvoiceNumber] = useState('INV-2026-0042');
-  const [poNumber, setPoNumber] = useState('PO-GH-2026');
-  const [receiptNumber, setReceiptNumber] = useState('REC-2026-0042');
-  const [issueDate, setIssueDate] = useState('2026-10-08');
-  const [dueDate, setDueDate] = useState('2026-10-23');
-  const [shippingAddress, setShippingAddress] = useState('Airport Residential Area, Accra, Ghana');
-  const [signatureName, setSignatureName] = useState('Kofi Mensah');
+  const [invoiceNumber, setInvoiceNumber] = useState('INV-2026-0001');
+  const [poNumber, setPoNumber] = useState('');
+  const [receiptNumber, setReceiptNumber] = useState('REC-2026-0001');
+  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().split('T')[0];
+  });
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [signatureName, setSignatureName] = useState('');
   const [customNotes, setCustomNotes] = useState('');
 
   // ─── CREATOR ELECTRONIC SIGNATURE (Device-Persistent) ─────────
@@ -474,15 +483,24 @@ function BusinessSuiteContent() {
   const [paperScale, setPaperScale] = useState(1);
   const [paperHeight, setPaperHeight] = useState<number | null>(null);
 
+  // ─── AI (BYOK) & MOBILE RESPONSIVE STATES ─────────────────────────────
+  const [isByokModalOpen, setIsByokModalOpen] = useState(false);
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
+
   // Measure the preview column and the unscaled sheet; keep scale synced.
   useEffect(() => {
-    if (!paperMode) return;
     const sheet = printAreaRef.current;
     const col = sheet?.parentElement;
     if (!sheet || !col) return;
     const measure = () => {
-      const avail = col.clientWidth;
-      const next = Math.min(1, avail / 820);
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
+      const avail = isMobile
+        ? Math.min(window.innerWidth - 20, 820)
+        : (col?.clientWidth || window.innerWidth - 40);
+      const targetWidth = activeTab === 'receipt' ? 355 : 820;
+      const usable = Math.max(240, avail - (isMobile ? 8 : 24));
+      const next = Math.min(1, usable / targetWidth);
       setPaperScale(next);
       setPaperHeight(sheet.scrollHeight);
     };
@@ -490,8 +508,12 @@ function BusinessSuiteContent() {
     const ro = new ResizeObserver(measure);
     ro.observe(col);
     ro.observe(sheet);
-    return () => ro.disconnect();
-  }, [paperMode, activeTab]);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [paperMode, activeTab, mobileTab]);
   // ─── BRANDING TOGGLE (Powered by CreatorsKit badge on printed documents) ──
   const [brandingOn, setBrandingOn] = useState(true);
   // ─── COLLAPSIBLE BUILDER SECTIONS ─────────────────────────────────────
@@ -827,7 +849,7 @@ function BusinessSuiteContent() {
   const [depositPercentage, setDepositPercentage] = useState(50);
   const [taxPercentage, setTaxPercentage] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
-  const [amountPaid, setAmountPaid] = useState(3750);
+  const [amountPaid, setAmountPaid] = useState(0);
 
   const subtotal = items.reduce((acc, item) => acc + item.quantity * item.rate, 0);
   const discount = discountAmount;
@@ -835,7 +857,7 @@ function BusinessSuiteContent() {
   const tax = (taxableAmount * taxPercentage) / 100;
   const totalAmount = taxableAmount + tax;
   const depositRequired = (totalAmount * depositPercentage) / 100;
-  const balanceDue = totalAmount - depositRequired;
+  const balanceDue = Math.max(0, totalAmount - amountPaid);
 
   // ─── PAYMENT CHANNELS ─────────────────────────────────────────
   const [paymentType, setPaymentType] = useState<'momo' | 'bank' | 'paystack' | 'wire'>('momo');
@@ -869,10 +891,9 @@ function BusinessSuiteContent() {
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── CONCEPT A & B: SMART BUILDER & COLOR PALETTE EXTRACTION ───
-  type BuilderMode = 'prompt' | 'reconstruct' | 'manual';
-  const [builderMode, setBuilderMode] = useState<BuilderMode>('prompt');
+  type BuilderMode = 'guided' | 'reconstruct' | 'manual';
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('guided');
   const [promptInput, setPromptInput] = useState('');
-  const [promptMode, setPromptMode] = useState<'sentence' | 'guided'>('sentence');
   const [guidedClient, setGuidedClient] = useState('');
   const [guidedDeliverable, setGuidedDeliverable] = useState('');
   const [guidedRate, setGuidedRate] = useState('');
@@ -1051,6 +1072,17 @@ function BusinessSuiteContent() {
   useEffect(() => {
     async function initSession() {
       if (typeof window === 'undefined') return;
+
+      const inlineDoc = searchParams.get('d') || searchParams.get('r');
+      if (inlineDoc) {
+        const decoded = decodeReceipt(inlineDoc);
+        if (decoded) {
+          applyReceiptPayloadToState(decoded);
+          isDraftHydratedRef.current = true;
+          setIsMounted(true);
+          return;
+        }
+      }
 
       const docId = searchParams.get('id');
       if (docId) {
@@ -1663,20 +1695,24 @@ function BusinessSuiteContent() {
     setCreatorPhone('+233 24 000 0000');
     setCreatorLocation('Accra, Ghana');
     setCreatorNiche('Tech & Lifestyle Creator');
-    setClientName('Synapse');
-    setClientContact('Synapse');
-    setClientEmail('partnerships@synapse.com');
-    setClientAddress('Airport Residential, Accra');
+    setClientName('');
+    setClientContact('');
+    setClientEmail('');
+    setClientAddress('');
     setCurrency('GHS');
     // Auto-numbering (Tier 1): a fresh document continues the creator's own
     // numbering scheme, cloned from the most recent same-kind vault entry.
-    setInvoiceNumber(nextDocNumber('invoice') || 'INV-2026-0042');
-    setPoNumber('PO-GH-2026');
-    setReceiptNumber(nextDocNumber('receipt') || 'REC-2026-0042');
-    setIssueDate('2026-10-08');
-    setDueDate('2026-10-23');
-    setShippingAddress('Airport Residential Area, Accra, Ghana');
-    setSignatureName('Kofi Mensah');
+    setInvoiceNumber(nextDocNumber('invoice') || 'INV-2026-0001');
+    setPoNumber('');
+    setReceiptNumber(nextDocNumber('receipt') || 'REC-2026-0001');
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const due14 = new Date();
+    due14.setDate(due14.getDate() + 14);
+    setIssueDate(todayStr);
+    setDueDate(due14.toISOString().split('T')[0]);
+    setShippingAddress('');
+    setSignatureName('');
     setCustomNotes('');
     // Fresh document → re-stamp the user's Brand Kit identity over the demo defaults.
     applyBrandKit();
@@ -1699,7 +1735,7 @@ function BusinessSuiteContent() {
     setDepositPercentage(50);
     setTaxPercentage(0);
     setDiscountAmount(0);
-    setAmountPaid(3750);
+    setAmountPaid(0);
     setPaymentType('momo');
     setMomoNetwork('MTN Mobile Money');
     setMomoNumber('024 123 4567');
@@ -1792,8 +1828,11 @@ function BusinessSuiteContent() {
     pushUndo();
     if (parsed.clientName) {
       setClientName(parsed.clientName);
-      setClientContact(parsed.clientName);
+      setClientContact(parsed.clientContact || parsed.clientName);
     }
+    if (parsed.clientContact) setClientContact(parsed.clientContact);
+    if (parsed.clientEmail) setClientEmail(parsed.clientEmail);
+    if (parsed.clientAddress) setClientAddress(parsed.clientAddress);
     if (parsed.currency) setCurrency(parsed.currency);
     if (parsed.dueDate) setDueDate(parsed.dueDate);
     if (parsed.issueDate) setIssueDate(parsed.issueDate);
@@ -1884,13 +1923,135 @@ function BusinessSuiteContent() {
     applyParsedDocument(parsed, 'Quick Prompt');
   };
 
+  const handleAiGenerate = async () => {
+    if (!promptInput.trim()) return;
+    setIsAiGenerating(true);
+    setSmartStatusMessage(`AI is drafting your ${activeTab}...`);
+    try {
+      const res = await generateBusinessDocumentWithAi(promptInput, activeTab);
+      if (res.success && res.data) {
+        applyParsedDocument(res.data, `AI (${res.provider || 'BYOK'})`);
+        setSmartStatusMessage(`Document drafted with AI (${res.model || res.provider})!`);
+        if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+          setMobileTab('preview');
+        }
+      } else {
+        if (res.error && (res.error.toLowerCase().includes('key') || res.error.includes('401'))) {
+          setIsByokModalOpen(true);
+        }
+        const fallback = parseNaturalPrompt(promptInput);
+        if (fallback.items.length > 0 || fallback.clientName) {
+          applyParsedDocument(fallback, 'Quick Prompt (Offline)');
+          setSmartStatusMessage(res.error ? `${res.error} (Drafted with offline parser)` : 'Drafted with offline parser.');
+        } else {
+          setSmartStatusMessage(res.error || 'Failed to generate document. Please check your AI key in Settings.');
+        }
+      }
+    } catch {
+      const fallback = parseNaturalPrompt(promptInput);
+      applyParsedDocument(fallback, 'Quick Prompt (Offline)');
+      setSmartStatusMessage('Drafted using offline parser.');
+    } finally {
+      setIsAiGenerating(false);
+    }
+  };
+
   const handleGuidedGenerate = () => {
     if (!guidedClient.trim() && !guidedDeliverable.trim()) return;
-    const constructed = `${guidedDeliverable || 'Brand deal deliverables'} for ${guidedClient || 'Brand Partner'} for ${guidedRate || '2500'} ${guidedCurrency}, ${guidedTerms}`;
-    const parsed = parseNaturalPrompt(constructed);
-    if (guidedClient) parsed.clientName = guidedClient;
-    if (guidedCurrency) parsed.currency = guidedCurrency;
-    applyParsedDocument(parsed, 'Guided Q&A');
+    pushUndo();
+
+    const client = guidedClient.trim() || 'Brand Partner';
+    setClientName(client);
+    setClientContact('');
+    setCurrency(guidedCurrency);
+
+    const rateNum = parseFloat(guidedRate) || 0;
+    const deliverableDesc = guidedDeliverable.trim() || 'Custom Deliverable';
+
+    setItems([
+      {
+        id: `item-${Date.now()}`,
+        description: deliverableDesc.toUpperCase(),
+        quantity: 1,
+        rate: rateNum,
+        platform: 'Other',
+      },
+    ]);
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    setIssueDate(todayStr);
+
+    if (guidedTerms.includes('50%')) {
+      setDepositPercentage(50);
+      const d = new Date();
+      d.setDate(d.getDate() + 14);
+      setDueDate(d.toISOString().split('T')[0]);
+      setAmountPaid(0);
+    } else if (guidedTerms.includes('100% Paid')) {
+      setDepositPercentage(100);
+      setAmountPaid(rateNum);
+      setDueDate(todayStr);
+    } else if (guidedTerms.includes('Net 30')) {
+      setDepositPercentage(0);
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      setDueDate(d.toISOString().split('T')[0]);
+      setAmountPaid(0);
+    } else if (guidedTerms.includes('Receipt')) {
+      setDepositPercentage(100);
+      setDueDate(todayStr);
+      setAmountPaid(0);
+    } else {
+      setDepositPercentage(50);
+      const d = new Date();
+      d.setDate(d.getDate() + 14);
+      setDueDate(d.toISOString().split('T')[0]);
+      setAmountPaid(0);
+    }
+
+    setSmartStatusMessage(`Document created for ${client}!`);
+    setTimeout(() => setSmartStatusMessage(null), 4000);
+
+    if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+      setMobileTab('preview');
+    }
+  };
+
+  const handleGuidedAiAssist = async () => {
+    if (!guidedClient.trim() && !guidedDeliverable.trim()) {
+      setSmartStatusMessage('Enter a client or deliverable to polish with AI.');
+      return;
+    }
+    setIsAiGenerating(true);
+    setSmartStatusMessage(`AI is expanding your ${activeTab} deliverables...`);
+    try {
+      const prompt = `Client: ${guidedClient || 'Brand Partner'}. Deliverable: ${guidedDeliverable || 'Custom Services'}. Total: ${guidedRate} ${guidedCurrency}. Terms: ${guidedTerms}.`;
+      const res = await generateBusinessDocumentWithAi(prompt, activeTab);
+      if (res.success && res.data) {
+        applyParsedDocument(res.data, `AI (${res.provider || 'BYOK'})`);
+        if (res.data.clientName) setGuidedClient(res.data.clientName);
+        if (res.data.items?.[0]) {
+          setGuidedDeliverable(res.data.items.map((i) => `${i.quantity}x ${i.description}`).join(', '));
+          const total = res.data.items.reduce((s, i) => s + i.quantity * i.rate, 0);
+          setGuidedRate(String(total));
+        }
+        setSmartStatusMessage(`AI updated your ${activeTab}!`);
+        if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+          setMobileTab('preview');
+        }
+      } else {
+        if (res.error && (res.error.toLowerCase().includes('key') || res.error.includes('401'))) {
+          setIsByokModalOpen(true);
+        }
+        handleGuidedGenerate();
+        setSmartStatusMessage(res.error || 'Generated using guided inputs.');
+      }
+    } catch {
+      handleGuidedGenerate();
+    } finally {
+      setIsAiGenerating(false);
+    }
   };
 
   const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2191,9 +2352,10 @@ function BusinessSuiteContent() {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', activeTab);
       url.searchParams.set('id', finalId);
+      url.searchParams.set('d', encoded);
       window.history.replaceState({}, '', url.toString());
     }
-    return `${window.location.origin}/r/${finalId}`;
+    return `${window.location.origin}/r/${finalId}?d=${encoded}`;
   };
 
   const copyClientLink = async () => {
@@ -2676,6 +2838,15 @@ function BusinessSuiteContent() {
   return (
     <div className="ck-page" style={{ background: '#f4f4f5', minHeight: '100%', color: '#000', padding: '16px 20px 80px' }}>
       <style>{`
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
+        .ck-page {
+          width: 100% !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+          box-sizing: border-box !important;
+        }
         .ck-tab { transition: transform 0.12s ease, box-shadow 0.12s ease; }
         .ck-tab:hover { transform: translate(-1px, -1px); }
         .ck-tab:active { transform: translate(1px, 1px); }
@@ -2692,14 +2863,147 @@ function BusinessSuiteContent() {
           }
         }
         @media (max-width: 900px) {
-          .ck-page { padding: 12px 12px 24px !important; }
-          .ck-workspace { gap: 16px !important; }
-          /* Mobile: live document first, builder controls below it */
-          .ck-preview-col { order: -1; }
+          .ck-page { padding: 8px 8px 110px !important; }
+          .ck-workspace {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          .ck-mobile-view-bar {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            background: #fff;
+            border: 2px solid #000;
+            box-shadow: 3px 3px 0 #000;
+            padding: 4px;
+            margin-bottom: 12px;
+            position: sticky;
+            top: 6px;
+            z-index: 100;
+          }
+          .ck-mobile-view-bar button {
+            display: flex;
+            align-items: center;
+            justifyContent: center;
+            gap: 6px;
+            padding: 10px 8px;
+            background: #f4f4f5;
+            color: #000;
+            border: 1.5px solid transparent;
+            font-family: monospace;
+            font-weight: 900;
+            font-size: 0.72rem;
+            cursor: pointer;
+            border-radius: 2px;
+          }
+          .ck-mobile-view-bar button.active {
+            background: #000;
+            color: #fff;
+            border-color: #000;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+          }
+          .ck-mobile-item-badge {
+            background: #fff;
+            color: #000;
+            font-size: 0.58rem;
+            padding: 1px 6px;
+            border-radius: 999px;
+            font-weight: 900;
+          }
+          .ck-mobile-view-bar button.active .ck-mobile-item-badge {
+            background: #eab308;
+            color: #000;
+          }
           .ck-tab-grid {
             display: grid !important;
-            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-columns: 1fr 1fr !important;
             gap: 8px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            margin-bottom: 14px !important;
+            overflow: visible !important;
+          }
+          .ck-tab {
+            min-width: 0 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            padding: 8px 8px !important;
+            gap: 6px !important;
+          }
+          @media (max-width: 360px) {
+            .ck-tab-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+          .ck-top-banner {
+            padding: 12px 10px !important;
+            gap: 12px !important;
+            margin-bottom: 12px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          .ck-top-banner h1 {
+            font-size: 1.15rem !important;
+          }
+          .ck-top-actions {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+            box-sizing: border-box !important;
+            overflow: visible !important;
+          }
+          .ck-mobile-preview-back-bar {
+            display: flex !important;
+            margin-bottom: 8px !important;
+          }
+          /* Control column visibility on mobile based on view class */
+          .ck-workspace.ck-view-editor .ck-editor-col {
+            display: flex !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          .ck-workspace.ck-view-editor .ck-preview-col {
+            display: none !important;
+          }
+          .ck-workspace.ck-view-preview .ck-editor-col {
+            display: none !important;
+          }
+          .ck-workspace.ck-view-preview .ck-preview-col {
+            display: flex !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+        }
+        @media (min-width: 901px) {
+          .ck-mobile-view-bar {
+            display: none !important;
+          }
+          .ck-mobile-preview-back-bar {
+            display: none !important;
+          }
+          .ck-editor-col {
+            display: flex !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .ck-preview-col {
+            display: flex !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
           }
         }
         @page {
@@ -2897,7 +3201,7 @@ function BusinessSuiteContent() {
       <div style={{ maxWidth: 1380, margin: '0 auto' }}>
         {/* Banner / Title */}
         <div
-          className="ck-noprint"
+          className="ck-noprint ck-top-banner"
           style={{
             background: '#fff',
             border: '2px solid #000',
@@ -2930,7 +3234,7 @@ function BusinessSuiteContent() {
                 Get paid on time, bill brands properly, and protect your content.
               </span>
             </div>
-            <h1 style={{ fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: 900, letterSpacing: '-0.03em', margin: 0 }}>
+            <h1 style={{ fontSize: 'clamp(1.2rem, 3vw, 2rem)', fontWeight: 900, letterSpacing: '-0.03em', margin: 0 }}>
               Creator Invoice, Receipt &amp; Deal Contract Generator
             </h1>
           </div>
@@ -2967,8 +3271,11 @@ function BusinessSuiteContent() {
             );
           })()}
 
-          {/* Quick Actions (Badge, Currency, Copy Link, WhatsApp, Print) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {/* Quick Actions (Badge, Currency, Copy Link, WhatsApp, Print, BYOK) */}
+          <div className="ck-top-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* BYOK AI Status & Config Button */}
+            <ByokButton onClick={() => setIsByokModalOpen(true)} />
+
             {/* Auto-saved draft status indicator & reset (rendered client-side after mount to guarantee 100% SSR match) */}
             {isMounted && (
               <>
@@ -3459,20 +3766,44 @@ function BusinessSuiteContent() {
           </div>
         )}
 
+        {/* Mobile View Switcher (1. Builder · 2. Live Preview) */}
+        <div className="ck-mobile-view-bar ck-noprint">
+          <button
+            type="button"
+            className={mobileTab === 'editor' ? 'active' : ''}
+            onClick={() => setMobileTab('editor')}
+          >
+            <PenTool size={13} />
+            <span>1. BUILDER</span>
+          </button>
+          <button
+            type="button"
+            className={mobileTab === 'preview' ? 'active' : ''}
+            onClick={() => setMobileTab('preview')}
+          >
+            <Eye size={13} />
+            <span>2. PREVIEW</span>
+            <span className="ck-mobile-item-badge">{sym}{totalAmount.toLocaleString()}</span>
+          </button>
+        </div>
+
         {/* Workspace: 2-Column Split (Controls on Left, Live Branded Document on Right) */}
         <div
-          className="ck-workspace"
+          className={`ck-workspace ck-view-${mobileTab}`}
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))',
             gap: 24,
             alignItems: 'start',
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
           }}
         >
           {/* ─── LEFT COLUMN: BUILDER & SETTINGS CONTROLS ─── */}
-          <div className="ck-noprint" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="ck-noprint ck-editor-col" style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
 
-            {/* ─── CREATION MODE SWITCHER (Quick Prompt · Document Ingestion · Manual) ─── */}
+            {/* ─── CREATION MODE SWITCHER (Guided · Document Ingestion · Manual) ─── */}
             <div
               style={{
                 display: 'grid',
@@ -3485,9 +3816,9 @@ function BusinessSuiteContent() {
               }}
             >
               {[
-                { id: 'prompt' as const, label: 'Quick Draft', icon: <PenTool size={12} /> },
+                { id: 'guided' as const, label: 'Guided Builder', icon: <PenTool size={12} /> },
                 { id: 'reconstruct' as const, label: 'Import Doc', icon: <FileUp size={12} /> },
-                { id: 'manual' as const, label: 'Manual Form', icon: <SlidersHorizontal size={12} /> },
+                { id: 'manual' as const, label: 'All Controls', icon: <SlidersHorizontal size={12} /> },
               ].map((mode) => {
                 const isActive = builderMode === mode.id;
                 return (
@@ -3571,8 +3902,8 @@ function BusinessSuiteContent() {
               </div>
             )}
 
-            {/* ─── CONCEPT A: QUICK DRAFT MODE ─── */}
-            {builderMode === 'prompt' && (
+            {/* ─── GUIDED BUILDER MODE ─── */}
+            {builderMode === 'guided' && (
               <div
                 style={{
                   background: '#fff',
@@ -3581,210 +3912,127 @@ function BusinessSuiteContent() {
                   padding: 16,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 12,
+                  gap: 14,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #000', paddingBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #000', paddingBottom: 10, flexWrap: 'wrap', gap: 8 }}>
                   <div>
                     <span style={{ fontWeight: 900, fontSize: '0.78rem', fontFamily: 'monospace', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <PenTool size={13} /> Quick Document Composer
+                      <PenTool size={13} /> Guided Document Builder
                     </span>
                     <p style={{ margin: '3px 0 0', fontSize: '0.64rem', color: '#555' }}>
-                      Natural language parsing or guided 3-step entry.
+                      Build your {activeTab} in 3 clean steps — no messy prompts.
                     </p>
                   </div>
-                  <div style={{ display: 'flex', border: '1.5px solid #000', padding: 2, background: '#f4f4f5' }}>
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('sentence')}
-                      style={{
-                        padding: '4px 9px',
-                        fontSize: '0.62rem',
-                        fontWeight: 800,
-                        fontFamily: 'monospace',
-                        textTransform: 'uppercase',
-                        background: promptMode === 'sentence' ? '#000' : 'transparent',
-                        color: promptMode === 'sentence' ? '#fff' : '#000',
-                        border: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Prompt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPromptMode('guided')}
-                      style={{
-                        padding: '4px 9px',
-                        fontSize: '0.62rem',
-                        fontWeight: 800,
-                        fontFamily: 'monospace',
-                        textTransform: 'uppercase',
-                        background: promptMode === 'guided' ? '#000' : 'transparent',
-                        color: promptMode === 'guided' ? '#fff' : '#000',
-                        border: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Guided
-                    </button>
-                  </div>
+                  <ByokButton onClick={() => setIsByokModalOpen(true)} />
                 </div>
 
-                {promptMode === 'sentence' ? (
-                  <>
-                    <textarea
-                      value={promptInput}
-                      onChange={(e) => setPromptInput(e.target.value)}
-                      placeholder='e.g. 2x TikToks and 1x Reel for Gymshark for $4,500 due in 14 days, 50% deposit'
-                      style={{
-                        width: '100%',
-                        minHeight: 82,
-                        padding: 10,
-                        fontSize: '0.78rem',
-                        fontFamily: 'monospace',
-                        border: '1.5px solid #000',
-                        outline: 'none',
-                        resize: 'vertical',
-                      }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                      1. WHO ARE YOU BILLING? (BRAND / CLIENT NAME)
+                    </label>
+                    <input
+                      type="text"
+                      value={guidedClient}
+                      onChange={(e) => setGuidedClient(e.target.value)}
+                      placeholder="e.g. Nike / Gymshark / Spotify / Lumina Studio"
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '0.78rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
                     />
-
-                    {/* Quick suggestion chips */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                        Presets (Tap to apply):
-                      </span>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {[
-                          '2x TikToks for $3,000 due in 14 days',
-                          '1x Reel + 3 Stories for GH₵5,000, 50% deposit',
-                          'UGC Video Package for ₦250,000 paid',
-                          'YouTube Integration for £2,200 for TechBrand',
-                        ].map((chip, idx) => (
+                    {savedClients.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.58rem', fontWeight: 800, color: '#666', fontFamily: 'monospace' }}>PAST CLIENTS:</span>
+                        {savedClients.slice(0, 4).map((c) => (
                           <button
-                            key={idx}
+                            key={c.name}
                             type="button"
-                            onClick={() => setPromptInput(chip)}
+                            onClick={() => {
+                              setGuidedClient(c.name);
+                              if (c.currency) setGuidedCurrency(c.currency as CurrencyType);
+                            }}
                             style={{
-                              padding: '5px 8px',
-                              background: '#f9fafb',
+                              padding: '2px 7px',
+                              background: '#f4f4f5',
                               border: '1px solid #000',
-                              fontSize: '0.63rem',
+                              fontSize: '0.62rem',
                               fontFamily: 'monospace',
                               fontWeight: 700,
                               cursor: 'pointer',
                             }}
                           >
-                            {chip}
+                            {c.name}
                           </button>
                         ))}
                       </div>
-                    </div>
+                    )}
+                  </div>
 
-                    <button
-                      type="button"
-                      onClick={handleQuickPromptGenerate}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        background: '#000',
-                        color: '#fff',
-                        border: '2px solid #000',
-                        boxShadow: '3px 3px 0 #000',
-                        padding: '11px 16px',
-                        fontFamily: 'monospace',
-                        fontWeight: 900,
-                        fontSize: '0.76rem',
-                        textTransform: 'uppercase',
-                        cursor: 'pointer',
-                        marginTop: 4,
-                      }}
-                    >
-                      <span>Generate Document</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                      2. WHAT ARE YOU DELIVERING? (DELIVERABLES)
+                    </label>
+                    <input
+                      type="text"
+                      value={guidedDeliverable}
+                      onChange={(e) => setGuidedDeliverable(e.target.value)}
+                      placeholder="e.g. 2x TikTok Videos (60s) + 1x Instagram Reel"
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '0.78rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 10 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        1. WHO IS PAYING YOU? (BRAND / CLIENT)
+                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                        3. TOTAL AMOUNT
                       </label>
                       <input
-                        type="text"
-                        value={guidedClient}
-                        onChange={(e) => setGuidedClient(e.target.value)}
-                        placeholder="e.g. Gymshark / Spotify / Brand Agency"
-                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
+                        type="number"
+                        value={guidedRate}
+                        onChange={(e) => setGuidedRate(e.target.value)}
+                        placeholder="e.g. 3500"
+                        style={{ width: '100%', padding: '8px 10px', fontSize: '0.78rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
                       />
                     </div>
-
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        2. WHAT ARE YOU DELIVERING?
-                      </label>
-                      <input
-                        type="text"
-                        value={guidedDeliverable}
-                        onChange={(e) => setGuidedDeliverable(e.target.value)}
-                        placeholder="e.g. 2x TikTok Videos (60s) + 1x Instagram Reel"
-                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          3. TOTAL AMOUNT
-                        </label>
-                        <input
-                          type="number"
-                          value={guidedRate}
-                          onChange={(e) => setGuidedRate(e.target.value)}
-                          placeholder="e.g. 3500"
-                          style={{ width: '100%', padding: '7px 9px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                          CURRENCY
-                        </label>
-                        <select
-                          value={guidedCurrency}
-                          onChange={(e) => setGuidedCurrency(e.target.value as CurrencyType)}
-                          style={{ width: '100%', padding: '7px 6px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
-                        >
-                          <option value="GHS">GHS (GH₵)</option>
-                          <option value="NGN">NGN (₦)</option>
-                          <option value="USD">USD ($)</option>
-                          <option value="GBP">GBP (£)</option>
-                          <option value="EUR">EUR (€)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 3 }}>
-                        PAYMENT TERMS
+                      <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                        CURRENCY
                       </label>
                       <select
-                        value={guidedTerms}
-                        onChange={(e) => setGuidedTerms(e.target.value)}
-                        style={{ width: '100%', padding: '7px 9px', fontSize: '0.72rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
+                        value={guidedCurrency}
+                        onChange={(e) => setGuidedCurrency(e.target.value as CurrencyType)}
+                        style={{ width: '100%', padding: '8px 8px', fontSize: '0.75rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
                       >
-                        <option value="50% Upfront, Balance on Delivery (Net 14)">50% Upfront Deposit, Balance on Delivery (Net 14)</option>
-                        <option value="100% Paid in Full">100% Paid in Full (Proof of Payment)</option>
-                        <option value="Net 30 Days">Net 30 Days</option>
-                        <option value="100% Due Upon Receipt">100% Due Upon Receipt</option>
+                        <option value="GHS">GHS (GH₵)</option>
+                        <option value="NGN">NGN (₦)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="EUR">EUR (€)</option>
                       </select>
                     </div>
+                  </div>
 
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.64rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 4 }}>
+                      4. TIMELINE &amp; PAYMENT TERMS
+                    </label>
+                    <select
+                      value={guidedTerms}
+                      onChange={(e) => setGuidedTerms(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '0.74rem', fontFamily: 'monospace', border: '1.5px solid #000', background: '#fff' }}
+                    >
+                      <option value="50% Upfront, Balance on Delivery (Net 14)">50% Upfront Deposit, Balance on Delivery (Net 14)</option>
+                      <option value="Net 30 Days">Net 30 Days</option>
+                      <option value="100% Paid in Full">100% Paid in Full (Proof of Payment)</option>
+                      <option value="100% Due Upon Receipt">100% Due Upon Receipt</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={handleGuidedGenerate}
                       style={{
+                        flex: '1 1 180px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -3793,20 +4041,52 @@ function BusinessSuiteContent() {
                         color: '#fff',
                         border: '2px solid #000',
                         boxShadow: '3px 3px 0 #000',
-                        padding: '11px 16px',
+                        padding: '12px 18px',
                         fontFamily: 'monospace',
                         fontWeight: 900,
-                        fontSize: '0.76rem',
+                        fontSize: '0.78rem',
                         textTransform: 'uppercase',
                         cursor: 'pointer',
-                        marginTop: 4,
                       }}
                     >
-                      <span>Build Document</span>
+                      <span>Build {activeTab.toUpperCase()}</span>
                       <ArrowRight size={14} />
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={handleGuidedAiAssist}
+                      disabled={isAiGenerating}
+                      title="AI polishes the deliverable wording and suggests line items"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        background: '#fff',
+                        color: '#000',
+                        border: '2px solid #000',
+                        boxShadow: '2px 2px 0 #000',
+                        padding: '12px 14px',
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '0.74rem',
+                        textTransform: 'uppercase',
+                        cursor: isAiGenerating ? 'wait' : 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isAiGenerating ? (
+                        <>
+                          <ThinkingOrb size={20} state="working" />
+                          <span>AI Polishing...</span>
+                        </>
+                      ) : (
+                        <span>AI Polish (BYOK)</span>
+                      )}
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -5657,6 +5937,33 @@ function BusinessSuiteContent() {
 
           {/* ─── RIGHT COLUMN: PREVIEW & ACTIONS ─── */}
           <div className="ck-preview-col" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Mobile Back button */}
+            <div className="ck-mobile-preview-back-bar ck-noprint" style={{ display: 'none' }}>
+              <button
+                type="button"
+                onClick={() => setMobileTab('editor')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  background: '#000',
+                  color: '#fff',
+                  border: '2px solid #000',
+                  boxShadow: '2px 2px 0 rgba(0,0,0,0.2)',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  width: '100%',
+                  marginBottom: 6,
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>← BACK TO GUIDED BUILDER</span>
+              </button>
+            </div>
             {/* Top Document Action Bar (Standardized across all tabs including receipt) */}
             <div
               className="ck-noprint"
@@ -5870,56 +6177,48 @@ function BusinessSuiteContent() {
 
             {/* ─── LIVE BRANDED DOCUMENT CANVAS (PRINTABLE + DIRECTLY EDITABLE) ─── */}
             <div
-              ref={printAreaRef}
-              id="printable-document"
-              className={paperMode && activeTab !== 'receipt' ? 'ck-paper-doc' : undefined}
-              contentEditable={!paperMode}
-              suppressContentEditableWarning
-              spellCheck={false}
-              style={
-                paperMode && activeTab !== 'receipt'
-                  ? {
-                      // PAPER view: true 820px sheet, A4-tall, scaled to fit
-                      // the column (receipt-printer DocumentPaper mechanics).
-                      background: '#ffffff',
-                      border: '1px solid #e4e4e7',
-                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
-                      width: 820,
-                      maxWidth: 'none',
-                      flex: '0 0 auto',
-                      // NOTE: no forced A4 min-height — the sheet is exactly
-                      // as tall as its content (owner: no wasted paper at
-                      // the bottom).
-                      // shrink the LAYOUT box to the scaled width (centered),
-                      // then visually scale from the same center:
-                      marginLeft: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
-                      marginRight: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
-                      marginBottom: paperHeight ? -(paperHeight * (1 - paperScale)) : undefined,
-                      transform: paperScale < 1 ? `scale(${paperScale})` : undefined,
-                      transformOrigin: 'top center',
-                      overflowX: 'visible',
-                      padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
-                      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                    }
-                  : activeTab === 'receipt'
-                  ? {}
-                  : {
-                    background: '#ffffff',
-                    border: '1px solid #e4e4e7',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
-                    maxWidth: 820,
-                    width: '100%',
-                    // longhand only (React: don't mix shorthand/non-shorthand
-                    // across renders with the paper branch above)
-                    marginLeft: 'auto',
-                    marginRight: 'auto',
-                    minHeight: 700,
-                    overflowX: 'auto',
-                    padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                  }
-              }
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                overflowX: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                boxSizing: 'border-box',
+              }}
             >
+              <div
+                ref={printAreaRef}
+                id="printable-document"
+                className={paperMode && activeTab !== 'receipt' ? 'ck-paper-doc' : undefined}
+                contentEditable={!paperMode}
+                suppressContentEditableWarning
+                spellCheck={false}
+                style={
+                  activeTab === 'receipt'
+                    ? {
+                        width: '100%',
+                        maxWidth: 380,
+                        margin: '0 auto',
+                      }
+                    : {
+                        background: '#ffffff',
+                        border: '1px solid #e4e4e7',
+                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                        width: 820,
+                        maxWidth: 'none',
+                        flex: '0 0 auto',
+                        marginLeft: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                        marginRight: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                        marginBottom: paperHeight && paperScale < 1 ? -(paperHeight * (1 - paperScale)) : undefined,
+                        transform: paperScale < 1 ? `scale(${paperScale})` : undefined,
+                        transformOrigin: 'top center',
+                        overflowX: 'visible',
+                        padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
+                        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                      }
+                }
+              >
               {activeTab === 'invoice' && invoiceDocument}
 
               {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
@@ -5974,6 +6273,7 @@ function BusinessSuiteContent() {
 
               {activeTab === 'letterhead' && letterheadDocument}
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -6423,6 +6723,17 @@ function BusinessSuiteContent() {
         onClose={() => setIsCreatorSignatureModalOpen(false)}
         initialName={signatureName || creatorName}
         onSave={handleSaveCreatorSignature}
+      />
+
+      {/* ─── BYOK AI SETTINGS MODAL ─── */}
+      <ByokModal
+        isOpen={isByokModalOpen}
+        onClose={() => setIsByokModalOpen(false)}
+        initialProvider="gemini"
+        onKeySaved={(provider) => {
+          setSmartStatusMessage(`Saved ${provider.toUpperCase()} AI Key! Ready to generate.`);
+          setTimeout(() => setSmartStatusMessage(null), 3500);
+        }}
       />
     </div>
   );

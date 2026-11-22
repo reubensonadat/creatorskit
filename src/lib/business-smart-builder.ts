@@ -24,7 +24,9 @@ export interface DocumentSection {
 
 export interface ParsedDocumentData {
   clientName?: string;
+  clientContact?: string;
   clientEmail?: string;
+  clientAddress?: string;
   currency?: 'GHS' | 'NGN' | 'USD' | 'GBP' | 'EUR';
   invoiceNumber?: string;
   receiptNumber?: string;
@@ -44,7 +46,7 @@ export interface ParsedDocumentData {
   contractScope?: string;
   contractCustomTerms?: string;
   contractGoverningLaw?: string;
-  contractTemplate?: 'service' | 'business' | 'creator';
+  contractTemplate?: 'service' | 'business' | 'creator' | 'full-legal';
   // Letterhead specifics
   letterheadTitle?: string;
   letterheadIntro?: string;

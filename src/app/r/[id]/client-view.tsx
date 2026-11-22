@@ -24,6 +24,22 @@ export default function ShortLinkClientView() {
     useEffect(() => {
         async function loadDocument() {
             if (!params?.id) return;
+
+            // 1. Check if document payload is embedded directly in URL (?d= or ?r=)
+            // This guarantees the document loads 100% reliably even when Supabase is paused or offline!
+            if (typeof window !== 'undefined') {
+                const search = new URLSearchParams(window.location.search);
+                const inline = search.get('d') || search.get('r');
+                if (inline) {
+                    const decoded = decodeReceipt(inline);
+                    if (decoded) {
+                        setData(decoded);
+                        setLoading(false);
+                        return;
+                    }
+                }
+            }
+
             try {
                 const stored = await getReceiptByShortId(params.id);
                 if (stored?.payload_string) {

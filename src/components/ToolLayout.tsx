@@ -48,14 +48,18 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
     >
       {/* Topbar */}
       <header
+        className="tool-layout-header"
         style={{
           background: "#ffffff",
           borderBottom: "2px solid #000000",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 16px",
+          padding: "0 12px",
           zIndex: 50,
+          width: "100%",
+          maxWidth: "100vw",
+          boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, marginRight: 8, overflow: "hidden" }}>
@@ -141,22 +145,6 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
                 >
                   {currentTool?.label || "Tool"}
                 </h1>
-                <span
-                  style={{
-                    fontSize: "0.50rem",
-                    fontFamily: "monospace",
-                    fontWeight: 900,
-                    background: "#FFE500",
-                    color: "#000",
-                    border: "1px solid #000",
-                    padding: "0 4px",
-                    borderRadius: 2,
-                    flexShrink: 0,
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  ▾ SWITCH
-                </span>
               </div>
               <div
                 className="tool-layout-hint"
@@ -197,6 +185,8 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
+            flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
           <ListChecks size={12} />
@@ -313,7 +303,7 @@ export default function ToolLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         {/* Clean Workspace */}
-        <main className="tool-layout-main" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, background: "#f4f4f5", position: "relative" }}>
+        <main className="tool-layout-main" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minWidth: 0, width: "100%", maxWidth: "100vw", background: "#f4f4f5", position: "relative", boxSizing: "border-box" }}>
           {children}
 
           {/* Editorial layer (AdSense remediation 2026-10-23): unique,

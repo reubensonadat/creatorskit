@@ -243,7 +243,9 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
           <div style={{ fontWeight: 800, fontSize: '12px', color: '#111827' }}>
             {data.clientName}
           </div>
-          {data.clientContact && <div style={{ fontWeight: 600, color: '#374151', fontSize: '10.5px' }}>{data.clientContact}</div>}
+          {data.clientContact && data.clientContact.trim() !== '' && data.clientContact.trim() !== 'Synapse' && data.clientContact.trim().toLowerCase() !== data.clientName.trim().toLowerCase() && (
+            <div style={{ fontWeight: 600, color: '#374151', fontSize: '10.5px' }}>{data.clientContact}</div>
+          )}
           <div style={{ color: '#4b5563', fontSize: '10px' }}>{data.clientAddress}</div>
           {data.clientEmail && <div style={{ color: '#6b7280', fontSize: '9.5px' }}>{data.clientEmail}</div>}
         </div>
@@ -328,9 +330,9 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
             TERMS &amp; CONDITIONS
           </div>
           <div style={{ fontSize: '10px', color: '#4b5563', lineHeight: 1.5 }}>
-            <div>• Payment due within <strong>{data.turnaroundDays || 15} days</strong> of invoice date.</div>
-            <div>• Includes up to <strong>{data.revisionRounds} rounds of minor revisions</strong>.</div>
-            <div>• Usage license: <strong>{data.usagePeriod}</strong>.</div>
+            {data.dueDate && <div>• Payment due by <strong>{data.dueDate}</strong>.</div>}
+            {Boolean(data.revisionRounds) && <div>• Includes up to <strong>{data.revisionRounds} rounds of minor revisions</strong>.</div>}
+            {Boolean(data.usagePeriod && data.usagePeriod !== 'None') && <div>• Usage license: <strong>{data.usagePeriod}</strong>.</div>}
             {data.customNotes && <div style={{ marginTop: 4, fontStyle: 'italic' }}>{data.customNotes}</div>}
           </div>
         </div>
@@ -362,21 +364,21 @@ export function BoldNavyInvoice({ data, showBranding = true }: InvoiceTemplatePr
           </div>
 
           {data.depositPercentage < 100 && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 2px', fontSize: '10px', color: '#4b5563', marginTop: 4 }}>
-                <span>Upfront Deposit ({data.depositPercentage}%)</span>
-                <span style={{ fontWeight: 700 }}>{data.sym}{data.depositRequired.toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 2px', fontSize: '10px', color: '#4b5563' }}>
-                <span>Amount Paid</span>
-                <span style={{ fontWeight: 600 }}>{data.sym}{data.amountPaid.toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: 4, marginTop: 4, fontWeight: 800, fontSize: '11px', color: accentColor }}>
-                <span>BALANCE DUE</span>
-                <span>{data.sym}{data.balanceDue.toLocaleString()}</span>
-              </div>
-            </>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 2px', fontSize: '10px', color: '#4b5563', marginTop: 4 }}>
+              <span>Upfront Deposit ({data.depositPercentage}%)</span>
+              <span style={{ fontWeight: 700 }}>{data.sym}{data.depositRequired.toLocaleString()}</span>
+            </div>
           )}
+          {data.amountPaid > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 2px', fontSize: '10px', color: '#4b5563' }}>
+              <span>Amount Paid</span>
+              <span style={{ fontWeight: 600 }}>{data.sym}{data.amountPaid.toLocaleString()}</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: 4, marginTop: 4, fontWeight: 800, fontSize: '11px', color: accentColor }}>
+            <span>BALANCE DUE</span>
+            <span>{data.sym}{data.balanceDue.toLocaleString()}</span>
+          </div>
         </div>
       </div>
 
@@ -474,7 +476,9 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
           CUSTOMER / CLIENT:
         </div>
         <div style={{ fontWeight: 800, fontSize: '11.5px', marginTop: 2 }}>{data.clientName}</div>
-        {data.clientContact && <div style={{ fontSize: '10px', color: '#374151' }}>Attn: {data.clientContact}</div>}
+        {data.clientContact && data.clientContact.trim() !== '' && data.clientContact.trim() !== 'Synapse' && data.clientContact.trim().toLowerCase() !== data.clientName.trim().toLowerCase() && (
+          <div style={{ fontSize: '10px', color: '#374151' }}>Attn: {data.clientContact}</div>
+        )}
         <div style={{ fontSize: '9.5px', color: '#4b5563' }}>{data.clientAddress}</div>
       </div>
 
@@ -677,7 +681,9 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
             BILLED TO
           </div>
           <div style={{ fontWeight: 800, fontSize: '11px' }}>{data.clientName}</div>
-          {data.clientContact && <div style={{ color: '#374151' }}>{data.clientContact}</div>}
+          {data.clientContact && data.clientContact.trim() !== '' && data.clientContact.trim() !== 'Synapse' && data.clientContact.trim().toLowerCase() !== data.clientName.trim().toLowerCase() && (
+            <div style={{ color: '#374151' }}>{data.clientContact}</div>
+          )}
           <div style={{ color: '#6b7280' }}>{data.clientAddress}</div>
         </div>
 
@@ -841,7 +847,9 @@ export function StudioBrutalistInvoice({ data, showBranding = true }: InvoiceTem
           BILLED TO:
         </div>
         <div style={{ fontWeight: 900, fontSize: '12px', marginTop: 2 }}>{data.clientName}</div>
-        {data.clientContact && <div style={{ fontWeight: 600 }}>{data.clientContact}</div>}
+        {data.clientContact && data.clientContact.trim() !== '' && data.clientContact.trim() !== 'Synapse' && data.clientContact.trim().toLowerCase() !== data.clientName.trim().toLowerCase() && (
+          <div style={{ fontWeight: 600 }}>{data.clientContact}</div>
+        )}
         <div style={{ fontSize: '9.5px', color: '#4b5563' }}>{data.clientAddress}</div>
       </div>
 
