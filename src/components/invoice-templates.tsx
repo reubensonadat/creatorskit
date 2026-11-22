@@ -428,6 +428,18 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
   const primaryColor = data.primaryColor || '#000000';
   const writtenAmount = numberToWords(data.totalAmount, data.currency);
 
+  // Net terms derive from the ACTUAL issue→due dates. Printing the delivery
+  // turnaround here instead made "Terms: Net 5" contradict the real due date
+  // on the very same page — the classic "dates do not match" complaint.
+  let netTermsDays = 0;
+  if (data.issueDate && data.dueDate) {
+    const issue = new Date(`${data.issueDate}T00:00:00`).getTime();
+    const due = new Date(`${data.dueDate}T00:00:00`).getTime();
+    if (!Number.isNaN(issue) && !Number.isNaN(due)) {
+      netTermsDays = Math.round((due - issue) / 86_400_000);
+    }
+  }
+
   return (
     <div
       style={{
@@ -589,7 +601,9 @@ export function LedgerGridInvoice({ data, showBranding = true }: InvoiceTemplate
             {data.paymentType === 'paystack' && <div>Pay Online: {data.paystackLink}</div>}
             {data.paymentType === 'wire' && <div>SWIFT: {data.wireSwift} · IBAN: {data.wireIban}</div>}
             <div style={{ marginTop: 4, color: '#6b7280', fontSize: '9px' }}>
-              Due Date: {data.dueDate} · Terms: Net {data.turnaroundDays || 15}
+              {data.dueDate && (netTermsDays > 0
+                ? `Due Date: ${data.dueDate} · Terms: Net ${netTermsDays}`
+                : `Due Date: ${data.dueDate}`)}
             </div>
           </div>
         </div>
@@ -691,8 +705,8 @@ export function ExecutiveSlateInvoice({ data, showBranding = true }: InvoiceTemp
           <div style={{ fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', fontSize: '9px', marginBottom: 3 }}>
             TIMELINE &amp; TERMS
           </div>
-          <div><strong>Due Date:</strong> {data.dueDate}</div>
-          <div><strong>Turnaround:</strong> {data.turnaroundDays} Days</div>
+          {data.dueDate && <div><strong>Due Date:</strong> {data.dueDate}</div>}
+          {data.turnaroundDays > 0 && <div><strong>Turnaround:</strong> {data.turnaroundDays} Days</div>}
           <div><strong>Revisions:</strong> {data.revisionRounds} Rounds</div>
         </div>
 

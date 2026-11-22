@@ -77,6 +77,34 @@ import CreatorSignatureModal from '@/components/CreatorSignatureModal';
 type TabType = 'invoice' | 'receipt' | 'agreement' | 'letterhead';
 type CurrencyType = 'GHS' | 'NGN' | 'USD' | 'GBP' | 'EUR';
 
+// ─── LOCAL-DATE + NUMBERING HELPERS ──────────────────────────────────────────
+// Every builder date is typed into <input type="date"> as YYYY-MM-DD. Using
+// toISOString() for those strings shifts by timezone (UTC midnight vs local
+// midnight), which made issue/due dates drift and mismatch the saved vault
+// rows. These helpers always produce the LOCAL calendar day.
+function localDateISO(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function todayLocalISO(): string {
+  return localDateISO(new Date());
+}
+
+function addDaysLocalISO(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return todayLocalISO();
+  d.setDate(d.getDate() + days);
+  return localDateISO(d);
+}
+
+/** Fresh doc numbers follow the current year instead of a hardcoded one. */
+function defaultDocNumber(prefix: 'INV' | 'REC'): string {
+  return `${prefix}-${new Date().getFullYear()}-0001`;
+}
+
 type CreatorTypeId =
   | 'influencer'
   | 'photographer'
@@ -382,12 +410,15 @@ function BusinessSuiteContent() {
   }, [searchParams]);
 
   // ─── GENERAL CREATOR & CLIENT STATE ──────────────────────────
-  const [creatorName, setCreatorName] = useState('Creators Kit / Reubenson Adat');
-  const [creatorHandle, setCreatorHandle] = useState('@reubenson_creates');
-  const [creatorEmail, setCreatorEmail] = useState('hello@creatorskit.com');
-  const [creatorPhone, setCreatorPhone] = useState('+233 24 000 0000');
-  const [creatorLocation, setCreatorLocation] = useState('Accra, Ghana');
-  const [creatorNiche, setCreatorNiche] = useState('Tech & Lifestyle Creator');
+  // Blank by design: identity comes from the saved Brand Kit (or the user's
+  // own typing). Hardcoded demo identity here is what made deleted business
+  // info resurrect on the next visit.
+  const [creatorName, setCreatorName] = useState('');
+  const [creatorHandle, setCreatorHandle] = useState('');
+  const [creatorEmail, setCreatorEmail] = useState('');
+  const [creatorPhone, setCreatorPhone] = useState('');
+  const [creatorLocation, setCreatorLocation] = useState('');
+  const [creatorNiche, setCreatorNiche] = useState('');
 
   const [clientName, setClientName] = useState('');
   const [clientContact, setClientContact] = useState('');
@@ -395,15 +426,11 @@ function BusinessSuiteContent() {
   const [clientAddress, setClientAddress] = useState('');
 
   const [currency, setCurrency] = useState<CurrencyType>('GHS');
-  const [invoiceNumber, setInvoiceNumber] = useState('INV-2026-0001');
+  const [invoiceNumber, setInvoiceNumber] = useState(() => defaultDocNumber('INV'));
   const [poNumber, setPoNumber] = useState('');
-  const [receiptNumber, setReceiptNumber] = useState('REC-2026-0001');
-  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().split('T')[0];
-  });
+  const [receiptNumber, setReceiptNumber] = useState(() => defaultDocNumber('REC'));
+  const [issueDate, setIssueDate] = useState(todayLocalISO);
+  const [dueDate, setDueDate] = useState(() => addDaysLocalISO(todayLocalISO(), 14));
   const [shippingAddress, setShippingAddress] = useState('');
   const [signatureName, setSignatureName] = useState('');
   const [customNotes, setCustomNotes] = useState('');
@@ -427,7 +454,7 @@ function BusinessSuiteContent() {
           setSignatureName(kit.signature.signatureName);
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const handleSaveCreatorSignature = (dataUrl: string, name?: string) => {
@@ -438,7 +465,7 @@ function BusinessSuiteContent() {
     }
     try {
       localStorage.setItem(CREATOR_SIGNATURE_KEY, dataUrl);
-    } catch {}
+    } catch { }
     // Update Brand Kit so signature is part of universal creator identity
     updateBrandKit({
       signature: {
@@ -456,7 +483,7 @@ function BusinessSuiteContent() {
     setCreatorSignatureDrawing(null);
     try {
       localStorage.removeItem(CREATOR_SIGNATURE_KEY);
-    } catch {}
+    } catch { }
     updateBrandKit({
       signature: {
         drawingUrl: null,
@@ -863,23 +890,27 @@ function BusinessSuiteContent() {
   // ─── PAYMENT CHANNELS ─────────────────────────────────────────
   const [paymentType, setPaymentType] = useState<'momo' | 'bank' | 'paystack' | 'wire'>('momo');
 
-  // MoMo Details
+  // MoMo Details — payment details start EMPTY. They are the creator's own
+  // money rails, never demo placeholders (a forgotten default here would put
+  // someone else's momo/bank account on a real invoice).
   const [momoNetwork, setMomoNetwork] = useState('MTN Mobile Money');
-  const [momoNumber, setMomoNumber] = useState('024 123 4567');
-  const [momoName, setMomoName] = useState('Reubenson Adat');
+  const [momoNumber, setMomoNumber] = useState('');
+  const [momoName, setMomoName] = useState('');
 
   // Bank Details
-  const [bankName, setBankName] = useState('Stanbic Bank Ghana / Zenith Bank');
-  const [bankAccountName, setBankAccountName] = useState('Creators Kit / Reubenson Adat');
-  const [bankAccountNumber, setBankAccountNumber] = useState('9040001234567');
+  const [bankName, setBankName] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
 
   // Online / International
-  const [paystackLink, setPaystackLink] = useState('https://paystack.shop/koficreates');
-  const [wireSwift, setWireSwift] = useState('SBICGHAC');
-  const [wireIban, setWireIban] = useState('GH12SBIC00001234567890');
+  const [paystackLink, setPaystackLink] = useState('');
+  const [wireSwift, setWireSwift] = useState('');
+  const [wireIban, setWireIban] = useState('');
 
   // ─── CONTRACT / AGREEMENT SPECIFIC CLAUSES ────────────────────
-  const [usagePeriod, setUsagePeriod] = useState('30 Days Organic Social');
+  // '' = "No usage rights — one-time delivery only". Licensing must be an
+  // explicit choice, never a forced default.
+  const [usagePeriod, setUsagePeriod] = useState('');
   const [revisionRounds, setRevisionRounds] = useState(2);
   const [turnaroundDays, setTurnaroundDays] = useState(5);
 
@@ -996,26 +1027,31 @@ function BusinessSuiteContent() {
       : (d.activeTab || 'invoice');
     switchTab(targetTab);
 
-    if (d.creatorName) setCreatorName(d.creatorName);
-    if (d.creatorHandle) setCreatorHandle(d.creatorHandle);
-    if (d.creatorEmail) setCreatorEmail(d.creatorEmail);
-    if (d.creatorPhone) setCreatorPhone(d.creatorPhone);
-    if (d.creatorLocation) setCreatorLocation(d.creatorLocation);
-    if (d.creatorNiche) setCreatorNiche(d.creatorNiche);
+    // The draft is rewritten whole on every keystroke, so every key below is
+    // either present (apply it — even when the user deliberately cleared the
+    // field) or absent (legacy partial draft: keep the current default).
+    // Truthy-only checks here are what made deleted business info resurrect
+    // as the old hardcoded demo data on the next visit.
+    if (d.creatorName !== undefined) setCreatorName(d.creatorName);
+    if (d.creatorHandle !== undefined) setCreatorHandle(d.creatorHandle);
+    if (d.creatorEmail !== undefined) setCreatorEmail(d.creatorEmail);
+    if (d.creatorPhone !== undefined) setCreatorPhone(d.creatorPhone);
+    if (d.creatorLocation !== undefined) setCreatorLocation(d.creatorLocation);
+    if (d.creatorNiche !== undefined) setCreatorNiche(d.creatorNiche);
 
-    if (d.clientName) setClientName(d.clientName);
-    if (d.clientContact) setClientContact(d.clientContact);
-    if (d.clientEmail) setClientEmail(d.clientEmail);
-    if (d.clientAddress) setClientAddress(d.clientAddress);
+    if (d.clientName !== undefined) setClientName(d.clientName);
+    if (d.clientContact !== undefined) setClientContact(d.clientContact);
+    if (d.clientEmail !== undefined) setClientEmail(d.clientEmail);
+    if (d.clientAddress !== undefined) setClientAddress(d.clientAddress);
 
     if (d.currency) setCurrency(d.currency);
-    if (d.invoiceNumber) setInvoiceNumber(d.invoiceNumber);
-    if (d.poNumber) setPoNumber(d.poNumber);
-    if (d.receiptNumber) setReceiptNumber(d.receiptNumber);
+    if (d.invoiceNumber !== undefined) setInvoiceNumber(d.invoiceNumber);
+    if (d.poNumber !== undefined) setPoNumber(d.poNumber);
+    if (d.receiptNumber !== undefined) setReceiptNumber(d.receiptNumber);
     if (d.issueDate) setIssueDate(d.issueDate);
     if (d.dueDate) setDueDate(d.dueDate);
-    if (d.shippingAddress) setShippingAddress(d.shippingAddress);
-    if (d.signatureName) setSignatureName(d.signatureName);
+    if (d.shippingAddress !== undefined) setShippingAddress(d.shippingAddress);
+    if (d.signatureName !== undefined) setSignatureName(d.signatureName);
     if (d.customNotes !== undefined) setCustomNotes(d.customNotes);
 
     if (Array.isArray(d.items) && d.items.length > 0) setItems(d.items);
@@ -1026,14 +1062,14 @@ function BusinessSuiteContent() {
 
     if (d.paymentType) setPaymentType(d.paymentType);
     if (d.momoNetwork) setMomoNetwork(d.momoNetwork);
-    if (d.momoNumber) setMomoNumber(d.momoNumber);
-    if (d.momoName) setMomoName(d.momoName);
-    if (d.bankName) setBankName(d.bankName);
-    if (d.bankAccountName) setBankAccountName(d.bankAccountName);
-    if (d.bankAccountNumber) setBankAccountNumber(d.bankAccountNumber);
-    if (d.paystackLink) setPaystackLink(d.paystackLink);
-    if (d.wireSwift) setWireSwift(d.wireSwift);
-    if (d.wireIban) setWireIban(d.wireIban);
+    if (d.momoNumber !== undefined) setMomoNumber(d.momoNumber);
+    if (d.momoName !== undefined) setMomoName(d.momoName);
+    if (d.bankName !== undefined) setBankName(d.bankName);
+    if (d.bankAccountName !== undefined) setBankAccountName(d.bankAccountName);
+    if (d.bankAccountNumber !== undefined) setBankAccountNumber(d.bankAccountNumber);
+    if (d.paystackLink !== undefined) setPaystackLink(d.paystackLink);
+    if (d.wireSwift !== undefined) setWireSwift(d.wireSwift);
+    if (d.wireIban !== undefined) setWireIban(d.wireIban);
 
     if (d.invoiceTemplate) setInvoiceTemplate(d.invoiceTemplate);
     if (d.headingFont) setHeadingFont(d.headingFont);
@@ -1054,15 +1090,15 @@ function BusinessSuiteContent() {
     if (d.contractKillFee !== undefined) setContractKillFee(d.contractKillFee);
     if (d.fullDocumentText) setFullDocumentText(d.fullDocumentText);
     if (Array.isArray(d.documentSections)) setDocumentSections(d.documentSections);
-    if (d.usagePeriod) setUsagePeriod(d.usagePeriod);
+    if (d.usagePeriod !== undefined) setUsagePeriod(d.usagePeriod);
     if (d.revisionRounds !== undefined) setRevisionRounds(d.revisionRounds);
     if (d.turnaroundDays !== undefined) setTurnaroundDays(d.turnaroundDays);
 
     if (d.letterheadTemplate) setLetterheadTemplate(d.letterheadTemplate);
-    if (d.letterheadTitle) setLetterheadTitle(d.letterheadTitle);
-    if (d.letterheadAudienceFocus) setLetterheadAudienceFocus(d.letterheadAudienceFocus);
-    if (d.letterheadEngagementRate) setLetterheadEngagementRate(d.letterheadEngagementRate);
-    if (d.letterheadTrackRecord) setLetterheadTrackRecord(d.letterheadTrackRecord);
+    if (d.letterheadTitle !== undefined) setLetterheadTitle(d.letterheadTitle);
+    if (d.letterheadAudienceFocus !== undefined) setLetterheadAudienceFocus(d.letterheadAudienceFocus);
+    if (d.letterheadEngagementRate !== undefined) setLetterheadEngagementRate(d.letterheadEngagementRate);
+    if (d.letterheadTrackRecord !== undefined) setLetterheadTrackRecord(d.letterheadTrackRecord);
     if (d.letterheadIntro !== undefined) setLetterheadIntro(d.letterheadIntro);
     if (d.letterheadBody !== undefined) setLetterheadBody(d.letterheadBody);
 
@@ -1110,6 +1146,7 @@ function BusinessSuiteContent() {
       }
 
       let hadDraft = false;
+      let draftUpdatedAt = 0;
       try {
         const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
         if (raw) {
@@ -1117,6 +1154,14 @@ function BusinessSuiteContent() {
           if (d) {
             applyDraftToState(d);
             hadDraft = true;
+            draftUpdatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : 0;
+            // A restored draft can carry an impossible timeline (due date
+            // before the issue date, e.g. an old draft reopened weeks later).
+            // Re-anchor the due date so every printed document stays
+            // self-consistent with its own issue date.
+            if (typeof d.issueDate === 'string' && typeof d.dueDate === 'string' && d.dueDate < d.issueDate) {
+              setDueDate(addDaysLocalISO(d.issueDate, 14));
+            }
           }
         }
       } catch (e) {
@@ -1132,10 +1177,14 @@ function BusinessSuiteContent() {
         setIsMounted(true);
 
         // Universal identity: a first visit (no draft, no shared doc) starts
-        // from the user's saved Brand Kit instead of the demo defaults.
-        const kitReady = brandKitHasAnything(loadBrandKit());
+        // from the user's saved Brand Kit instead of the demo defaults. On
+        // later visits the kit re-stamps itself whenever it changed MORE
+        // RECENTLY than the draft — so Brand Kit edits always win over stale
+        // draft identity. That is the "it remembers what I told it" contract.
+        const kit = loadBrandKit();
+        const kitReady = brandKitHasAnything(kit);
         setBrandKitReady(kitReady);
-        if (!hadDraft && !docId && kitReady) applyBrandKit();
+        if (!docId && kitReady && (!hadDraft || kit.updatedAt > draftUpdatedAt)) applyBrandKit();
 
         // Show onboarding if creator type not yet set
         // Don't show when user came via a direct ?id= share link
@@ -1694,14 +1743,16 @@ function BusinessSuiteContent() {
         url.searchParams.delete('id');
         window.history.replaceState({}, '', url.toString());
       }
-    } catch {}
+    } catch { }
 
-    setCreatorName('Creators Kit / Reubenson Adat');
-    setCreatorHandle('@reubenson_creates');
-    setCreatorEmail('hello@creatorskit.com');
-    setCreatorPhone('+233 24 000 0000');
-    setCreatorLocation('Accra, Ghana');
-    setCreatorNiche('Tech & Lifestyle Creator');
+    // Reset means CLEAN: no demo identity, no demo payment rails. The saved
+    // Brand Kit re-stamps the user's own identity right after (below).
+    setCreatorName('');
+    setCreatorHandle('');
+    setCreatorEmail('');
+    setCreatorPhone('');
+    setCreatorLocation('');
+    setCreatorNiche('');
     setClientName('');
     setClientContact('');
     setClientEmail('');
@@ -1709,15 +1760,11 @@ function BusinessSuiteContent() {
     setCurrency('GHS');
     // Auto-numbering (Tier 1): a fresh document continues the creator's own
     // numbering scheme, cloned from the most recent same-kind vault entry.
-    setInvoiceNumber(nextDocNumber('invoice') || 'INV-2026-0001');
+    setInvoiceNumber(nextDocNumber('invoice') || defaultDocNumber('INV'));
     setPoNumber('');
-    setReceiptNumber(nextDocNumber('receipt') || 'REC-2026-0001');
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const due14 = new Date();
-    due14.setDate(due14.getDate() + 14);
-    setIssueDate(todayStr);
-    setDueDate(due14.toISOString().split('T')[0]);
+    setReceiptNumber(nextDocNumber('receipt') || defaultDocNumber('REC'));
+    setIssueDate(todayLocalISO());
+    setDueDate(addDaysLocalISO(todayLocalISO(), 14));
     setShippingAddress('');
     setSignatureName('');
     setCustomNotes('');
@@ -1726,17 +1773,10 @@ function BusinessSuiteContent() {
     setItems([
       {
         id: '1',
-        description: '1x Dedicated TikTok Video (60s with Hook & CTA)',
+        description: '',
         quantity: 1,
-        rate: 3500,
-        platform: 'TikTok',
-      },
-      {
-        id: '2',
-        description: '1x Instagram Reel + 3x Story Slides with Brand Tag & Link Sticker',
-        quantity: 1,
-        rate: 4000,
-        platform: 'Instagram',
+        rate: 0,
+        platform: 'Other',
       },
     ]);
     setDepositPercentage(50);
@@ -1745,14 +1785,14 @@ function BusinessSuiteContent() {
     setAmountPaid(0);
     setPaymentType('momo');
     setMomoNetwork('MTN Mobile Money');
-    setMomoNumber('024 123 4567');
-    setMomoName('Reubenson Adat');
-    setBankName('Stanbic Bank Ghana / Zenith Bank');
-    setBankAccountName('Creators Kit / Reubenson Adat');
-    setBankAccountNumber('9040001234567');
-    setPaystackLink('https://paystack.shop/koficreates');
-    setWireSwift('SBICGHAC');
-    setWireIban('GH12SBIC00001234567890');
+    setMomoNumber('');
+    setMomoName('');
+    setBankName('');
+    setBankAccountName('');
+    setBankAccountNumber('');
+    setPaystackLink('');
+    setWireSwift('');
+    setWireIban('');
     setInvoiceTemplate('navy');
     setHeadingFont('Oswald');
     setBodyFont('Inter');
@@ -1771,14 +1811,14 @@ function BusinessSuiteContent() {
     setContractKillFee(50);
     setFullDocumentText('');
     setDocumentSections([]);
-    setUsagePeriod('30 Days Organic Social');
+    setUsagePeriod('');
     setRevisionRounds(2);
     setTurnaroundDays(5);
     setLetterheadTemplate('creative');
-    setLetterheadTitle('Campaign Proposal');
-    setLetterheadAudienceFocus('Ghana & West Africa Diaspora');
-    setLetterheadEngagementRate('82% Mobile · High Conversion');
-    setLetterheadTrackRecord('4K Cinematic Social Storytelling');
+    setLetterheadTitle('');
+    setLetterheadAudienceFocus('');
+    setLetterheadEngagementRate('');
+    setLetterheadTrackRecord('');
     setLetterheadIntro('');
     setLetterheadBody('');
     setLogoUrl(null);
@@ -1824,7 +1864,7 @@ function BusinessSuiteContent() {
 
   const selectCreatorType = (typeId: CreatorTypeId) => {
     setCreatorType(typeId);
-    try { localStorage.setItem(CREATOR_TYPE_KEY, typeId); } catch {}
+    try { localStorage.setItem(CREATOR_TYPE_KEY, typeId); } catch { }
     applyCreatorTypePreset(typeId);
     setShowOnboarding(false);
     setSmartStatusMessage(`Workspace tuned for ${CREATOR_TYPE_PRESETS.find(p => p.id === typeId)?.label ?? typeId}. Templates & defaults updated.`);
@@ -1876,7 +1916,7 @@ function BusinessSuiteContent() {
       if (targetTab === 'receipt') {
         setAmountPaid(total > 0 ? total : 3750);
         if (!parsed.receiptNumber && !receiptNumber) {
-          setReceiptNumber(`REC-${Date.now().toString().slice(-4)}`);
+          setReceiptNumber(nextDocNumber('receipt') || defaultDocNumber('REC'));
         }
       }
 
@@ -1985,15 +2025,12 @@ function BusinessSuiteContent() {
       },
     ]);
 
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = todayLocalISO();
     setIssueDate(todayStr);
 
     if (guidedTerms.includes('50%')) {
       setDepositPercentage(50);
-      const d = new Date();
-      d.setDate(d.getDate() + 14);
-      setDueDate(d.toISOString().split('T')[0]);
+      setDueDate(addDaysLocalISO(todayStr, 14));
       setAmountPaid(0);
     } else if (guidedTerms.includes('100% Paid')) {
       setDepositPercentage(100);
@@ -2001,9 +2038,7 @@ function BusinessSuiteContent() {
       setDueDate(todayStr);
     } else if (guidedTerms.includes('Net 30')) {
       setDepositPercentage(0);
-      const d = new Date();
-      d.setDate(d.getDate() + 30);
-      setDueDate(d.toISOString().split('T')[0]);
+      setDueDate(addDaysLocalISO(todayStr, 30));
       setAmountPaid(0);
     } else if (guidedTerms.includes('Receipt')) {
       setDepositPercentage(100);
@@ -2011,9 +2046,7 @@ function BusinessSuiteContent() {
       setAmountPaid(0);
     } else {
       setDepositPercentage(50);
-      const d = new Date();
-      d.setDate(d.getDate() + 14);
-      setDueDate(d.toISOString().split('T')[0]);
+      setDueDate(addDaysLocalISO(todayStr, 14));
       setAmountPaid(0);
     }
 
@@ -2154,7 +2187,7 @@ function BusinessSuiteContent() {
 
   const startAnimatedPrint = async () => {
     // Generate the Supabase short link in background so QR code and share links are live
-    ensureReceiptShortUrl().catch(() => {});
+    ensureReceiptShortUrl().catch(() => { });
     // Record to My Documents immediately (works offline too) — the short link
     // is merged into the same entry when the background call resolves.
     recordToVault();
@@ -2603,7 +2636,11 @@ function BusinessSuiteContent() {
     setAmountPaid(entry.total);
     const nextReceiptNo = nextDocNumber('receipt');
     if (nextReceiptNo) setReceiptNumber(nextReceiptNo);
-    setIssueDate(new Date().toISOString().slice(0, 10));
+    setIssueDate(todayLocalISO());
+    // A receipt is printed the moment money lands — its timeline starts today,
+    // never the original invoice's due date (that mismatch printed receipts
+    // with stale, already-passed due dates).
+    setDueDate(todayLocalISO());
     setSmartStatusMessage(`Receipt ready — pre-filled from invoice ${entry.docNumber}. Print or share it below.`);
     setTimeout(() => setSmartStatusMessage(null), 4500);
   };
@@ -4300,15 +4337,15 @@ function BusinessSuiteContent() {
               </span>
             </div>
 
-              {/* 0. Customization Layer (Design / Templates / Fonts / Colors) */}
-              {activeTab !== 'receipt' && (
-                <>
-                  <SectionToggle id="design" title="0. Templates, Fonts & Colors" />
+            {/* 0. Customization Layer (Design / Templates / Fonts / Colors) */}
+            {activeTab !== 'receipt' && (
+              <>
+                <SectionToggle id="design" title="0. Templates, Fonts & Colors" />
 
-                  {openSections.design && (
-                    <>
-                      {/* 0. Invoice Template Picker (When on Invoice Tab) */}
-                      {activeTab === 'invoice' && (
+                {openSections.design && (
+                  <>
+                    {/* 0. Invoice Template Picker (When on Invoice Tab) */}
+                    {activeTab === 'invoice' && (
                       <div
                         style={{
                           background: '#fff',
@@ -5128,6 +5165,7 @@ function BusinessSuiteContent() {
                     type="text"
                     value={creatorName}
                     onChange={(e) => setCreatorName(e.target.value)}
+                    placeholder="e.g. Kofi Creates"
                     style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
                   />
                 </div>
@@ -5139,6 +5177,7 @@ function BusinessSuiteContent() {
                     type="text"
                     value={creatorHandle}
                     onChange={(e) => setCreatorHandle(e.target.value)}
+                    placeholder="@yourhandle · your niche"
                     style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
                   />
                 </div>
@@ -5153,6 +5192,7 @@ function BusinessSuiteContent() {
                     type="text"
                     value={creatorPhone}
                     onChange={(e) => setCreatorPhone(e.target.value)}
+                    placeholder="e.g. +233 24 000 0000"
                     style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
                   />
                 </div>
@@ -5164,6 +5204,7 @@ function BusinessSuiteContent() {
                     type="text"
                     value={creatorEmail}
                     onChange={(e) => setCreatorEmail(e.target.value)}
+                    placeholder="email · city, country"
                     style={{ width: '100%', padding: '7px 9px', border: '1.5px solid #000', fontSize: '0.8rem', fontWeight: 600 }}
                   />
                 </div>
@@ -5520,239 +5561,239 @@ function BusinessSuiteContent() {
                 <SectionToggle id="deliverables" title="2. Campaign Deliverables & Pricing" />
 
                 {/* 2. Deliverables & Pricing */}
-            <div
-              style={{
-                display: openSections.deliverables ? 'block' : 'none',
-                background: '#fff',
-                border: '2px solid #000',
-                boxShadow: '3px 3px 0 #000',
-                padding: 18,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
-                <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                  2. CAMPAIGN DELIVERABLES
-                </span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#666' }}>
-                  {items.length} item(s)
-                </span>
-              </div>
-
-              {/* 1-Click Preset Buttons */}
-              <div className="ck-form-grid-2" style={{ marginBottom: 12, borderBottom: '1px dashed #ccc', paddingBottom: 10 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
-                    TAX / VAT (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={taxPercentage}
-                    onChange={(e) => setTaxPercentage(parseFloat(e.target.value) || 0)}
-                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
-                    DISCOUNT ({sym})
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={discountAmount}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                    style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 6, color: '#555' }}>
-                  + QUICK ADD PRESET (GH/NG RATES):
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {PRESET_DELIVERABLES.map((preset, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => addItem(preset)}
-                      style={{
-                        padding: '4px 8px',
-                        background: '#f4f4f5',
-                        border: '1px solid #000',
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#e4e4e7')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = '#f4f4f5')}
-                    >
-                      <Plus size={11} />
-                      {preset.platform} ({sym}{preset.rate.toLocaleString()})
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* My usual services (Tier 1 rate card) — learned from documents you issue */}
-              {savedServices.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 6, color: '#555' }}>
-                    MY USUAL SERVICES — ONE TAP TO ADD:
+                <div
+                  style={{
+                    display: openSections.deliverables ? 'block' : 'none',
+                    background: '#fff',
+                    border: '2px solid #000',
+                    boxShadow: '3px 3px 0 #000',
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+                    <span style={{ fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                      2. CAMPAIGN DELIVERABLES
+                    </span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#666' }}>
+                      {items.length} item(s)
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {savedServices.slice(0, 6).map((s) => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'stretch', gap: 5 }}>
+
+                  {/* 1-Click Preset Buttons */}
+                  <div className="ck-form-grid-2" style={{ marginBottom: 12, borderBottom: '1px dashed #ccc', paddingBottom: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
+                        TAX / VAT (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={taxPercentage}
+                        onChange={(e) => setTaxPercentage(parseFloat(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
+                        DISCOUNT ({sym})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={discountAmount}
+                        onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 6, color: '#555' }}>
+                      + QUICK ADD PRESET (GH/NG RATES):
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {PRESET_DELIVERABLES.map((preset, idx) => (
                         <button
-                          type="button"
-                          onClick={() =>
-                            addItem({ platform: s.platform as any, description: s.description, rate: s.rate })
-                          }
+                          key={idx}
+                          onClick={() => addItem(preset)}
                           style={{
-                            flex: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            textAlign: 'left',
-                            padding: '5px 8px',
+                            padding: '4px 8px',
                             background: '#f4f4f5',
                             border: '1px solid #000',
                             fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
                           }}
-                          title={`${s.description} — ${sym}${s.rate.toLocaleString()}`}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#e4e4e7')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = '#f4f4f5')}
                         >
-                          <Plus size={11} style={{ flexShrink: 0 }} />
-                          <span
+                          <Plus size={11} />
+                          {preset.platform} ({sym}{preset.rate.toLocaleString()})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* My usual services (Tier 1 rate card) — learned from documents you issue */}
+                  {savedServices.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 6, color: '#555' }}>
+                        MY USUAL SERVICES — ONE TAP TO ADD:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {savedServices.slice(0, 6).map((s) => (
+                          <div key={s.id} style={{ display: 'flex', alignItems: 'stretch', gap: 5 }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                addItem({ platform: s.platform as any, description: s.description, rate: s.rate })
+                              }
+                              style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                textAlign: 'left',
+                                padding: '5px 8px',
+                                background: '#f4f4f5',
+                                border: '1px solid #000',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                              title={`${s.description} — ${sym}${s.rate.toLocaleString()}`}
+                            >
+                              <Plus size={11} style={{ flexShrink: 0 }} />
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {s.description.length > 46 ? `${s.description.slice(0, 46)}…` : s.description}
+                              </span>
+                              <span style={{ color: '#555', flexShrink: 0 }}>({sym}{s.rate.toLocaleString()})</span>
+                            </button>
+                            <button
+                              type="button"
+                              title="Remove from my usual services"
+                              onClick={() => setSavedServices(forgetService(s.id))}
+                              style={{
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                border: '1px solid #dc2626',
+                                padding: '4px 7px',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <X size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Items List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+                    {items.map((item, index) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          border: '1.5px solid #000',
+                          padding: 10,
+                          background: '#fafafa',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.72rem', fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 5px' }}>
+                            #{index + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                            placeholder="Deliverable description..."
+                            style={{ flex: 1, padding: '5px 8px', border: '1px solid #ccc', fontSize: '0.78rem', fontWeight: 600 }}
+                          />
+                          <button
+                            onClick={() => removeItem(item.id)}
                             style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
+                              background: '#fee2e2',
+                              color: '#dc2626',
+                              border: '1px solid #dc2626',
+                              padding: '5px 8px',
+                              cursor: 'pointer',
                             }}
                           >
-                            {s.description.length > 46 ? `${s.description.slice(0, 46)}…` : s.description}
-                          </span>
-                          <span style={{ color: '#555', flexShrink: 0 }}>({sym}{s.rate.toLocaleString()})</span>
-                        </button>
-                        <button
-                          type="button"
-                          title="Remove from my usual services"
-                          onClick={() => setSavedServices(forgetService(s.id))}
-                          style={{
-                            background: '#fee2e2',
-                            color: '#dc2626',
-                            border: '1px solid #dc2626',
-                            padding: '4px 7px',
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <X size={11} />
-                        </button>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1fr', gap: 8, alignItems: 'center' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>QTY</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(item.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                              style={{ width: '100%', padding: '4px 6px', border: '1px solid #ccc', fontSize: '0.75rem', fontWeight: 700 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>RATE ({sym})</label>
+                            <input
+                              type="number"
+                              value={item.rate}
+                              onChange={(e) => updateItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                              style={{ width: '100%', padding: '4px 6px', border: '1px solid #ccc', fontSize: '0.75rem', fontWeight: 700 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>TOTAL</label>
+                            <div style={{ padding: '5px 6px', background: '#e5e7eb', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace' }}>
+                              {sym}{(item.quantity * item.rate).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
 
-              {/* Items List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                {items.map((item, index) => (
-                  <div
-                    key={item.id}
+                  <button
+                    onClick={() => addItem()}
                     style={{
-                      border: '1.5px solid #000',
-                      padding: 10,
-                      background: '#fafafa',
+                      width: '100%',
+                      padding: '8px',
+                      background: '#000',
+                      color: '#fff',
+                      border: '2px solid #000',
+                      fontWeight: 900,
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
                       display: 'flex',
-                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 6,
                     }}
                   >
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.72rem', fontFamily: 'monospace', background: '#000', color: '#fff', padding: '2px 5px' }}>
-                        #{index + 1}
-                      </span>
-                      <input
-                        type="text"
-                        value={item.description}
-                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                        placeholder="Deliverable description..."
-                        style={{ flex: 1, padding: '5px 8px', border: '1px solid #ccc', fontSize: '0.78rem', fontWeight: 600 }}
-                      />
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        style={{
-                          background: '#fee2e2',
-                          color: '#dc2626',
-                          border: '1px solid #dc2626',
-                          padding: '5px 8px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1fr', gap: 8, alignItems: 'center' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>QTY</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(item.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
-                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #ccc', fontSize: '0.75rem', fontWeight: 700 }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>RATE ({sym})</label>
-                        <input
-                          type="number"
-                          value={item.rate}
-                          onChange={(e) => updateItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #ccc', fontSize: '0.75rem', fontWeight: 700 }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace' }}>TOTAL</label>
-                        <div style={{ padding: '5px 6px', background: '#e5e7eb', fontSize: '0.75rem', fontWeight: 900, fontFamily: 'monospace' }}>
-                          {sym}{(item.quantity * item.rate).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={() => addItem()}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  background: '#000',
-                  color: '#fff',
-                  border: '2px solid #000',
-                  fontWeight: 900,
-                  fontSize: '0.75rem',
-                  fontFamily: 'monospace',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-              >
-                <Plus size={14} /> ADD CUSTOM DELIVERABLE
-              </button>
-            </div>
-          </>
-        )}
+                    <Plus size={14} /> ADD CUSTOM DELIVERABLE
+                  </button>
+                </div>
+              </>
+            )}
 
             <SectionToggle id="payment" title="3. Payment Details (MoMo · Bank · Paystack · Wire)" />
 
@@ -5835,6 +5876,7 @@ function BusinessSuiteContent() {
                         type="text"
                         value={momoName}
                         onChange={(e) => setMomoName(e.target.value)}
+                        placeholder="Name registered on the momo account"
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                       />
                     </div>
@@ -5861,6 +5903,7 @@ function BusinessSuiteContent() {
                         type="text"
                         value={bankAccountNumber}
                         onChange={(e) => setBankAccountNumber(e.target.value)}
+                        placeholder="e.g. 9040001234567"
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                       />
                     </div>
@@ -5870,6 +5913,7 @@ function BusinessSuiteContent() {
                         type="text"
                         value={bankAccountName}
                         onChange={(e) => setBankAccountName(e.target.value)}
+                        placeholder="Account name exactly as the bank holds it"
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                       />
                     </div>
@@ -5904,6 +5948,7 @@ function BusinessSuiteContent() {
                         type="text"
                         value={wireSwift}
                         onChange={(e) => setWireSwift(e.target.value)}
+                        placeholder="e.g. SBICGHAC"
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                       />
                     </div>
@@ -5913,6 +5958,7 @@ function BusinessSuiteContent() {
                         type="text"
                         value={wireIban}
                         onChange={(e) => setWireIban(e.target.value)}
+                        placeholder="IBAN / domiciliary account number"
                         style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.78rem', fontWeight: 600 }}
                       />
                     </div>
@@ -5974,17 +6020,19 @@ function BusinessSuiteContent() {
               <div className="ck-form-grid-2" style={{ marginBottom: 10 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, fontFamily: 'monospace', marginBottom: 2 }}>
-                    USAGE RIGHTS
+                    USAGE RIGHTS (OPTIONAL)
                   </label>
                   <select
                     value={usagePeriod}
                     onChange={(e) => setUsagePeriod(e.target.value)}
                     style={{ width: '100%', padding: '6px 8px', border: '1.5px solid #000', fontSize: '0.75rem', fontWeight: 700 }}
                   >
+                    <option value="">None — one-time delivery only</option>
                     <option value="30 Days Organic Social">30 Days Organic Social</option>
                     <option value="90 Days Organic Social">90 Days Organic Social</option>
                     <option value="1 Year Digital Usage">1 Year Digital Usage</option>
                     <option value="Perpetual Organic Only">Perpetual (Organic Only)</option>
+                    <option value="Full Buyout — All Rights Transferred Upon Final Payment">Full Buyout — All Rights Transferred</option>
                   </select>
                 </div>
                 <div>
@@ -6278,83 +6326,83 @@ function BusinessSuiteContent() {
                 style={
                   activeTab === 'receipt'
                     ? {
-                        width: '100%',
-                        maxWidth: 380,
-                        margin: '0 auto',
-                      }
+                      width: '100%',
+                      maxWidth: 380,
+                      margin: '0 auto',
+                    }
                     : {
-                        background: '#ffffff',
-                        border: '1px solid #e4e4e7',
-                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
-                        width: 820,
-                        maxWidth: 'none',
-                        flex: '0 0 auto',
-                        marginLeft: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
-                        marginRight: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
-                        marginBottom: paperHeight && paperScale < 1 ? -(paperHeight * (1 - paperScale)) : undefined,
-                        transform: paperScale < 1 ? `scale(${paperScale})` : undefined,
-                        transformOrigin: 'top center',
-                        overflowX: 'visible',
-                        padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
-                        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                      }
+                      background: '#ffffff',
+                      border: '1px solid #e4e4e7',
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                      width: 820,
+                      maxWidth: 'none',
+                      flex: '0 0 auto',
+                      marginLeft: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                      marginRight: paperScale < 1 ? (820 * paperScale - 820) / 2 : 'auto',
+                      marginBottom: paperHeight && paperScale < 1 ? -(paperHeight * (1 - paperScale)) : undefined,
+                      transform: paperScale < 1 ? `scale(${paperScale})` : undefined,
+                      transformOrigin: 'top center',
+                      overflowX: 'visible',
+                      padding: (activeTab === 'invoice' || activeTab === 'agreement' || activeTab === 'letterhead') ? 0 : 'clamp(28px, 4vw, 48px)',
+                      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    }
                 }
               >
-              {activeTab === 'invoice' && invoiceDocument}
+                {activeTab === 'invoice' && invoiceDocument}
 
-              {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
-              {activeTab === 'receipt' && (
-                <div>
-                  {/* ─── THERMAL RECEIPT PREVIEW ─── */}
-                  <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
-                    <div
-                      id="receipt-capture-root"
-                      style={{
-                        width: 355,
-                        maxWidth: '100%',
-                        background: '#fafafa',
-                        color: '#09090b',
-                        padding: '28px 24px 32px',
-                        clipPath: receiptClipPath,
-                        boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
-                      }}
-                    >
-                      <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
+                {/* ─── TAB CONTENT 2: RECEIPT PREVIEW ─── */}
+                {activeTab === 'receipt' && (
+                  <div>
+                    {/* ─── THERMAL RECEIPT PREVIEW ─── */}
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 6px' }}>
+                      <div
+                        id="receipt-capture-root"
+                        style={{
+                          width: 355,
+                          maxWidth: '100%',
+                          background: '#fafafa',
+                          color: '#09090b',
+                          padding: '28px 24px 32px',
+                          clipPath: receiptClipPath,
+                          boxShadow: '0 14px 28px -16px rgba(0,0,0,0.4)',
+                        }}
+                      >
+                        <ReceiptDocument data={receiptDocData} qrUrl={receiptQrUrl} showBranding={brandingOn} />
+                      </div>
+                    </div>
+
+                    {/* ─── BRAND LOGO CONTROLS ─── */}
+                    <div className="ck-noprint" contentEditable={false} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, marginBottom: 20 }}>
+                      <input
+                        ref={logoFileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        onChange={handleLogoUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        onClick={() => logoFileInputRef.current?.click()}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 12px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        <ImagePlus size={14} /> {logoUrl ? 'Change Receipt Logo' : 'Upload Receipt Logo'}
+                      </button>
+                      {logoUrl && (
+                        <button
+                          onClick={() => setLogoUrl(null)}
+                          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 10px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      )}
                     </div>
                   </div>
+                )}
 
-                  {/* ─── BRAND LOGO CONTROLS ─── */}
-                  <div className="ck-noprint" contentEditable={false} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, marginBottom: 20 }}>
-                    <input
-                      ref={logoFileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                      onChange={handleLogoUpload}
-                      style={{ display: 'none' }}
-                    />
-                    <button
-                      onClick={() => logoFileInputRef.current?.click()}
-                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#fff', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 12px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      <ImagePlus size={14} /> {logoUrl ? 'Change Receipt Logo' : 'Upload Receipt Logo'}
-                    </button>
-                    {logoUrl && (
-                      <button
-                        onClick={() => setLogoUrl(null)}
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, background: '#fee2e2', border: '2px solid #000', borderRadius: '4px', boxShadow: '2px 2px 0 #000', height: 36, padding: '0 10px', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace', cursor: 'pointer', color: '#991b1b', whiteSpace: 'nowrap' }}
-                      >
-                        <Trash2 size={12} /> Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
+                {activeTab === 'agreement' && agreementDocument}
 
-              {activeTab === 'agreement' && agreementDocument}
-
-              {activeTab === 'letterhead' && letterheadDocument}
+                {activeTab === 'letterhead' && letterheadDocument}
+              </div>
             </div>
-          </div>
           </div>
         </div>
       </div>

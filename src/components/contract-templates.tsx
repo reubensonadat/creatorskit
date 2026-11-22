@@ -550,7 +550,10 @@ export function ServiceContract({ data, showBranding = true }: ContractTemplateP
           <strong>Revisions:</strong> The compensation includes up to <strong>{data.revisionRounds} rounds of minor revisions</strong> strictly adhering to the agreed creative brief. Substantial creative changes or re-shoots requested after production will incur a 50% re-shoot fee.
         </p>
         <p style={{ margin: '0 0 6px' }}>
-          <strong>Usage &amp; Licensing:</strong> Client receives a non-exclusive license to use the delivered assets on organic digital channels for <strong>{data.usagePeriod}</strong>. Paid whitelisting, Dark Posting, or TV broadcast rights require a separate written licensing agreement.
+          <strong>Usage &amp; Licensing:</strong>{' '}
+          {data.usagePeriod
+            ? <>Client receives a non-exclusive license to use the delivered assets on organic digital channels for <strong>{data.usagePeriod}</strong>. Paid whitelisting, Dark Posting, or TV broadcast rights require a separate written licensing agreement.</>
+            : 'No usage license is granted beyond delivery of the final assets. Any reuse, whitelisting, or broadcast requires a separate written licensing agreement.'}
         </p>
         {data.exclusivity && data.exclusivity !== 'None' && (
           <p style={{ margin: '0 0 6px' }}>
@@ -849,7 +852,11 @@ export function BusinessContractAgreement({ data, showBranding = true }: Contrac
           </div>
         </div>
         <p style={{ margin: '0 0 6px' }}>
-          Party A retains intellectual property ownership of original footage and concepts. Party B is granted a non-exclusive license to utilize finished assets for <strong>{data.usagePeriod}</strong> across organic digital channels. Includes up to <strong>{data.revisionRounds} rounds of minor revisions</strong>.
+          Party A retains intellectual property ownership of original footage and concepts.{' '}
+          {data.usagePeriod
+            ? <>Party B is granted a non-exclusive license to utilize finished assets for <strong>{data.usagePeriod}</strong> across organic digital channels.</>
+            : 'No usage license is granted to Party B beyond delivery of the finished assets.'}{' '}
+          Includes up to <strong>{data.revisionRounds} rounds of minor revisions</strong>.
         </p>
         {data.exclusivity && data.exclusivity !== 'None' && (
           <p style={{ margin: 0 }}>
@@ -1032,7 +1039,9 @@ export function CreatorSponsorshipAgreement({ data, showBranding = true }: Contr
           4. Usage Rights &amp; Whitelisting
         </div>
         <p style={{ margin: 0 }}>
-          Creator grants Brand the right to use the content for <strong>{data.usagePeriod}</strong> across organic social media channels. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require a separate written licensing agreement.
+          {data.usagePeriod
+            ? <>Creator grants Brand the right to use the content for <strong>{data.usagePeriod}</strong> across organic social media channels. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require a separate written licensing agreement.</>
+            : 'No usage rights are granted beyond delivery of the final assets. Paid ad whitelisting, Meta Spark Ads, TikTok Dark Posting, or TV broadcast rights require a separate written licensing agreement.'}
         </p>
         {data.exclusivity && data.exclusivity !== 'None' && (
           <p style={{ margin: '4px 0 0', color: '#1f2937' }}>

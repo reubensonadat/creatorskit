@@ -171,16 +171,26 @@ export function parseNaturalPrompt(prompt: string): ParsedDocumentData {
   }
 
   // 3. Detect Due Date / Payment Window
+  // Dates are compared/typed as YYYY-MM-DD in the builder, so format the
+  // LOCAL calendar day — toISOString() shifts by timezone and made parsed
+  // prompt dates land a day off from the date inputs.
+  const toLocalISO = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   const dueDaysMatch = text.match(/due\s+(?:in\s+)?(\d+)\s*days?/i);
   if (dueDaysMatch) {
     const days = parseInt(dueDaysMatch[1], 10);
-    const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-    result.dueDate = d.toISOString().split('T')[0];
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    result.dueDate = toLocalISO(d);
   } else if (/due\s+on\s+([A-Za-z0-9,\s\-]+)/i.test(text)) {
     const rawDate = text.match(/due\s+on\s+([A-Za-z0-9,\s\-]+)/i)?.[1];
     if (rawDate) {
       const parsed = Date.parse(rawDate);
-      if (!isNaN(parsed)) result.dueDate = new Date(parsed).toISOString().split('T')[0];
+      if (!isNaN(parsed)) result.dueDate = toLocalISO(new Date(parsed));
     }
   }
 
